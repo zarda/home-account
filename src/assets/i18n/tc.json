@@ -238,6 +238,8 @@
     "splitRemainderInvalid": "每筆分拆都需要金額，且合計必須為主要類別留下餘額",
     "splitPartCategoryRequired": "每個部分都需要選擇類別",
     "splitPartsDropped": "已移除 {{count}} 筆分拆：其分類不適用於此類型",
+    "categoryClearedForType": "已清除類別：「{{category}}」不適用於此類型",
+    "categoryRestoredForType": "已將類別改回「{{category}}」",
     "splitPartNotice": "這是分拆消費的其中一筆，其他分拆需個別編輯。",
     "splitFailed": "無法分拆此筆消費",
     "splitOffline": "分拆需要網路連線",

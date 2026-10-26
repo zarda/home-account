@@ -236,6 +236,17 @@ export class TransactionFormComponent implements OnInit, AfterViewInit, OnDestro
    */
   private typeFromScan = false;
 
+  /**
+   * The category a type change blanked, kept so the way back can return it.
+   * The field is required and the category list is per side, so a category of
+   * the side the form has left cannot stay; but a type tapped by mistake, or
+   * a scan that read a refund and moved the type under a purchase category,
+   * would otherwise cost the user a category they had already chosen. It is
+   * set before the field is patched, and any category chosen afterwards ends
+   * it: from then on the field holds something of the user's own.
+   */
+  private categoryBlankedByType: string | null = null;
+
   // Images already stored on the item being edited, by storage slot. Kept as
   // local state so per-image removal and conversion update the strip without
   // re-reading the document.
@@ -453,13 +464,12 @@ export class TransactionFormComponent implements OnInit, AfterViewInit, OnDestro
   private datesSubs: Subscription[] = [];
 
   // Computed signal that reacts to both type changes and category loading
-  filteredCategories = computed(() => {
-    const type = this.transactionType();
-    if (type === 'income') {
-      return this.incomeCategories();
-    }
-    return this.expenseCategories();
-  });
+  filteredCategories = computed(() => this.categoriesOfType(this.transactionType()));
+
+  /** The categories a form of this type offers, whichever type the form stands on now. */
+  private categoriesOfType(type: 'expense' | 'income'): Category[] {
+    return type === 'income' ? this.incomeCategories() : this.expenseCategories();
+  }
 
   // Computed signal for selected category (used by mat-select-trigger)
   selectedCategory = computed(() => {
@@ -467,6 +477,16 @@ export class TransactionFormComponent implements OnInit, AfterViewInit, OnDestro
     if (!categoryId) return null;
     return this.filteredCategories().find(c => c.id === categoryId) || null;
   });
+
+  /**
+   * The name the field shows for a category, for a sentence about it. A
+   * category of the side the form has left is still in the catalogue; the id
+   * stands in only for one the catalogue does not hold at all.
+   */
+  private categoryDisplayName(categoryId: string): string {
+    const name = this.categoryService.categories().find(c => c.id === categoryId)?.name;
+    return name ? this.translationService.t(name) : categoryId;
+  }
 
   constructor() {
     // Only load categories if not already loaded
@@ -709,12 +729,34 @@ export class TransactionFormComponent implements OnInit, AfterViewInit, OnDestro
         this.typeFromScan = false;
         this.scanFieldConfidence.update(fc => withoutFieldConfidence(fc ?? undefined, 'type') ?? null);
         this.transactionType.set(type);
-        // Reset category if it doesn't match the type
+        // A category the new side cannot hold is blanked, and the blank is
+        // said out loud with the name of what went; an empty field whose
+        // blanked category fits the side the type has come back to is given
+        // that category again, and that is said too.
         const currentCategoryId = this.form.get('categoryId')?.value;
         const validCategories = this.filteredCategories();
         if (currentCategoryId) {
           if (!validCategories.some(c => c.id === currentCategoryId)) {
+            // Recorded first, so the blank the patch writes is never seen
+            // without the category it replaced.
+            this.categoryBlankedByType = currentCategoryId;
             this.form.patchValue({ categoryId: '' });
+            this.announcer.announce(
+              this.translationService.t('transactions.categoryClearedForType', {
+                category: this.categoryDisplayName(currentCategoryId),
+              })
+            );
+          }
+        } else if (this.categoryBlankedByType) {
+          const blanked = validCategories.find(c => c.id === this.categoryBlankedByType);
+          if (blanked) {
+            // The patch is a category chosen, which ends the hold.
+            this.form.patchValue({ categoryId: blanked.id });
+            this.announcer.announce(
+              this.translationService.t('transactions.categoryRestoredForType', {
+                category: this.categoryDisplayName(blanked.id),
+              })
+            );
           }
         }
         // The suggestion chip too: it was asked for on the side the form has
@@ -727,9 +769,9 @@ export class TransactionFormComponent implements OnInit, AfterViewInit, OnDestro
         }
         // Same for the split's own rows, which the picker no longer offers: a
         // part naming a category of the other type renders as a blank select
-        // and would still be written. The category reset above leaves a
-        // visibly empty required field; a dropped row leaves nothing at all,
-        // so it is the one that has to be said out loud.
+        // and would still be written. Said out loud like the category reset
+        // above: a blank required field shows that something changed, not
+        // which category went, and a dropped row leaves nothing to see at all.
         const before = this.splitParts().length;
         this.splitParts.update(parts =>
           parts.filter(part => validCategories.some(c => c.id === part.categoryId))
@@ -749,6 +791,9 @@ export class TransactionFormComponent implements OnInit, AfterViewInit, OnDestro
       // Clear suggestion when category is manually selected
       if (categoryId) {
         this.suggestedCategory.set(null);
+        // The field holds a category again, so the one a type change blanked
+        // is no longer the way back to anything.
+        this.categoryBlankedByType = null;
       }
     });
 
@@ -1194,6 +1239,16 @@ export class TransactionFormComponent implements OnInit, AfterViewInit, OnDestro
       const standingType = this.form.get('type')?.value;
       const typeWasFromScan = this.typeFromScan;
       if ((primary.type === 'income' || typeWasFromScan) && primary.type !== standingType) {
+        // A category a type change blanked is the way back for the user's own
+        // pick. A scan that moves the type back and names a category for the
+        // side it lands on has a newer answer, filled below: handing the held
+        // pick back first would announce a category the field never keeps. A
+        // scan that names none leaves the hold standing, and the pick still
+        // comes back, said aloud.
+        const suggested = primary.suggestedCategoryId;
+        if (suggested && this.categoriesOfType(primary.type).some(c => c.id === suggested)) {
+          this.categoryBlankedByType = null;
+        }
         this.form.patchValue({ type: primary.type });
       }
       this.typeFromScan = primary.type === 'income' && (standingType !== 'income' || typeWasFromScan);

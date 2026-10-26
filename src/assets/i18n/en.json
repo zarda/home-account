@@ -247,6 +247,8 @@
       "one": "{{count}} part removed: its category is not offered for this type",
       "other": "{{count}} parts removed: their categories are not offered for this type"
     },
+    "categoryClearedForType": "Category cleared: {{category}} is not offered for this type",
+    "categoryRestoredForType": "Category set back to {{category}}",
     "splitPartNotice": "One part of a split purchase. Its other parts are edited on their own.",
     "splitFailed": "Couldn't split this purchase",
     "splitOffline": "Splitting needs a connection",

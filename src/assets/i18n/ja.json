@@ -238,6 +238,8 @@
     "splitRemainderInvalid": "各項目に金額を入力し、合計してもメインのカテゴリに金額が残るようにしてください",
     "splitPartCategoryRequired": "各項目にカテゴリを選んでください",
     "splitPartsDropped": "{{count}}件の内訳を削除しました：この種別では選べないカテゴリです",
+    "categoryClearedForType": "カテゴリ「{{category}}」はこの種別では選べないため、解除しました",
+    "categoryRestoredForType": "カテゴリを「{{category}}」に戻しました",
     "splitPartNotice": "分割された買い物の1件です。ほかの内訳は個別に編集します。",
     "splitFailed": "この買い物を分割できませんでした",
     "splitOffline": "分割には接続が必要です",
