@@ -3846,6 +3846,93 @@ describe('AIImportService', () => {
       expect('receiptsFailed' in stats).toBeFalse();
     });
 
+    describe('the reader\'s type flags', () => {
+      // A standing flag is a low type grade; a flip files the flagged side as
+      // `typeFlaggedAs` and drops the grade, so a flipped row is flagged and
+      // stands on the other side.
+      const standing = (overrides: Partial<CategorizedImportTransaction> = {}) =>
+        selected({ type: 'income', fieldConfidence: { type: 0.4 }, ...overrides });
+      const flipped = (overrides: Partial<CategorizedImportTransaction> = {}) =>
+        selected({ type: 'expense', typeFlaggedAs: 'income', ...overrides });
+
+      const completion = () =>
+        importHistoryService.completeImport.calls.mostRecent().args[1] as Record<string, unknown>;
+
+      it('counts the rows whose type a reader flagged, and those confirmed on the other side', async () => {
+        await service.confirmImport(
+          [standing({ id: 'a' }), flipped({ id: 'b' }), selected({ id: 'c' })],
+          'r.png', 10, 'image', 'receipt_image'
+        );
+
+        expect(completion()['typesFlagged']).toBe(2);
+        expect(completion()['typesFlipped']).toBe(1);
+      });
+
+      it('counts a flagged row only once the write took it', async () => {
+        // The middle row fails its write: of the three flagged rows only the
+        // first and the last landed, and one of those two was flipped.
+        transactionService.addTransaction.and.returnValues(
+          Promise.resolve('id-1'),
+          Promise.reject(new Error('save failed')),
+          Promise.resolve('id-3')
+        );
+
+        await service.confirmImport(
+          [standing({ id: 'a' }), flipped({ id: 'b' }), flipped({ id: 'c' })],
+          'r.png', 10, 'image', 'receipt_image'
+        );
+
+        expect(completion()['successCount']).toBe(2);
+        expect(completion()['typesFlagged']).toBe(2);
+        expect(completion()['typesFlipped']).toBe(1);
+      });
+
+      // Pin: an unflagged record carries neither figure, since an absent count
+      // and a zero mean the same thing.
+      it('leaves both type counts off a record nobody flagged', async () => {
+        await service.confirmImport(
+          [selected({ id: 'a' }), selected({ id: 'b', type: 'income' })],
+          'r.png', 10, 'image', 'receipt_image'
+        );
+
+        expect('typesFlagged' in completion()).toBeFalse();
+        expect('typesFlipped' in completion()).toBeFalse();
+      });
+
+      // Pin: a flag that kept its side is a flag and not a flip, so the flip
+      // count has a guard of its own.
+      it('leaves the flip count off when every flagged row kept its side', async () => {
+        await service.confirmImport(
+          [standing({ id: 'a' }), selected({ id: 'b', type: 'expense', typeFlaggedAs: 'expense' })],
+          'r.png', 10, 'image', 'receipt_image'
+        );
+
+        expect('typesFlipped' in completion()).toBeFalse();
+      });
+
+      // Pin: the counts read the rows the write took, not the rows the review
+      // step held.
+      it('does not count a flagged row the reviewer left out', async () => {
+        await service.confirmImport(
+          [flipped({ id: 'a', selected: false }), selected({ id: 'b' })],
+          'r.png', 10, 'image', 'receipt_image'
+        );
+
+        expect('typesFlagged' in completion()).toBeFalse();
+        expect('typesFlipped' in completion()).toBeFalse();
+      });
+
+      // Pin: the verdict is a review-step mark, and the DTO builder names the
+      // fields it writes, so it never reaches the document.
+      it('never writes the reader\'s verdict onto the transaction', async () => {
+        await service.confirmImport([flipped()], 'r.png', 10, 'image', 'receipt_image');
+
+        const dto = transactionService.addTransaction.calls.mostRecent().args[0];
+        expect(dto.type).toBe('expense');
+        expect('typeFlaggedAs' in dto).toBeFalse();
+      });
+    });
+
     describe('transactionIds', () => {
       it('records the created transaction ids on the completed record, in row order', async () => {
         transactionService.addTransaction.and.returnValues(

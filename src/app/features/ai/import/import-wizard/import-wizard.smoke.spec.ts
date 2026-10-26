@@ -293,6 +293,15 @@ describe('ImportWizardComponent camera handoff (emulator smoke test)', () => {
     await deleteApp(app).catch(() => undefined);
   });
 
+  // The record a confirm wrote, found by the transactions it landed: earlier
+  // cases in this file leave records of their own.
+  const recordOf = async (landedIds: string[]): Promise<ImportHistory | undefined> => {
+    const records = await getDocs(collection(firestore, `users/${uid}/imports`));
+    return records.docs
+      .map(d => d.data() as ImportHistory)
+      .find(record => landedIds.some(id => record.transactionIds?.includes(id)));
+  };
+
   beforeEach(() => {
     mockAuth = new MockAuthService();
     mockAuth.setMockUser(createMockUser(uid));
@@ -1695,8 +1704,8 @@ describe('ImportWizardComponent camera handoff (emulator smoke test)', () => {
       await component.confirmImport();
 
       const after = await getDocs(collection(firestore, `users/${uid}/transactions`));
-      const landed = after.docs
-        .filter(d => !before.has(d.id))
+      const landedDocs = after.docs.filter(d => !before.has(d.id));
+      const landed = landedDocs
         .map(d => d.data())
         .map(stored => ({
           description: stored['description'],
@@ -1709,6 +1718,19 @@ describe('ImportWizardComponent camera handoff (emulator smoke test)', () => {
         { description: 'Smoke doubted purchase', type: 'income', categoryId: 'other_income', graded: false },
         { description: 'Smoke refund slip', type: 'income', categoryId: 'other_income', graded: false }
       ]);
+
+      // Both rows had their type doubted and the reviewer flipped one of
+      // them, so the record counts two flags and one flip. The verdict that
+      // makes the flip countable is a review-step mark and never reaches a
+      // document.
+      expect(landedDocs.map(d => 'typeFlaggedAs' in d.data()))
+        .withContext('the reader\'s verdict is not written onto either transaction')
+        .toEqual([false, false]);
+      const record = await recordOf(landedDocs.map(d => d.id));
+      expect(record).withContext('the import wrote a record naming the rows it landed').not.toBeUndefined();
+      expect({ typesFlagged: record?.typesFlagged, typesFlipped: record?.typesFlipped })
+        .withContext('two flags raised, one overturned')
+        .toEqual({ typesFlagged: 2, typesFlipped: 1 });
 
       history.replaceState({}, '');
       fixture.destroy();
@@ -1939,8 +1961,8 @@ describe('ImportWizardComponent camera handoff (emulator smoke test)', () => {
         await component.confirmImport();
 
         const after = await getDocs(collection(firestore, `users/${uid}/transactions`));
-        const landed = after.docs
-          .filter(d => !before.has(d.id))
+        const landedDocs = after.docs.filter(d => !before.has(d.id));
+        const landed = landedDocs
           .map(d => d.data())
           .map(stored => ({
             description: stored['description'],
@@ -1953,7 +1975,15 @@ describe('ImportWizardComponent camera handoff (emulator smoke test)', () => {
         history.replaceState({}, '');
         fixture.destroy();
         await new Promise(resolve => setTimeout(resolve, 300));
-        return { reviewed, landed };
+        return { reviewed, landed, landedIds: landedDocs.map(d => d.id) };
+      };
+
+      // The merge ended each pair's doubt, so nothing is left to count: the
+      // record carries neither figure, rather than a zero for each.
+      const typeCountKeys = async (landedIds: string[]) => {
+        const record = await recordOf(landedIds);
+        expect(record).withContext('the import wrote a record naming the row it landed').not.toBeUndefined();
+        return Object.keys(record ?? {}).filter(key => key === 'typesFlagged' || key === 'typesFlipped');
       };
 
       const partly = await mergeAndImport(
@@ -1973,6 +2003,9 @@ describe('ImportWizardComponent camera handoff (emulator smoke test)', () => {
       expect(partly.landed).toEqual([
         { description: 'Smoke partly refunded purchase', type: 'expense', amount: 1500, categoryId: 'food', graded: false }
       ]);
+      expect(await typeCountKeys(partly.landedIds))
+        .withContext('the net expense\'s record counts no type flag')
+        .toEqual([]);
 
       const over = await mergeAndImport(
         { description: 'Smoke overrefunded purchase', amount: 400 },
@@ -1991,6 +2024,9 @@ describe('ImportWizardComponent camera handoff (emulator smoke test)', () => {
       expect(over.landed).toEqual([
         { description: 'Smoke overrefunded purchase', type: 'income', amount: 1600, categoryId: 'other_income', graded: false }
       ]);
+      expect(await typeCountKeys(over.landedIds))
+        .withContext('the net income\'s record counts no type flag')
+        .toEqual([]);
     },
     60000
   );
