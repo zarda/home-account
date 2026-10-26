@@ -228,6 +228,29 @@ export function modelTypeGrade(type: 'income' | 'expense'): number | undefined {
   return type === 'income' ? MODEL_INCOME_GRADE : undefined;
 }
 
+/**
+ * The per-field confidences an extracted row carries to its review row: the
+ * amount and type grades the row brought, and the date grade the caller
+ * resolved (a fabricated date arrives as an honest 0, which a falsy test would
+ * drop). Undefined when nothing was graded, so a source that cannot know stays
+ * distinguishable from one that read the fields clearly. One home for the
+ * shape: three hand-built copies are how a new grade would reach one lane and
+ * not the others (ADR 0171).
+ */
+export function extractedFieldConfidence(
+  row: { amountConfidence?: number; typeConfidence?: number },
+  dateGrade: number | undefined
+): FieldConfidence | undefined {
+  if (row.amountConfidence === undefined && dateGrade === undefined && row.typeConfidence === undefined) {
+    return undefined;
+  }
+  return {
+    ...(row.amountConfidence !== undefined ? { amount: row.amountConfidence } : {}),
+    ...(dateGrade !== undefined ? { date: dateGrade } : {}),
+    ...(row.typeConfidence !== undefined ? { type: row.typeConfidence } : {}),
+  };
+}
+
 /** Longest address kept; a model echoing the whole receipt body here is not reporting an address. */
 const MAX_PRINTED_LOCATION_LENGTH = 120;
 

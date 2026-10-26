@@ -1,4 +1,5 @@
 import { MultiImageExtractedTransaction } from '../services/gemini.service';
+import { modelTypeGrade, readTransactionType } from './receipt-extraction.utils';
 
 /**
  * Format receipt line items as "name — CURRENCY amount", one per line.
@@ -46,6 +47,15 @@ function reportedTotalOf(groupItems: MultiImageExtractedTransaction[]): number |
   return groupItems
     .map(i => i.receiptTotal)
     .find((v): v is number => typeof v === 'number' && Number.isFinite(v) && v > 0);
+}
+
+/**
+ * The row slot for a type verdict: the review grade for income, no key at all
+ * for a purchase, so absence still means "nothing said otherwise" (ADR 0162).
+ */
+function typeGradeSlot(type: 'income' | 'expense'): { typeConfidence?: number } {
+  const grade = modelTypeGrade(type);
+  return grade !== undefined ? { typeConfidence: grade } : {};
 }
 
 /** Amount plus optional review flag for one receipt group. */
@@ -98,7 +108,11 @@ export function consolidateReceiptItems(
       // A group of one never merged anything, whatever the extraction
       // claimed for the item itself — that verdict is this function's alone
       // to make, and it only makes it in the multi-item branch below.
-      result.push({ ...base, ...deriveAmount(groupItems, Math.abs(only.amount)), wasMerged: false });
+      const line = { ...base, ...deriveAmount(groupItems, Math.abs(only.amount)), wasMerged: false };
+      // The type grade is this function's verdict as well: a grade the
+      // extraction brought is dropped, and the line's own type decides it.
+      delete line.typeConfidence;
+      result.push({ ...line, ...typeGradeSlot(readTransactionType(only.type)) });
     } else {
       // Multiple items from same receipt — merge into one transaction.
       // Amounts are absolute values, so refund/credit lines (type 'income')
@@ -126,6 +140,7 @@ export function consolidateReceiptItems(
         (sum, item) => sum + (item.type === 'income' ? -item.amount : item.amount),
         0
       );
+      const type = netAmount < 0 ? 'income' : 'expense';
 
       // Prefer full receipt details from AI, fall back to item list
       const receiptDetailsFromAI = groupItems.find(i => i.receiptDetails)?.receiptDetails;
@@ -144,7 +159,10 @@ export function consolidateReceiptItems(
         dateConfidence: first.dateConfidence,
         description: merchant,
         ...deriveAmount(groupItems, Math.abs(netAmount)),
-        type: netAmount < 0 ? 'income' : 'expense',
+        type,
+        // The receipt's net decides it, not any one line: a purchase with a
+        // refund line inside still nets to a purchase and stays ungraded.
+        ...typeGradeSlot(type),
         currency,
         category,
         merchant,

@@ -18,7 +18,7 @@ import { IMAGE_FILE_EXTENSIONS } from '../utils/file.utils';
 import { OfflineQueueService } from './offline-queue.service';
 import { PwaService } from './pwa.service';
 import { consolidateReceiptItems } from '../utils/receipt-consolidation';
-import { readCurrencyCode, readTransactionType } from '../utils/receipt-extraction.utils';
+import { extractedFieldConfidence, readCurrencyCode, readTransactionType } from '../utils/receipt-extraction.utils';
 import { localeRegion, suggestCurrency } from '../utils/currency-suggestion.utils';
 import { CurrencyChoiceSessionService } from './currency-choice-session.service';
 import {
@@ -823,12 +823,7 @@ export class AIImportService {
         suggestedCategoryId: t.suggestedCategoryId,
         categoryConfidence: t.confidence,
         notes: this.formatItemNotes(original.details),
-        fieldConfidence: (original.amountConfidence !== undefined || resolved.dateConfidence !== undefined)
-          ? {
-              ...(original.amountConfidence !== undefined ? { amount: original.amountConfidence } : {}),
-              ...(resolved.dateConfidence !== undefined ? { date: resolved.dateConfidence } : {})
-            }
-          : undefined,
+        fieldConfidence: extractedFieldConfidence(original, resolved.dateConfidence),
         isDuplicate: false,
         selected: true,
         imageMetadata: {
@@ -1411,12 +1406,7 @@ export class AIImportService {
         // verbatim; formatItemNotes is for receipt item lists and splits
         // plain commas into newlines.
         notes: t.note ?? this.formatItemNotes(t.details),
-        fieldConfidence: (t.amountConfidence !== undefined || resolved.dateConfidence !== undefined)
-          ? {
-              ...(t.amountConfidence !== undefined ? { amount: t.amountConfidence } : {}),
-              ...(resolved.dateConfidence !== undefined ? { date: resolved.dateConfidence } : {})
-            }
-          : undefined,
+        fieldConfidence: extractedFieldConfidence(t, resolved.dateConfidence),
         isDuplicate: false,
         selected: true,
         ...(t.merchant ? { merchant: t.merchant } : {}),

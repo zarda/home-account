@@ -104,6 +104,12 @@ export interface ExtractedTransaction {
   details?: string;                // Additional details (card last 4 digits, reference number, etc.)
   amountConfidence?: number;       // How legible the amount was (0-1); absent when unreported
   dateConfidence?: number;         // How legible the date was (0-1); absent when unreported
+  /**
+   * How firmly the app holds this row's `type`; set only by receipt
+   * consolidation, on a net income verdict (ADR 0162). Absent on a purchase
+   * and on every statement, CSV or backup row, whose type carries no grade.
+   */
+  typeConfidence?: number;
   // The optional fields a transaction can hold and an import source may or
   // may not answer. Absent means "nobody looked" — no producer defaults any
   // of them, so a slot only carries a value somebody actually read.
