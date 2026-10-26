@@ -36,7 +36,11 @@
 // is seen on the real card, and a flip there is followed into the documents
 // it writes. The next folds such a refund into its purchase on the card, so
 // the side the net points, and the doubt it settles, are followed the same
-// way.
+// way. The two after it read a refund in the cloud instead, through the
+// provider stub's multi-photo answer: once through the wizard's own file
+// picker, once through the strategy the camera calls. Each follows the
+// reader's income verdict, and the doubt it carries, from the extraction to
+// the toggle and into the document.
 //
 // Import the Firebase SDK through @angular/fire (not the root `firebase/*`
 // packages) — see app.smoke.spec.ts for why the copies must match.
@@ -100,6 +104,7 @@ import {
 import { dayKey, parseDateInput } from '../../../../core/utils/transaction-date.utils';
 import { errorCode } from '../../../../core/utils/firebase-error.utils';
 import { countryDisplayName } from '../../../../core/utils/currency-suggestion.utils';
+import { MODEL_INCOME_GRADE } from '../../../../core/utils/receipt-extraction.utils';
 import {
   fallbackCategoryFor,
   UNCATEGORIZED_CATEGORY_CONFIDENCE,
@@ -155,13 +160,23 @@ async function until(
  * nothing: it still needs the card's currency picker and it still must not
  * let a real provider reach the network, but there is no answer to stub, and
  * a receipt invented to fill the parameter would read as one under test.
+ *
+ * A case that reads its photo through the multi-photo reader passes the rows
+ * that reader answers as `items`. The answer is complete, and the categorizer
+ * answers each row with its own side's catch-all at the tried-and-failed
+ * grade, as a model that named nothing usable leaves it. The analytics stub
+ * carries trackReceiptImport because the wizard's own file picker opens a
+ * receipt attempt, which reports through it.
  */
-function stubReceiptSeams(parsed?: ParsedReceipt): void {
+function stubReceiptSeams(parsed?: ParsedReceipt, items?: MultiImageExtractedTransaction[]): void {
   const cloudLLMProvider: jasmine.SpyObj<CloudLLMProviderService> = jasmine.createSpyObj(
     'CloudLLMProviderService',
     [
       'hasAnyCloudProvider',
       'parseReceipt',
+      'extractTransactionsFromMultipleImages',
+      'answerWasIncomplete',
+      'categorizeTransactions',
       'initializeProviders',
       'resetProviders',
       'setOpenAIModel',
@@ -174,6 +189,17 @@ function stubReceiptSeams(parsed?: ParsedReceipt): void {
   cloudLLMProvider.hasAnyCloudProvider.and.returnValue(true);
   if (parsed) {
     cloudLLMProvider.parseReceipt.and.resolveTo(parsed);
+  }
+  if (items) {
+    cloudLLMProvider.extractTransactionsFromMultipleImages.and.resolveTo(items);
+    cloudLLMProvider.answerWasIncomplete.and.returnValue(false);
+    cloudLLMProvider.categorizeTransactions.and.callFake(async raws =>
+      raws.map(r => ({
+        ...r,
+        suggestedCategoryId: fallbackCategoryFor(r.type),
+        confidence: UNRESOLVED_CATEGORY_CONFIDENCE
+      }))
+    );
   }
   cloudLLMProvider.initializeProviders.and.resolveTo({ keyReadFailed: false });
   cloudLLMProvider.resetProviders.and.resolveTo(undefined);
@@ -190,7 +216,7 @@ function stubReceiptSeams(parsed?: ParsedReceipt): void {
 
   const analytics: jasmine.SpyObj<AnalyticsService> = jasmine.createSpyObj(
     'AnalyticsService',
-    ['trackAiAssistUsed']
+    ['trackAiAssistUsed', 'trackReceiptImport']
   );
 
   TestBed.configureTestingModule({
@@ -1857,6 +1883,206 @@ describe('ImportWizardComponent camera handoff (emulator smoke test)', () => {
       ]);
     },
     60000
+  );
+
+  it(
+    'a refund photo the cloud itemized reaches review as income, flagged on its toggle, and is written on the income catch-all',
+    async () => {
+      // The wizard's own file picker, which sends receipt photos of any count
+      // through the multi-photo reader. Only the reader is stubbed: it
+      // itemized one line, a refund, with its printed total. Consolidation
+      // decides a lone line's type and grades the income it finds, and the
+      // categorizer keeps the row on that side. A pin written after the fix:
+      // without consolidation's grade the row still reaches review as
+      // income, but nothing on the card asks about it.
+      stubReceiptSeams(undefined, [
+        {
+          date: '2026-08-21',
+          dateConfidence: 0.95,
+          description: 'Smoke cloud refund',
+          amount: 1280,
+          type: 'income',
+          currency: 'JPY',
+          imageIndex: 0,
+          confidence: 0.9,
+          receiptId: 1,
+          receiptTotal: 1280
+        }
+      ]);
+      // Import attaches the photo picked, and the quota check reads Remote
+      // Config, which has no emulator.
+      TestBed.configureTestingModule({
+        providers: [
+          {
+            provide: ReceiptQuotaService,
+            useValue: { canAddImages: async () => true, noteImagesAdded: () => undefined }
+          }
+        ],
+        teardown: { destroyAfterEach: false }
+      });
+      spyOn(TestBed.inject(Router), 'navigate').and.resolveTo(true);
+
+      // No hand-off here, and the wizard reads whatever state stands.
+      history.replaceState({}, '');
+      const before = new Set(
+        (await getDocs(collection(firestore, `users/${uid}/transactions`))).docs.map(d => d.id)
+      );
+
+      const fixture = TestBed.createComponent(ImportWizardComponent);
+      fixture.detectChanges();
+      const host = fixture.nativeElement as HTMLElement;
+      const component = fixture.componentInstance;
+
+      component.onFilesSelected([
+        new File([new Uint8Array([1, 2, 3])], 'cloud-refund.jpg', { type: 'image/jpeg' })
+      ]);
+      await component.processFiles();
+      await until(fixture, () => component.extractedTransactions().length === 1);
+
+      const [row] = component.extractedTransactions();
+      expect(row.type).toBe('income');
+      expect(row.fieldConfidence).toEqual({ date: 0.95, type: MODEL_INCOME_GRADE });
+      expect(row.suggestedCategoryId).toBe('other_income');
+      expect(TestBed.inject(AnalyticsService).trackReceiptImport)
+        .toHaveBeenCalledOnceWith(jasmine.objectContaining({ outcome: 'ok', path: 'wizard' }));
+
+      // The stepper is linear with no hand-off; steps 0 and 1 are complete.
+      component.stepper.selectedIndex = 2;
+      fixture.detectChanges();
+      await until(
+        fixture,
+        () => TestBed.inject(CategoryService).categories().length > 0 &&
+          host.querySelectorAll('.transaction-card').length === 1
+      );
+      expect(host.querySelector('.type-toggle .verify-flag'))
+        .withContext('the refund\'s toggle is flagged')
+        .not.toBeNull();
+
+      // Printed in August, so the row asks about its date before Import.
+      const keep = host.querySelector<HTMLButtonElement>('.extra-chip.date-check .extra-accept');
+      expect(keep).not.toBeNull();
+      keep!.click();
+      fixture.detectChanges();
+      expect(component.unansweredDates()).toBe(0);
+
+      await component.confirmImport();
+
+      const after = await getDocs(collection(firestore, `users/${uid}/transactions`));
+      const landed = after.docs.filter(d => !before.has(d.id));
+      expect(landed.length).toBe(1);
+      const stored = landed[0].data();
+      expect(stored['type']).toBe('income');
+      expect(stored['categoryId']).toBe('other_income');
+      expect(stored['amount']).toBe(1280);
+      expect(stored['currency']).toBe('JPY');
+      expect('fieldConfidence' in stored).toBeFalse();
+
+      history.replaceState({}, '');
+      fixture.destroy();
+      await new Promise(resolve => setTimeout(resolve, 300));
+    },
+    30000
+  );
+
+  it(
+    'a refund the cloud read through the camera reaches review as income, flagged, and is written on the income catch-all',
+    async () => {
+      // The camera's door where the scan goes to the cloud. The capture
+      // dialog sends its photos to the strategy's processMultipleImages,
+      // which runs for real here over the stubbed reader: one refund line
+      // with its printed total. What the dialog then does with the answer is
+      // done here as it does it: its converter, its duplicate check against
+      // the real ledger, its router state. The photo is left out of the
+      // hand-off, as the on-device case above leaves it. A pin written after
+      // the fix: the strategy's own copy of the grades carried the amount and
+      // the date only, so the refund reached the card as income with nothing
+      // asking about it.
+      stubReceiptSeams(undefined, [
+        {
+          date: '2026-08-22',
+          dateConfidence: 0.9,
+          description: 'Smoke camera cloud refund',
+          amount: 2480,
+          type: 'income',
+          currency: 'JPY',
+          imageIndex: 0,
+          confidence: 0.9,
+          receiptId: 1,
+          receiptTotal: 2480
+        }
+      ]);
+      const strategy = TestBed.inject(AIStrategyService);
+      const importService = TestBed.inject(AIImportService);
+      const duplicateService = TestBed.inject(DuplicateDetectionService);
+      spyOn(TestBed.inject(Router), 'navigate').and.resolveTo(true);
+
+      const before = new Set(
+        (await getDocs(collection(firestore, `users/${uid}/transactions`))).docs.map(d => d.id)
+      );
+
+      const photo = new File([new Uint8Array([1])], 'camera-cloud-refund.jpg', { type: 'image/jpeg' });
+      const read = await strategy.processMultipleImages([photo]);
+      const rows = importService.convertStrategyResultToCategories(read);
+
+      expect(rows.length).toBe(1);
+      const [row] = rows;
+      expect(row.type).toBe('income');
+      expect(row.fieldConfidence).toEqual({ date: 0.9, type: MODEL_INCOME_GRADE });
+      expect(row.suggestedCategoryId).toBe(fallbackCategoryFor('income'));
+
+      const duplicates = await duplicateService.checkDuplicates(rows);
+      const importResult: ImportResult = {
+        source: 'image',
+        fileType: 'receipt_image',
+        fileName: photo.name,
+        fileSize: photo.size,
+        confidence: read.confidence,
+        warnings: [],
+        duplicates,
+        transactions: duplicateService.markDuplicates(rows, duplicates)
+      };
+
+      history.replaceState({ importResult, fromCamera: true, door: 'camera', multiImage: false }, '');
+      const fixture = TestBed.createComponent(ImportWizardComponent);
+      fixture.detectChanges();
+
+      const host = fixture.nativeElement as HTMLElement;
+      const component = fixture.componentInstance;
+      await until(
+        fixture,
+        () => TestBed.inject(CategoryService).categories().length > 0 &&
+          host.querySelectorAll('.transaction-card').length === 1
+      );
+      expect(component.stepper.selectedIndex).toBe(2);
+      expect(component.extractedTransactions()[0].type).toBe('income');
+      expect(host.querySelector('.type-toggle .verify-flag'))
+        .withContext('the refund\'s toggle is flagged')
+        .not.toBeNull();
+
+      // Printed in August, so the row asks about its date before Import.
+      const keep = host.querySelector<HTMLButtonElement>('.extra-chip.date-check .extra-accept');
+      expect(keep).not.toBeNull();
+      keep!.click();
+      fixture.detectChanges();
+      expect(component.unansweredDates()).toBe(0);
+
+      await component.confirmImport();
+
+      const after = await getDocs(collection(firestore, `users/${uid}/transactions`));
+      const landed = after.docs.filter(d => !before.has(d.id));
+      expect(landed.length).toBe(1);
+      const stored = landed[0].data();
+      expect(stored['type']).toBe('income');
+      expect(stored['categoryId']).toBe('other_income');
+      expect(stored['amount']).toBe(2480);
+      expect(stored['currency']).toBe('JPY');
+      expect('fieldConfidence' in stored).toBeFalse();
+
+      history.replaceState({}, '');
+      fixture.destroy();
+      await new Promise(resolve => setTimeout(resolve, 300));
+    },
+    30000
   );
 
   it(
