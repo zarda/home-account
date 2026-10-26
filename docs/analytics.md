@@ -115,6 +115,7 @@ and `duration` arrived in 1.27.140. `household_action`'s `share`, `unshare`,
 
 ### Parameter values
 
+<!-- analytics-params:start -->
 | Parameter | Values |
 |---|---|
 | `method` | `manual`, `receipt_scan`, `ai_import` |
@@ -134,6 +135,7 @@ and `duration` arrived in 1.27.140. `household_action`'s `share`, `unshare`,
 | `feature` | `receipt_scan`, `categorization`, `pdf_import`, `search`, `summary`, `narrative`, `translation` (a note or receipt photo read back in the UI language — neither the note nor the image is ever sent here), `recap` (the weekly recap's sentence — figures and category names only) |
 | `setting` | `theme`, `language`, `currency`, `font_scale`, `high_contrast`, `reduced_motion` |
 | `action` | Per event. `search_history_used`: `reopen` (a stored answer's card was shown again), `refresh` (its figures were recomputed locally), `apply` (a stored filter's scope was re-applied to the transactions list) — the question itself is never sent. `household_action`: `create`, `accept`, `decline` (the setup), `invite`, `revoke`, `rename`, `remove`, `leave`, `dissolve` (the member view), `switch` (the viewer picked another household), `share`, `unshare` (transactions shared into a household or taken out of it), `plan_create`, `plan_delete` (a household budget or goal made or deleted), `goal_link` (one of the viewer's own shared transactions set to count toward a household goal, or toward none), `contribute` (a contribution recorded on a household goal) — never the household's name or id, an invitee's address, which member an action concerned, or how many transactions or households it covered |
+<!-- analytics-params:end -->
 
 ### What is deliberately not tagged
 
@@ -325,11 +327,26 @@ the translation check) verifies that the taxonomy, the call sites and the table
 above all agree — in both directions, so a deleted call site fails as loudly as
 an undocumented one. It also re-derives the screen table from `app.routes.ts`.
 
+It holds the parameter names the same way. Every parameter the taxonomy
+declares needs a row in the Parameter values table and a place in the list of
+custom dimensions under Console setup, step 4; a name in either that no event
+declares fails too. A parameter missing from the list is collected but appears
+in no report, and GA4 does not backfill. The two are read between the
+`analytics-params` and `analytics-dimensions` markers, as the registry and the
+screen table are between theirs. The script's `--self-test`, which
+`npm run analytics:check` runs first, feeds those comparisons synthetic
+documents: each way the table and the list can drift, and the pair that must
+stay quiet.
+
 It deliberately does **not** verify which parameters a call site passes. The
 payload is an object literal spanning lines with values computed from signals;
 a regex over it would produce false failures more often than true ones. The
 compiler covers that (the parameter types are derived from the taxonomy), and
-`AnalyticsService` drops anything outside the allowlist at runtime.
+`AnalyticsService` drops anything outside the allowlist at runtime. Nor does it
+compare the values a parameter takes, whose cells are prose around the
+backticked words (`0`–`5` is a range, the `action` row is per event), or see
+the console itself: the list is what the setup tells whoever does it to
+register.
 
 ## The lint-guard check
 
@@ -377,10 +394,12 @@ it simply reports nothing.
 3. **Turn advertising off.** GA4 admin → Data settings → Data collection →
    Google signals **off**, ads personalisation off.
 4. **Register custom dimensions.** GA4 admin → Data display → Custom
-   definitions → one event-scoped dimension per parameter: `method`, `type`,
-   `has_tags`, `has_location`, `receipt_image_count`, `has_filters`, `outcome`,
-   `path`, `engine`, `provider`, `failure`, `duration`, `severity`,
-   `report_type`, `feature`, `setting`, `action`.
+   definitions → one event-scoped dimension per parameter:
+   <!-- analytics-dimensions:start -->
+   `method`, `type`, `has_tags`, `has_location`, `receipt_image_count`,
+   `has_filters`, `outcome`, `path`, `engine`, `provider`, `failure`,
+   `duration`, `severity`, `report_type`, `feature`, `setting`, `action`.
+   <!-- analytics-dimensions:end -->
    Unregistered parameters are still collected but appear in no report, and GA4
    does not backfill.
 5. **Add an internal traffic filter** for developer IPs. `ng serve` uses the

@@ -20,7 +20,7 @@
     "lint": "ng lint",
     "lint-guards:check": "node scripts/check-lint-guards.mjs --self-test && node scripts/check-lint-guards.mjs",
     "i18n:check": "node scripts/check-i18n.mjs --self-test && node scripts/check-i18n.mjs",
-    "analytics:check": "node scripts/check-analytics-registry.mjs",
+    "analytics:check": "node scripts/check-analytics-registry.mjs --self-test && node scripts/check-analytics-registry.mjs",
     "prompts:check": "node scripts/check-prompts.mjs --self-test && node scripts/check-prompts.mjs",
     "indexes:check": "node scripts/check-firestore-indexes.mjs",
     "ledger:check": "node scripts/check-ledger-contract.mjs --self-test && node scripts/check-ledger-contract.mjs",
