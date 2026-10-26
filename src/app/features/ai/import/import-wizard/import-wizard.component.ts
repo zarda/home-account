@@ -249,6 +249,17 @@ export class ImportWizardComponent implements OnInit, AfterViewInit, OnDestroy {
    * image was queued" after dropping four would re-shoot the other three.
    */
   queuedOfflineCount = signal(0);
+  /**
+   * Raised when processFiles starts a run, and lowered on the first line of
+   * its `finally`, before the review notices are set.
+   *
+   * The service raises `isProcessing` only once a reader runs, so a photo
+   * being written to the offline queue leaves it lowered, and "not
+   * processing, no rows, no error" is then what a run that found nothing
+   * looks like too. The step names a finished state only after the wizard's
+   * own run has settled.
+   */
+  runInFlight = signal(false);
   isImporting = signal(false);
   /**
    * Re-checks still waiting on their stored-history read. Import waits on
@@ -304,11 +315,13 @@ export class ImportWizardComponent implements OnInit, AfterViewInit, OnDestroy {
     }
   });
   uploadComplete = computed(() => this.selectedFiles().length > 0);
+  /** The reader is working, or the run that will use it has not settled: the processing card stands. */
+  processingBusy = computed(() => this.isProcessing() || this.runInFlight());
   processingComplete = computed(() =>
     !this.isProcessing() && this.extractedTransactions().length > 0
   );
   processingFinishedEmpty = computed(() =>
-    !this.isProcessing() &&
+    !this.processingBusy() &&
     this.extractedTransactions().length === 0 &&
     !this.processingError() &&
     this.queuedOfflineCount() === 0 &&
@@ -592,6 +605,10 @@ export class ImportWizardComponent implements OnInit, AfterViewInit, OnDestroy {
   }
 
   async processFiles(): Promise<void> {
+    // One run at a time: a second one during the queue write would queue the
+    // same photos again, and the drain would write each of them twice.
+    if (this.processingBusy()) return;
+    this.runInFlight.set(true);
     this.processingError.set(null);
     this.queuedOfflineCount.set(0);
     this.answerIncomplete.set(false);
@@ -739,6 +756,7 @@ export class ImportWizardComponent implements OnInit, AfterViewInit, OnDestroy {
       // later file finds it already settled and this is a no-op.
       receiptAttempt?.failed(error);
     } finally {
+      this.runInFlight.set(false);
       this.showReviewNotices(warnings);
     }
   }

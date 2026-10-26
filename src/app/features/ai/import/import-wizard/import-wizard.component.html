@@ -106,7 +106,7 @@
             mat-flat-button
             color="primary"
             class="action-button"
-            [disabled]="!selectedFiles().length || isProcessing()"
+            [disabled]="!selectedFiles().length || processingBusy()"
             (click)="processFiles(); stepper.next()"
           >
             <mat-icon>auto_awesome</mat-icon>
@@ -126,7 +126,7 @@
       </ng-template>
 
       <div class="step-content processing-step">
-        @if (isProcessing()) {
+        @if (processingBusy()) {
           <div class="processing-card">
             <div class="ai-animation">
               <div class="pulse-ring"></div>
