@@ -1,5 +1,5 @@
 import { ComponentFixture, TestBed } from '@angular/core/testing';
-import { NO_ERRORS_SCHEMA } from '@angular/core';
+import { Component, NO_ERRORS_SCHEMA, provideCheckNoChangesConfig, signal } from '@angular/core';
 import { By } from '@angular/platform-browser';
 import { MatDatepicker } from '@angular/material/datepicker';
 import { MatDialog } from '@angular/material/dialog';
@@ -9,7 +9,7 @@ import { Subject } from 'rxjs';
 
 import { TransactionPreviewTableComponent } from './transaction-preview-table.component';
 import { CategorySuggestionComponent } from '../category-suggestion/category-suggestion.component';
-import { CategorizedImportTransaction } from '../../../../models';
+import { Category, CategorizedImportTransaction } from '../../../../models';
 import { TranslationService } from '../../../../core/services/translation.service';
 import { CurrencyService } from '../../../../core/services/currency.service';
 import { CurrencyChoiceSessionService } from '../../../../core/services/currency-choice-session.service';
@@ -5364,5 +5364,186 @@ describe('TransactionPreviewTableComponent, the offer chip through its own templ
         });
       }
     });
+  });
+});
+
+/**
+ * Stands in for the wizard: it hands the card its rows and the account's
+ * catalogue as signal reads, in the wizard's own order, and takes the rows
+ * back on every emission. A row the card re-files while this host is being
+ * checked is therefore bound straight back into it, the way the wizard's
+ * own `onTransactionsUpdated` binds it.
+ */
+@Component({
+  standalone: true,
+  imports: [TransactionPreviewTableComponent],
+  template: `
+    <app-transaction-preview-table
+      [transactions]="rows()"
+      [categories]="categories()"
+      (transactionsUpdated)="rows.set($event)" />
+  `,
+})
+class CatalogueArrivalHostComponent {
+  readonly rows = signal<CategorizedImportTransaction[]>([]);
+  readonly categories = signal<Category[]>([]);
+}
+
+describe('TransactionPreviewTableComponent, its catalogue arriving after its rows', () => {
+  let fixture: ComponentFixture<CatalogueArrivalHostComponent>;
+  let host: CatalogueArrivalHostComponent;
+  let mockAnnouncer: jasmine.SpyObj<AnnouncerService>;
+
+  const makeRow = (overrides: Partial<CategorizedImportTransaction> = {}): CategorizedImportTransaction => ({
+    id: 'txn1',
+    description: 'Coffee Shop',
+    amount: 5.5,
+    currency: 'USD',
+    date: new Date('2024-01-15'),
+    type: 'expense',
+    suggestedCategoryId: 'food',
+    categoryConfidence: 0.9,
+    isDuplicate: false,
+    selected: true,
+    ...overrides,
+  });
+  const filed = (row: CategorizedImportTransaction) =>
+    ({ type: row.type, category: row.suggestedCategoryId, grade: row.categoryConfidence });
+
+  beforeEach(async () => {
+    mockAnnouncer = jasmine.createSpyObj('AnnouncerService', ['announce']);
+
+    await TestBed.configureTestingModule({
+      imports: [CatalogueArrivalHostComponent],
+      providers: [
+        {
+          // Echoes the key and its params, as the describes above do.
+          provide: TranslationService,
+          useValue: {
+            t: (key: string, params?: Record<string, string | number>) =>
+              params ? `${key}:${JSON.stringify(params)}` : key,
+          },
+        },
+        {
+          provide: CurrencyService,
+          useValue: {
+            getSupportedCurrencies: () => [{ code: 'USD', nameKey: 'currencies.usd', symbol: '$' }],
+            getCurrencyInfo: () => undefined,
+            formatCurrency: (amount: number, code: string) => `${code} ${amount}`,
+            canRepresentCurrency: () => true,
+          },
+        },
+        {
+          provide: CurrencyChoiceSessionService,
+          useValue: jasmine.createSpyObj('CurrencyChoiceSessionService', ['remember', 'current', 'clear']),
+        },
+        { provide: AnnouncerService, useValue: mockAnnouncer },
+        provideNoMotion(),
+        provideNativeDateAdapter(),
+        // The host and the card are both OnPush, and the pass that follows a
+        // check skips an OnPush view nothing marked. Exhaustive, it checks
+        // every binding again, so one the card's emission left stale throws.
+        provideCheckNoChangesConfig({ exhaustive: true }),
+      ],
+    }).compileComponents();
+
+    fixture = TestBed.createComponent(CatalogueArrivalHostComponent);
+    host = fixture.componentInstance;
+  });
+
+  it('files a row on its own side once the account\'s categories arrive after its rows painted, and says so once', () => {
+    // The wizard's catalogue is a live read of its own, so the rows a camera
+    // hands over can paint before it lands. With nothing to judge food by,
+    // the income row keeps it; once the catalogue shows food is an expense
+    // category, the row is filed on the income side's catch-all, as a flip
+    // onto income would have filed it.
+    host.rows.set([makeRow({ type: 'income', suggestedCategoryId: 'food', categoryConfidence: 0.8 })]);
+    fixture.detectChanges();
+    expect(filed(host.rows()[0]))
+      .withContext('precondition: nothing yet shows food is on the other side')
+      .toEqual({ type: 'income', category: 'food', grade: 0.8 });
+
+    host.categories.set(flipCatalogue());
+    // The card emits while the host is being checked. fixture.detectChanges
+    // runs dev mode's checkNoChanges pass after the check, so a binding the
+    // emission left stale behind the host would throw NG0100 here.
+    expect(() => fixture.detectChanges()).not.toThrow();
+    // A further check binds the same catalogue again, which says nothing more.
+    fixture.detectChanges();
+
+    expect(filed(host.rows()[0])).toEqual({ type: 'income', category: 'other_income', grade: UNRESOLVED_CATEGORY_CONFIDENCE });
+    expect(mockAnnouncer.announce).toHaveBeenCalledOnceWith('import.announceCategoriesRefiledOnLoad');
+  });
+
+  it('files rows on their sides silently when the categories arrive with the first binding', () => {
+    // Nothing has painted yet, so there is no chip a reviewer saw move and
+    // nothing to say: the card simply opens with each row on its side.
+    host.rows.set([
+      makeRow({ id: 'refund', type: 'income', suggestedCategoryId: 'food', categoryConfidence: 0.8 }),
+      makeRow({ id: 'purchase' }),
+    ]);
+    host.categories.set(flipCatalogue());
+    expect(() => fixture.detectChanges()).not.toThrow();
+
+    expect(host.rows().map(filed)).toEqual([
+      { type: 'income', category: 'other_income', grade: UNRESOLVED_CATEGORY_CONFIDENCE },
+      { type: 'expense', category: 'food', grade: 0.9 },
+    ]);
+    expect(mockAnnouncer.announce).not.toHaveBeenCalled();
+  });
+
+  it('leaves the rows alone when the loaded catalogue changes again', () => {
+    // A pin. Only the catalogue's arrival files rows: a catalogue that
+    // changes after it has loaded (a category edited in another tab) is a
+    // merge's re-file to guard, not a reason to move a chip under the
+    // reviewer's hands.
+    host.rows.set([makeRow({ type: 'income', suggestedCategoryId: 'shared', categoryConfidence: 0.8 })]);
+    host.categories.set(flipCatalogue());
+    fixture.detectChanges();
+    expect(filed(host.rows()[0]))
+      .withContext('precondition: a category serving both sides fits the income row')
+      .toEqual({ type: 'income', category: 'shared', grade: 0.8 });
+
+    host.categories.set(flipCatalogue().map(c => c.id === 'shared' ? { ...c, type: 'expense' as const } : c));
+    fixture.detectChanges();
+
+    expect(filed(host.rows()[0])).toEqual({ type: 'income', category: 'shared', grade: 0.8 });
+    expect(mockAnnouncer.announce).not.toHaveBeenCalled();
+  });
+
+  it('emits nothing when every row already sits on its side', () => {
+    // A pin: an arrival that moves nothing hands the wizard nothing, so the
+    // batch it holds is the very array it bound.
+    host.rows.set([
+      makeRow({ id: 'purchase' }),
+      makeRow({ id: 'salary', type: 'income', suggestedCategoryId: 'salary', categoryConfidence: 0.95 }),
+    ]);
+    fixture.detectChanges();
+    const before = host.rows();
+
+    host.categories.set(flipCatalogue());
+    fixture.detectChanges();
+
+    expect(host.rows()).toBe(before);
+    expect(mockAnnouncer.announce).not.toHaveBeenCalled();
+  });
+
+  it('brings that row\'s category back when it is flipped to the side the category fits', () => {
+    // A pin. The arrival moved food off an income row the way a flip moves
+    // it, so it remembers food the way a flip does: a reviewer who decides
+    // the row was a purchase after all gets food back at its grade, not the
+    // expense side's catch-all.
+    host.rows.set([makeRow({ type: 'income', suggestedCategoryId: 'food', categoryConfidence: 0.8 })]);
+    fixture.detectChanges();
+    host.categories.set(flipCatalogue());
+    fixture.detectChanges();
+    expect(filed(host.rows()[0]))
+      .withContext('precondition: the arrival filed the row on the income side')
+      .toEqual({ type: 'income', category: 'other_income', grade: UNRESOLVED_CATEGORY_CONFIDENCE });
+
+    (fixture.nativeElement.querySelector('.type-toggle') as HTMLButtonElement).click();
+    fixture.detectChanges();
+
+    expect(filed(host.rows()[0])).toEqual({ type: 'expense', category: 'food', grade: 0.8 });
   });
 });

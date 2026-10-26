@@ -1341,6 +1341,7 @@
     "announceTagAdded": "{{description}}にタグ{{tag}}を追加しました",
     "announceTagRemoved": "{{description}}からタグ{{tag}}を削除しました",
     "announceCategoryRefiled": "{{description}}のカテゴリを{{category}}に変更しました",
+    "announceCategoriesRefiledOnLoad": "カテゴリを読み込んだため、種別に合わないカテゴリの行をその種別の「その他」に移しました",
     "addTag": "タグを追加",
     "newTag": "新しいタグ",
     "addRow": "行を追加",

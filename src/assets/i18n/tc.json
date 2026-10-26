@@ -1341,6 +1341,7 @@
     "announceTagAdded": "已在「{{description}}」新增標籤 {{tag}}",
     "announceTagRemoved": "已從「{{description}}」移除標籤 {{tag}}",
     "announceCategoryRefiled": "已將「{{description}}」的類別改為{{category}}",
+    "announceCategoriesRefiledOnLoad": "類別已載入，類型不符的項目已改歸到該類型的「其他」",
     "addTag": "新增標籤",
     "newTag": "新標籤",
     "addRow": "新增一列",

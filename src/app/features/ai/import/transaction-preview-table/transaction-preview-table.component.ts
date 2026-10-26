@@ -1,4 +1,5 @@
 import {
+  AfterViewInit,
   ChangeDetectionStrategy,
   ChangeDetectorRef,
   Component,
@@ -147,7 +148,7 @@ let vocabularyListSeq = 0;
   templateUrl: './transaction-preview-table.component.html',
   styleUrl: './transaction-preview-table.component.scss'
 })
-export class TransactionPreviewTableComponent {
+export class TransactionPreviewTableComponent implements AfterViewInit {
   private translationService = inject(TranslationService);
   private currencyService = inject(CurrencyService);
   private currencySession = inject(CurrencyChoiceSessionService);
@@ -163,7 +164,25 @@ export class TransactionPreviewTableComponent {
   private dialog = inject(MatDialog);
 
   @Input() transactions: CategorizedImportTransaction[] = [];
-  @Input() categories: Category[] = [];
+  /**
+   * The account's catalogue, which the wizard reads live and which can land
+   * after the rows it judges. Until it does, any category fits either side
+   * (`fitsSide`), so a row a door filed on the other side's category paints
+   * holding it. Its arrival is the first moment the card can tell, so that
+   * is when every row is held to its side (`holdRowsToTheirSides`). Only the
+   * arrival: a catalogue that changes once loaded moves no chip under the
+   * reviewer's hands, and a merge's re-file is the guard for that case.
+   */
+  @Input()
+  get categories(): Category[] {
+    return this.catalogue;
+  }
+  set categories(categories: Category[]) {
+    const arriving = this.catalogue.length === 0 && categories.length > 0;
+    this.catalogue = categories;
+    if (arriving) this.holdRowsToTheirSides();
+  }
+  private catalogue: Category[] = [];
   /**
    * The rows a receipt reader produced, by id: the ones whose date is a
    * question the reviewer answers (`needsDateAnswer`). The wizard fills it.
@@ -215,6 +234,16 @@ export class TransactionPreviewTableComponent {
 
   /** What every row's tag input points its `list` at. */
   readonly vocabularyListId = `tag-vocabulary-${++vocabularyListSeq}`;
+
+  /**
+   * Whether the rows have painted: from then on a chip the card moves on
+   * its own is one a reviewer may already have read.
+   */
+  private viewInitialized = false;
+
+  ngAfterViewInit(): void {
+    this.viewInitialized = true;
+  }
 
   // Plain methods, not computed(): `transactions` is a regular @Input array,
   // not a signal — a computed would evaluate once and
@@ -381,6 +410,39 @@ export class TransactionPreviewTableComponent {
   private fitsSide(categoryId: string, type: CategoryRowType): boolean {
     return gradeCategorySuggestion({ suggestedCategoryId: categoryId, confidence: 0 }, type, this.categories)
       .suggestedCategoryId === categoryId;
+  }
+
+  /**
+   * Every row held to its own side (`categoryOnSide`), for the catalogue's
+   * arrival: a row filed before it landed may hold the other side's
+   * category, and is moved as a flip onto its side would move it. A row
+   * that already fits keeps its identity, so an arrival that moves nothing
+   * hands the wizard nothing. No row is marked edited: the move is not the
+   * reviewer's work, and Remove has nothing of theirs to ask about.
+   *
+   * It is said once for the batch, and only once the rows have painted. On
+   * the first binding the card simply opens with each row on its side, and
+   * no reviewer saw a chip move.
+   */
+  private holdRowsToTheirSides(): void {
+    let moved = false;
+    const rows = this.transactions.map(row => {
+      const filed = this.categoryOnSide(row, row.type);
+      if (filed.suggestedCategoryId === row.suggestedCategoryId
+        && filed.categoryConfidence === row.categoryConfidence
+        && filed.movedCategory === row.movedCategory) {
+        return row;
+      }
+      moved = true;
+      return { ...row, ...filed };
+    });
+    if (!moved) return;
+    this.transactions = rows;
+    this.emitChanges();
+    this.cdr.markForCheck();
+    if (this.viewInitialized) {
+      this.announcer.announce(this.translationService.t('import.announceCategoriesRefiledOnLoad'));
+    }
   }
 
   /**
@@ -1523,6 +1585,9 @@ export class TransactionPreviewTableComponent {
    * other side's category is re-filed on the side it stays on. The
    * target's category is what mergeImportRows hands over, having no
    * catalogue to judge it by, and a category that fits is left as it was.
+   * The catalogue's arrival already holds every row to its side
+   * (`holdRowsToTheirSides`), so after it this re-file is the guard for a
+   * catalogue that changes once loaded, a category edited in another tab.
    * A move is announced, as a flip's is, because the chip it changed sits
    * on the survivor while the menu was opened from the row that left.
    *
