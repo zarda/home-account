@@ -45,6 +45,7 @@ import {
   readFieldConfidence,
   readPrintedLocation,
   readReceiptTotal,
+  readTransactionType,
 } from '../utils/receipt-extraction.utils';
 import { groupExpensesByCategoryWithCounts } from '../utils/transaction-aggregation.utils';
 import { dayKey, parseDateInput } from '../utils/transaction-date.utils';
@@ -380,7 +381,7 @@ export abstract class CloudLLMProviderBase implements CloudLLMProviderAdapter {
         date: t.date || dayKey(new Date()),
         description: t.description || 'Unknown',
         amount: Math.abs(t.amount || 0),
-        type: t.type || 'expense',
+        type: readTransactionType(t.type),
         currency: readCurrencyCode(t.currency),
         category: this.matchedCategoryId(t.category),
         merchant: t.merchant,
@@ -442,7 +443,7 @@ export abstract class CloudLLMProviderBase implements CloudLLMProviderAdapter {
         date: t.date || dayKey(new Date()),
         description: t.description || 'Unknown',
         amount: Math.abs(t.amount || 0),
-        type: t.type || 'expense',
+        type: readTransactionType(t.type),
         currency: readCurrencyCode(t.currency),
         category: this.matchedCategoryId(t.category),
         merchant: t.merchant,

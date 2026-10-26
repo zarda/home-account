@@ -11,6 +11,7 @@ import {
   readCurrencyCode,
   readPrintedLocation,
   readReceiptTotal,
+  readTransactionType,
 } from '../utils/receipt-extraction.utils';
 import {
   trimToLastCompleteSentence,
@@ -367,7 +368,7 @@ export class GeminiService extends CloudLLMProviderBase {
         date: t.date || dayKey(new Date()),
         description: t.description || 'Unknown',
         amount: Math.abs(t.amount || 0),
-        type: t.type || 'expense',
+        type: readTransactionType(t.type),
         currency: readCurrencyCode(t.currency),
         category: this.matchedCategoryId(t.category),
         merchant: t.merchant,

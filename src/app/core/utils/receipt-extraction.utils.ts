@@ -193,6 +193,41 @@ export function readFieldConfidence(parsed: {
   };
 }
 
+/**
+ * The grade a model's income reading carries: it read a refund, and nothing on
+ * the receipt backs or disputes it (ADR 0162). Under VERIFY_FIELD_THRESHOLD on
+ * purpose, so every income row a model reads is flagged for a look wherever it
+ * is reviewed. One home for it: the on-device pipeline and the cloud readers
+ * grade the same reading the same way, and a second copy is how they would
+ * stop agreeing (ADR 0171).
+ */
+export const MODEL_INCOME_GRADE = 0.5;
+
+/**
+ * Which way the money moved, as a model or a file answered it.
+ *
+ * Strict: exactly the string "income" is income. Another casing, a synonym, a
+ * number or no answer at all is an expense, the side an unanswered row already
+ * lands on, so reading it this way never turns a purchase into a refund on a
+ * guess. The loose form this replaces, `type || 'expense'`, kept any truthy
+ * answer as the type, so a model's "Income" or "refund" went on as a word no
+ * category can sit under; eslint.config.js bans that shape (ADR 0145). The sign
+ * of a figure is never a witness for it (ADR 0147).
+ */
+export function readTransactionType(value: unknown): 'income' | 'expense' {
+  return value === 'income' ? 'income' : 'expense';
+}
+
+/**
+ * The grade a type reading carries: MODEL_INCOME_GRADE for an income reading,
+ * nothing for an expense. Absence stays "nothing said otherwise": a purchase is
+ * what every row is until something argues, and a grade on it would flag
+ * every ordinary receipt for review.
+ */
+export function modelTypeGrade(type: 'income' | 'expense'): number | undefined {
+  return type === 'income' ? MODEL_INCOME_GRADE : undefined;
+}
+
 /** Longest address kept; a model echoing the whole receipt body here is not reporting an address. */
 const MAX_PRINTED_LOCATION_LENGTH = 120;
 

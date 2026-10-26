@@ -7,6 +7,7 @@ import { ProcessedTransaction, ProcessingResult } from './ai-types';
 import { ParsedReceiptText, parseReceiptOcrText } from './receipt-text-parser';
 import { buildCategoryPromptCatalog, categoryFitsType, matchCategoryName } from '../utils/categorization.utils';
 import {
+  MODEL_INCOME_GRADE,
   printedLocationSlot,
   readCountryCode,
   readCurrencyCode,
@@ -27,9 +28,6 @@ const MODEL_READ_GRADE = 0.8;
 
 /** The model read a refund, and the same total prints as a negative. */
 const AGREED_INCOME_GRADE = 0.6;
-
-/** The model read a refund, and the print neither backs nor contradicts it. */
-const MODEL_INCOME_GRADE = 0.5;
 
 /** The model read a purchase, and the same total prints as a negative. */
 const DISPUTED_TYPE_GRADE = 0.3;

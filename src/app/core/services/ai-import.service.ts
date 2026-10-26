@@ -18,7 +18,7 @@ import { IMAGE_FILE_EXTENSIONS } from '../utils/file.utils';
 import { OfflineQueueService } from './offline-queue.service';
 import { PwaService } from './pwa.service';
 import { consolidateReceiptItems } from '../utils/receipt-consolidation';
-import { readCurrencyCode } from '../utils/receipt-extraction.utils';
+import { readCurrencyCode, readTransactionType } from '../utils/receipt-extraction.utils';
 import { localeRegion, suggestCurrency } from '../utils/currency-suggestion.utils';
 import { CurrencyChoiceSessionService } from './currency-choice-session.service';
 import {
@@ -1238,7 +1238,7 @@ export class AIImportService {
           // `.seconds` here by hand was what left that row silently dated
           // today, and a `date` of any other shape an Invalid Date.
           const resolved = resolveImportDate(t['date']);
-          const type = (t['type'] as 'income' | 'expense') || 'expense';
+          const type = readTransactionType(t['type']);
           const categoryId = typeof t['categoryId'] === 'string' && t['categoryId'] ? t['categoryId'] : undefined;
           const recurringId = typeof t['recurringId'] === 'string' && ruleIds.has(t['recurringId'])
             ? t['recurringId']
@@ -1387,7 +1387,7 @@ export class AIImportService {
     // that way lands on other_income, as an answer nobody could place.
     const categories = this.categoryService.categories();
     return transactions.map(t => {
-      const type = t.type || 'expense';
+      const type = readTransactionType(t.type);
       const named = t.category && this.onRowSide(t.category, type, categories) ? t.category : undefined;
       const resolved = resolveImportDate(t.date, t.dateConfidence);
       const money = resolveImportCurrency(t.currency, baseCurrency);
