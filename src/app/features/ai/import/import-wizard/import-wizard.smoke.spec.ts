@@ -54,6 +54,7 @@ import { RouterTestingHarness } from '@angular/router/testing';
 import { provideHttpClient } from '@angular/common/http';
 import { provideAppDatepicker } from '../../../../core/config/datepicker.config';
 import { MatSnackBar } from '@angular/material/snack-bar';
+import { Subject, switchMap, take } from 'rxjs';
 import { initializeApp, deleteApp, FirebaseApp } from '@angular/fire/app';
 import { getAuth, connectAuthEmulator, signInAnonymously, Auth } from '@angular/fire/auth';
 import {
@@ -88,6 +89,7 @@ import { PwaService } from '../../../../core/services/pwa.service';
 import { AnalyticsService } from '../../../../core/services/analytics.service';
 import { CurrencyService } from '../../../../core/services/currency.service';
 import { CategoryService } from '../../../../core/services/category.service';
+import { AnnouncerService } from '../../../../core/services/announcer.service';
 import { DuplicateDetectionService } from '../../../../core/services/duplicate-detection.service';
 import { ReceiptQuotaService } from '../../../../core/services/receipt-quota.service';
 import { LocaleFormatService } from '../../../../core/services/locale-format.service';
@@ -1707,6 +1709,114 @@ describe('ImportWizardComponent camera handoff (emulator smoke test)', () => {
         { description: 'Smoke doubted purchase', type: 'income', categoryId: 'other_income', graded: false },
         { description: 'Smoke refund slip', type: 'income', categoryId: 'other_income', graded: false }
       ]);
+
+      history.replaceState({}, '');
+      fixture.destroy();
+      await new Promise(resolve => setTimeout(resolve, 300));
+    },
+    30000
+  );
+
+  it(
+    'a hand-off row filed before the categories loaded moves to its side when the wizard\'s catalogue arrives, and says so once',
+    async () => {
+      // The capture dialog converts its rows against whatever catalogue the
+      // app holds, and on a cold start that is none: an income row naming
+      // food keeps it, since nothing yet shows food is an expense category.
+      // The wizard reads the catalogue on its own round trip, which is held
+      // here until the rows have painted, so the card's suite's host is not
+      // the only place the late arrival is followed: here it travels the
+      // camera's hand-off, the wizard's own read and its own binding.
+      stubReceiptSeams();
+      spyOn(TestBed.inject(Router), 'navigate').and.resolveTo(true);
+      const categoryService = TestBed.inject(CategoryService);
+      const load = categoryService.loadCategories.bind(categoryService);
+      const gate = new Subject<void>();
+      spyOn(categoryService, 'loadCategories').and.returnValue(gate.pipe(take(1), switchMap(() => load())));
+
+      // Dated today, so neither row asks about its date.
+      const today = new Date();
+      const rows = TestBed.inject(AIImportService).convertStrategyResultToCategories({
+        source: 'native',
+        confidence: 0.9,
+        processingTimeMs: 0,
+        transactions: [
+          {
+            date: today,
+            description: 'Smoke refund filed on food',
+            amount: 1280,
+            type: 'income',
+            currency: 'JPY',
+            confidence: 0.9,
+            source: 'native',
+            suggestedCategoryId: 'food',
+            fieldConfidence: { amount: 0.8, date: 0.9, type: 0.5 }
+          },
+          {
+            date: today,
+            description: 'Smoke purchase on food',
+            amount: 640,
+            type: 'expense',
+            currency: 'JPY',
+            confidence: 0.9,
+            source: 'native',
+            suggestedCategoryId: 'food',
+            fieldConfidence: { amount: 0.8, date: 0.8 }
+          }
+        ]
+      });
+      expect({ type: rows[0].type, category: rows[0].suggestedCategoryId })
+        .withContext('with no catalogue to judge it by, the income row still holds food')
+        .toEqual({ type: 'income', category: 'food' });
+
+      const duplicateService = TestBed.inject(DuplicateDetectionService);
+      const duplicates = await duplicateService.checkDuplicates(rows);
+      const importResult: ImportResult = {
+        source: 'image',
+        fileType: 'receipt_image',
+        fileName: '2 images',
+        fileSize: 2,
+        confidence: 0.9,
+        warnings: [],
+        duplicates,
+        transactions: duplicateService.markDuplicates(rows, duplicates)
+      };
+      const announce = spyOn(TestBed.inject(AnnouncerService), 'announce');
+
+      history.replaceState({ importResult, fromCamera: true, door: 'camera', multiImage: true }, '');
+      const fixture = TestBed.createComponent(ImportWizardComponent);
+      fixture.detectChanges();
+
+      const host = fixture.nativeElement as HTMLElement;
+      const component = fixture.componentInstance;
+      const cards = () => host.querySelectorAll('.transaction-card').length;
+      await until(fixture, () => cards() === 2);
+      expect(categoryService.categories())
+        .withContext('precondition: the catalogue is still held back')
+        .toEqual([]);
+      expect(component.extractedTransactions()[0].suggestedCategoryId)
+        .withContext('precondition: the income row painted on food')
+        .toBe('food');
+
+      gate.next();
+      const filed = () => {
+        const [refund] = component.extractedTransactions();
+        return { type: refund.type, suggestedCategoryId: refund.suggestedCategoryId, categoryConfidence: refund.categoryConfidence };
+      };
+      await until(fixture, () => filed().suggestedCategoryId === 'other_income');
+
+      expect(filed()).toEqual({
+        type: 'income',
+        suggestedCategoryId: 'other_income',
+        categoryConfidence: UNRESOLVED_CATEGORY_CONFIDENCE
+      });
+      expect(component.extractedTransactions()[1].suggestedCategoryId)
+        .withContext('the purchase already sat on its side')
+        .toBe('food');
+      const said = TestBed.inject(TranslationService).t('import.announceCategoriesRefiledOnLoad');
+      expect(announce.calls.allArgs().filter(([message]) => message === said).length)
+        .withContext('the arrival is said once for the batch')
+        .toBe(1);
 
       history.replaceState({}, '');
       fixture.destroy();
