@@ -2,6 +2,8 @@
 
 **Status:** Accepted, implemented; amended by
 [0162](0162-a-refund-read-on-the-device-is-filed-as-income-and-the-review-asks-about-it.md)
+and
+[0185](0185-a-refund-is-asked-about-at-every-door-and-a-category-follows-its-rows-side-there-and-back.md)
 · **Date:** 2026-09-24 · **Issues:** #428, #429
 
 Reference documentation lives in [../import-fields.md](../import-fields.md) and
@@ -26,6 +28,18 @@ An on-device row also carries a third grade, for its type, set as policy under
 the 0.7 bar so that every income verdict is reviewed; and the review card now
 holds a row's category to its side when the reviewer flips the type, where
 the checks this record added held only what the import suggested.
+
+**Amended by
+[0185](0185-a-refund-is-asked-about-at-every-door-and-a-category-follows-its-rows-side-there-and-back.md).**
+The rules still stand, and the type grade is no longer the device's alone.
+The cloud receipt readers grade a type as policy too: a model's income
+reading carries the same 0.5 the device gives one, from one constant, so a
+cloud refund the doors move onto `other_income` is now also asked about
+wherever it is reviewed. An expense carries no type grade, and a statement's or a
+backup's type none at all. A model's answer, a statement's and a backup's
+type are read strictly — exactly `income`, or an expense — never as whatever
+word arrived; the CSV door keeps its own Type-column rule (a cell naming
+income or credit is income), and the sign where the file has no Type column.
 
 ## Context
 
