@@ -703,6 +703,50 @@ describe('ImportHistoryComponent overflow', () => {
       .withContext('error li right edge vs card right edge')
       .toBeLessThanOrEqual(card.getBoundingClientRect().right + 1);
   });
+
+  // The stub answers each label with its key, an unbroken run: the width a
+  // label can take is whatever its tile lets it, and the faces are pinned
+  // because Karma serves none, so the run measures the same on every machine.
+  it('keeps every tile of a record with photo counters inside the card at 343px', () => {
+    const face = "Verdana, 'DejaVu Sans', sans-serif";
+    host.style.fontFamily = face;
+    for (const token of [
+      '--mat-sys-title-large-font',
+      '--mat-sys-title-medium-font',
+      '--mat-sys-body-large-font',
+      '--mat-sys-body-medium-font',
+      '--mat-sys-body-small-font',
+      '--mat-sys-label-large-font',
+    ]) {
+      host.style.setProperty(token, face);
+    }
+    const record = { ...recordNamed('receipt.jpg'), duplicatesSkipped: 2, receiptsSkipped: 1, receiptsFailed: 2 };
+    historyService.getImportHistory.and.returnValue(of([record]));
+    fixture.detectChanges();
+
+    const card = host.querySelector('.history-item') as HTMLElement;
+    const tiles = Array.from(host.querySelectorAll('.history-item .stat')) as HTMLElement[];
+    // Transactions, income, expense, duplicates, and the two photo tiles.
+    expect(tiles.length).withContext('tiles drawn').toBe(6);
+
+    const cardRect = card.getBoundingClientRect();
+    expect(card.scrollWidth)
+      .withContext(`card scrollWidth vs clientWidth at ${HOST_WIDTH_PX}px`)
+      .toBeLessThanOrEqual(card.clientWidth + 1);
+    for (const tile of tiles) {
+      const tileRect = tile.getBoundingClientRect();
+      const name = tile.querySelector('.label')?.textContent?.trim();
+      expect(tileRect.right).withContext(`${name} tile right edge vs card right edge`)
+        .toBeLessThanOrEqual(cardRect.right + 1);
+      for (const part of Array.from(tile.querySelectorAll('.label, .value')) as HTMLElement[]) {
+        const rect = part.getBoundingClientRect();
+        expect(rect.left).withContext(`${name} ${part.className} left edge vs its tile`)
+          .toBeGreaterThanOrEqual(tileRect.left - 1);
+        expect(rect.right).withContext(`${name} ${part.className} right edge vs its tile`)
+          .toBeLessThanOrEqual(tileRect.right + 1);
+      }
+    }
+  });
 });
 
 // A fourth sibling suite, for the same reason as the two above: every colour
@@ -769,6 +813,8 @@ describe('ImportHistoryComponent, colours as painted', () => {
       record('done', {
         status: 'completed',
         errors: [{ message: 'one' }, { message: 'two' }, { message: 'three' }, { message: 'four' }],
+        receiptsSkipped: 1,
+        receiptsFailed: 2,
       }),
       record('some', { status: 'partial' }),
       record('none', { status: 'failed', errorType: 'server', successCount: 0 }),
@@ -860,6 +906,11 @@ describe('ImportHistoryComponent, colours as painted', () => {
         expectPainted(stat('.income'), '--color-income-text', `${theme} income`);
         expectPainted(stat('.expense'), '--color-expense-text', `${theme} expense`);
         expectPainted(stat('.skipped'), '--color-warning-text', `${theme} skipped`);
+        const photos = Array.from(card.querySelectorAll('.stat.photos .value')) as HTMLElement[];
+        expect(photos.length).withContext(`${theme} photo tiles drawn`).toBe(2);
+        photos.forEach((figure, index) => {
+          expectPainted(figure, '--color-warning-text', `${theme} photo figure ${index + 1}`);
+        });
       });
     }
   });
@@ -1213,6 +1264,65 @@ describe('ImportHistoryComponent, error lines in the reader\'s language', () => 
       render([record({ status: 'failed', successCount: 0, errorCount: 0 })]);
 
       expect(statsGrid()).withContext('the tiles').not.toBeNull();
+    });
+  });
+
+  // The counters a completed import writes beside its transactions: each on a
+  // tile named by what it counts, so a figure is never read as another's.
+  describe('the counts a record carries', () => {
+    /** A completed record whose counts were taken, with nothing else on it. */
+    const counted = (overrides: Partial<ImportHistory> = {}): ImportHistory => record({
+      status: 'completed',
+      successCount: 4,
+      errorCount: 0,
+      ...overrides,
+    });
+    const tiles = () => Array.from(fixture.nativeElement.querySelectorAll('.stat')) as HTMLElement[];
+    const tileLabelled = (key: string) =>
+      tiles().find(tile => tile.querySelector('.label')?.textContent?.trim() === key);
+    const figureOf = (tile: HTMLElement | undefined) => tile?.querySelector('.value')?.textContent?.trim();
+
+    it('shows the photos the quota kept off, and the photos that failed to upload, each on a tile of its own', () => {
+      render([counted({ receiptsSkipped: 1, receiptsFailed: 2 })]);
+
+      const kept = tileLabelled('import.statPhotosSkipped');
+      const failed = tileLabelled('import.statPhotosFailed');
+      expect(kept).withContext('the tile of photos the quota kept off').toBeTruthy();
+      expect(failed).withContext('the tile of photos that failed to upload').toBeTruthy();
+      expect(figureOf(kept)).withContext('photos not attached').toBe('1');
+      expect(figureOf(failed)).withContext('photos not uploaded').toBe('2');
+      expect(kept).withContext('one tile each').not.toBe(failed);
+    });
+
+    it('labels the duplicates tile by what it counts', () => {
+      render([counted({ duplicatesSkipped: 3 })]);
+
+      const duplicates = fixture.nativeElement.querySelector('.stat.skipped') as HTMLElement | null;
+      expect(duplicates?.querySelector('.label')?.textContent?.trim()).toBe('import.duplicatesSkipped');
+      expect(figureOf(duplicates ?? undefined)).toBe('3');
+    });
+
+    it('draws no photo tile for a record that kept every photo (pin)', () => {
+      // The second record holds the zeros a hand-written or restored record
+      // can carry: a figure of nothing is no tile either.
+      render([
+        counted({ fileName: 'whole.csv' }),
+        counted({ fileName: 'zeros.csv', receiptsSkipped: 0, receiptsFailed: 0 }),
+      ]);
+
+      // The income tile is the positive proof that both grids rendered, so
+      // the absence below is not an empty page.
+      expect(fixture.nativeElement.querySelectorAll('.stat.income').length).withContext('grids drawn').toBe(2);
+      expect(fixture.nativeElement.querySelector('.stat.photos')).withContext('a photo tile').toBeNull();
+      expect(tileLabelled('import.statPhotosSkipped')).withContext('the quota tile').toBeUndefined();
+      expect(tileLabelled('import.statPhotosFailed')).withContext('the upload tile').toBeUndefined();
+    });
+
+    it('draws only the tile of the counter that is there', () => {
+      render([counted({ receiptsFailed: 2 })]);
+
+      expect(figureOf(tileLabelled('import.statPhotosFailed'))).withContext('the upload tile').toBe('2');
+      expect(tileLabelled('import.statPhotosSkipped')).withContext('the quota tile').toBeUndefined();
     });
   });
 });

@@ -13,7 +13,8 @@
 // stored the way the attempt service writes one, also reads its error line
 // from the catalog rather than the English the record holds, and so does a
 // whole import the rules refused, stored the way the confirm writes one
-// through `failImport`. The unit spec
+// through `failImport`. A record that kept photos off, stored with its two
+// counters, draws each on a tile of its own. The unit spec
 // overrides nothing here — ImportHistoryComponent's own template and its own
 // MatMenuModule import are what render.
 //
@@ -83,7 +84,7 @@ describe('ImportHistoryComponent transaction shortcut (emulator smoke test)', ()
     // validate userId/importedAt/source/fileType/fileName/status on create,
     // and accept transactionIds only as a list when present) — no
     // ImportHistoryService call, no AI provider, no confirmImport run behind
-    // it. Six distinct fileNames so each test can find its own card
+    // it. Seven distinct fileNames so each test can find its own card
     // without depending on query order.
     const legacy: Omit<ImportHistory, 'id'> = {
       userId: uid,
@@ -201,13 +202,37 @@ describe('ImportHistoryComponent transaction shortcut (emulator smoke test)', ()
       errors: [{ message: 'Missing or insufficient permissions.', code: 'permission-denied' }]
     };
 
+    // What the confirm writes when photos stayed off a saved row: a count of
+    // the rows the image quota refused and a count of the uploads that failed,
+    // each written only when above zero. The rules take either as a whole
+    // number and nothing else.
+    const photosOff: Omit<ImportHistory, 'id'> = {
+      userId: uid,
+      importedAt: Timestamp.now(),
+      source: 'image',
+      fileType: 'receipt_image',
+      fileName: 'smoke-photo-counters.jpg',
+      fileSize: 81920,
+      transactionCount: 4,
+      successCount: 4,
+      skippedCount: 0,
+      errorCount: 0,
+      totalIncome: 0,
+      totalExpenses: 80,
+      duplicatesSkipped: 0,
+      status: 'completed',
+      receiptsSkipped: 1,
+      receiptsFailed: 2
+    };
+
     await Promise.all([
       setDoc(doc(firestore, `users/${uid}/imports/smoke-import-legacy`), legacy),
       setDoc(doc(firestore, `users/${uid}/imports/smoke-import-single`), single),
       setDoc(doc(firestore, `users/${uid}/imports/smoke-import-batch`), batch),
       setDoc(doc(firestore, `users/${uid}/imports/smoke-import-bare-totals`), bareTotals),
       setDoc(doc(firestore, `users/${uid}/imports/smoke-import-failed-attempt`), failedAttempt),
-      setDoc(doc(firestore, `users/${uid}/imports/smoke-import-whole-import-failed`), wholeImportFailed)
+      setDoc(doc(firestore, `users/${uid}/imports/smoke-import-whole-import-failed`), wholeImportFailed),
+      setDoc(doc(firestore, `users/${uid}/imports/smoke-import-photo-counters`), photosOff)
     ]);
   });
 
@@ -262,8 +287,8 @@ describe('ImportHistoryComponent transaction shortcut (emulator smoke test)', ()
 
   it('a legacy record renders no shortcut', async () => {
     await waitFor(
-      () => fixture.componentInstance.importHistory().length === 6,
-      'all six seeded records');
+      () => fixture.componentInstance.importHistory().length === 7,
+      'all seven seeded records');
 
     const card = cardFor('smoke-legacy-statement.csv');
     // Delete is always there; a legacy record with no transactionIds joins
@@ -273,8 +298,8 @@ describe('ImportHistoryComponent transaction shortcut (emulator smoke test)', ()
 
   it("a one-transaction record's button navigates with its stored id", async () => {
     await waitFor(
-      () => fixture.componentInstance.importHistory().length === 6,
-      'all six seeded records');
+      () => fixture.componentInstance.importHistory().length === 7,
+      'all seven seeded records');
 
     const card = cardFor('smoke-single-receipt.jpg');
     const buttons = Array.from(card.querySelectorAll('mat-card-actions button')) as HTMLButtonElement[];
@@ -292,8 +317,8 @@ describe('ImportHistoryComponent transaction shortcut (emulator smoke test)', ()
 
   it("a batch record's menu holds one entry per stored id", async () => {
     await waitFor(
-      () => fixture.componentInstance.importHistory().length === 6,
-      'all six seeded records');
+      () => fixture.componentInstance.importHistory().length === 7,
+      'all seven seeded records');
 
     const card = cardFor('smoke-batch-receipts.jpg');
     const buttons = Array.from(card.querySelectorAll('mat-card-actions button')) as HTMLButtonElement[];
@@ -317,8 +342,8 @@ describe('ImportHistoryComponent transaction shortcut (emulator smoke test)', ()
 
   it('a record with neither total renders a zero, not NaN', async () => {
     await waitFor(
-      () => fixture.componentInstance.importHistory().length === 6,
-      'all six seeded records');
+      () => fixture.componentInstance.importHistory().length === 7,
+      'all seven seeded records');
 
     // The seeding `setDoc` already resolving is the proof the rules took
     // the write; this is the other half — what the real CurrencyService
@@ -339,8 +364,8 @@ describe('ImportHistoryComponent transaction shortcut (emulator smoke test)', ()
   it("a stored record's row shows its time in the active language's convention", async () => {
     translation.getIntlLocale.and.returnValue('ja-JP');
     await waitFor(
-      () => fixture.componentInstance.importHistory().length === 6,
-      'all six seeded records');
+      () => fixture.componentInstance.importHistory().length === 7,
+      'all seven seeded records');
 
     const stored = fixture.componentInstance.importHistory()
       .find(item => item.fileName === 'smoke-legacy-statement.csv');
@@ -366,8 +391,8 @@ describe('ImportHistoryComponent transaction shortcut (emulator smoke test)', ()
   // reader gets in Japanese.
   it("a stored failed attempt's error line comes from the catalog, not the English it stored", async () => {
     await waitFor(
-      () => fixture.componentInstance.importHistory().length === 6,
-      'all six seeded records');
+      () => fixture.componentInstance.importHistory().length === 7,
+      'all seven seeded records');
 
     const card = cardFor('smoke-failed-receipt.jpg');
     const lines = Array.from(card.querySelectorAll('.errors li'))
@@ -382,8 +407,8 @@ describe('ImportHistoryComponent transaction shortcut (emulator smoke test)', ()
   // Nothing on it is a receipt attempt's, so it shows no failure class.
   it("a stored whole-import failure's error line comes from the catalog, not the English it stored", async () => {
     await waitFor(
-      () => fixture.componentInstance.importHistory().length === 6,
-      'all six seeded records');
+      () => fixture.componentInstance.importHistory().length === 7,
+      'all seven seeded records');
 
     const card = cardFor('smoke-whole-import-failed.csv');
     const lines = Array.from(card.querySelectorAll('.errors li'))
@@ -400,13 +425,32 @@ describe('ImportHistoryComponent transaction shortcut (emulator smoke test)', ()
   // receipt attempt beside it keeps its tiles, where nothing landed.
   it('a stored whole-import failure shows no figures it never counted', async () => {
     await waitFor(
-      () => fixture.componentInstance.importHistory().length === 6,
-      'all six seeded records');
+      () => fixture.componentInstance.importHistory().length === 7,
+      'all seven seeded records');
 
     const card = cardFor('smoke-whole-import-failed.csv');
     expect(Array.from(card.querySelectorAll('.errors li')).map(li => li.textContent?.trim()))
       .toEqual(['import.wholeFailedConnection']);
     expect(card.querySelector('.stats-grid')).toBeNull();
     expect(cardFor('smoke-failed-receipt.jpg').querySelector('.stats-grid')).not.toBeNull();
+  }, 20000);
+
+  // The two counters round-trip through the rules and the live subscription,
+  // and the card draws each on the tile its label names. A record that kept
+  // every photo draws neither, so the tiles are not a fixture of the page.
+  it("a stored record's photo counters render on their own tiles", async () => {
+    await waitFor(
+      () => fixture.componentInstance.importHistory().length === 7,
+      'all seven seeded records');
+
+    const card = cardFor('smoke-photo-counters.jpg');
+    const figureOf = (label: string) => Array.from(card.querySelectorAll('.stat'))
+      .find(tile => tile.querySelector('.label')?.textContent?.trim() === label)
+      ?.querySelector('.value')?.textContent?.trim();
+    expect(figureOf('import.statPhotosSkipped')).withContext('photos not attached').toBe('1');
+    expect(figureOf('import.statPhotosFailed')).withContext('photos not uploaded').toBe('2');
+    expect(cardFor('smoke-single-receipt.jpg').querySelector('.stat.photos'))
+      .withContext('a record that kept its photos')
+      .toBeNull();
   }, 20000);
 });
