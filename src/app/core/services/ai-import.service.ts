@@ -83,7 +83,7 @@ import {
   toCreateTransactionDTO,
   TransactionSnapshot,
 } from '../utils/import-dto.utils';
-import { sumByCurrency } from '../utils/import-review.utils';
+import { countTypeAnswers, sumByCurrency } from '../utils/import-review.utils';
 import { matchRecurringRule } from '../utils/recurring-conversion.utils';
 import { planReceiptAttachments } from '../utils/receipt-attachment.utils';
 
@@ -1582,6 +1582,10 @@ export class AIImportService {
         }
       }
 
+      // The type flags are counted over the rows the write took, the way the
+      // totals are: a flagged row that failed or was left out answered nothing.
+      const { typesFlagged, typesFlipped } = countTypeAnswers(written);
+
       // Update import history with final stats
       // Note: Only include errors if there are any (Firestore rejects undefined values)
       const completeStats: ImportCompletion = {
@@ -1607,6 +1611,12 @@ export class AIImportService {
       }
       if (receiptsFailed > 0) {
         completeStats.receiptsFailed = receiptsFailed;
+      }
+      if (typesFlagged > 0) {
+        completeStats.typesFlagged = typesFlagged;
+      }
+      if (typesFlipped > 0) {
+        completeStats.typesFlipped = typesFlipped;
       }
 
       await this.importHistoryService.completeImport(historyId, completeStats);

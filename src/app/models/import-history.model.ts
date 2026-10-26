@@ -77,6 +77,19 @@ export interface ImportHistory {
    */
   transactionIds?: string[];
   /**
+   * Written rows whose type the reader flagged, whatever side each stands on
+   * now (`countTypeAnswers` over the rows the write took). Absent when no
+   * landed row was flagged, and on records completed before the field existed.
+   */
+  typesFlagged?: number;
+  /**
+   * Written rows whose type the reader flagged and which stand on the other
+   * side now: the reviewer's flip stood. A row flipped and flipped back is
+   * flagged and not flipped. Absent when none was, so an absent figure and a
+   * zero mean the same thing.
+   */
+  typesFlipped?: number;
+  /**
    * How the attempt ran, recorded for receipts only. Written at extraction
    * time for a failed attempt and at confirm time for a successful one.
    * Every slot is optional because a CSV import has none of them.
@@ -107,6 +120,7 @@ export type ImportCompletion = Pick<
   | 'totalIncome' | 'totalExpenses' | 'totalsByCurrency'
   | 'duplicatesSkipped' | 'errors'
   | 'receiptsSkipped' | 'receiptsFailed' | 'transactionIds'
+  | 'typesFlagged' | 'typesFlipped'
 >;
 
 export interface ImportError {
