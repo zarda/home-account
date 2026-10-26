@@ -543,13 +543,13 @@ export function mergeableRow(row: CategorizedImportTransaction): boolean {
  * The target's `movedCategory` — the category a change of side once moved
  * off it — rides a same-side merge the way the type grade does, and is
  * deleted when the rows sit on opposite sides: the net decides the side
- * afresh, so the mark no longer says what the row left. Where the net turns
- * the row, `mergeInto` then files the category on the new side and writes
- * a fresh mark. The source's never rides.
+ * afresh, so the mark no longer says what the row left. Whichever side the
+ * net lands on, `mergeInto` then holds the category to it and writes a
+ * fresh mark where it moves one. The source's never rides.
  *
- * The category stays the target's even when the net turns the row to the
- * other side; holding it to that side needs the catalogue, which the card
- * has and this function does not (`mergeInto`).
+ * The category stays the target's whichever side the net lands on; holding
+ * it to that side needs the catalogue, which the card has and this function
+ * does not (`mergeInto`).
  *
  * `imageMetadata` unions through `imageSources` rather than reading the two
  * `imageIndex`/`mergedFromImages` pairs directly, because a row already
