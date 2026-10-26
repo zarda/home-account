@@ -591,6 +591,12 @@ service cloud.firestore {
         // and belongs in `errors`.
         && (!('receiptsSkipped' in d) || (d.receiptsSkipped is int && d.receiptsSkipped >= 0))
         && (!('receiptsFailed' in d) || (d.receiptsFailed is int && d.receiptsFailed >= 0))
+        // Rows whose type the reader flagged, and of those the ones that now
+        // stand on the other side. Whole counts. One pass over the written
+        // rows derives both, so no rule holds the flipped count under the
+        // flagged one.
+        && (!('typesFlagged' in d) || (d.typesFlagged is int && d.typesFlagged >= 0))
+        && (!('typesFlipped' in d) || (d.typesFlipped is int && d.typesFlipped >= 0))
         // Ids of the transactions a completed import created — a list;
         // ids by contract, elements unvalidated (rules cannot iterate
         // a list).
