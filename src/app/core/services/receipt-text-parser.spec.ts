@@ -443,8 +443,18 @@ describe('parseReceiptOcrText', () => {
 
     describe('what it leaves alone', () => {
       // Documentation of where the reading stops. Most of these hold however
-      // the marks are read. One is a pin: the lone zero holds the zero skip in
-      // place.
+      // the marks are read. The pins: the lone zero holds the zero skip in
+      // place, and the cases after the Japanese and Korean receipts hold
+      // today's readings against three rules that were weighed and turned
+      // down (ADR 0185, What was rejected). Each is a net gain in corrections
+      // on the battery; each was turned down for where its errors land.
+      // Counting only the copies that carry their own sign or are written
+      // like money flips the size on a priced line and the tender-line twins,
+      // and files purchases as refunds. Reading a figure marked by
+      // parentheses alone, beside an unmarked one at least half its size, as
+      // a restatement flips the lone parenthesised figures and leaves refund
+      // slips doubted. Asking unsigned parentheses for a decimal fraction
+      // flips the points line, and loses the sign-less credits with it.
 
       it('never reads a credit from a zero, so a "-0.00" change line stays a purchase', () => {
         expect(parseReceiptOcrText('Shop\nTotal $12.50\nChange -$0.00')).toEqual(
@@ -515,6 +525,77 @@ describe('parseReceiptOcrText', () => {
         );
         expect(parseReceiptOcrText('스타벅스 강남점\n합계 ₩12,500\n카드결제 ₩12,500')).toEqual(
           reading(12500, 'debit', 0),
+        );
+      });
+
+      it("reads a size on a priced line as a copy of a refund's total, the known gap", () => {
+        // The bare 10 of 10m shares its line's currency sign, so it is read as
+        // money, wins the tie as the first figure printed, and twins the total
+        // unmarked. A pin: counting only the copies that carry their own sign
+        // or are written like money reads this refund as a credit, and costs
+        // the purchases of the next case their twin.
+        expect(parseReceiptOcrText('Shop\nMooring rope 10m -$10.00\nTOTAL -$10.00')).toEqual(
+          reading(10, 'debit', 0.3),
+        );
+      });
+
+      it('keeps a purchase twinned when its tender line prints the total negative', () => {
+        // A pin: neither bare total carries a sign of its own (two spaces from
+        // the yen, or none in its run), so that copy rule would keep only the
+        // negative tender line and file the sale as a refund. The second is one
+        // line, as Vision joins it; split as TOTAL 14 and Card -$14, the bare
+        // 14 is not printed as money, and the receipt reads 14 credit 0.5.
+        expect(parseReceiptOcrText('Shop\nTotal ¥  480\nVISA -¥480')).toEqual(
+          reading(480, 'debit', 0.3),
+        );
+        expect(parseReceiptOcrText('Shop\nTOTAL 14 Card -$14')).toEqual(reading(14, 'debit', 0.3));
+      });
+
+      it('reads a lone parenthesised figure as a credit, the known gap', () => {
+        // The price with tax, printed in parentheses under the total, outranks
+        // it, and parentheses around money are a credit mark. A pin: reading a
+        // figure marked by parentheses alone, beside an unmarked one at least
+        // half its size, as a restatement turns it into a purchase graded 0.3,
+        // and loses the refund slips of the next case.
+        expect(parseReceiptOcrText('店\n合計 ¥1,180\n(¥1,280)')).toEqual(
+          reading(1280, 'credit', 0.5),
+        );
+      });
+
+      it("reads a refund slip's lone parenthesised total as a credit", () => {
+        // A pin, and the refunds that restatement rule would lose: the slips
+        // print their total exactly as the case above prints its restatement.
+        expect(parseReceiptOcrText('REFUND\nJacket $59.99\nTax $4.80\n($64.79)')).toEqual(
+          reading(64.79, 'credit', 0.5),
+        );
+        expect(parseReceiptOcrText('返品\nジャケット ¥5,980\n消費税 ¥598\n(¥6,578)')).toEqual(
+          reading(6578, 'credit', 0.5),
+        );
+      });
+
+      it('reads a labelled figure in parentheses that outranks the total as a credit, the known gap', () => {
+        // A pin: the same restatement rule reads it as a purchase graded 0.3.
+        // The amount is wrong either way.
+        expect(parseReceiptOcrText('Shop\nTotal $59.99\nWas ($79.99)')).toEqual(
+          reading(79.99, 'credit', 0.5),
+        );
+      });
+
+      it('reads a points line in parentheses as a credit on a receipt that prints no currency sign, the known gap', () => {
+        // With no sign, the grouped 1,250 is the only figure written like
+        // money, so it outranks the plain total, and parentheses around money
+        // are a credit mark. A pin: asking unsigned parentheses for a decimal
+        // fraction reads it as a plain purchase, and the sign-less refund
+        // slips (合計 (1,280)) as purchases with it. Where the total carries
+        // a sign, the points line loses to it.
+        expect(parseReceiptOcrText('Shop\nTotal 980\nPoints (1,250)')).toEqual(
+          reading(1250, 'credit', 0.5),
+        );
+        expect(parseReceiptOcrText('Shop\nTotal $12.50\nPoints (1,250)')).toEqual(
+          reading(12.5, 'debit', 0),
+        );
+        expect(parseReceiptOcrText('Shop\nTotal ¥980\nPoints (1,250)')).toEqual(
+          reading(980, 'debit', 0),
         );
       });
     });
