@@ -278,12 +278,13 @@
   overflow-y: auto !important;
 }
 
-// Holds the scan's type flag beside the toggle when the reader doubted it.
+// Centres the toggle. The scan's type flag is not a sibling of it: a doubted
+// type swaps the checked segment's trend icon for the flag, so the group never
+// moves or shrinks when the flag appears.
 .type-toggle-container {
   display: flex;
   justify-content: center;
   align-items: center;
-  gap: 8px;
   margin-bottom: 24px;
 }
 
@@ -301,6 +302,14 @@
 
 .type-button mat-icon {
   margin-right: 8px;
+}
+
+// The flag takes the trend icon's own 24px box, so the segment's label stays
+// where it stood.
+.type-button .verify-flag {
+  font-size: 24px;
+  width: 24px;
+  height: 24px;
 }
 
 .type-button span {

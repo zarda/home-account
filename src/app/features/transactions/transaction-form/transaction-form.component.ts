@@ -1465,6 +1465,28 @@ export class TransactionFormComponent implements OnInit, AfterViewInit, OnDestro
     return this.readerDoubts(field) || (field === 'date' && this.scanDateOnAnotherDay() !== null);
   }
 
+  /**
+   * True for the segment that shows the type the scan doubted: the checked
+   * one, whose trend icon the flag replaces. The flag sits inside the
+   * segment rather than beside the toggle, so the group never moves or
+   * shrinks when it appears.
+   */
+  flagsType(type: 'expense' | 'income'): boolean {
+    return this.transactionType() === type && this.shouldVerifyField('type');
+  }
+
+  /**
+   * A segment's accessible name. The flag icon is hidden from assistive
+   * technology, so a flagged segment leads with the flag's sentence and then
+   * says its type, as the review card's type toggle does.
+   */
+  typeButtonLabel(type: 'expense' | 'income'): string {
+    return joinSentences(
+      this.flagsType(type) ? this.verifyFieldTooltip('type') : '',
+      this.translationService.t(type === 'income' ? 'common.income' : 'common.expense')
+    );
+  }
+
   private readerDoubts(field: keyof FieldConfidence): boolean {
     const confidence = this.scanFieldConfidence()?.[field];
     return confidence !== undefined && confidence < VERIFY_FIELD_THRESHOLD;

@@ -3049,7 +3049,7 @@ describe('TransactionFormComponent, through its own template', () => {
     expect(el().querySelector('.verify-flag')).toBeNull();
   });
 
-  it('flags a doubted type beside the type toggle, where a screen reader reads it', async () => {
+  it("flags a doubted type in the checked segment, whose name leads with the flag's sentence", async () => {
     // A purchase the device could not tell from a refund: the form stays on
     // its default expense, and the type is graded under the bar.
     strategySpy.processReceipt.and.resolveTo({
@@ -3068,32 +3068,38 @@ describe('TransactionFormComponent, through its own template', () => {
       processingTimeMs: 1,
     });
     render();
-    const typeFlag = () => el().querySelector('.type-toggle-container .verify-flag') as HTMLElement | null;
-    expect(typeFlag()).toBeNull();
+    // Anywhere in the type control: a flag left on either segment, or beside
+    // the group, would be found.
+    const anyTypeFlag = () => el().querySelector('.type-toggle-container .verify-flag') as HTMLElement | null;
+    expect(anyTypeFlag()).toBeNull();
 
     const photo = new File(['refund?'], 'slip.jpg', { type: 'image/jpeg' });
     await component.onReceiptSelected({ target: { files: [photo], value: '' } } as unknown as Event);
     await until(() => !component.isScanning());
     fixture.detectChanges();
 
-    const flag = typeFlag();
-    expect(flag).not.toBeNull();
+    const flag = el().querySelector('mat-button-toggle.mat-button-toggle-checked .verify-flag') as HTMLElement | null;
+    expect(flag).withContext('the flag stands where the checked segment shows its trend icon').not.toBeNull();
     expect(component.form.get('type')?.value).toBe('expense');
-    // Beside the toggle rather than inside a button, so the icon carries the
-    // sentence itself.
-    expect(flag!.closest('mat-button-toggle-group'))
-      .withContext('beside the toggle group, not inside one of its buttons')
-      .toBeNull();
-    expect(flag!.getAttribute('role')).toBe('img');
-    expect(flag!.getAttribute('aria-hidden')).toBe('false');
-    expect(flag!.getAttribute('aria-label')).toBe('import.verifyType');
-    expect(flag!.getAttribute('aria-label')).toBe(component.verifyFieldTooltip('type'));
+    // The segment's button carries the sentence, so the icon is decoration.
+    // Its role is the one every icon in the toggle has from Material; the
+    // template adds none, and no name of its own.
+    expect(flag?.getAttribute('aria-hidden')).toBe('true');
+    expect(flag?.getAttribute('role')).toBe(toggle('income').querySelector('mat-icon')?.getAttribute('role') ?? null);
+    expect(flag?.hasAttribute('aria-label')).toBeFalse();
+    // MatButtonToggle forwards its aria-label input to the inner button; its
+    // host attribute is always null.
+    expect(toggle('expense').getAttribute('aria-label')).toBe('import.verifyType. common.expense');
+    expect(toggle('income').getAttribute('aria-label')).toBe('common.income');
+    expect(toggle('income').querySelector('mat-icon')?.textContent?.trim()).toBe('trending_up');
 
     toggle('income').click();
     fixture.detectChanges();
 
     expect(component.form.get('type')?.value).toBe('income');
-    expect(typeFlag()).toBeNull();
+    expect(anyTypeFlag()).toBeNull();
+    expect(toggle('expense').getAttribute('aria-label')).toBe('common.expense');
+    expect(toggle('expense').querySelector('mat-icon')?.textContent?.trim()).toBe('trending_down');
   });
 
   it('tells a part it is one', () => {
