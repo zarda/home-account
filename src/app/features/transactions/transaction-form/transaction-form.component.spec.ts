@@ -221,7 +221,7 @@ describe('TransactionFormComponent', () => {
     receiptQuota = jasmine.createSpyObj('ReceiptQuotaService', ['canAddImages']);
     receiptQuota.canAddImages.and.resolveTo(true);
     receiptToNote = jasmine.createSpyObj('ReceiptToNoteService', ['convertReceiptToNote']);
-    analytics = jasmine.createSpyObj('AnalyticsService', ['trackTransactionAdd', 'trackAiAssistUsed', 'trackHouseholdAction']);
+    analytics = jasmine.createSpyObj('AnalyticsService', ['trackTransactionAdd', 'trackAiAssistUsed', 'trackHouseholdAction', 'trackReceiptConfirm']);
     tagSuggestions = jasmine.createSpyObj<TagSuggestionService>('TagSuggestionService', ['suggest']);
     tagSuggestions.suggest.and.resolveTo([[]]);
     groundingHistory = jasmine.createSpyObj<GroundingHistoryService>('GroundingHistoryService', ['recent']);
@@ -578,6 +578,84 @@ describe('TransactionFormComponent', () => {
       await component.onSubmit();
 
       expect(analytics.trackTransactionAdd).not.toHaveBeenCalled();
+    });
+
+    describe('receipt_confirm for a scanned save', () => {
+      const nativeRead = { engine: 'native' as const, provider: null, durationMs: 800 };
+
+      /**
+       * Picks one photo into the empty strip, which starts a scan the pick does
+       * not wait for, and waits that scan out. The photo is the one the scan
+       * ran against, so discarding it withdraws the scan.
+       */
+      async function pickAndScan(component: TransactionFormComponent): Promise<void> {
+        const file = new File(['r'], 'r.jpg', { type: 'image/jpeg' });
+        await component.onReceiptSelected({ target: { files: [file], value: '' } } as unknown as Event);
+        await until(() => !component.isScanning());
+      }
+
+      it('reports a scanned save whose reader flagged the type and the user kept it', async () => {
+        // A purchase the device could not tell from a refund: read as expense,
+        // its type doubted. The save leaves it where the scan put it.
+        strategy.processReceipt.and.resolveTo(
+          scanResult({ source: 'native', fieldConfidence: { type: 0.3 } }, { diagnostics: nativeRead }),
+        );
+        const component = build().componentInstance;
+        await pickAndScan(component);
+        validForm(component);
+
+        await component.onSubmit();
+
+        expect(analytics.trackReceiptConfirm).toHaveBeenCalledOnceWith({
+          path: 'form',
+          engine: 'native',
+          type_flagged: 'one',
+          type_flipped: 'none',
+        });
+      });
+
+      it('reports a flip when a flagged scan is saved on the other side', async () => {
+        // A refund read as income and doubted; the user files it as the
+        // purchase it was. The scan's own grade went with the type change, so
+        // the reading the scan kept is the only record of the doubt.
+        strategy.processReceipt.and.resolveTo(
+          scanResult(
+            { type: 'income', source: 'native', suggestedCategoryId: 'salary', fieldConfidence: { type: 0.5 } },
+            { diagnostics: nativeRead },
+          ),
+        );
+        const component = build().componentInstance;
+        await pickAndScan(component);
+        expect(component.form.get('type')?.value).withContext('the scan').toBe('income');
+        validForm(component);
+
+        await component.onSubmit();
+
+        expect(transactionService.addTransaction.calls.mostRecent().args[0].type).toBe('expense');
+        expect(analytics.trackReceiptConfirm).toHaveBeenCalledOnceWith({
+          path: 'form',
+          engine: 'native',
+          type_flagged: 'one',
+          type_flipped: 'one',
+        });
+      });
+
+      it('reports a scanned save nobody flagged as none and none', async () => {
+        const cloudRead = { engine: 'cloud' as const, provider: 'gemini' as const, durationMs: 1200 };
+        strategy.processReceipt.and.resolveTo(scanResult({}, { diagnostics: cloudRead }));
+        const component = build().componentInstance;
+        await pickAndScan(component);
+        validForm(component);
+
+        await component.onSubmit();
+
+        expect(analytics.trackReceiptConfirm).toHaveBeenCalledOnceWith({
+          path: 'form',
+          engine: 'cloud',
+          type_flagged: 'none',
+          type_flipped: 'none',
+        });
+      });
     });
 
     it('sends the period key when editing clears it, so the stored one is removed', async () => {
@@ -3019,7 +3097,7 @@ describe('TransactionFormComponent, through its own template', () => {
         { provide: MatDialog, useValue: jasmine.createSpyObj('MatDialog', ['open']) },
         { provide: ReceiptQuotaService, useValue: quota },
         { provide: ReceiptToNoteService, useValue: jasmine.createSpyObj('ReceiptToNoteService', ['convertReceiptToNote']) },
-        { provide: AnalyticsService, useValue: jasmine.createSpyObj('AnalyticsService', ['trackTransactionAdd', 'trackAiAssistUsed', 'trackHouseholdAction']) },
+        { provide: AnalyticsService, useValue: jasmine.createSpyObj('AnalyticsService', ['trackTransactionAdd', 'trackAiAssistUsed', 'trackHouseholdAction', 'trackReceiptConfirm']) },
         { provide: TagSuggestionService, useValue: tagSuggest },
         { provide: GroundingHistoryService, useValue: grounding },
         { provide: TagMemoryService, useValue: jasmine.createSpyObj<TagMemoryService>('TagMemoryService', ['remember']) },

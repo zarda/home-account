@@ -79,10 +79,13 @@ export function buildReceiptImportPayload(
 }
 
 /**
- * The analytics payload for one confirmed receipt batch: the door whose review
- * was confirmed, the engine that read it, named as `receipt_import` names it,
- * and how many of the types its reader flagged landed and how many the
- * reviewer flipped, each as a bucket rather than the count.
+ * The analytics payload for one confirmed receipt review: the import wizard's
+ * batch holding a receipt, its record read back, or the transaction form's
+ * save of a new transaction its scan filled, counted off that one row (no
+ * record is written there). It names the door whose review was confirmed, the
+ * engine that read it, named as `receipt_import` names it, and how many of the
+ * types its reader flagged landed and how many were flipped, each as a bucket
+ * rather than the count.
  *
  * `door` excludes 'queue' as `buildReceiptImportPayload`'s does: the drain
  * confirms nothing a reviewer saw. It is the only compile-time guard on

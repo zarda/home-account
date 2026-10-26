@@ -139,10 +139,12 @@ export class AnalyticsService {
   }
 
   /**
-   * A reviewed batch holding a receipt was confirmed and its record read
-   * back: how many of the types its reader flagged landed, and how many the
-   * reviewer flipped, as buckets. The counts themselves, and anything about
-   * the rows, are never sent.
+   * A receipt's review was confirmed: the import wizard confirmed a batch
+   * holding a receipt and read its record back, or the transaction form saved
+   * a new transaction its scan filled, counted off that one row (no record is
+   * written there). It reports how many of the types its reader flagged
+   * landed and how many were flipped, as buckets; the counts themselves, and
+   * anything about the rows, are never sent.
    */
   trackReceiptConfirm(params: AnalyticsEventParams<'receipt_confirm'>): void {
     this.send('receipt_confirm', params);

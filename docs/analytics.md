@@ -104,7 +104,7 @@ and `duration` arrived in 1.27.140. `household_action`'s `share`, `unshare`,
 | `transaction_add` | The add-transaction form saved a new transaction. Not restore or offline replay. | `method`, `type`, `has_tags`, `has_location`, `receipt_image_count` | `src/app/features/transactions/transaction-form/transaction-form.component.ts` | 1.16.91 |
 | `transaction_search` | A search was committed on the transaction list and recorded as new. | `has_filters` | `src/app/features/transactions/transaction-filters/transaction-filters.component.ts` | 1.16.91 |
 | `receipt_import` | A receipt attempt reached a terminal outcome: camera, wizard (receipt kind only) and the in-form scan. Statement screenshots and the offline queue drain are excluded. | `outcome`, `path`, `engine`, `provider`, `failure`, `duration` | `src/app/core/services/receipt-attempt.service.ts` | 1.16.91 |
-| `receipt_confirm` | The import wizard confirmed a batch holding a receipt and read its record back: the camera's hand-off, the transaction form's multi-receipt review, or the wizard's own receipt photos. Once per confirm round, a partial one included, with the type counts the record kept for the rows that landed. A batch with no receipt, a refused confirm and a failed read-back send nothing. | `path`, `engine`, `type_flagged`, `type_flipped` | `src/app/features/ai/import/import-wizard/import-wizard.component.ts` | 26.10.180 |
+| `receipt_confirm` | A receipt's reader had its type flag answered. Either the import wizard confirmed a batch holding a receipt and read its record back (the camera's hand-off, the transaction form's multi-receipt review, or the wizard's own receipt photos), once per confirm round, a partial one included, with the type counts the record kept for the rows that landed; or the transaction form saved a new transaction its scan filled, counted off that one row. A batch with no receipt, a refused confirm, a failed read-back, a manual or edited form save and a discarded or failed scan send nothing. | `path`, `engine`, `type_flagged`, `type_flipped` | `src/app/features/ai/import/import-wizard/import-wizard.component.ts`, `src/app/features/transactions/transaction-form/transaction-form.component.ts` | 26.10.180 |
 | `budget_create` | A budget was created from the budgets page. | — | `src/app/features/budgets/budget-form/budget-form.component.ts` | 1.16.91 |
 | `budget_exceeded_viewed` | The dashboard budget-alert banner became visible, once per appearance. | `severity` | `src/app/features/dashboard/budget-alert-banner/budget-alert-banner.component.ts` | 1.16.91 |
 | `report_view` | A report tab was shown, including the one the page opens on. | `report_type` | `src/app/features/reports/reports.component.ts` | 1.16.91 |
@@ -160,7 +160,10 @@ and `duration` arrived in 1.27.140. `household_action`'s `share`, `unshare`,
   reader's type flags; the wizard reads the batch's kind, not whether it was
   an image. A refused confirm wrote nothing, and a failed read-back leaves the
   record's counts unread, so neither reports. The queue drain confirms
-  nothing a reviewer saw, which is why the event's door excludes `queue`.
+  nothing a reviewer saw, which is why the event's door excludes `queue`. The
+  transaction form reports only a new transaction whose scan it still holds:
+  a manual entry, an edit, and a save after the scanned photo was discarded
+  or the scan failed send nothing, since no reader's flag stands behind them.
 - **Date format, display name, and the AI settings page.** The taxonomy
   enumerates the settings worth steering by; widening it to every control is
   how a taxonomy stops meaning anything.
