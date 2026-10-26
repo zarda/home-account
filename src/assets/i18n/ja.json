@@ -1228,7 +1228,6 @@
     "statusProcessing": "処理中",
     "statPhotosSkipped": "添付されなかった写真",
     "statPhotosFailed": "アップロードできなかった写真",
-    "skipped": "スキップ",
     "errors": "エラー",
     "moreErrors": "ほか {{others}} 件",
     "engineCloud": "クラウドAI",
