@@ -241,6 +241,18 @@ export interface CategorizedImportTransaction {
    * (`rowCarriesReviewerWork`).
    */
   editedOnCard?: true;
+  /**
+   * A review-step mark, never written: the category a change of side moved
+   * off this row, with the grade it held there. A flip that finds the
+   * row's category on the wrong side files the row on the new side's
+   * catch-all and remembers what it had; a flip back restores it at its
+   * grade (`categoryOnSide`). A pick on the card forgets it, a split
+   * carries it on both halves, a merge between two rows of one side keeps
+   * the target's, and a merge across sides drops it; the re-file that
+   * follows (`mergeInto`) writes a fresh one only where it moves the
+   * survivor's category.
+   */
+  movedCategory?: { suggestedCategoryId: string; categoryConfidence: number };
   merchant?: string;
   notes?: string;                  // Optional notes/details (e.g., items list from receipt)
   isDuplicate: boolean;

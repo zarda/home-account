@@ -289,9 +289,10 @@ export class TransactionPreviewTableComponent {
    * the day.
    *
    * The category is held to the new side (`categoryOnSide`); left where it
-   * was, an expense category would be written onto an income row. A move is
-   * announced, because the chip it changed sits elsewhere on the row from
-   * the toggle that was pressed (ADR 0149).
+   * was, an expense category would be written onto an income row, and a
+   * flip back brings back the one the flip moved. A move is announced,
+   * because the chip it changed sits elsewhere on the row from the toggle
+   * that was pressed (ADR 0149).
    */
   toggleType(transaction: CategorizedImportTransaction): void {
     const type = transaction.type === 'income' ? 'expense' : 'income';
@@ -308,11 +309,12 @@ export class TransactionPreviewTableComponent {
   }
 
   /**
-   * Says that a row's category moved to the other side's catch-all, for the
-   * two edits that can move it: a flip on the toggle and a merge whose net
+   * Says that a row's category moved, for the two edits that can move it: a
+   * flip on the toggle, which files the row on the other side's catch-all or
+   * brings back the category an earlier flip moved, and a merge whose net
    * points the other way. The catalogue entry's own name is what the chip
    * shows, and the id stands in only if the catalogue does not hold the
-   * catch-all at all.
+   * category at all.
    */
   private announceCategoryRefiled(row: CategorizedImportTransaction, categoryId: string): void {
     const name = this.categories.find(c => c.id === categoryId)?.name;
@@ -325,30 +327,60 @@ export class TransactionPreviewTableComponent {
   }
 
   /**
-   * The row's category, held to one side. One the side cannot hold moves to
-   * that side's catch-all, graded as an answer that resolved to nothing, and
-   * never above what the row had: a catch-all nobody categorized stays at
-   * its floor, and a hand-added row at 0. A category that serves both sides
-   * stays with its grade, and so does one the catalogue does not hold,
-   * since nothing shows it is on the wrong side. The doors file a row with
-   * the same grader, so the card cannot disagree with them about which side
-   * an id sits on.
+   * The row's category, held to one side, by the first of three answers.
+   *
+   * 1. The category a change of side moved off the row (`movedCategory`),
+   *    once this side can hold it again: it returns at the grade it held
+   *    and the mark is cleared. A reviewer who flips a row and flips it
+   *    back is undoing the flip, not asking for the catch-all it was
+   *    filed on in between.
+   * 2. Otherwise a category this side can hold stays with its grade, and
+   *    the mark with it. So does one the catalogue does not hold, since
+   *    nothing shows it is on the wrong side.
+   * 3. Otherwise the category moves to this side's catch-all, graded as an
+   *    answer that resolved to nothing and never above what the row had: a
+   *    catch-all nobody categorized stays at its floor, and a hand-added
+   *    row at 0. The row remembers the category and grade it left.
+   *
+   * Which side an id sits on is `fitsSide`'s, the doors' own grader, so the
+   * card cannot disagree with them about it.
    */
   private categoryOnSide(
     row: CategorizedImportTransaction,
     type: CategoryRowType
-  ): Pick<CategorizedImportTransaction, 'suggestedCategoryId' | 'categoryConfidence'> {
-    const graded = gradeCategorySuggestion(
-      { suggestedCategoryId: row.suggestedCategoryId, confidence: row.categoryConfidence },
-      type,
-      this.categories
-    );
-    return graded.suggestedCategoryId === row.suggestedCategoryId
-      ? { suggestedCategoryId: row.suggestedCategoryId, categoryConfidence: row.categoryConfidence }
-      : {
-          suggestedCategoryId: fallbackCategoryFor(type),
-          categoryConfidence: Math.min(row.categoryConfidence, UNRESOLVED_CATEGORY_CONFIDENCE),
-        };
+  ): Pick<CategorizedImportTransaction, 'suggestedCategoryId' | 'categoryConfidence' | 'movedCategory'> {
+    const moved = row.movedCategory;
+    if (moved && this.fitsSide(moved.suggestedCategoryId, type)) {
+      return {
+        suggestedCategoryId: moved.suggestedCategoryId,
+        categoryConfidence: moved.categoryConfidence,
+        movedCategory: undefined,
+      };
+    }
+    if (this.fitsSide(row.suggestedCategoryId, type)) {
+      return {
+        suggestedCategoryId: row.suggestedCategoryId,
+        categoryConfidence: row.categoryConfidence,
+        movedCategory: row.movedCategory,
+      };
+    }
+    return {
+      suggestedCategoryId: fallbackCategoryFor(type),
+      categoryConfidence: Math.min(row.categoryConfidence, UNRESOLVED_CATEGORY_CONFIDENCE),
+      movedCategory: { suggestedCategoryId: row.suggestedCategoryId, categoryConfidence: row.categoryConfidence },
+    };
+  }
+
+  /**
+   * Whether the catalogue lets a row of `type` hold `categoryId`: the
+   * grader the doors file a row with, asked about the id alone, so the
+   * confidence it is handed is beside the point. An id the catalogue does
+   * not hold, and a catalogue that has not loaded, fit, because nothing
+   * shows the id is on the wrong side.
+   */
+  private fitsSide(categoryId: string, type: CategoryRowType): boolean {
+    return gradeCategorySuggestion({ suggestedCategoryId: categoryId, confidence: 0 }, type, this.categories)
+      .suggestedCategoryId === categoryId;
   }
 
   /**
@@ -362,11 +394,18 @@ export class TransactionPreviewTableComponent {
     return joinSentences(this.needsVerification(row, 'type') ? this.verificationTooltip(row, 'type') : '', label);
   }
 
+  /**
+   * A pick is the reviewer's own answer, so the category a flip moved off
+   * the row (`movedCategory`) is forgotten: a flip back would otherwise
+   * bring it back over what was chosen. Picking the category the row
+   * already holds changes nothing, and forgets nothing either.
+   */
   updateCategory(transaction: CategorizedImportTransaction, categoryId: string): void {
     if (categoryId === transaction.suggestedCategoryId) return;
     this.replaceRow(transaction, {
       suggestedCategoryId: categoryId,
       categoryConfidence: 1.0, // User confirmed
+      movedCategory: undefined,
       ...EDITED_ON_CARD,
     });
   }

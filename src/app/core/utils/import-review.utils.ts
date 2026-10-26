@@ -407,12 +407,14 @@ export function sameSplit(
  *    what was read, the same rule a hand-typed correction follows
  *    (`commitAmount`). The date's grade, and every other review-step mark
  *    (`dateAssumed`, `dateReviewed`, `currencyFellBack`, `currencySuggestion`,
- *    `receiptCountry`) and reader-supplied field (`tags`, `location`,
- *    `merchant`, `suggestedCategoryId`, `categoryConfidence`,
+ *    `receiptCountry`, `movedCategory`) and reader-supplied field (`tags`,
+ *    `location`, `merchant`, `suggestedCategoryId`, `categoryConfidence`,
  *    `period`), travel to both untouched: the receipt was read once, and
- *    splitting the amount does not reread the date. A part born of a row
- *    whose date question is still open carries `dateAssumed` and shows the
- *    chip too — but the part's id is new, so the wizard's `receiptRowIds`
+ *    splitting the amount does not reread the date. Nor does it move either
+ *    half to the other side, so each can still be flipped back to the
+ *    category a flip once moved off the row. A part born of a row whose
+ *    date question is still open carries `dateAssumed` and shows the chip
+ *    too — but the part's id is new, so the wizard's `receiptRowIds`
  *    (stamped once, at extraction) never contains it, and the question does
  *    not gate Continue or Import the way a receipt row's does. It stands on
  *    the same footing as any other assumed date outside a receipt batch.
@@ -428,9 +430,9 @@ export function sameSplit(
  *    `blankImportRow` copies a neighbour's date — and `fieldConfidence` its
  *    own call per half rather than one object handed to both, so an edit to
  *    one half can never reach through a shared object into the other. `tags`,
- *    `location`, `period` and `currencySuggestion` stay exactly as shared as
- *    they already were on `row`, which every editor on the card only ever
- *    replaces, never mutates.
+ *    `location`, `period`, `currencySuggestion` and `movedCategory` stay
+ *    exactly as shared as they already were on `row`, which every editor on
+ *    the card only ever replaces, never mutates.
  */
 export function splitImportRow(
   row: CategorizedImportTransaction,
@@ -536,9 +538,18 @@ export function mergeableRow(row: CategorizedImportTransaction): boolean {
  * the direction, and the reader's doubt about which way the target's own
  * figure went no longer bears on it. Two rows on one side net to that side
  * whatever their figures, so there the target's grade rides through as the
- * date's does. The category stays the target's even when the net turns the
- * row to the other side; holding it to that side needs the catalogue, which
- * the card has and this function does not (`mergeInto`).
+ * date's does.
+ *
+ * The target's `movedCategory` — the category a change of side once moved
+ * off it — rides a same-side merge the way the type grade does, and is
+ * deleted when the rows sit on opposite sides: the net decides the side
+ * afresh, so the mark no longer says what the row left. Where the net turns
+ * the row, `mergeInto` then files the category on the new side and writes
+ * a fresh mark. The source's never rides.
+ *
+ * The category stays the target's even when the net turns the row to the
+ * other side; holding it to that side needs the catalogue, which the card
+ * has and this function does not (`mergeInto`).
  *
  * `imageMetadata` unions through `imageSources` rather than reading the two
  * `imageIndex`/`mergedFromImages` pairs directly, because a row already
@@ -613,6 +624,9 @@ export function mergeImportRows(
     selected: true,
     fieldConfidence: target.type === source.type ? graded : withoutFieldConfidence(graded, 'type'),
   };
+  // Across sides the net decides the side afresh, so what a flip once moved
+  // off the target is no longer what the row left. Absent, not undefined.
+  if (target.type !== source.type) delete merged.movedCategory;
   // Absent, not undefined, the way splitImportRow leaves what it drops: the
   // spread carries every key the target had, a stale duplicateOf included.
   if (imageMetadata) merged.imageMetadata = imageMetadata;
