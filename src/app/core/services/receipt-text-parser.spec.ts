@@ -257,10 +257,12 @@ describe('parseReceiptOcrText', () => {
       jasmine.objectContaining({ amount, direction, directionConfidence });
 
     it('reads a negative mark on the total as a credit and keeps the amount positive', () => {
-      // A minus counts after the line start, a space or a colon, or right after
-      // the currency sign, and OCR hands a printed minus back as any of five
-      // dashes. The first row's tier proves the figure was read as money rather
-      // than dropped as a negative number.
+      // A minus counts after the line start, a space, a colon, an equals sign,
+      // a Han or Hangul label or an opening parenthesis, or right after the
+      // currency sign, and OCR hands a printed minus back as any of five
+      // dashes. A minus glued to a reference (SKU-1234, 03-3461-8901) or to
+      // kana still does not count. The first row's tier proves the figure was
+      // read as money rather than dropped as a negative number.
       expect(parseReceiptOcrText('Shop\nTotal -$12.50')).toEqual(
         jasmine.objectContaining({
           amount: 12.5,
@@ -309,6 +311,26 @@ describe('parseReceiptOcrText', () => {
       expect(parseReceiptOcrText('店舗\n合計：-¥1,280')).toEqual(reading(1280, 'credit', 0.5));
     });
 
+    it('reads a minus glued to a Han or Hangul label as a credit', () => {
+      // The label and the figure print as one run, so there is no space or
+      // colon for the minus to follow. Two scripts are named: typography, not
+      // a word table (ADR 0008).
+      expect(parseReceiptOcrText('Shop\n合計-1,280')).toEqual(reading(1280, 'credit', 0.5));
+      expect(parseReceiptOcrText('Shop\n合計-¥1,280')).toEqual(reading(1280, 'credit', 0.5));
+      expect(parseReceiptOcrText('Shop\n합계-5,900')).toEqual(reading(5900, 'credit', 0.5));
+    });
+
+    it('reads a minus inside an opening parenthesis as a credit', () => {
+      expect(parseReceiptOcrText('Shop\n(-12.50)')).toEqual(reading(12.5, 'credit', 0.5));
+      expect(parseReceiptOcrText('Shop\n(-$12.50)')).toEqual(reading(12.5, 'credit', 0.5));
+      expect(parseReceiptOcrText('店\n（-¥1,280）')).toEqual(reading(1280, 'credit', 0.5));
+    });
+
+    it('reads a minus after an equals sign as a credit', () => {
+      expect(parseReceiptOcrText('Shop\n=-12.50')).toEqual(reading(12.5, 'credit', 0.5));
+      expect(parseReceiptOcrText('店\n＝-1,280')).toEqual(reading(1280, 'credit', 0.5));
+    });
+
     it('reads parentheses as a credit only around a figure written like money', () => {
       expect(parseReceiptOcrText('Shop\nTotal (12.50)')).toEqual(reading(12.5, 'credit', 0.5));
       expect(parseReceiptOcrText('店\n（¥1,280）')).toEqual(reading(1280, 'credit', 0.5));
@@ -323,7 +345,14 @@ describe('parseReceiptOcrText', () => {
         // A minus glued to a reference, a phone number or a row of dashes.
         ['Shop\nSKU-1234', 1234],
         ['Shop\nTEL 03-3461-8901', 8901],
+        // Pin: a closing parenthesis does not open the gate the way an opening
+        // one does, so an area code's minus is not a credit.
+        ['Shop\nTEL (03)-3461', 3461],
         ['Shop\nNo.-123', 123],
+        // Pin: OCR hands the katakana long-vowel mark back as a hyphen, so kana
+        // does not open the gate; the first 480 is no credit, and the total
+        // beside it has no twin.
+        ['Shop\nアイスコーヒ-480\n合計 480', 480],
         ['Shop\n----$12.50', 12.5],
         // Pins: a triangle between two runs of digits joins them, as a dash
         // does.
@@ -414,9 +443,8 @@ describe('parseReceiptOcrText', () => {
 
     describe('what it leaves alone', () => {
       // Documentation of where the reading stops. Most of these hold however
-      // the marks are read. Two are pins: the lone zero holds the zero skip in
-      // place, and the known miss holds today's gap, which should change on
-      // purpose if the minus rule ever widens.
+      // the marks are read. One is a pin: the lone zero holds the zero skip in
+      // place.
 
       it('never reads a credit from a zero, so a "-0.00" change line stays a purchase', () => {
         expect(parseReceiptOcrText('Shop\nTotal $12.50\nChange -$0.00')).toEqual(
@@ -436,10 +464,6 @@ describe('parseReceiptOcrText', () => {
             directionConfidence: 0,
           }),
         );
-      });
-
-      it('misses a minus glued to the label before it, the known gap', () => {
-        expect(parseReceiptOcrText('Shop\n合計-1,280')).toEqual(reading(1280, 'debit', 0));
       });
 
       it('folds nothing about the direction into the combined confidence', () => {

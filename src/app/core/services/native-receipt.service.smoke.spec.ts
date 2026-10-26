@@ -265,6 +265,32 @@ describe('on-device receipt categories over the live catalog (smoke test)', () =
     });
   });
 
+  /**
+   * An East Asian slip prints a refund's total with the minus glued to its
+   * label. The model gives no verdict here, so the print decides alone: the
+   * row is income at the grade a lone credit mark earns, and the expense entry
+   * the model named is refused against the live catalog all the same.
+   */
+  it('files a slip whose minus is glued to its label on the income side of the live catalog, refusing the expense entry the model named', async () => {
+    // The printed total is the model's 120.50, so the print speaks for it.
+    visionMock.recognizeText.and.resolveTo({
+      ...ocrResult,
+      text: 'Harbour Supplies\n01/15/2026\n合計-$120.50',
+    });
+
+    const transaction = await scanAnswering(CUSTOM_NAME);
+    const categories = TestBed.inject(CategoryService).categories();
+
+    expect(transaction.type).toBe('income');
+    expect(transaction.fieldConfidence?.type).toBe(0.5);
+    expect(transaction.fieldConfidence!.type!).toBeLessThan(VERIFY_FIELD_THRESHOLD);
+    expect(transaction.suggestedCategoryId).toBe(CUSTOM_ID);
+    expect(gradeCategorySuggestion(transaction, transaction.type, categories)).toEqual({
+      suggestedCategoryId: fallbackCategoryFor('income'),
+      categoryConfidence: UNRESOLVED_CATEGORY_CONFIDENCE,
+    });
+  });
+
   it('grades an answer the live catalog cannot place for review, not by how well Vision read', async () => {
     const transaction = await scanAnswering('Antimatter Containment');
 
