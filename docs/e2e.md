@@ -33,7 +33,7 @@ deployed rules — and it is the reason for every constraint below. Read the
 whole thing as one rule: **the run is a reader with thirteen permitted writes,
 each named in *What a run may touch*, and it puts back every one it can.**
 
-**The emulators, on port 4300: journeys 68 to 77, and 79 to 103.** A journey that
+**The emulators, on port 4300: journeys 68 to 77, and 79 to 108.** A journey that
 needs several accounts signed in — one sharing rows into a household, another
 reading them there as copies, members counting them toward the household's own
 budgets and goals, and memberships removed, left, dissolved and erased —
@@ -47,7 +47,7 @@ cannot show — the deployed rules and indexes, the callable's public invoker, a
 mail that arrives — is what journey 78 is for, once, on production after the
 merge. Journey 79 needs one account, but it imports into it, and journey 80
 moves one origin's session between accounts under two open tabs, so both run
-there too; neither touches a household or calls a function. Journeys 81 to 103
+there too; neither touches a household or calls a function. Journeys 81 to 108
 need one account as well, and run there for what they write and what they need
 seeded: categories, rules, budgets and a household whose colours the seed
 fixes, a category made and deleted, a rule paused and resumed, rules due in the
@@ -64,11 +64,13 @@ stores, the account signed out under a bring-up held in the page, an expense
 and a rule in a category no catalog holds written past the rules, a scan
 whose drain waits on a key save held in the page, a goal written past
 the rules, an account's language, date format and name written the same way,
-and a yen row beside them. None of them calls a function, and only 82, 89,
-101 and 103 open a household page: 82 and 101 to read a dialog they cancel,
-89 to read the copy of a posting journey 90 shared, and 103 to read how a
-member with no name is listed, where the page's own load rewrites that
-member's document.
+a yen row beside them, receipts read by a provider the page answers for in
+the form, the camera, the wizard and the queue's drain, and rows imported on
+both sides of the ledger with the records they leave. None of them calls a
+function, and only 82, 89, 101 and 103 open a household page: 82 and 101 to
+read a dialog they cancel, 89 to read the copy of a posting journey 90
+shared, and 103 to read how a member with no name is listed, where the
+page's own load rewrites that member's document.
 
 **Journeys 58 to 67 are superseded** by 68 to 78 and are not run. They drove
 the household design of PRs #462 and #463 (ADRs 0152–0156), in which every
@@ -187,8 +189,12 @@ served catalog once more:
 reads *Open calendar* on this branch and `undefined` on `563c3eeb`, whose
 catalog holds no `datepicker` object, and
 `(await fetch('/assets/i18n/ja.json').then(r => r.json())).nav.dashboardShort`
-reads *ホーム*, a key `563c3eeb`'s catalog does not have. For another branch
-it is whatever that branch added. A
+reads *ホーム*, a key `563c3eeb`'s catalog does not have. For the refund at
+every door, the category that follows its side and the type counts it is
+the served catalog as well:
+`(await fetch('/assets/i18n/en.json').then(r => r.json())).import.statTypeFlagged`
+reads *Type flagged* on this branch and `undefined` on `f2b3d2c4`. For
+another branch it is whatever that branch added. A
 stale `.angular/cache`, or a server started before the checkout switched,
 shows yesterday's app with today's confidence.
 
@@ -589,7 +595,7 @@ Import never is.
 Everything else is read-only. Every dialog is closed or **cancelled** — the
 edit dialog in journey 5 opens on a real transaction and is left by Cancel,
 never Save — and nothing else is created, edited, deleted or imported.
-Journeys 68 to 77 and 79 to 103 are not in this table: they write freely, but
+Journeys 68 to 77 and 79 to 108 are not in this table: they write freely, but
 only into the local emulators, and the [teardown](#teardown) takes all of it
 with them.
 Journeys 58 to 67 are superseded and write nothing, because they are not run.
@@ -839,7 +845,7 @@ Alex alone, and imports three rows into his account; journey 80 needs Alex
 and Sam, in two tabs of one origin, and moves the session between them
 ([auth.md](auth.md) describes what it drives).
 
-Journeys 81 to 103 use the same seed as Alex alone, and drive the account's own
+Journeys 81 to 108 use the same seed as Alex alone, and drive the account's own
 pages: the theme tokens and a category's colour, measured where they are
 painted in both themes (81 and 82, whose last surface is Chen home's budget
 dialog); the papercuts of
@@ -868,13 +874,19 @@ met by the page's own sign-out (97); and the unknown category, the saved key
 and the filters of
 [ADR 0180](ADR/0180-a-saved-key-joins-the-wait-and-a-reader-sees-their-own-language.md)
 (98 to 100), whose reworded refusal journey 93 reads, and the resume after
-the save it asks for; and the datepickers, Material's words, the reports'
+the save it asks for; the datepickers, Material's words, the reports'
 amounts and the account with no name of
 [ADR 0182](ADR/0182-a-control-reads-in-the-accounts-language-and-date-format-and-nothing-re-provides-materials-adapter-or-words.md)
-(101 to 103), the first of which also reads the bottom bar's dashboard tab.
+(101 to 103), the first of which also reads the bottom bar's dashboard tab;
+and the refund asked about at every door and the category that follows its
+row's side of
+[ADR 0185](ADR/0185-a-refund-is-asked-about-at-every-door-and-a-category-follows-its-rows-side-there-and-back.md)
+(104 to 108), three of them with
+[a provider that answers from the page](#a-provider-that-answers-from-the-page).
 [accessibility.md](accessibility.md), [dashboard.md](dashboard.md),
 [reminders.md](reminders.md), [shortcuts.md](shortcuts.md),
 [pwa.md](pwa.md), [receipt-import.md](receipt-import.md),
+[import-fields.md](import-fields.md), [analytics.md](analytics.md),
 [locale-formatting.md](locale-formatting.md), [dates.md](dates.md),
 [recurring.md](recurring.md),
 [household.md](household.md), [smart-search.md](smart-search.md),
@@ -883,9 +895,9 @@ amounts and the account with no name of
 [csv-format.md](csv-format.md), [data.md](data.md) and
 [ui-overflow.md](ui-overflow.md) describe what they drive.
 
-Journeys 87 to 96 build on one another's writes, and 97 to 103 on the
-language each one leaves, so 87 to 103 run in one emulator session, in this
-order:
+Journeys 87 to 96 build on one another's writes, 97 to 108 on the language
+each one leaves, and 107 on the records 105 and 106 write, so 87 to 108 run
+in one emulator session, in this order:
 
 1. journey 87's steps 4 and 5, which queue a scan and fail its drain;
 2. journey 88, which reads that drain's record in Import History;
@@ -920,7 +932,19 @@ order:
     rules;
 17. journey 102, which writes a yen row, reads the reports in Japanese and in
     Traditional Chinese, and ends in English with the row deleted;
-18. journey 103, **last**, which empties Alex's name and types one in, and
+18. journey 104, which arms a provider in the page, scans a refund into the
+    form, cancels it, and ends with the arm gone;
+19. journey 105, which arms it again, imports two rows through the camera
+    with their photos refused in the page, reads the wizard's door without
+    importing, and ends with the arm gone;
+20. journey 106, with no provider, which hands over five rows, merges two
+    of them, and imports three, the fourth left out as a duplicate;
+21. journey 107, which reads the records journeys 105 and 106 wrote in three
+    languages and ends in English;
+22. journey 108, which arms the provider once more and queues a scan into
+    the queue journey 99's cleanup emptied, drains it over an emptied
+    category signal, and ends with the queue empty and the arm gone;
+23. journey 103, **last**, which empties Alex's name and types one in, and
     whose visit to the household page rewrites his member document there,
     and ends with both restored.
 
@@ -967,9 +991,11 @@ edit, with the shots `95-cold-refresh-unknown-ja`,
 `94-refused-after-rows-ja-r3` and `93-edit-day-unset-r3`. Every step it ran
 passed, and it found no further defect.
 
-Journeys 97 to 103 rest on none of the earlier journeys' writes. A run of
-them alone starts from a fresh seed, in English, and journey 99's Sync Now
-then drains the one scan it queued.
+Journeys 97 to 108 rest on none of the earlier journeys' writes, though 107
+reads the records 105 and 106 write. A run of them alone starts from a fresh
+seed, in English, and journey 99's Sync Now then drains the one scan it
+queued; journey 108 then finds the queue as journey 99's cleanup leaves it,
+empty.
 
 The first run of journeys 97 to 100, on 2026-10-19, drove the branch that
 added them in this venue, served from that branch's own checkout. It did
@@ -1167,6 +1193,142 @@ page out right. And a screenshot under emulation can show a stale frame or one
 from the middle of a transition, so the DOM read is the evidence
 ([Panes and viewports](#panes-and-viewports)).
 
+The first run of journeys 104 to 108, on 2026-10-27, drove the branch for
+#464 in this venue, served from that branch's own checkout, with the
+emulators started without the functions emulator, since none of the five
+calls a function. Its pre-flight passed. The server's working directory was
+the branch's, the loaded scripts named `demo-home-account` and never
+`home-accounter`, the served catalog held check 1's probe, and the origin
+held nothing but this project's own keys from an earlier run. Alex was
+signed in by the local-storage write of
+[Signing in a seeded account](#signing-in-a-seeded-account), his welcome
+skipped. The browser reported `en-US`, and the pane was 1024×768 and hidden,
+with 375px by emulation. Real clicks were made at the pane's own width — the
+form's type toggle in journey 104 and the camera's **Process with AI** in
+journey 105 — and a real Tab key in journey 79's step 5; every other press
+was the element's own `click()` from the console. A reading at 375px was a
+read only. It read each step by state, from the page's signals and DOM and
+past the rules, and kept those readings rather than shots, so the shots the
+five journeys name are for a run that takes them. Every arming brought
+Gemini up alone, with vision, and every vendor read was `[]`.
+
+It ran, as regressions, journey 79 whole, its step 7 as it now reads,
+journey 87's steps 4 and 5, journey 88's step 2, journey 91's steps 1 to 3,
+journey 94's steps 1 and 2, journey 99's steps 1 to 3 — in English, not the
+Japanese its text names — and journey 102's step 1. They held. Journey 79's
+import wrote its record with `typesFlagged` 2 and `typesFlipped` 1 and sent
+one `receipt_confirm`, `{ path: 'camera', engine: 'none', type_flagged:
+'several', type_flipped: 'one' }`; with journey 91's steps the run read that
+record's two new tiles, *要確認の種類* 2 and *変更した種類* 1 in Japanese and
+*需確認類型* 2 and *已變更類型* 1 in Traditional Chinese. Journeys 104 to 108
+followed, in that order, and their steps held; the defects below were met
+on the way. It did not run journey 107's step 2 on the records of journeys
+105 and 106: the type tiles' labels were read on journey 79's. A sweep then
+read the form at the Extra large font scale, `--app-font-scale` 1.3 set
+inline: its two segments, 159 and 160px, kept their labels on one line
+inside a 492px content box that scrolled nowhere. And it read the camera
+dialog at 375px, 356px wide with its content 356px and every button label
+on one line. It found four
+defects, each fixed after it in a commit whose spec failed first; the second
+run, below, re-checked each of them in the venue
+([ADR 0185](ADR/0185-a-refund-is-asked-about-at-every-door-and-a-category-follows-its-rows-side-there-and-back.md)'s
+*What the browser runs found* records them):
+
+- *fix(ui): the import wizard waits for its own run before saying it found
+  nothing*. Offline, the processing step read *No Transactions Found* with
+  **Try Again** while the photo was still being written to the queue, before
+  the queued card replaced it: the service queues the photos before it marks
+  itself processing. Journeys 87 and 99 met it, and journey 87's step 4
+  reads it. The same fix keeps **Process with AI** disabled until the run
+  ends, so a second press cannot queue the photos twice; the wizard's spec
+  holds that, and the third check below read it.
+- *fix(ui): the camera dialog keeps its content inside the dialog on a
+  tablet or desktop*. At 1024px the dialog's content scrolled sideways, 548px
+  of it in a 500px box: a `min-width` of 500px stood inside a 500px dialog
+  that pads its content 24px a side. Journey 105's step 1 met it, and reads
+  it.
+- *fix(import): a refund is never a duplicate of the purchase it returns*.
+  The duplicate check's exact branch compared the day, the amount and the
+  description, and not the type, so journey 106's doubted purchase, an
+  expense of 6.40, was left out as an exact duplicate of journey 79's
+  flipped row, an income of 6.40 the same day. Journey 106's step 5 says
+  what the fixed check matches instead.
+- A scan that moved the form's type back said *Category set back to* the
+  held category and then filled the one it read. A review had named it from
+  the code, and the run confirmed it after journey 108, driving the form's
+  own handler as journey 79's step 7 does, over a category set first. The
+  commit that made the sentence,
+  *fix(ui): a type change says when it clears the form's category, and the
+  way back brings it back*, now lets such a scan end the hold silently.
+
+Three pane traps cost a second read, and none is the app's. A dialog opened
+in the hidden pane stayed at its opening `scale(0.8)` — journey 79's toggle
+group read 256px wide — until a screenshot made the pane paint, and then read
+320px. `document.getAnimations().forEach(a => a.finish())` throws on an
+animation that never ends, so finish each one in a `try`. And a flush of a
+dialog's host before its form has built its group throws the forms
+package's `NG01052` in the console evaluation, which the page itself never
+meets: flush the dialog once the form is there. The `BreakpointObserver`
+trap above came back too: journey 79's card read 34px wide at 375px until a
+reload at the size.
+
+The second run of journeys 104 to 108, the same day, drove the branch with
+the four fixes in, before **Process with AI** was held disabled through a
+run, in the same venue, served from the same checkout, after the same
+pre-flight, and Alex was signed in the same way. The pane was 1024×768 and
+hidden again, so it read each step by state, as the first run did. It ran
+journey 79's steps 1, 2, 4 and 6 and journey 87's steps 4 and 5 as
+regressions, then journeys 104 to 108 but for journey 104's steps 3 and 5,
+journey 105's step 4 and journey 107's step 2, and they held. No run has yet
+run journey 107's step 2 on these two cards. Each fix was
+checked again. With the queue write held open from the page, as journey
+87's step 4 now says, the processing step showed the processing card at 0%
+and never *No Transactions Found*, and the offline card followed the
+release. Journey 105's camera dialog read `[500, 500]` at 1024, with no
+scrollbar. Journey 106's doubted purchase was a `likely` duplicate of
+journey 105's mug, the same day, amount and side, and not an `exact` one of
+journey 79's income row, so journey 106's written figures held. And in
+journey 104, after a refund scan had cleared *Groceries*, a purchase scan
+naming *Restaurants* filed an expense on `food_restaurants` and announced
+only *Receipt scanned successfully*, with no *Category set back to*. The
+run found no new defect.
+
+A third check, the same day, drove journey 87's step 4 on the branch with
+**Process with AI** held disabled through a run, before the dropzone fix
+below, after the same pre-flight on fresh emulators, the server's checkout
+checked again. With the write held, the step read `[true, false]`, and the wizard
+reported its own run in flight while the service was not yet processing.
+Back on the upload step, with the photo still picked, **Process with AI**
+was disabled, and a real press left the held write's call count at one. On
+the release the queue held one entry and the step ended on the offline card.
+It found a fifth defect, older than the branch, fixed in
+*fix(ui): a photo queued offline leaves the import dropzone, so a later
+Process cannot queue it again*: after the queue, the dropzone still listed
+the queued photo, which the wizard had dropped from its own selection, and
+re-sent it with the next pick. Removing the newly picked photo, from the
+page, left the queued one alone in the wizard's selection, with **Process with AI**
+enabled, and a real press queued `e2e-87-receipt.png` a second time under a
+new id and row seed. One press in this check found the app online again
+after a load and met the no-provider card instead of the queue: send
+`offline` right before the press.
+
+A fourth check, the same day, drove journey 87's steps 4 and 5 as they now
+read, on the branch's code with every fix in but one later guard, which the
+dropzone's spec alone holds (a kept document that shares a forgotten photo's
+name no longer keeps that photo's preview alive), after the same pre-flight
+on fresh emulators. With the write held, the step read `[true,
+false]`; on **Upload**, **Process with AI** was disabled with the photo
+listed in both lists, and a real press left the call count at one. A second
+image picked while the write was held joined both lists and the preview
+tiles, and the **Processing** header opened again. On the release the queue
+held `e2e-87-receipt.png` alone, `'pending'` with `retryCount` 0 and a
+32-character `rowSeed`, the offline card showed **Done** and
+**Back**, and the mid-write photo stood alone in both lists and the tiles,
+both of its previews still loading. After **Back**, **Remove** on its row
+emptied both lists and the dropzone showed its empty state; a new pick held
+only `e2e-87-second.png`, and the queue still held one entry. Step 5's drain
+failed the entry with `AI_CLOUD_UNAVAILABLE`. It found no new defect.
+
 Journey 87's other steps stand alone, and each journey's opening paragraph
 names what it reads from the ones before it.
 
@@ -1179,7 +1341,7 @@ its author opens the app, since a fresh origin holds no record of a full pass.
 
 ### Pre-flight
 
-Journeys 79 to 103 call no function, and neither do 72 and 73. A run of only
+Journeys 79 to 108 call no function, and neither do 72 and 73. A run of only
 those skips checks 2 and 3 and starts the emulators without the functions
 emulator, `--only auth,firestore,storage` in check 4 — which is also how they
 start in a checkout without `functions/.secret.local`, whose functions that
@@ -1458,7 +1620,9 @@ its ranges, which no client can write since ADR 0178, 95 a stored answer,
 the same way with any row the rule posted, 100 a goal, 101 the account's
 language and date format and 103 its name, which each puts back the same
 way, 102 a yen row it deletes, and 77 clears the database at its end; the
-superseded 60 and 63 wrote a quota and a name.
+superseded 60 and 63 wrote a quota and a name. Journeys 104 to 108 write and
+delete nothing there: they only read back the rows and the import records
+the app itself wrote.
 The seeded households are `chen-home` and `trip-fund`; one made in a journey
 is listed under its owner's index, `users/<uid>/households`. A copy's id is
 `<author-uid>_<row-id>`, and the seeded rows this month are `tx-hh-1` onwards
@@ -1488,6 +1652,134 @@ A document that is gone answers 404; a collection with nothing in it answers
 curl -s -H 'Authorization: Bearer owner' "$FS/households/<hid>/ledger?pageSize=300" |
   node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>console.log((JSON.parse(s).documents??[]).map(d=>d.name.split("/").pop()).join("\n")))'
 ```
+
+### A provider that answers from the page
+
+The venue holds no provider key, and none is ever typed or sent from it, so
+no cloud reader runs here by itself. Journeys 104, 105 and 108 need one,
+since a refund the cloud reads is what they drive, so they arm Gemini in the
+page, through the seam journey 97 holds OpenAI at. The key read is patched
+to answer a made-up value, `e2e-not-a-key`, and Gemini's SDK import is
+replaced by an in-page `GoogleGenerativeAI` whose models answer from a queue
+the run fills and log every request they are sent. Everything above the SDK
+runs as it would for a real key: the prompt the registry renders, Gemini's
+transport and its choice of handle, the answer's reader, the mapper, the
+consolidation, the converter, the grader, the duplicate check, the card and
+the form. State only, diagnostic-grade, and recorded as such.
+
+Journey 96's `available.set(true)` is not enough here. It marks Claude up,
+and the same flag set on Gemini builds no model: `assertVisionTransport`
+throws while both handles are null (`gemini.service.ts:210-218`). Nor is a
+fake import alone: the strategy brings the providers up again on a change of
+connectivity, the drain's `cloudProvidersReady` waits on such a bring-up,
+and each one reads the keys and clears Gemini when they name none
+(`cloud-llm-provider.service.ts:106-123`).
+
+**Arming.** Only on a full load of `/import/file`, once the wizard holds its
+catalogue: `ng.getComponent(document.querySelector('app-import-wizard')).categories().length`
+above 0. The arm's source is kept in the tab's `sessionStorage`, under
+`e2e.arm`, because a helper left on `window` dies with the page
+([Signing in a seeded account](#signing-in-a-seeded-account)), and a journey
+that loads a page arms again from the same text:
+
+```js
+sessionStorage.setItem('e2e.arm', `(async () => {
+  const llm = ng.getComponent(document.querySelector('app-import-wizard')).importService.cloudLLMProvider;
+  window.e2eProvider = { requests: [], answers: [] };
+  const reply = text => ({ response: { text: () => text, candidates: [{ finishReason: 'STOP' }] } });
+  let made = 0;
+  const model = handle => ({ generateContent: async request => {
+    const parts = request.contents[0].parts;
+    const inlineDataCount = parts.filter(part => part.inlineData).length;
+    window.e2eProvider.requests.push({ handle, inlineDataCount, text: parts[0].text });
+    return reply(inlineDataCount > 0 ? (window.e2eProvider.answers.shift() ?? '{}') : '[]');
+  } });
+  llm.providerKeys.resolve = () => Promise.resolve({ gemini: 'e2e-not-a-key' });
+  llm.geminiService.loadSdk = () => Promise.resolve({ GoogleGenerativeAI: class {
+    getGenerativeModel() { return model(made++ % 2 === 0 ? 'text' : 'vision'); }
+  } });
+  await llm.initializeProviders();
+  return [llm.providerStatus(), llm.resolveProvider('receiptScanning'), llm.geminiService.capabilities.vision];
+})()`);
+await eval(sessionStorage.getItem('e2e.arm'));
+```
+
+**Pass:** `[{ gemini: true, openai: false, claude: false }, 'gemini', true]`:
+Gemini up alone, the receipt reader resolved to it, with vision.
+`importService`, `cloudLLMProvider`, `providerKeys` and `geminiService` are
+private and `loadSdk` protected, TypeScript's words, which the running page
+does not enforce, as journey 14 says. After a load inside a journey, arm
+again on `/import/file` with the last line alone.
+
+**What answers.** A request carrying an image takes the next answer the run
+pushed onto `window.e2eProvider.answers`, a JSON string in the shape its
+prompt asks for, and `'{}'` once none is left; so push each answer before
+its photo goes in. A request with no image is answered `'[]'`, which names
+nothing: the categoriser's rows fall to their side's catch-all at 0.3, and
+the form's description suggestion offers nothing.
+
+**The log.** Each request lands in `window.e2eProvider.requests` as
+`{ handle, inlineDataCount, text }`.
+
+- `handle` is `'text'` or `'vision'` by which of the two
+  `getGenerativeModel` calls built the model, the text handle's first
+  (`gemini.service.ts:115-116`), and never by the model id: both defaults are
+  the same model. A receipt read tries the text handle first and moves to
+  the vision handle only past a rate limit (`visionModelsFor`, `:220-224`), so
+  a single-photo `receiptParse` logs `'text'` with an image, while Gemini's
+  itemizer, `receiptItems`, asks the vision handle alone
+  (`extractWithPositionMetadata`).
+- `inlineDataCount` counts the `inlineData` parts of
+  `request.contents[0].parts`. A *vision request* is one whose count is
+  above 0.
+- `text` is the first part, the rendered prompt. Match it by substring and
+  never by equality: Gemini puts `JSON_ONLY_PREAMBLE` ahead of every JSON
+  prompt (`renderedText`, `:495-499`).
+
+The receipt markers come in a pair, each in one render function of
+`receipt.prompts.ts`, so a request names its prompt by carrying one and not
+the other: `"receiptCount": number of distinct receipts` is `receiptParse`'s
+alone, and `Return each item as a SEPARATE JSON object` is `receiptItems`'s
+alone. Every receipt prompt carries `money given back to the customer`, the
+clause on the direction the four share. The categoriser's two prompts open
+*Categorize these transactions* (an import's rows) and *Given this
+transaction description* (the form's one row), each with its list under
+`Available categories:` (`categorization.prompts.ts`). Grep the markers again
+when a prompt changes.
+
+**The pages it must not reach.** While armed, move only through the
+header's router, among `/import/file`, `/transactions` and `/import/history`:
+
+```js
+await ng.getComponent(document.querySelector('app-header')).router.navigateByUrl('/transactions');
+```
+
+Never `/ai`: the page reads the keys through the same patched read
+(`ai-settings-page.component.ts:244`), so its Gemini key field would show
+the made-up value, and a blur there would save it to the emulator account.
+Never `/dashboard`, `/reports`, `/settings` or `/search-history` either, nor
+any other page whose components inject the weekly recap, the AI summary or
+the insight narrative: they ask a provider as soon as one is up, or on a
+press, and the fake would answer them `[]`, which they would show, cache or
+store.
+
+**A page load ends it.** The patched read, the fake SDK, the queue and the
+log go with the page, and the load's own bring-up finds no key, as it always
+did. A step that must reload — a 375px layout read at its size, for one —
+arms again afterwards, or reads with nothing armed.
+
+**Ending.** Every armed journey ends with the vendor read, on the page that
+was armed, since a load empties the resource list:
+
+```js
+performance.getEntriesByType('resource').map(e => e.name)
+  .filter(name => /anthropic|openai\.com|generativelanguage/.test(name));
+```
+
+**Pass:** `[]`, as journey 96's step 3 reads it. The fake has no transport,
+so nothing could have gone; the check is that nothing did. Then
+`sessionStorage.removeItem('e2e.arm')` and a reload. The made-up value lived
+in the page's memory and in that one entry, and it goes with them.
 
 ### Teardown
 
@@ -1578,7 +1870,7 @@ log, and run the ports check again: it prints nothing.
 | 76 | Erasure (emulators) | An account in two households erased from Your Data (`/data`), and nothing of it left in either | `76-before-erase.png`, `76-after-erase.png` |
 | 77 | Widths, themes and axe (emulators) | The switcher, the bulk bar and the plans dialogs at 320px, 375px and desktop in both themes, and axe over each | `77-switcher-320-light.png`, `77-bulk-bar-320-dark.png`, `77-budget-dialog-375-dark.png` |
 | 78 | Two households live (production, after the merge) | The deployed rules and indexes admitting households, a copy and its removal, the deployed callable answering in its region, and the account left as it was | `78-switcher.png`, `78-shared-row.png`, `78-setup.png` |
-| 79 | Review: a refund's type flag and the category that follows the toggle (emulators) | The flag on a real review card's type toggle and the name it gives the button, a flip filing the category on the new side with the live region saying so, the card at a real 375px phone width, what the import writes past the rules, and the form's own flag beside its type | `79-type-flags.png`, `79-category-followed.png`, `79-review-375.png`, `79-form-flag.png` |
+| 79 | Review: a refund's type flag and the category that follows the toggle (emulators) | The flag on a real review card's type toggle and the name it gives the button, a flip filing the category on the new side with the live region saying so, the card at a real 375px phone width, what the import writes past the rules, and the form's own flag inside its checked type segment, the group unmoved | `79-type-flags.png`, `79-category-followed.png`, `79-review-375.png`, `79-form-flag.png` |
 | 80 | Another tab changes the account (emulators) | Two tabs of one origin sharing a session on `/transactions`: another tab's swap, sign-out and sign-in each reloading this one onto the new account with nothing reported on the way out, and a tab's own sign-out reloading nothing | `80-reloaded-as-sam.png`, `80-signed-out.png`, `80-dashboard-as-alex.png` |
 | 81 | Colours follow the theme (emulators) | Every surface the theme tokens reach measured as painted, in both themes and with high contrast on, the chart's edges following a theme switch, and seven routes at a real 375px width with nothing scrolling sideways | `81-dashboard-light.png`, `81-dashboard-dark.png`, `81-budgets-dark.png`, `81-dropzone-375-dark.png` |
 | 82 | A category's colour on every surface (emulators) | A category's glyph on each surface it is drawn on — tiles, a legend, select panels at rest and active, a dialog's icon grid, a household dialog — in both themes switched through the service the chip and the pipe read, a paused rule at full strength, and row menus that name their rows | `82-recurring-paused-dark.png`, `82-category-select-light.png`, `82-category-dialog-dark.png`, `82-household-select-dark.png` |
@@ -1603,6 +1895,11 @@ log, and run the ports check again: it prints nothing.
 | 101 | The datepicker and the bottom bar in the account's language (emulators) | A Japanese account read in an English browser: both filter dates, their toggles and the open calendar in the account's words and date format, a switch of language or format re-rendering them with no reload and through the same adapter, a typed date read in each order, quick add following a switch made with it open, a household goal's dialog refusing a day that does not exist and a recurring rule's cleared start holding Save, and the dashboard tab on one line in a real 375px bar | `101-filters-ja.png`, `101-calendar-ja.png`, `101-quick-add-tc.png`, `101-bottom-bar-375.png` |
 | 102 | Material's words and the reports' amounts (emulators) | The import wizard's finished step and the sortable headers' description spoken by the catalog in Japanese, and a yen row and a dollar total in the reports written by the account's formatter in Japanese and in Traditional Chinese | `102-stepper-ja.png`, `102-category-panel-ja.png` |
 | 103 | An account with no name (emulators) | An empty name read as a catalog word on each page that shows one — the dashboard, the header menu, Settings and the household's chips — in three languages, a typed name greeting by its first word, a stored *User* left alone, and the member document the household page rewrites | `103-settings-no-name.png`, `103-household-a-member.png` |
+| 104 | A refund the cloud reads, in the form (emulators) | The form's own Scan Receipt strip with a provider up, a real `receiptParse` request carrying the direction, a refund filling the form as Income with its flag inside the checked segment and the group unmoved at 1024px and at a real 375px, and real clicks on the toggle saying what each did to the category | `104-form-refund-flag.png`, `104-form-toggle-375.png`, `104-form-restored.png` |
+| 105 | A refund the cloud reads, through the camera and the wizard (emulators) | Gemini's itemizer carried through the real camera and wizard onto a flagged Income card on its side's catch-all, the categoriser's real request offering that side alone, and an import whose photos the page refused, counted on its record and in one notice | `105-camera-refund-card.png`, `105-wizard-refund-card.png` |
+| 106 | A second flip, a same-side merge, and a late catalogue (emulators) | Rows handed over before the catalogue loaded filed on their sides when it arrives, said once; a row flipped twice on a real card landing back on its category at its grade; a merge re-filing a survivor that stays on its side; and the counts the import records | `106-second-flip.png`, `106-merge-refiled.png` |
+| 107 | Import History counts what the review saw (emulators) | Every count a record carries on a tile of its own on a real card, in three languages, and the cards whole at a real 375px with axe finding nothing | `107-history-counts-en.png`, `107-history-counts-ja.png`, `107-history-counts-tc.png`, `107-history-375.png` |
+| 108 | A queued refund drains onto its own side (emulators) | A scan queued offline and drained on a real `online` through the page's provider over an emptied category signal, written as income on the income side's catch-all | `108-drained-refund.png` |
 
 Screenshot names are the journey number and what is on screen; a re-run
 overwrites rather than accumulating. A partial re-check after a fix adds
@@ -5087,13 +5384,18 @@ type grade).
    menu, and its **Add Transaction** item opens the form. Its receipt
    strip is not rendered: it stands only while the account has an engine to
    scan with (`isAiAvailable`), and this venue has neither a provider key
-   nor a device. So the scan goes through the form's own handler, with the
-   strategy service answering from the page — state only, which journey 41
-   accepts for a flag whose attributes do not care how it was raised. In
-   one console evaluation:
+   nor a device; journey 104 scans through the strip with
+   [a provider that answers from the page](#a-provider-that-answers-from-the-page).
+   So the scan goes through the form's own handler, with the strategy
+   service answering from the page — state only, which journey 41 accepts
+   for a flag whose attributes do not care how it was raised. Once the
+   dialog carries `mdc-dialog--open` ([In a hidden pane](#in-a-hidden-pane)),
+   record the toggle group's box and scan, in one console evaluation:
 
    ```js
    const f = ng.getComponent(document.querySelector('app-transaction-form'));
+   const group = document.querySelector('app-transaction-form .type-toggle');
+   sessionStorage.setItem('e2e.79.box', JSON.stringify(['left', 'width'].map(k => group.getBoundingClientRect()[k])));
    const answers = [
      { description: 'e2e-79 form refund', type: 'income', suggestedCategoryId: 'food_groceries',
        fieldConfidence: { amount: 0.8, date: 0.9, type: 0.5 } },
@@ -5120,27 +5422,39 @@ type grade).
    ```js
    const f = ng.getComponent(document.querySelector('app-transaction-form'));
    const flag = document.querySelector('.type-toggle-container .verify-flag');
+   const group = document.querySelector('app-transaction-form .type-toggle');
    ({
      type: f.form.get('type').value,
      category: f.form.get('categoryId').value,
      flag: flag && [flag.getAttribute('role'), flag.getAttribute('aria-hidden'), flag.getAttribute('aria-label')],
+     inSegment: !!flag?.closest('mat-button-toggle.mat-button-toggle-checked'),
+     name: document.querySelector('.type-toggle-container .mat-button-toggle-checked button').getAttribute('aria-label'),
+     before: JSON.parse(sessionStorage.getItem('e2e.79.box')),
+     box: ['left', 'width'].map(k => group.getBoundingClientRect()[k]),
    });
    ```
 
-   **Pass — a refund fills the form as income.** `type` is `'income'`, and
-   **Income** is the checked segment. The category is blank: the reading
-   named a Groceries id the income side cannot hold, and the required field
-   asks rather than anything being filled in for it. The flag beside the
-   toggle reads `role` `'img'`, `aria-hidden` `'false'`, and step 2's
-   sentence as its label. The centred toggle group moves over by about
-   16px while the flag stands beside it, which the first run judged
-   acceptable. Shot: `79-form-flag.png`.
+   **Pass — a refund fills the form as income, its flag in the checked
+   segment.** `type` is `'income'`, and **Income** is the checked segment.
+   The category is blank: the reading named a Groceries id the income side
+   cannot hold, and the required field asks rather than anything being
+   filled in for it. The flag reads `['img', 'true', null]`: decorative,
+   with no name of its own, the role being the `mat-icon` host's own
+   attribute. `inSegment` is `true`: the flag has taken the checked
+   segment's trend icon. The segment's button is named by step 2's sentence
+   followed by *Income*: *Double-check income or expense — the scan could
+   not tell a purchase from a refund for certain. Income*. And `box` is
+   `before` within 0.5px, left and width: the group neither moves nor grows
+   when the flag appears. The first run read the two boxes equal, and
+   `[348, 320]` with the flag and without it once the dialog stood at full
+   scale. Read at the dialog's opening `scale(0.8)` they are equal too, but
+   256px wide, so check the class first. Shot: `79-form-flag.png`.
 
    Discard the photo through the form, `f.removePendingReceipt(0)` with `f`
    bound as above — the strip's remove button calls the same, and it is not
    rendered. **Pass — the flag goes with the photo, and the type stays.**
-   No flag, and `type` still `'income'`: only the user's own change makes a
-   scanned type theirs.
+   No flag, `type` still `'income'`, and the box as before: only the user's
+   own change makes a scanned type theirs.
 
    Then a purchase into the emptied strip, which the override answers from
    the queue it still holds:
@@ -6149,23 +6463,107 @@ what each removal could have broken, where only a browser shows it.
    'handed';
    ```
 
-   Leave the image kind on **Receipt** and press **Process with AI**.
+   The write to the queue is brief, so to read the step in the middle of it,
+   hold it open from the page before pressing, as the second run of journeys
+   104 to 108 did. A method set on the service's own queue answers before
+   the one its class shares:
+
+   ```js
+   const queue = ng.getComponent(document.querySelector('app-import-wizard')).importService.offlineQueue;
+   let release;
+   const held = new Promise(resolve => { release = resolve; });
+   window.e2eQueueCalls = 0;
+   queue.queueImage = async file => {
+     window.e2eQueueCalls++;
+     await held;
+     return Object.getPrototypeOf(queue).queueImage.call(queue, file);
+   };
+   window.e2eReleaseQueue = () => { delete queue.queueImage; release(); return 'released'; };
+   'held';
+   ```
+
+   Leave the image kind on **Receipt**, send
+   `window.dispatchEvent(new Event('offline'))` once more right before the
+   press (a load can find the network again, and the press then meets the
+   no-provider card instead of the queue), and press **Process with AI**.
+   While the write is held, flush the wizard and read the step:
+
+   ```js
+   const w = ng.getComponent(document.querySelector('app-import-wizard'));
+   ng.applyChanges(w);
+   const step = document.querySelector('.processing-step');
+   [!!step.querySelector('.processing-card'), step.textContent.includes('No Transactions Found')];
+   ```
+
+   **Pass:** `[true, false]`: the processing card, at 0%, and never *No
+   Transactions Found* with **Try Again**. The wizard holds its empty result
+   until its own run has settled. The first run of journeys 104 to 108 met
+   that empty result here, mid-write, and *fix(ui): the import wizard waits
+   for its own run before saying it found nothing* fixed it
+   ([Emulator journeys](#emulator-journeys)).
+
+   Still held, open the **Upload** step from its header and read both
+   lists — the wizard's and the dropzone's own — with the button and the
+   held write's call count:
+
+   ```js
+   const w = ng.getComponent(document.querySelector('app-import-wizard'));
+   const zone = ng.getComponent(document.querySelector('app-file-dropzone'));
+   ng.applyChanges(w);
+   const names = list => list.map(f => f.name);
+   ({ disabled: [...document.querySelectorAll('button')].find(b => b.textContent.includes('Process with AI')).disabled,
+      wizard: names(w.selectedFiles()), zone: names(zone.selectedFiles()),
+      tiles: w.imagePreviewUrls().map(p => p.name), calls: window.e2eQueueCalls });
+   ```
+
+   **Pass:** `disabled` true, each list `['e2e-87-receipt.png']` and `calls`
+   1. Press **Process with AI** and read `window.e2eQueueCalls` again.
+   **Pass:** 1, and the wizard stays on **Upload**: a second press queues
+   nothing while the first run writes. Then hand the input a second image,
+   `e2e-87-midrun.png`, the way the first went, and read the same object.
+   **Pass:** both lists and the tiles hold both images, and **Process with
+   AI** is still disabled. Open the **Processing** step from its header (the
+   stepper allows it while a photo is picked) and release the write with
+   `window.e2eReleaseQueue()`.
    **Pass:** the processing step ends on the offline card, *1 image queued
    for processing when online*, with **Done** and **Back**: offline, the
    receipt door keeps the photo before any provider guard. Then:
 
    ```js
    const queue = ng.getComponent(document.querySelector('app-import-wizard')).importService.offlineQueue;
-   (await queue.getPendingImages()).map(i =>
-     ({ id: i.id, rowSeed: i.rowSeed, status: i.status, retryCount: i.retryCount, lastError: i.lastError }));
+   (await queue.getPendingImages()).map(i => ({ id: i.id, fileName: i.fileName,
+     rowSeed: i.rowSeed, status: i.status, retryCount: i.retryCount, lastError: i.lastError }));
    ```
 
-   **Pass:** one entry. Its `id` is `img_<ms>_<random>`, beside a `rowSeed`
-   of 32 lower-case hex characters, the seed its rows are named from
-   (journey 89). Its `status` is `'pending'`, its `retryCount` 0, and it has
-   no `lastError`. `importService` is private, TypeScript's word, which the
-   running page does not enforce, as journey 14 says. Shot:
-   `87-queued-offline.png`, the card.
+   **Pass:** one entry, `e2e-87-receipt.png`, the batch the press handed the
+   queue. Its `id` is `img_<ms>_<random>`, beside a `rowSeed` of 32
+   lower-case hex characters, the seed its rows are named from (journey 89).
+   Its `status` is `'pending'`, its `retryCount` 0, and it has no
+   `lastError`. Shot: `87-queued-offline.png`, the card. Read the lists
+   again, and whether the mid-write photo's previews still load:
+
+   ```js
+   const w = ng.getComponent(document.querySelector('app-import-wizard'));
+   const zone = ng.getComponent(document.querySelector('app-file-dropzone'));
+   ng.applyChanges(w);
+   const loads = async url => { if (!url?.startsWith('blob:')) return false; try { await (await fetch(url)).blob(); return true; } catch { return false; } };
+   const names = list => list.map(f => f.name);
+   ({ wizard: names(w.selectedFiles()), zone: names(zone.selectedFiles()),
+      tiles: w.imagePreviewUrls().map(p => p.name),
+      tileLoads: await loads(w.imagePreviewUrls()[0].url),
+      zoneLoads: await loads(zone.getFilePreview(zone.selectedFiles()[0])) });
+   ```
+
+   **Pass:** both lists and the tiles hold `e2e-87-midrun.png` alone, and
+   both previews are `blob:` URLs that load: the queued photo has left both lists, and a photo
+   picked while the write ran stays picked, its previews with it. Press
+   **Back**, then **Remove** on that photo's row. **Pass:** both lists
+   empty, and the dropzone shows its empty state. Hand the input
+   `e2e-87-second.png` the same way and read the lists and the queue again.
+   **Pass:** each list holds `e2e-87-second.png` alone, and the queue still
+   holds one entry: the queued photo cannot come back with the next pick
+   (the third check's fix, above). `importService` is private, TypeScript's
+   word, which the running page does not enforce, as journey 14 says.
 5. **`online` starts a drain.** `window.dispatchEvent(new Event('online'))`,
    the event the queue drains on while it holds something pending. Run step
    4's read again, as a separate console evaluation, until it stops
@@ -9212,6 +9610,865 @@ profile read confirms it.
 
 Two shots: the Settings card with no name, and the household's *A member*.
 
+### 104. A refund the cloud reads, in the form
+
+**Emulators**, as Alex, at the pane's own width of 1024px, after journey 102,
+in English ([the run order](#emulator-journeys)), with
+[a provider that answers from the page](#a-provider-that-answers-from-the-page).
+Every cloud receipt prompt now asks which way the money moved, and a refund
+the cloud reads fills the form as Income, its type flagged inside the
+checked segment, which takes the flag in place of its trend icon. A category
+the new side cannot hold is cleared, and the form says so; the way back
+brings it back, aloud
+([ADR 0185](ADR/0185-a-refund-is-asked-about-at-every-door-and-a-category-follows-its-rows-side-there-and-back.md),
+[receipt-import.md](receipt-import.md),
+[accessibility.md](accessibility.md)). Where journey 79's step 7 had no
+engine and no strip, the strip stands here, and the photo goes through the
+form's own file input to the real `receiptParse` prompt, Gemini's transport,
+the reader and the converter. The answer is the page's, state only,
+diagnostic-grade, and recorded as such; the clicks on the toggle are real.
+
+1. **The form.** Arm on a full load of `/import/file`, then move to
+   `/transactions` through the header's router. The add button (named *Add
+   Transaction*) opens a menu, and its **Add Transaction** item opens the
+   form. Once the dialog carries `mdc-dialog--open`
+   ([In a hidden pane](#in-a-hidden-pane)), choose **Groceries** in the
+   *Category* select, still on **Expense**, and read:
+
+   ```js
+   const f = ng.getComponent(document.querySelector('app-transaction-form'));
+   const group = document.querySelector('app-transaction-form .type-toggle');
+   const box = ['left', 'width'].map(k => group.getBoundingClientRect()[k]);
+   sessionStorage.setItem('e2e.104.box', JSON.stringify(box));
+   [!!document.querySelector('app-transaction-form .scan-receipt-btn'),
+     f.form.get('type').value, f.form.get('categoryId').value, box, innerWidth];
+   ```
+
+   **Pass:** `[true, 'expense', 'food_groceries', [348, 320], 1024]`. The
+   strip stands, since an engine is up, and the group sits at its 320px cap
+   in the 500px dialog. The first run set the category from the page,
+   `f.form.patchValue({ categoryId: 'food_groceries' })`, which is what the
+   select's choice writes. Flush a hidden pane's dialog only once the form
+   is there: a flush before the form has built its group throws the forms
+   package's `NG01052` in the console evaluation.
+2. **The scan.** Log what the form says, push the refund's answer and hand
+   a photo to the form's own file input, in one console evaluation:
+
+   ```js
+   const f = ng.getComponent(document.querySelector('app-transaction-form'));
+   const announcer = f.announcer;
+   window.e2eSaid = [];
+   const say = announcer.announce.bind(announcer);
+   announcer.announce = (message, ...rest) => { window.e2eSaid.push(message); return say(message, ...rest); };
+   const d = new Date();
+   const today = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+   window.e2eProvider.answers.push(JSON.stringify({
+     merchant: 'e2e-104 form refund', amount: 14.03, currency: 'USD', date: today, location: '', country: '',
+     items: [{ name: 'returned kettle', amount: 14.03 }], receiptDetails: 'returned kettle 14.03',
+     suggestedCategory: 'Groceries', receiptCount: 1, amountConfidence: 0.9, dateConfidence: 0.9, type: 'income',
+   }));
+   const canvas = document.createElement('canvas');
+   canvas.width = canvas.height = 16;
+   const png = await new Promise(resolve => canvas.toBlob(resolve, 'image/png'));
+   const dt = new DataTransfer();
+   dt.items.add(new File([png], 'e2e-104-refund.png', { type: 'image/png' }));
+   const input = document.querySelector('app-transaction-form input[type=file]');
+   input.files = dt.files; input.dispatchEvent(new Event('change', { bubbles: true }));
+   'scanned';
+   ```
+
+   `announcer` is private, and the app's one `AnnouncerService`: wrap it once
+   per load, as the notice log is armed
+   ([In a hidden pane](#in-a-hidden-pane)). Then, as a separate evaluation:
+
+   ```js
+   const f = ng.getComponent(document.querySelector('app-transaction-form'));
+   const flag = document.querySelector('.type-toggle-container .verify-flag');
+   const flagBox = flag?.getBoundingClientRect();
+   const content = document.querySelector('app-transaction-form .dialog-content').getBoundingClientRect();
+   ({
+     type: f.form.get('type').value,
+     category: f.form.get('categoryId').value,
+     flag: flag && [flag.getAttribute('aria-hidden'), !!flag.closest('mat-button-toggle.mat-button-toggle-checked')],
+     name: document.querySelector('.type-toggle-container .mat-button-toggle-checked button').getAttribute('aria-label'),
+     box: ['left', 'width'].map(k => document.querySelector('app-transaction-form .type-toggle').getBoundingClientRect()[k]),
+     before: JSON.parse(sessionStorage.getItem('e2e.104.box')),
+     flagInside: !!flagBox && flagBox.left >= content.left && flagBox.right <= content.right,
+     said: window.e2eSaid,
+     requests: window.e2eProvider.requests.map(r => [r.handle, r.inlineDataCount,
+       r.text.includes('"receiptCount": number of distinct receipts'),
+       r.text.includes('Return each item as a SEPARATE JSON object'),
+       r.text.includes('money given back to the customer'),
+       r.text.includes('Given this transaction description')]),
+   });
+   ```
+
+   **Pass — the refund fills the form as Income, flagged in its segment.**
+   - `type` is `'income'` and `category` is `''`: the reading named
+     Groceries, which the income side cannot hold, so the type change
+     cleared it and holds it for the way back.
+   - `flag` is `['true', true]`: hidden from assistive technology, and
+     inside the checked segment. `name` is *Double-check income or expense —
+     the scan could not tell a purchase from a refund for certain. Income*:
+     the segment's button carries the sentence.
+   - `box` is `before` within 0.5px, left and width; the first run read
+     both `[348, 320]`. And `flagInside` is `true`.
+   - `said` is *Category cleared: Groceries is not offered for this type*,
+     then *Receipt scanned successfully*. The first run armed this log only
+     at step 3, so it read the pair on a later scan made from the same
+     state, Expense on Groceries, after step 4; at this step the live
+     element had already moved on to the second sentence.
+   - `requests` is `[['text', 1, true, false, true, false], ['text', 0,
+     false, false, false, true]]`. One vision request, on the text handle,
+     which a receipt read tries first, carrying `receiptParse`'s marker and
+     the direction's clause and not the itemizer's. Then the form's own
+     description suggestion, with no image, fired by the description the
+     scan filled while the category was blank.
+
+   Then the list that suggestion was offered:
+
+   ```js
+   const text = window.e2eProvider.requests[1].text;
+   text.slice(text.indexOf('Available categories:'), text.indexOf('\n\nReturn ONLY'));
+   ```
+
+   **Pass:** six lines under the heading, `employment: Employment`,
+   `self_employment: Self-Employment`, `investments: Investments`,
+   `rental: Rental & Property`, `government: Government & Benefits` and
+   `other_income: Other Income`: the income parents alone, the side the
+   form stood on when the description landed (`filteredCategories`). The
+   fake's `[]` names none of them, so the category stays blank. Shot:
+   `104-form-refund-flag.png`.
+3. **At 375px, reads only.** Set the pane's width to 375px and click nothing
+   under it ([Panes and viewports](#panes-and-viewports)). No reload: the
+   dialog is sized in CSS, 500px capped at 95vw, so it follows the width at
+   once, and a reload would close the form and end the arm. In one console
+   evaluation, discard the photo and read the box with no flag, then repeat
+   step 2's push and hand-off for a second refund:
+
+   ```js
+   const f = ng.getComponent(document.querySelector('app-transaction-form'));
+   f.removePendingReceipt(0);
+   for (let i = 0; i < 20; i++) await Promise.resolve();
+   document.querySelectorAll('.mat-mdc-dialog-component-host').forEach(host => ng.applyChanges(ng.getComponent(host)));
+   const content = document.querySelector('app-transaction-form .dialog-content');
+   sessionStorage.setItem('e2e.104.box375', JSON.stringify({ width: innerWidth,
+     flag: !!document.querySelector('.type-toggle-container .verify-flag'),
+     box: ['left', 'width'].map(k => document.querySelector('app-transaction-form .type-toggle').getBoundingClientRect()[k]),
+     content: [content.clientWidth, content.scrollWidth] }));
+   // …then step 2's push, with items: [] and receiptDetails: '', and its hand-off of e2e-104-refund-2.png
+   ```
+
+   Then read the same four as a separate evaluation, beside the stored
+   ones, with `document.documentElement.scrollWidth <=
+   document.documentElement.clientWidth` and `window.e2eSaid`. **Pass:** both
+   readings are at `width` 375, the first with no flag and the second with
+   it, and both boxes read `[25.375, 316.25]`: the group keeps its place and
+   width in a phone's column too, within 0.5px. The content reads `[348,
+   348]` both times, and nothing scrolls sideways. The type was income
+   already, so the scan moved nothing: `said` gains *Receipt scanned
+   successfully* alone, and the hold on Groceries stands, which step 4
+   shows. Judge each segment's label on one line by a screenshot: a range
+   over `.mat-button-toggle-label-content` returns the icon's box and the
+   word's at different tops, which a count of tops reads as two lines where
+   one shows. Shot: `104-form-toggle-375.png`. Clear the width.
+4. **The way back, with real clicks.** At the pane's own width, click
+   **Expense**, then read as a separate evaluation, twice, since the
+   announcer places a message on a timer of its own (150ms):
+
+   ```js
+   const f = ng.getComponent(document.querySelector('app-transaction-form'));
+   [f.form.get('type').value, f.form.get('categoryId').value,
+     !!document.querySelector('.type-toggle-container .verify-flag'),
+     document.querySelector('.cdk-live-announcer-element')?.textContent, window.e2eSaid.at(-1)];
+   ```
+
+   **Pass:** `['expense', 'food_groceries', false, 'Category set back to
+   Groceries', 'Category set back to Groceries']`: the held category comes
+   back with the side it fits, and the form says so. The flag went with the
+   click: a type the user changed is theirs. Shot: `104-form-restored.png`.
+   Then click **Income**. **Pass:** the type `'income'`, the category `''`,
+   and the log's last entry *Category cleared: Groceries is not offered for
+   this type*.
+5. **Leave.** **Cancel** — nothing is saved — then the vendor read, and the
+   arm's end ([A provider that answers from the page](#a-provider-that-answers-from-the-page)).
+
+**What stays in the specs, and why.**
+
+- **The flag and the box.** `transaction-form.component.spec.ts`: *flags a
+  doubted type in the checked segment, whose name leads with the flag's
+  sentence*, and, under *the type toggle when the scan doubts the type*,
+  *keeps the toggle group and the checked segment's label where they stood
+  when the type flag appears*, *in the 500px dialog* and *at a 375px phone*
+  (a 356px dialog), with the fonts pinned, since Karma serves none.
+- **The category a type change clears and brings back.** The same spec:
+  *announces the category a type change clears*, *brings a cleared category
+  back when the type returns to the side it fits*, *announces the category
+  it brings back* and *forgets the category a type change blanked once
+  another is chosen*; and, *over a category held for the way back*, a scan
+  that moves the type back and names a category of its own for that side,
+  which fills it and says nothing set back.
+- **The cloud read's direction.** `cloud-llm-provider.base.spec.ts`, under
+  *direction*: *files a receipt the model read as a refund as income, its
+  type graded for review*, *reads anything but exactly "income" as a
+  purchase, with no type grade* and *never reads the direction off the sign
+  of the total*. `ai-strategy.service.spec.ts`: *files a refund the cloud
+  read off one photo as income, its type grade carried out*. The prompt's
+  words, every receipt prompt's alike: `prompt-registry.spec.ts`, *asks
+  every receipt prompt for the direction in one set of words, and leaves the
+  statement prompt its own*.
+- **The save.** `transaction-form.component.spec.ts`, *receipt_confirm for a
+  scanned save*.
+
+**What it does not drive.** A save: the form is cancelled, so its
+`receipt_confirm` is the spec's. OpenAI's and Claude's `receiptParse`, which
+read through the same shared base and prompt as Gemini's
+(`cloud-llm-provider.base.spec.ts`, `prompt-registry.spec.ts`). And a keyed model reading
+a real refund through the new prompts, which no run has made (ADR 0185's
+Known gaps).
+
+**Cleanup.** Step 5: nothing is saved, and the arm ends with the page.
+
+Three shots: the flag at the pane's own width, the toggle at 375px, and the
+category set back.
+
+### 105. A refund the cloud reads, through the camera and the wizard
+
+**Emulators**, as Alex, at the pane's own width of 1024px, after journey 104,
+in English ([the run order](#emulator-journeys)), with
+[a provider that answers from the page](#a-provider-that-answers-from-the-page).
+Gemini's itemizer, `receiptItems`, now asks which way the money moved, and
+the camera's and the wizard's receipt pipelines carry the answer: a line the
+model read as income reaches the review card as Income, flagged, on the
+income side's catch-all, and the wizard's categoriser is offered that side
+alone. A confirmed import's record counts the photos it could not attach
+and the types its reader flagged
+([ADR 0185](ADR/0185-a-refund-is-asked-about-at-every-door-and-a-category-follows-its-rows-side-there-and-back.md),
+[receipt-import.md](receipt-import.md), [import-fields.md](import-fields.md),
+[analytics.md](analytics.md)). The answers and the refused photos are the
+page's, state only, diagnostic-grade, and recorded as such; **Process with
+AI** in the camera is a real click.
+
+1. **The camera.** Arm on a full load of `/import/file`, then move to
+   `/transactions` through the header's router. The add button's **Import
+   from Camera** opens the camera dialog. Then, in one console evaluation,
+   log the analytics events, push one photo's answer holding two receipts,
+   an income kettle and an expense mug, and hand the photo to the library
+   picker's input:
+
+   ```js
+   const camera = ng.getComponent(document.querySelector('app-camera-capture'));
+   const analytics = camera.receiptAttempts.analytics;
+   window.e2eEvents = [];
+   const send = analytics.send.bind(analytics);
+   analytics.send = (name, params) => { window.e2eEvents.push([name, JSON.parse(JSON.stringify(params))]); return send(name, params); };
+   const d = new Date();
+   const today = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+   const line = (description, amount, type, receiptId) => ({ date: today, description, amount, type, currency: 'USD',
+     receiptId, confidence: 0.9, dateConfidence: 0.9, merchant: 'e2e-105 Shop', category: 'Groceries', receiptTotal: amount });
+   window.e2eProvider.answers.push(JSON.stringify([
+     line('e2e-105 returned kettle', 24.5, 'income', 1), line('e2e-105 bought mug', 6.4, 'expense', 2)]));
+   const canvas = document.createElement('canvas');
+   canvas.width = canvas.height = 16;
+   const png = await new Promise(resolve => canvas.toBlob(resolve, 'image/png'));
+   const dt = new DataTransfer();
+   dt.items.add(new File([png], 'e2e-105-camera.png', { type: 'image/png' }));
+   const input = document.querySelectorAll('app-camera-capture input[type=file]')[1];
+   input.files = dt.files; input.dispatchEvent(new Event('change', { bubbles: true }));
+   'handed';
+   ```
+
+   The second input is the library picker's, `multiple` with no `capture`;
+   the first, the camera's, carries `capture="environment"`. `send` is the
+   one door every event goes through, ahead of the consent check, so the
+   log hears an event whether or not this origin has consented; it is
+   protected, and `receiptAttempts` private. The service is the root one:
+   arm the log once per load, as the notice log is armed. Flush the dialog,
+   then read its content's widths:
+
+   ```js
+   const content = document.querySelector('app-camera-capture mat-dialog-content');
+   [content.clientWidth, content.scrollWidth];
+   ```
+
+   **Pass:** the second no larger than the first: nothing in the dialog
+   scrolls sideways.
+
+   **What the first run found.** It read `[500, 548]`: the dialog's content
+   scrolled sideways under the photo controls, and the scan mode's badge ran
+   past the dialog's edge. A `min-width` of 500px on the dialog's container,
+   from 768px up, stood inside a 500px dialog that pads its content 24px a
+   side. *fix(ui): the camera dialog keeps its content inside the dialog on a
+   tablet or desktop* removed it, and the second run read `[500, 500]`, with
+   no scrollbar.
+
+   Press **Process with AI** with a real click. The dialog hands its rows to
+   the wizard's review on `/import/file`. Then:
+
+   ```js
+   const w = ng.getComponent(document.querySelector('app-import-wizard'));
+   ({
+     step: w.stepper.selectedIndex,
+     rows: w.extractedTransactions().map(r => [r.description, r.type, r.suggestedCategoryId, r.categoryConfidence, r.fieldConfidence?.type ?? null]),
+     toggles: [...document.querySelectorAll('.transaction-card .type-toggle')].map(toggle =>
+       [toggle.querySelector('.verify-flag')?.getAttribute('aria-hidden') ?? null, toggle.getAttribute('aria-label')]),
+     requests: window.e2eProvider.requests.map(r => [r.handle, r.inlineDataCount,
+       r.text.includes('Return each item as a SEPARATE JSON object'),
+       r.text.includes('"receiptCount": number of distinct receipts'),
+       r.text.includes('money given back to the customer')]),
+     events: window.e2eEvents,
+   });
+   ```
+
+   **Pass:**
+   - `step` 2, the review, with two cards;
+   - the kettle `['e2e-105 returned kettle', 'income', 'other_income', 0.3,
+     0.5]`: Groceries, named for an income line, moved to the income side's
+     catch-all at no more than an answer that resolved to nothing, and the
+     type is graded for review. Its toggle reads `['true', …]`, named by the
+     sentence and then *Income*, and its chip *Other Income*;
+   - the mug `['e2e-105 bought mug', 'expense', 'food_groceries', 0.9,
+     null]`, its toggle `[null, 'Expense']`, its chip *Groceries*;
+   - `requests` is `[['vision', 1, true, false, true]]`: one request, the
+     itemizer's, on the vision handle, carrying the direction's clause. No
+     text request: the camera's converter asks no categoriser;
+   - `events` is one `receipt_import`, `{ outcome: 'ok', path: 'camera',
+     engine: 'cloud', provider: 'gemini', failure: 'none', duration:
+     'under_5s' }`.
+
+   Shot: `105-camera-refund-card.png`.
+2. **Import, with the photos refused in the page.** Arm the notice log on
+   `app-import-wizard` ([In a hidden pane](#in-a-hidden-pane)), then make
+   the transaction service refuse the next two writes that carry a photo,
+   once with each of the app's own photo refusals:
+
+   ```js
+   const tx = ng.getComponent(document.querySelector('app-import-wizard')).importService.transactionService;
+   const add = tx.addTransaction.bind(tx);
+   const refusals = ['RECEIPT_IMAGE_LIMIT_REACHED', 'RECEIPT_ATTACH_FAILED'];
+   tx.addTransaction = (dto, options) => dto.receiptFiles?.length && refusals.length
+     ? Promise.reject(new Error(refusals.shift())) : add(dto, options);
+   'wrapped';
+   ```
+
+   Both rows carry the one photo they were read from, and the importer
+   writes a row whose photo is refused again without it, counting the
+   refusal (`ai-import.service.ts`, #334). `transactionService` is private.
+   **Continue** → **Import 2 Transactions**. **Pass:** the page lands on
+   `/transactions`; `window.e2eNotices` holds one notice, `info`, 9000ms,
+   *Successfully imported 2 transactions. The transactions were saved, but 1
+   receipt photo was not attached — image storage limit reached. The
+   transactions were saved, but 1 receipt photo could not be uploaded. You
+   can attach it from the transaction.*; and `window.e2eEvents` gains one
+   `receipt_confirm`, `{ path: 'camera', engine: 'cloud', type_flagged:
+   'one', type_flipped: 'none' }`. Then past the rules, journey 79's step 6
+   read with `e2e-79` read as `e2e-105`:
+
+   ```bash
+   # e2e-105 bought mug expense food_groceries false
+   # e2e-105 returned kettle income other_income false
+   ```
+
+   and the record:
+
+   ```bash
+   curl -s -H 'Authorization: Bearer owner' "$FS/users/<alex-uid>/imports?pageSize=100" |
+     node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{for(const d of (JSON.parse(s).documents??[])){const f=d.fields;if(f.fileName?.stringValue!=="e2e-105-camera.png")continue;console.log(f.fileName.stringValue,f.status?.stringValue,"door",f.door?.stringValue,"skipped",f.receiptsSkipped?.integerValue,"failed",f.receiptsFailed?.integerValue,"flagged",f.typesFlagged?.integerValue,"flipped",f.typesFlipped?.integerValue)}})'
+   # e2e-105-camera.png completed door camera skipped 1 failed 1 flagged 1 flipped undefined
+   ```
+
+   **Pass:** the kettle is income on `other_income` and the mug an expense
+   on `food_groceries`, neither carrying `fieldConfidence`; the record
+   counts one photo not attached, one not uploaded and one type flagged,
+   and has no flipped count, which a record leaves out at zero.
+3. **The wizard's door.** Move to `/import/history` and back to
+   `/import/file` through the header's router, which builds a new wizard
+   with no hand-off and keeps the arm. Empty the log,
+   `window.e2eProvider.requests.length = 0`, then push one photo's answer
+   holding one receipt of two income lines, as step 1 builds its lines:
+   `e2e-105 returned lamp` at 12 and `e2e-105 returned shade` at 8, both
+   `receiptId` 1, merchant `e2e-105 Lamp Shop`, category `Groceries` and
+   `receiptTotal` 20. Hand a photo named `e2e-105-wizard.png` to the
+   dropzone's input as journey 87's step 4 does, choose **Receipts**, then
+   **Process with AI** and **Continue**. Read step 1's `rows` and `toggles`,
+   the requests as `[handle, inlineDataCount, itemizer's marker,
+   text.includes('Categorize these transactions')]`, and the categoriser's
+   list:
+
+   ```js
+   const ask = window.e2eProvider.requests.find(r => r.text.includes('Categorize these transactions')).text;
+   const start = ask.indexOf('Available categories:');
+   ask.slice(start, ask.indexOf('\n\n', start)).split('\n').slice(1).map(line => line.split(':')[0]);
+   ```
+
+   **Pass:** one card, `['e2e-105 Lamp Shop', 'income', 'other_income', 0.3,
+   0.5]` at 20, its toggle flagged and named by the sentence and *Income*:
+   the two lines of one receipt merged under its merchant, and the merge
+   graded the refund. The requests are `[['vision', 1, true, false],
+   ['text', 0, false, true]]`: the itemizer, then the categoriser, asked
+   because Groceries is the other side's. Its list holds the income side
+   alone, parents and children, `employment` to
+   `other_income_miscellaneous`, and no expense parent, no `food`,
+   `transport` or `shopping`. That is journey 46's criterion, readable in
+   this venue for the first time, and for the income side. The fake's `[]`
+   answers nothing, so the row falls to `other_income` at 0.3. Shot:
+   `105-wizard-refund-card.png`. Import is never pressed.
+4. **Leave.** The vendor read, and the arm's end
+   ([A provider that answers from the page](#a-provider-that-answers-from-the-page)).
+
+**What stays in the specs, and why.**
+
+- **The direction through the itemizer and the merge.**
+  `prompt-registry.spec.ts` holds the prompt's words with every receipt
+  prompt's; `receipt-consolidation.spec.ts`, under *type grade*, grades a
+  lone income line and a merged receipt whose credits outweigh its
+  purchases, and leaves a purchase ungraded; `ai-import.service.spec.ts`,
+  *carries a type grade an extraction row brings, and invents none for a
+  row without one*.
+- **Each door against the emulators.** `import-wizard.smoke.spec.ts`: *a
+  refund the cloud read through the camera reaches review as income,
+  flagged, and is written on the income catch-all* and *a refund photo the
+  cloud itemized reaches review as income, flagged on its toggle, and is
+  written on the income catch-all*.
+- **The categoriser's one side.** `categorization.utils.spec.ts`, under *a
+  row type is given*.
+- **The counts and the events.** `ai-import.service.spec.ts`, under *the
+  reader's type flags*; `firestore-rules.smoke.spec.ts`, *accepts the type
+  counts a confirmed receipt records* and *rejects a type count that is not
+  a count*; `receipt-attempt.service.spec.ts`, under
+  *buildReceiptConfirmPayload*; `import-wizard.component.spec.ts`, under
+  *the receipt confirm event*; and `analytics.service.smoke.spec.ts`,
+  *should send a receipt confirm's buckets through the real pipeline*.
+- **The camera dialog's width.** `camera-capture.component.spec.ts`, under
+  *in a 500px dialog*. Karma's window is 756px, under the 768px query, so
+  the dialog at 1024px is this journey's.
+
+**What it does not drive.** Several photos at once, which go through the
+shared base's `multiImageReceipts`, as OpenAI's and Claude's readers of
+these doors do (`cloud-llm-provider.base.spec.ts`, `prompt-registry.spec.ts`,
+and the consolidation's specs above); and Gemini's `receiptSummary`, which
+no screen reaches (ADR 0185's Known gaps). A real quota or a failed upload:
+the page refused the photos.
+
+**Cleanup.** The two rows and the record stay for journey 107 to read, and
+go with the emulators at the [teardown](#teardown). The arm ends with the
+page (step 4).
+
+Two shots: the camera's flagged card, and the wizard's.
+
+### 106. A second flip, a same-side merge, and a late catalogue
+
+**Emulators**, as Alex, at the pane's own width of 1024px, after journey 105,
+in English ([the run order](#emulator-journeys)), with no provider. The
+review card now remembers the category a change of side moved, and a flip
+back brings it back at its grade; a merge files its survivor through the
+same rule whichever side the net lands on; and when the account's
+categories arrive after the rows, every row is filed on its own side once,
+and said once. A confirmed import's record counts the types its reader
+flagged and those flipped
+([ADR 0185](ADR/0185-a-refund-is-asked-about-at-every-door-and-a-category-follows-its-rows-side-there-and-back.md),
+[receipt-import.md](receipt-import.md), [import-fields.md](import-fields.md),
+[accessibility.md](accessibility.md)). The rows reach the card by journey
+79's hand-off, converted while the catalogue is emptied in the page, and
+step 3 puts a wrong-side id back the same way: state only,
+diagnostic-grade, and recorded as such.
+
+1. **Five rows converted with no catalogue.** On `/import/file`, once the
+   wizard holds its catalogue, in one console evaluation:
+
+   ```js
+   const w = ng.getComponent(document.querySelector('app-import-wizard'));
+   const all = w.categoryService.categories();
+   w.categoryService.categories.set([]);
+   const today = new Date();
+   const row = (description, amount, extra) => ({
+     date: today, description, amount, currency: 'USD', confidence: 0.9, source: 'native', ...extra,
+   });
+   const rows = w.importService.convertStrategyResultToCategories({
+     source: 'native', confidence: 0.9, processingTimeMs: 0,
+     transactions: [
+       row('e2e-106 doubted purchase', 6.4, { type: 'expense', suggestedCategoryId: 'food_groceries',
+         fieldConfidence: { amount: 0.8, date: 0.8, type: 0.3 } }),
+       row('e2e-106 refund', 5, { type: 'income', categoryAttempted: false,
+         fieldConfidence: { amount: 0.8, date: 0.9, type: 0.5 } }),
+       row('e2e-106 kept refund', 20, { type: 'income', suggestedCategoryId: 'food_groceries',
+         fieldConfidence: { amount: 0.8, date: 0.9, type: 0.5 } }),
+       row('e2e-106 misread refund', 3.3, { type: 'income', categoryAttempted: false,
+         fieldConfidence: { amount: 0.8, date: 0.9, type: 0.5 } }),
+       row('e2e-106 plain purchase', 4.2, { type: 'expense', suggestedCategoryId: 'food_groceries',
+         fieldConfidence: { amount: 0.8, date: 0.8 } }),
+     ],
+   });
+   w.categoryService.categories.set(all);
+   const duplicates = await w.duplicateService.checkDuplicates(rows);
+   history.replaceState({
+     importResult: {
+       source: 'image', fileType: 'receipt_image', fileName: 'e2e-106 hand-off', fileSize: 5, confidence: 0.9,
+       warnings: [], duplicates, transactions: w.duplicateService.markDuplicates(rows, duplicates),
+     },
+     fromCamera: true, door: 'camera', multiImage: true,
+   }, '');
+   rows.map(r => [r.description, r.type, r.suggestedCategoryId, r.categoryConfidence]);
+   ```
+
+   **Pass:** the doubted purchase and the plain purchase on
+   `food_groceries` at 0.9, the refund and the misread refund on
+   `other_income` at 0.1, and the kept refund, an income, still on
+   `food_groceries` at 0.9: an empty catalogue cannot show that Groceries
+   is the other side's, so the converter kept it. `categoryService` is
+   private, as are `importService` and `duplicateService` (journey 79).
+   Then reload, and once the review shows:
+
+   ```js
+   const w = ng.getComponent(document.querySelector('app-import-wizard'));
+   ({
+     categories: w.categories().length,
+     step: w.stepper.selectedIndex,
+     rows: w.extractedTransactions().map(r =>
+       [r.description, r.type, r.suggestedCategoryId, r.categoryConfidence, r.movedCategory?.suggestedCategoryId ?? null]),
+     live: document.querySelector('.cdk-live-announcer-element')?.textContent,
+   });
+   ```
+
+   **Pass — the catalogue's arrival files the kept refund on its side.**
+   The catalogue is loaded (133 on the first run) and the step is 2, the
+   review, with five cards. The kept refund reads `['e2e-106 kept refund',
+   'income', 'other_income', 0.3, 'food_groceries']`: moved to the income
+   side's catch-all, no higher than 0.3, with Groceries remembered. The
+   other four are as converted, with nothing remembered. The live element
+   reads *Rows filed under the other side's category moved to this side's
+   catch-all now that your categories have loaded*, said once and with no
+   count. The load bound the rows before the catalogue arrived, the order
+   the arrival is for.
+2. **The second flip.** A load drops any wrapper, so arm the analytics log
+   now, as journey 105's step 1 does, on the wizard's own
+   `ng.getComponent(document.querySelector('app-import-wizard')).analytics`,
+   the same root service. Then click the doubted purchase's toggle, and read
+   the live element as a separate evaluation. **Pass:** the row reads
+   income on `other_income` at 0.3, and the live element *Category for
+   e2e-106 doubted purchase changed to Other Income*. Click the toggle
+   again, then:
+
+   ```js
+   const w = ng.getComponent(document.querySelector('app-import-wizard'));
+   const r = w.extractedTransactions().find(row => row.description === 'e2e-106 doubted purchase');
+   const card = [...document.querySelectorAll('.transaction-card')].find(c => c.textContent.includes('e2e-106 doubted purchase'));
+   const offers = type => ng.getComponent(card.querySelector('app-category-suggestion'))
+     .sortedCategories().some(category => category.type === type);
+   ({
+     row: [r.type, r.suggestedCategoryId, r.categoryConfidence, r.movedCategory?.suggestedCategoryId ?? null,
+       r.typeFlaggedAs ?? null, r.fieldConfidence?.type ?? null],
+     flag: !!card.querySelector('.type-toggle .verify-flag'),
+     offers: [offers('income'), offers('expense')],
+     live: document.querySelector('.cdk-live-announcer-element')?.textContent,
+   });
+   ```
+
+   **Pass — the flip back brings Groceries back.** `row` is `['expense',
+   'food_groceries', 0.9, null, 'expense', null]`: the category the first
+   flip moved is back at its old grade and the mark is gone; the side the
+   reader flagged, expense, is kept through the second flip; and the type
+   grade went with the first. No flag; the menu offers the expense side
+   alone, `[false, true]`; and the live element reads *Category for e2e-106
+   doubted purchase changed to Groceries*. Before this, a second flip left
+   the row on Other, the expense side's catch-all (ADR 0162's Known gaps).
+   Shot: `106-second-flip.png`.
+3. **A merge on one side.** Step 1's arrival already moved the kept refund,
+   so put its wrong-side id back from the page:
+
+   ```js
+   const w = ng.getComponent(document.querySelector('app-import-wizard'));
+   w.extractedTransactions.update(rows => rows.map(r => r.description === 'e2e-106 kept refund'
+     ? { ...r, suggestedCategoryId: 'food_groceries', categoryConfidence: 0.9, movedCategory: undefined } : r));
+   'put back';
+   ```
+
+   Flush the page: the kept refund's chip reads *Groceries*. Then merge the
+   refund into the kept refund, both incomes, with the method the card's
+   **Merge into…** item calls, `(click)="mergeInto(row, target)"`:
+
+   ```js
+   const table = ng.getComponent(document.querySelector('app-transaction-preview-table'));
+   const find = description => table.transactions.find(r => r.description === description);
+   table.mergeInto(find('e2e-106 refund'), find('e2e-106 kept refund'));
+   'merged';
+   ```
+
+   Flush, then read
+   `w.extractedTransactions().map(r => [r.description, r.type, r.amount, r.suggestedCategoryId, r.categoryConfidence, r.movedCategory?.suggestedCategoryId ?? null])`,
+   with `w` bound as above, and the live element as a separate evaluation.
+   **Pass:** four rows, and the survivor reads `['e2e-106 kept refund',
+   'income', 25, 'other_income', 0.3, 'food_groceries']`: re-filed on the
+   side it stays on, as a flip would file it. The live element reads
+   *Category for e2e-106 kept refund changed to Other Income*. Before this,
+   a merge on one side left a wrong-side category where it was (ADR 0162's
+   Known gaps). Shot: `106-merge-refiled.png`.
+4. **The misread refund flipped once.** Click its toggle, then read its
+   `[type, suggestedCategoryId, categoryConfidence, typeFlaggedAs]` and the
+   live element. **Pass:** `['expense', 'other_expense', 0.1, 'income']`:
+   the expense side's catch-all at no more than the grade it had, with the
+   reader's verdict, income, kept; and *Category for e2e-106 misread refund
+   changed to Other*.
+5. **Import.** **Continue**. **Pass:** the button reads *Import 3
+   Transactions*: the doubted purchase is left out as a duplicate (below).
+   Press it. **Pass:** the page lands on `/transactions`, and
+   `window.e2eEvents` holds one `receipt_confirm`, `{ path: 'camera', engine:
+   'none', type_flagged: 'several', type_flipped: 'one' }`: journey 79's
+   hand-off is a camera one with no diagnostics. Then past the rules,
+   journey 79's step 6 read with `e2e-79` read as `e2e-106`:
+
+   ```bash
+   # e2e-106 kept refund income other_income false
+   # e2e-106 misread refund expense other_expense false
+   # e2e-106 plain purchase expense food_groceries false
+   ```
+
+   and the record:
+
+   ```bash
+   curl -s -H 'Authorization: Bearer owner' "$FS/users/<alex-uid>/imports?pageSize=100" |
+     node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{for(const d of (JSON.parse(s).documents??[])){const f=d.fields;if(f.fileName?.stringValue!=="e2e-106 hand-off")continue;console.log(f.fileName.stringValue,f.status?.stringValue,"success",f.successCount?.integerValue,"skipped",f.skippedCount?.integerValue,"dups",f.duplicatesSkipped?.integerValue,"flagged",f.typesFlagged?.integerValue,"flipped",f.typesFlipped?.integerValue)}})'
+   # e2e-106 hand-off completed success 3 skipped 1 dups 1 flagged 2 flipped 1
+   ```
+
+   **Pass:** the three rows as listed, none with `fieldConfidence`, and the
+   record counting two types flagged and one flipped. The kept refund was
+   flagged and stays income; the misread refund was flagged and now stands
+   on the other side; the plain purchase was never flagged; the refund
+   merged away counts as neither; and the doubted purchase was not written.
+
+   **The duplicate.** On the first run the doubted purchase, an expense of
+   6.40 today, was taken as an exact duplicate of journey 79's flipped row,
+   `e2e-79 doubted purchase`, an income of 6.40 written the same day: the
+   check's exact branch compared the day, the amount and the description,
+   and not the type. *fix(import): a refund is never a duplicate of the
+   purchase it returns* makes it compare the type too. On the fixed tree
+   the doubted purchase meets journey 105's mug instead, an expense of 6.40
+   written the same day, which the check takes as a likely duplicate (the
+   same day, amount and side), so the import still writes three. The second
+   run read it in the venue: before pressing Import, the doubted purchase's
+   check,
+   `w.duplicateChecks().find(c => c.transactionId === w.extractedTransactions().find(r => r.description === 'e2e-106 doubted purchase').id)`,
+   had `matchType` `'likely'`, against journey 105's mug.
+
+**What stays in the specs, and why.**
+
+- **The card.** `transaction-preview-table.component.spec.ts`: *brings the
+  category a flip moved back, at its grade, when the row is flipped back*,
+  *keeps the reader's verdict through a second flip*, *announces a category
+  a flip back brings back*, *re-files a survivor still holding the other
+  side's category when the net stays on its side* and *announces a category
+  a same-side merge moved*; and the describe *TransactionPreviewTableComponent,
+  its catalogue arriving after its rows*, which files a row on its side
+  once the catalogue arrives after the rows painted, files them silently
+  when it arrives with the first binding, and leaves them alone when a
+  loaded catalogue changes again.
+- **The marks and the counts.** `import-review.utils.spec.ts`, under *the
+  type the reader flagged*, and its split and merge cases for both marks;
+  `ai-import.service.spec.ts`, under *the reader's type flags*.
+- **The arrival against the emulators.** `import-wizard.smoke.spec.ts`: *a
+  hand-off row filed before the categories loaded moves to its side when
+  the wizard's catalogue arrives, and says so once*.
+- **The duplicate.** `duplicate-detection.service.spec.ts`: *never marks a
+  refund a duplicate of the purchase it returns, though the day, the amount
+  and the description match*, and its case in
+  `duplicate-detection.smoke.spec.ts`.
+
+**What it does not drive.** The card at 375px: a reload at the size, which
+the `BreakpointObserver` trap asks for, starts the review over from the rows
+as handed, and journey 79's step 5 reads the same card there. The merge
+menu's own click: step 3 calls what it calls. And a catalogue that changes
+once loaded, a category edited in another tab, for which the merge's
+re-file is the guard.
+
+**Cleanup.** The three rows and the record stay for journey 107 to read,
+and go with the emulators at the [teardown](#teardown).
+
+Two shots: the doubted purchase after its second flip, and the merged
+survivor.
+
+### 107. Import History counts what the review saw
+
+**Emulators**, as Alex, at the pane's own width of 1024px, after journey 106,
+in English ([the run order](#emulator-journeys)), with no provider. A
+completed import's card now draws a tile for every count its record carries:
+*Photos not attached* and *Photos not uploaded* beside *Duplicates
+skipped*, which the duplicates tile is now called, and *Type flagged* and
+*Type changed* for the two new counts. A tile's caption may break at its
+edge, and its text is centred
+([ADR 0185](ADR/0185-a-refund-is-asked-about-at-every-door-and-a-category-follows-its-rows-side-there-and-back.md),
+[import-fields.md](import-fields.md), [ui-overflow.md](ui-overflow.md)).
+It reads the records journeys 105 and 106 wrote.
+
+1. **In English.** Move to `/import/history`, flush it, then:
+
+   ```js
+   const read = name => {
+     const card = [...document.querySelectorAll('.history-item')].find(c => c.textContent.includes(name));
+     return card && {
+       stats: [...card.querySelectorAll('.stat')].map(s =>
+         [s.querySelector('.label')?.textContent.trim(), s.querySelector('.value')?.textContent.trim()]),
+       chips: [...card.querySelectorAll('mat-chip, .mat-mdc-chip')].map(c => c.textContent.trim()),
+     };
+   };
+   [read('e2e-105-camera.png'), read('e2e-106 hand-off')];
+   ```
+
+   **Pass:** journey 105's card, chips *Completed*, *Receipt*, its size,
+   *Cloud AI*, *Gemini* and *Under 1 s*, reads *Transactions* 2, *Income*
+   +$24.50, *Expense* -$6.40, *Photos not attached* 1, *Photos not uploaded*
+   1 and *Type flagged* 1, and draws no *Type changed* tile. Journey 106's,
+   chips *Completed*, *Receipt* and 5 B, reads *Transactions* 3, *Income*
+   +$25.00, *Expense* -$7.50, *Duplicates skipped* 1, *Type flagged* 2 and
+   *Type changed* 1, and draws no photo tile. A first read in a hidden pane
+   can come back empty: flush and read again. Shot:
+   `107-history-counts-en.png`.
+2. **In Japanese and in Traditional Chinese.** Settings → Profile →
+   **Language** → 日本語, as journey 91's step 2 does, then `/import/history`
+   and step 1's read. **Pass:** the same figures, under *添付されなかった写真*,
+   *アップロードできなかった写真*, *スキップした重複*, *要確認の種類* and
+   *変更した種類*, and no tile reading English. Shot:
+   `107-history-counts-ja.png`. Then 繁體中文: *未附加的照片*, *無法上傳的照片*,
+   *已跳過重複項目*, *需確認類型* and *已變更類型*. Shot:
+   `107-history-counts-tc.png`. Then **Language** → **English**. The first
+   run did not run this step on these two cards; it read the two type
+   tiles' labels in both languages on journey 79's record, with journey 91.
+3. **At 375px, reloaded at the size.** Set the pane's width to 375px and
+   reload `/import/history` at it, since the `BreakpointObserver` may not
+   hear an emulated resize; then read only. Load the checkout's own
+   axe-core and define `audit` as journey 77 does, then:
+
+   ```js
+   const cards = [...document.querySelectorAll('.history-item')].filter(c => /e2e-10[56]/.test(c.textContent));
+   const out = [];
+   for (const card of cards) {
+     out.push([card.scrollWidth <= card.clientWidth + 1,
+       [...card.querySelectorAll('.stat')].every(s => s.scrollWidth <= s.clientWidth + 1),
+       Math.round(card.getBoundingClientRect().width), await audit(card)]);
+   }
+   [innerWidth, document.documentElement.scrollWidth <= document.documentElement.clientWidth, out];
+   ```
+
+   **Pass:** `[375, true, [[true, true, 303, []], [true, true, 303, []]]]`:
+   nothing scrolls sideways, each card and every tile in it fits, each card
+   is 303px wide, and axe finds nothing on either. Shot:
+   `107-history-375.png`. Clear the width.
+
+**What stays in the specs, and why.**
+
+- **The tiles.** `import-history.component.spec.ts`, under *the counts a
+  record carries*: the photo tiles, the duplicates label, the type tiles,
+  the tiles a record without those counts does not draw, and *draws a tile
+  for every optional count a completed record can carry*, the gate; and
+  *keeps every tile of a record with photo counters inside the card at
+  343px*. `import-history.component.smoke.spec.ts`: *a stored record's
+  photo counters render on their own tiles* and *a stored record's type
+  counts render on their own tiles*.
+- **The record's shape.** `firestore-rules.smoke.spec.ts`: *accepts the
+  type counts a confirmed receipt records*, and *rejects a type count that
+  is not a count*, on the create and on the completion update.
+- **The labels.** `translation-keys.spec.ts` holds ja and tc to the keys,
+  and `contrast:check` scores the figures on `--surface-muted`.
+
+**What it does not drive.** The cards in the dark theme, whose figures'
+pairs `contrast:check` scores; and a record whose photos a real quota or a
+real upload refused, since journey 105's page refused them.
+
+**Cleanup.** The language is back on English (step 2). The records and the
+rows go with the emulators at the [teardown](#teardown).
+
+Four shots: the two cards in English, in Japanese and in Traditional
+Chinese, and at 375px.
+
+### 108. A queued refund drains onto its own side
+
+**Emulators**, as Alex, at the pane's own width of 1024px, after journey 107,
+in English ([the run order](#emulator-journeys)), with
+[a provider that answers from the page](#a-provider-that-answers-from-the-page)
+and the queue empty, as journey 99's cleanup leaves it. The drain reads a
+queued photo through the same cloud reader as the form, so a refund it reads
+is now filed as income. And the reader resolves the category it names
+against the account's catalogue once that has loaded, and the shipped one
+until then, so a refund named for the expense side lands on the income
+side's catch-all even while the category signal is empty, where every name
+used to resolve to `other_expense`
+([ADR 0185](ADR/0185-a-refund-is-asked-about-at-every-door-and-a-category-follows-its-rows-side-there-and-back.md),
+[receipt-import.md](receipt-import.md)). The drain still writes unreviewed
+([ADR 0162](ADR/0162-a-refund-read-on-the-device-is-filed-as-income-and-the-review-asks-about-it.md)'s
+Known gaps). The answer and the emptied signal are the page's, state only,
+diagnostic-grade, and recorded as such.
+
+1. **A scan queued.** Arm on a full load of `/import/file`. Read the
+   queue's count first:
+
+   ```js
+   (await ng.getComponent(document.querySelector('app-import-wizard')).importService.offlineQueue.getPendingImages()).length;
+   ```
+
+   **Pass:** 0. Then journey 87's step 4, with the image named
+   `e2e-108-receipt.png`: offline, **Receipts**, **Process with AI**. Keep
+   the pane in view until the scan is queued: a tab turning visible checks
+   reachability again and puts the app back online. **Pass:** the offline
+   card, *1 image queued for processing when online*; one entry,
+   `'pending'`, `retryCount` 0; and `window.e2eProvider.requests` empty.
+2. **The drain over an emptied signal.** Push a refund's answer as journey
+   104's step 2 does, with `merchant: 'e2e-108 refund desk'`, `amount: 9.99`,
+   `items: []`, `receiptDetails: ''`, `suggestedCategory: 'Groceries'` and
+   `type: 'income'`. Then, in one evaluation, empty the category signal and
+   bring the app back online, the event the queue drains on:
+
+   ```js
+   ng.getComponent(document.querySelector('app-import-wizard')).categoryService.categories.set([]);
+   window.dispatchEvent(new Event('online'));
+   'online';
+   ```
+
+   Then read, in separate evaluations until it stops changing:
+
+   ```js
+   const w = ng.getComponent(document.querySelector('app-import-wizard'));
+   [(await w.importService.offlineQueue.getPendingImages()).length, w.categoryService.categories().length,
+     window.e2eProvider.requests.map(r => [r.handle, r.inlineDataCount, r.text.includes('"receiptCount": number of distinct receipts')])];
+   ```
+
+   **Pass:** `[0, 0, [['text', 1, true]]]`. The queue is empty, and the
+   signal is still empty: that is the step's control, and a signal the
+   listener refilled before the drain read it makes the step inconclusive,
+   never a pass. One vision request, `receiptParse` on the text handle. The
+   bring-up the reconnection starts reads the patched key, which keeps
+   Gemini up through it.
+3. **Past the rules.** Journey 79's step 6 read, with `e2e-79` read as
+   `e2e-108`. **Pass:** `e2e-108 refund desk income other_income false`: an
+   income on the income side's catch-all, and no grade written, since the
+   drain writes the row unreviewed. Groceries could not ride onto an
+   income row, and with the signal empty the shipped catalogue answered
+   for the account's. Then the vendor read and the arm's end
+   ([A provider that answers from the page](#a-provider-that-answers-from-the-page)),
+   and on `/transactions` the row. Shot: `108-drained-refund.png`.
+
+**What stays in the specs, and why.**
+
+- **The drain's filing.** `offline-queue-processor.service.spec.ts`: *files
+  a cloud-read refund named for the expense side under the income catch-all
+  while the account's categories have not loaded*, and *keeps an expense
+  row's id no catalogue holds*. `offline-queue-processor.service.smoke.spec.ts`:
+  *drains a refund the cloud read off one photo as income through the real
+  strategy, its type grade unwritten*.
+- **The catalogue it reads.** `category.service.spec.ts`, under
+  *categoriesOrDefaults*: *answers the shipped catalogue until the account's
+  has loaded, then the account's*; and `cloud-llm-provider.base.spec.ts`,
+  *resolves a receipt's category name against the shipped catalogue while
+  the account's has not loaded*.
+
+**What it does not drive.** A drain read on the device, which no browser
+has; and a review of the drained row, which has none (ADR 0185's Known
+gaps).
+
+**Cleanup.** The queue is empty (step 2). The row goes with the emulators at
+the [teardown](#teardown).
+
+One shot: the drained row on `/transactions`.
+
 ## Evidence
 
 Screenshots go to a scratch folder **outside the repo**, named as above, and
@@ -9268,7 +10525,12 @@ order, a dashboard tab fitting a real 375px bar in three languages, Material's
 hidden words and a currency formatted in the account's language on the pages
 that paint them, and an account with no name read as a word on every page
 that names it, with the member document the household page rewrites
-(journeys 101 to 103).
+(journeys 101 to 103); and a provider's real prompt answered from the page
+and carried by the real transport, reader and converter onto a real form
+and review card, the categoriser's real request offering one side, a card
+flipped twice and merged with the live region heard after each, a record's
+tiles in three languages at a real phone's width, and a real drain over an
+emptied catalogue, written past the rules (journeys 104 to 108).
 
 A journey that could be a spec should be deleted from here and written as one.
 
@@ -9292,7 +10554,7 @@ review card's type or category, the camera's converter, or the form's scanned
 type, and journey 80 on one that touches the session: the auth listener and
 its reload (`auth.service.ts`, `page-reload.ts`), where the web keeps the
 session (`appAuthFactory` in `app.config.ts`), the route guards
-(`auth.guard.ts`), or this protocol's session writes. Journeys 81 to 103 follow
+(`auth.guard.ts`), or this protocol's session writes. Journeys 81 to 108 follow
 it on a branch that touches what each one drives: 81 a theme token, a
 stylesheet's colours or the chart palette; 82 a category colour's reader —
 the category chip, the `categoryGlyph` and `readableOn` pipes, a category
@@ -9343,10 +10605,23 @@ parse (`app-date-adapter.ts`, `app-datepicker-intl.ts`,
 unreadable-text error in any form, or the bottom bar's labels (`nav-items.ts`
 and its `shortLabelKey`); 102 the stepper's words (`app-material-intl.ts`),
 a sortable header's description, or how a report writes an amount
-(`LocaleCurrencyPipe`, `CurrencyService.formatCurrency`); and 103 how an
+(`LocaleCurrencyPipe`, `CurrencyService.formatCurrency`); 103 how an
 account or a member with no name reads (`person-name.utils.ts`, the
 sign-in's stored name, the header's `accountName`, the member chip) or the
-dashboard's greeting.
+dashboard's greeting; 104 the form's scan — `scanReceipt`, its type toggle
+or flag, or the category a type change clears and brings back — or how a
+single photo is read in the cloud (`receiptParse`, `convertParsedReceipt`);
+105 Gemini's itemizer (`receiptItems`, `extractWithPositionMetadata`), the
+receipt pipeline it feeds (`processMultipleWithCloud`,
+`consolidateReceiptItems`, `categorizeMultiImageTransactions`, the
+categoriser's catalogue in `buildCategoryPromptCatalog`), the camera's
+converter, or the importer's photo refusals and counts; 106 the review
+card's flip or merge (`toggleType`, `categoryOnSide`, `mergeInto`,
+`mergeImportRows`), its catalogue's arrival (`holdRowsToTheirSides`), the
+reader's marks (`countTypeAnswers`), or the duplicate check; 107 what a
+completed import's record counts, Import History's tiles, the rules'
+import record validation, or `receipt_confirm`; and 108 how the drain files
+a reading or the catalogue it resolves against (`categoriesOrDefaults`).
 **Journey 78 runs once**, on production, after the merge — when the deploys
 it checks have finished — because what it proves is the deployed rules,
 indexes and callable, which exist only then.
