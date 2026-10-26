@@ -402,6 +402,56 @@ describe('TransactionPreviewTableComponent', () => {
       expect(filed(flip({ suggestedCategoryId: 'retired', categoryConfidence: 0.7 })))
         .toEqual({ type: 'income', category: 'retired', grade: 0.7 });
     });
+
+    it('brings the category a flip moved back, at its grade, when the row is flipped back', () => {
+      // The catch-all the first flip filed the row on was a stand-in, not an
+      // answer: a reviewer who flips and flips again is undoing the flip.
+      const away = flip({ suggestedCategoryId: 'food', categoryConfidence: 0.9 });
+      expect(away.movedCategory)
+        .withContext('the flip remembers what it moved')
+        .toEqual({ suggestedCategoryId: 'food', categoryConfidence: 0.9 });
+
+      component.toggleType(away);
+
+      const back = component.transactions[0];
+      expect(filed(back)).toEqual({ type: 'expense', category: 'food', grade: 0.9 });
+      expect(back.movedCategory).withContext('restored, so nothing is left to bring back').toBeUndefined();
+    });
+
+    it('forgets the moved category once the reviewer picks one', () => {
+      // A pin: a pick is an answer of the reviewer's own, so the category a
+      // flip once moved is not what a flip back should bring back over it.
+      // Mutation: drop `movedCategory: undefined` from updateCategory.
+      const away = flip({ suggestedCategoryId: 'food', categoryConfidence: 0.9 });
+      expect(away.movedCategory).withContext('precondition: the flip marked the row').toBeDefined();
+
+      component.updateCategory(away, 'salary');
+      const picked = component.transactions[0];
+      expect(picked.movedCategory).withContext('a pick clears the mark').toBeUndefined();
+
+      component.toggleType(picked);
+
+      expect(filed(component.transactions[0]))
+        .toEqual({ type: 'expense', category: 'other_expense', grade: UNRESOLVED_CATEGORY_CONFIDENCE });
+    });
+
+    it('keeps the mark when the reviewer picks the category the row already holds', () => {
+      // A pin: choosing what the chip already shows changes nothing, so it
+      // forgets nothing either. Mutation: delete updateCategory's early
+      // return, so the same-category pick clears the mark.
+      const away = flip({ suggestedCategoryId: 'food', categoryConfidence: 0.9 });
+      expect(away.suggestedCategoryId).withContext('precondition: on the catch-all').toBe('other_income');
+
+      component.updateCategory(away, 'other_income');
+      const same = component.transactions[0];
+      expect(same.movedCategory)
+        .withContext('the pick changed nothing')
+        .toEqual({ suggestedCategoryId: 'food', categoryConfidence: 0.9 });
+
+      component.toggleType(same);
+
+      expect(filed(component.transactions[0])).toEqual({ type: 'expense', category: 'food', grade: 0.9 });
+    });
   });
 
   describe('updateCategory', () => {
@@ -4075,6 +4125,20 @@ describe('TransactionPreviewTableComponent, the offer chip through its own templ
         .toEqual({ type: 'income', amount: 15, category: 'other_income', grade: UNRESOLVED_CATEGORY_CONFIDENCE });
     });
 
+    it('brings the purchase\'s category back when a survivor the net turned is flipped back', () => {
+      // The merge filed the purchase on the catch-all because the net turned
+      // it, and remembered what it moved: flipping the survivor back is
+      // undoing the net's turn, so the purchase's own category returns at
+      // its grade.
+      const survivor = mergeRefundIntoPurchase(5, 20);
+      expect(survivor.type).withContext('precondition: the net turned the survivor').toBe('income');
+
+      component.toggleType(survivor);
+
+      expect(filed(component.transactions.find(t => t.id === 'purchase')!))
+        .toEqual({ type: 'expense', amount: 15, category: 'food', grade: 0.9 });
+    });
+
     it('keeps the survivor\'s category when the net stays on its side', () => {
       // A pin: a refund smaller than its purchase leaves the row an expense,
       // and its food still fits, so nothing moves and nothing is said.
@@ -4680,6 +4744,25 @@ describe('TransactionPreviewTableComponent, the offer chip through its own templ
 
       expect(mockAnnouncer.announce).toHaveBeenCalledOnceWith(
         'import.announceCategoryRefiled:{"description":"Coffee Shop","category":"categoryNames.otherIncome"}'
+      );
+    });
+
+    it('announces a category a flip back brings back', () => {
+      // The way back moves the chip as the way there did, so it is said the
+      // same way, with the name of the category it restored.
+      const row = makeRow();
+      component.transactions = [row];
+      component.categories = flipCatalogue();
+      fixture.detectChanges();
+      component.toggleType(row);
+      mockAnnouncer.announce.calls.reset();
+
+      // replaceRow matches by identity, so the second flip is handed the row
+      // the first one left on the card.
+      component.toggleType(component.transactions[0]);
+
+      expect(mockAnnouncer.announce).toHaveBeenCalledOnceWith(
+        'import.announceCategoryRefiled:{"description":"Coffee Shop","category":"categoryNames.food"}'
       );
     });
 

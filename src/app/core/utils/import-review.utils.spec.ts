@@ -688,6 +688,20 @@ describe('import-review.utils', () => {
       expect(part.fieldConfidence).toEqual({ date: 0.9, type: 0.5 });
     });
 
+    it('carries the category a flip moved onto both halves', () => {
+      // A pin: a split does not touch the side, so each half can still be
+      // flipped back to the category the flip once moved.
+      // Mutation: `delete part.movedCategory`.
+      const remembered = { suggestedCategoryId: 'food', categoryConfidence: 0.9 };
+      const [kept, part] = splitImportRow(
+        row({ type: 'income', suggestedCategoryId: 'other_income', categoryConfidence: 0.3, movedCategory: remembered }),
+        1.2, 'split_1'
+      )!;
+
+      expect(kept.movedCategory).toEqual(remembered);
+      expect(part.movedCategory).toEqual(remembered);
+    });
+
     it('gives the part its own date object, equal to the original\'s but not shared', () => {
       const original = row();
       const [, part] = splitImportRow(original, 1.2, 'split_1')!;
@@ -1056,6 +1070,46 @@ describe('import-review.utils', () => {
         source({ type: 'income', fieldConfidence: { type: 0.6 } })
       )!;
       expect(merged.fieldConfidence).toEqual({ date: 0.9, type: 0.5 });
+    });
+
+    it('forgets the target\'s remembered category when the rows sit on opposite sides', () => {
+      // A refund folded into its purchase: the mark says which category a
+      // flip moved off the target, and the net decides the side afresh, so
+      // whichever way it points the old mark no longer describes the row.
+      // Absent, not undefined, the way the other dropped keys leave.
+      const remembered = { suggestedCategoryId: 'salary', categoryConfidence: 0.9 };
+      const refund = (amount: number) => target({
+        type: 'income', amount, suggestedCategoryId: 'other_income', categoryConfidence: 0.3,
+        movedCategory: remembered,
+      });
+
+      const stays = mergeImportRows(refund(100), source({ type: 'expense', amount: 30 }))!;
+      expect(stays.type).withContext('precondition: the net stays on the refund\'s side').toBe('income');
+      expect('movedCategory' in stays).withContext('the net stays on the target\'s side').toBeFalse();
+
+      const turns = mergeImportRows(refund(30), source({ type: 'expense', amount: 100 }))!;
+      expect(turns.type).withContext('precondition: the net turns to the purchase\'s side').toBe('expense');
+      expect('movedCategory' in turns).withContext('the net turns the row').toBeFalse();
+    });
+
+    it('keeps the survivor\'s remembered category on a same-side merge', () => {
+      // A pin: two rows of one side net to that side, so nothing about the
+      // target's side changed and what its flip moved is still the row's to
+      // bring back. The source's own mark never rides.
+      // Mutation: an unconditional `delete merged.movedCategory`.
+      const remembered = { suggestedCategoryId: 'food', categoryConfidence: 0.9 };
+      const merged = mergeImportRows(
+        target({
+          type: 'income', suggestedCategoryId: 'other_income', categoryConfidence: 0.3,
+          movedCategory: remembered,
+        }),
+        source({
+          type: 'income', suggestedCategoryId: 'other_income', categoryConfidence: 0.3,
+          movedCategory: { suggestedCategoryId: 'groceries', categoryConfidence: 0.5 },
+        })
+      )!;
+
+      expect(merged.movedCategory).toEqual(remembered);
     });
 
     it('refuses to merge rows in different currencies', () => {
