@@ -59,8 +59,8 @@ import {
   FieldConfidence,
   Goal,
   SplitPart,
-  VERIFY_FIELD_THRESHOLD,
   baseCurrencyOf,
+  gradeNeedsVerification,
   normalizeShares,
   shareKey
 } from '../../../models';
@@ -1543,8 +1543,7 @@ export class TransactionFormComponent implements OnInit, AfterViewInit, OnDestro
   }
 
   private readerDoubts(field: keyof FieldConfidence): boolean {
-    const confidence = this.scanFieldConfidence()?.[field];
-    return confidence !== undefined && confidence < VERIFY_FIELD_THRESHOLD;
+    return gradeNeedsVerification(this.scanFieldConfidence()?.[field]);
   }
 
   /** The scanned date still standing in the field, when it is on another day than today. */

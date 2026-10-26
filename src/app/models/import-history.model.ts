@@ -151,6 +151,16 @@ export interface FieldConfidence {
 /** Below this, a field is worth the reviewer's attention before importing. */
 export const VERIFY_FIELD_THRESHOLD = 0.7;
 
+/**
+ * Whether a grade sends its field to the reviewer. A grade under the bar does;
+ * one exactly at it passes. An ungraded field is nobody's doubt: CSV and JSON
+ * rows have no reader to grade them, and flagging every one would train the
+ * user to ignore the marker.
+ */
+export function gradeNeedsVerification(grade: number | undefined): boolean {
+  return grade !== undefined && grade < VERIFY_FIELD_THRESHOLD;
+}
+
 /** The rule a row looks like, as offered on the review card. Never written. */
 export interface RecurringMatchSuggestion {
   id: string;

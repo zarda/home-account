@@ -27,8 +27,8 @@ import {
   CurrencyInfo,
   CurrencySuggestionReason,
   FieldConfidence,
+  gradeNeedsVerification,
   roundToMinorUnit,
-  VERIFY_FIELD_THRESHOLD,
 } from '../../../../models';
 import { MatTooltipModule } from '@angular/material/tooltip';
 import { TranslationService } from '../../../../core/services/translation.service';
@@ -907,8 +907,7 @@ export class TransactionPreviewTableComponent implements AfterViewInit {
    * ignore the marker.
    */
   needsVerification(transaction: CategorizedImportTransaction, field: keyof FieldConfidence): boolean {
-    const confidence = transaction.fieldConfidence?.[field];
-    return confidence !== undefined && confidence < VERIFY_FIELD_THRESHOLD;
+    return gradeNeedsVerification(transaction.fieldConfidence?.[field]);
   }
 
   /**
