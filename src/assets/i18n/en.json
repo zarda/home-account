@@ -1352,6 +1352,8 @@
     "statusPartial": "Partial",
     "statusFailed": "Failed",
     "statusProcessing": "Processing",
+    "statPhotosSkipped": "Photos not attached",
+    "statPhotosFailed": "Photos not uploaded",
     "skipped": "Skipped",
     "errors": "Errors",
     "moreErrors": "+{{others}} more",

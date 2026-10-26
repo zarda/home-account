@@ -1226,6 +1226,8 @@
     "statusPartial": "一部完了",
     "statusFailed": "失敗",
     "statusProcessing": "処理中",
+    "statPhotosSkipped": "添付されなかった写真",
+    "statPhotosFailed": "アップロードできなかった写真",
     "skipped": "スキップ",
     "errors": "エラー",
     "moreErrors": "ほか {{others}} 件",
