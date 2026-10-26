@@ -437,6 +437,30 @@ describe('AIImportService', () => {
       expect(result.transactions.length).toBe(1);
     });
 
+    it("carries the single-shot read's type grade to the review row", async () => {
+      // The façade stands in for gemini.service.ts here: it answers with the
+      // one income row the summary reader files for a refund (ADR 0162), and
+      // this door has to hand that row's grade on rather than re-derive it.
+      const warn = spyOn(console, 'warn');
+      strategyService.processReceipt.and.returnValue(Promise.reject(new Error('503 service unavailable')));
+      cloudLLMProvider.extractTransactionsFromImage.and.returnValue(Promise.resolve([{
+        date: '2024-06-01',
+        description: 'Returned jacket',
+        amount: 40,
+        type: 'income',
+        currency: 'USD',
+        typeConfidence: MODEL_INCOME_GRADE,
+      }]));
+
+      const result = await service.importFromImage(makeFile('r.png', 'image/png'));
+
+      expect(result.transactions[0].type).toBe('income');
+      expect(result.transactions[0].fieldConfidence).toEqual({ type: MODEL_INCOME_GRADE });
+      expect(warn).toHaveBeenCalledOnceWith(
+        '[AIImport] Strategy processing failed:', 'server', jasmine.any(Error)
+      );
+    });
+
     it('wraps a direct-provider failure with cloud diagnostics', async () => {
       cloudLLMProvider.extractTransactionsFromMultipleImages.and.rejectWith(new Error('503 service unavailable'));
 
