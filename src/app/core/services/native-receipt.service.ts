@@ -29,20 +29,27 @@ const MODEL_READ_GRADE = 0.8;
 /** The model read a refund, and the same total prints as a negative. */
 const AGREED_INCOME_GRADE = 0.6;
 
-/** The model read a purchase, and the same total prints as a negative. */
+/**
+ * A purchase the print argues with: the same total prints as a negative, or a
+ * negative prints on a total the model did not read.
+ */
 const DISPUTED_TYPE_GRADE = 0.3;
 
 /**
  * Which way the money moved, and the grade the row carries for it (ADR 0162).
  * Two witnesses speak to it: the on-device model's `kind`, read from the
  * receipt's words, and the marks the receipt prints on its total as the text
- * parser reports them — passed only when they are the marks on the row's own
- * total. Neither is a measurement, so every grade sits under
+ * parser reports them — `printed` only when they are the marks on the row's
+ * own total. Neither is a measurement, so every grade sits under
  * VERIFY_FIELD_THRESHOLD: every income row a device reads is flagged for a
  * look wherever it is reviewed, and so is an expense the receipt argued with.
  * A refund the print backs grades higher than one it is silent on, and a
  * purchase the model read stays an expense when its total prints as a
  * negative, flagged. A purchase nothing contradicts carries no grade at all.
+ *
+ * `markedElsewhere` says the receipt prints a negative on some other total
+ * than the one the model read. That backs no refund and files no income, but
+ * it argues with the purchase the row is, so the row is an expense, flagged.
  *
  * `kind` is compared strictly: anything but the two values the model is
  * offered counts as no verdict, as on the regex lane, where no model answers,
@@ -51,7 +58,8 @@ const DISPUTED_TYPE_GRADE = 0.3;
  */
 function typeVerdict(
   kind: unknown,
-  printed?: Pick<ParsedReceiptText, 'direction' | 'directionConfidence'>
+  printed?: Pick<ParsedReceiptText, 'direction' | 'directionConfidence'>,
+  markedElsewhere = false
 ): { type: 'income' | 'expense'; grade?: number } {
   const marked = printed?.direction === 'credit';
   if (kind === 'refund') {
@@ -63,9 +71,15 @@ function typeVerdict(
       : { type: 'income', grade: printed.directionConfidence };
   }
   // The same figure printed both marked and unmarked: a purchase still, but
-  // one the print argued with.
+  // one the print argued with, at the parser's own grade for it
+  // (`TWINNED_MARK_GRADE`, ADR 0162).
   if (printed && printed.directionConfidence > 0) {
     return { type: 'expense', grade: printed.directionConfidence };
+  }
+  // A negative on a total the model did not read: an expense still, and one
+  // the print argued with.
+  if (markedElsewhere) {
+    return { type: 'expense', grade: DISPUTED_TYPE_GRADE };
   }
   return { type: 'expense' };
 }
@@ -213,9 +227,15 @@ export class NativeReceiptService {
     const sameTotal = amount > 0 &&
       roundToMinorUnit(amount, amountCurrency) === roundToMinorUnit(text.amount, amountCurrency);
     // The model says which way the money moved, and the print is the second
-    // witness — but only when it is the print of this total: a mark the parser
-    // found on a figure the model did not answer says nothing about it.
-    const verdict = typeVerdict(extraction.kind, sameTotal ? text : undefined);
+    // witness. Its marks speak for this row only when they are the marks on
+    // the total the model read. A negative on some other total backs no refund
+    // and files no income, but it flags a purchase, and only where the model
+    // read a total at all.
+    const verdict = typeVerdict(
+      extraction.kind,
+      sameTotal ? text : undefined,
+      amount > 0 && !sameTotal && text.direction === 'credit'
+    );
 
     return {
       date: parsedDate ?? new Date(),
