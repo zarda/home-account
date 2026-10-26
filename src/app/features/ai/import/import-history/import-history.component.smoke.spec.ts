@@ -14,7 +14,8 @@
 // from the catalog rather than the English the record holds, and so does a
 // whole import the rules refused, stored the way the confirm writes one
 // through `failImport`. A record that kept photos off, stored with its two
-// counters, draws each on a tile of its own. The unit spec
+// counters, draws each on a tile of its own, and so does one stored with the
+// two counts of its flagged types. The unit spec
 // overrides nothing here — ImportHistoryComponent's own template and its own
 // MatMenuModule import are what render.
 //
@@ -205,7 +206,9 @@ describe('ImportHistoryComponent transaction shortcut (emulator smoke test)', ()
     // What the confirm writes when photos stayed off a saved row: a count of
     // the rows the image quota refused and a count of the uploads that failed,
     // each written only when above zero. The rules take either as a whole
-    // number and nothing else.
+    // number and nothing else. The same record carries the counts of the rows
+    // whose type a reader flagged and of those the reviewer then flipped,
+    // under the same rule.
     const photosOff: Omit<ImportHistory, 'id'> = {
       userId: uid,
       importedAt: Timestamp.now(),
@@ -222,7 +225,9 @@ describe('ImportHistoryComponent transaction shortcut (emulator smoke test)', ()
       duplicatesSkipped: 0,
       status: 'completed',
       receiptsSkipped: 1,
-      receiptsFailed: 2
+      receiptsFailed: 2,
+      typesFlagged: 2,
+      typesFlipped: 1
     };
 
     await Promise.all([
@@ -283,6 +288,13 @@ describe('ImportHistoryComponent transaction shortcut (emulator smoke test)', ()
     const found = cards.find(card => (card.textContent ?? '').includes(fileName));
     if (!found) throw new Error(`no rendered card for ${fileName}`);
     return found;
+  }
+
+  /** The figure on the tile of `card` that `label` names, or undefined when the card draws none. */
+  function figureOf(card: HTMLElement, label: string): string | undefined {
+    return Array.from(card.querySelectorAll('.stat'))
+      .find(tile => tile.querySelector('.label')?.textContent?.trim() === label)
+      ?.querySelector('.value')?.textContent?.trim();
   }
 
   it('a legacy record renders no shortcut', async () => {
@@ -444,13 +456,27 @@ describe('ImportHistoryComponent transaction shortcut (emulator smoke test)', ()
       'all seven seeded records');
 
     const card = cardFor('smoke-photo-counters.jpg');
-    const figureOf = (label: string) => Array.from(card.querySelectorAll('.stat'))
-      .find(tile => tile.querySelector('.label')?.textContent?.trim() === label)
-      ?.querySelector('.value')?.textContent?.trim();
-    expect(figureOf('import.statPhotosSkipped')).withContext('photos not attached').toBe('1');
-    expect(figureOf('import.statPhotosFailed')).withContext('photos not uploaded').toBe('2');
+    expect(figureOf(card, 'import.statPhotosSkipped')).withContext('photos not attached').toBe('1');
+    expect(figureOf(card, 'import.statPhotosFailed')).withContext('photos not uploaded').toBe('2');
     expect(cardFor('smoke-single-receipt.jpg').querySelector('.stat.photos'))
       .withContext('a record that kept its photos')
+      .toBeNull();
+  }, 20000);
+
+  // The two type counts round-trip through the rules and the live
+  // subscription the same way, each on the tile its label names. A record no
+  // reader flagged draws neither. Written after its fix, so a pin: it fails if
+  // the changed tile reads typesFlagged.
+  it("a stored record's type counts render on their own tiles", async () => {
+    await waitFor(
+      () => fixture.componentInstance.importHistory().length === 7,
+      'all seven seeded records');
+
+    const card = cardFor('smoke-photo-counters.jpg');
+    expect(figureOf(card, 'import.statTypeFlagged')).withContext('type flagged').toBe('2');
+    expect(figureOf(card, 'import.statTypeFlipped')).withContext('type changed').toBe('1');
+    expect(cardFor('smoke-single-receipt.jpg').querySelector('.stat.types'))
+      .withContext('a record no reader flagged')
       .toBeNull();
   }, 20000);
 });
