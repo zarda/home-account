@@ -7,6 +7,7 @@ import type {
 import { CloudLLMProviderBase, ProviderResponse } from './cloud-llm-provider.base';
 import { DEFAULT_TEXT_MODEL, DEFAULT_VISION_MODEL } from '../config/ai-models';
 import {
+  modelTypeGrade,
   readConfidence,
   readCurrencyCode,
   readPrintedLocation,
@@ -301,12 +302,17 @@ export class GeminiService extends CloudLLMProviderBase {
       const receiptData = JSON.parse(this.extractJsonStrict(response.text));
       const dateConfidence = readConfidence(receiptData.dateConfidence);
       const amountConfidence = readConfidence(receiptData.amountConfidence);
+      // Which way the money moved is the model's answer on the type it was
+      // asked for, read strictly and graded for review when it says income
+      // (ADR 0162). The total below is a magnitude whatever it printed.
+      const type = readTransactionType(receiptData.type);
+      const typeGrade = modelTypeGrade(type);
 
       return [{
         date: receiptData.date || dayKey(new Date()),
         description: receiptData.merchant || 'Receipt',
         amount: Math.abs(receiptData.totalAmount || 0),
-        type: 'expense' as const,
+        type,
         currency: readCurrencyCode(receiptData.currency),
         merchant: receiptData.merchant,
         category: this.matchedCategoryId(receiptData.suggestedCategory),
@@ -314,6 +320,7 @@ export class GeminiService extends CloudLLMProviderBase {
           receiptData.items || receiptData.description || '',
         ...this.countrySlots(receiptData.country, readPrintedLocation(receiptData.location, receiptData.merchant)),
         ...(amountConfidence !== undefined ? { amountConfidence } : {}),
+        ...(typeGrade !== undefined ? { typeConfidence: typeGrade } : {}),
         // A missing date is patched with today's day-key above, and that
         // string parses just fine — so a grade claimed about a date the model
         // never gave is not a grade of anything: a present date forwards the

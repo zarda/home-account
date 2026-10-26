@@ -105,9 +105,11 @@ export interface ExtractedTransaction {
   amountConfidence?: number;       // How legible the amount was (0-1); absent when unreported
   dateConfidence?: number;         // How legible the date was (0-1); absent when unreported
   /**
-   * How firmly the app holds this row's `type`; set only by receipt
-   * consolidation, on a net income verdict (ADR 0162). Absent on a purchase
-   * and on every statement, CSV or backup row, whose type carries no grade.
+   * How firmly the app holds this row's `type`, from `modelTypeGrade`: set
+   * on an income verdict by receipt consolidation (a lone line's own type or
+   * a group's net) and by Gemini's single-row `receiptSummary` reader (ADRs
+   * 0162, 0185). Absent on a purchase and on every statement, CSV or backup
+   * row, whose type carries no grade.
    */
   typeConfidence?: number;
   // The optional fields a transaction can hold and an import source may or
