@@ -1,7 +1,10 @@
 import {
   ROW_FAILURE_KEYS,
   WHOLE_IMPORT_FAILURE_KEYS,
+  type TypeFlagRow,
+  answerTypeFlag,
   blankImportRow,
+  countTypeAnswers,
   datedToday,
   imageSources,
   importFailureFamily,
@@ -11,6 +14,7 @@ import {
   mergeableRow,
   needsDateAnswer,
   parseAmountInput,
+  readerFlaggedType,
   reviewNoticesFrom,
   rowCarriesReviewerWork,
   rowIsUnfilled,
@@ -20,7 +24,7 @@ import {
   wholeImportFailureKey,
   withoutFieldConfidence,
 } from './import-review.utils';
-import { CategorizedImportTransaction, ImagePositionMetadata } from '../../models';
+import { CategorizedImportTransaction, ImagePositionMetadata, VERIFY_FIELD_THRESHOLD } from '../../models';
 
 /**
  * Dates are built from local parts (`new Date(2026, 5, 15)`), never parsed
@@ -80,6 +84,81 @@ describe('import-review.utils', () => {
       const grade = { amount: 0.5, date: 0.3 };
       withoutFieldConfidence(grade, 'date');
       expect(grade).toEqual({ amount: 0.5, date: 0.3 });
+    });
+  });
+
+  describe('the type the reader flagged', () => {
+    const typed = (overrides: Partial<TypeFlagRow> = {}): TypeFlagRow => ({ type: 'expense', ...overrides });
+
+    describe('readerFlaggedType', () => {
+      it('reads a standing type flag as the type the row shows', () => {
+        expect(readerFlaggedType(typed({ type: 'income', fieldConfidence: { type: 0.5 } }))).toBe('income');
+        expect(readerFlaggedType(typed({ type: 'expense', fieldConfidence: { amount: 0.9, type: 0.3 } }))).toBe('expense');
+      });
+
+      it('reads an answered flag by the type the reader filed, not the one the row now shows', () => {
+        // The flip dropped the grade and moved the row to the other side; the
+        // verdict is the side it was flagged on.
+        expect(readerFlaggedType(typed({ type: 'income', typeFlaggedAs: 'expense' }))).toBe('expense');
+        expect(readerFlaggedType(typed({ type: 'expense', typeFlaggedAs: 'income', fieldConfidence: { amount: 0.4 } })))
+          .toBe('income');
+      });
+
+      it('reads no flag on an ungraded type or one graded at the bar', () => {
+        // A pin: `gradeNeedsVerification` is the one reading of the bar, and
+        // a grade exactly at it passes.
+        // Mutation: `fieldConfidence?.type !== undefined` for the bar's test.
+        expect(readerFlaggedType(typed())).toBeUndefined();
+        expect(readerFlaggedType(typed({ fieldConfidence: { amount: 0.4, date: 0.3 } }))).toBeUndefined();
+        expect(readerFlaggedType(typed({ type: 'income', fieldConfidence: { type: VERIFY_FIELD_THRESHOLD } })))
+          .toBeUndefined();
+        expect(readerFlaggedType(typed({ fieldConfidence: { type: 0.95 } }))).toBeUndefined();
+      });
+    });
+
+    describe('answerTypeFlag', () => {
+      it('drops the type grade and keeps the type the reader flagged', () => {
+        // The grade goes with the answer and the rest of it stays: the flip
+        // says nothing about the figure or the day.
+        expect(answerTypeFlag(typed({ type: 'expense', fieldConfidence: { amount: 0.4, date: 0.9, type: 0.5 } })))
+          .toEqual({ fieldConfidence: { amount: 0.4, date: 0.9 }, typeFlaggedAs: 'expense' });
+        expect(answerTypeFlag(typed({ type: 'income', fieldConfidence: { type: 0.5 } })))
+          .withContext('nothing left is the ungraded shape, not an empty grade')
+          .toEqual({ fieldConfidence: undefined, typeFlaggedAs: 'income' });
+      });
+
+      it('keeps the first verdict through a second flip', () => {
+        // The row now shows income and carries no grade; the verdict still
+        // says it was flagged as an expense, and a second answer leaves it.
+        expect(answerTypeFlag(typed({ type: 'income', typeFlaggedAs: 'expense', fieldConfidence: { amount: 0.4 } })))
+          .toEqual({ fieldConfidence: { amount: 0.4 }, typeFlaggedAs: 'expense' });
+      });
+
+      it('marks nothing on a row whose type nobody flagged', () => {
+        expect(answerTypeFlag(typed({ fieldConfidence: { amount: 0.4 } })))
+          .withContext('ungraded type')
+          .toEqual({ fieldConfidence: { amount: 0.4 }, typeFlaggedAs: undefined });
+        expect(answerTypeFlag(typed({ fieldConfidence: { type: VERIFY_FIELD_THRESHOLD } })))
+          .withContext('graded at the bar')
+          .toEqual({ fieldConfidence: undefined, typeFlaggedAs: undefined });
+        expect(answerTypeFlag(typed()))
+          .withContext('no grade at all')
+          .toEqual({ fieldConfidence: undefined, typeFlaggedAs: undefined });
+      });
+    });
+
+    describe('countTypeAnswers', () => {
+      it('counts the flagged rows and those standing on the other side', () => {
+        const rows = [
+          typed({ type: 'income', fieldConfidence: { type: 0.5 } }),
+          typed({ type: 'income', typeFlaggedAs: 'expense' }),
+          typed({ type: 'expense', typeFlaggedAs: 'expense' }),
+          typed(),
+          typed({ type: 'income', fieldConfidence: { amount: 0.4, type: VERIFY_FIELD_THRESHOLD } }),
+        ];
+
+        expect(countTypeAnswers(rows)).toEqual({ typesFlagged: 3, typesFlipped: 1 });
+      });
     });
   });
 
@@ -702,6 +781,19 @@ describe('import-review.utils', () => {
       expect(part.movedCategory).toEqual(remembered);
     });
 
+    it('carries the type a reader flagged onto both halves', () => {
+      // A pin: a split does not touch the type, so the flag the reader raised
+      // and the reviewer answered is still on record for each half.
+      // Mutation: `delete part.typeFlaggedAs`.
+      const [kept, part] = splitImportRow(
+        row({ type: 'income', suggestedCategoryId: 'other_income', typeFlaggedAs: 'expense' }),
+        1.2, 'split_1'
+      )!;
+
+      expect(kept.typeFlaggedAs).toBe('expense');
+      expect(part.typeFlaggedAs).toBe('expense');
+    });
+
     it('gives the part its own date object, equal to the original\'s but not shared', () => {
       const original = row();
       const [, part] = splitImportRow(original, 1.2, 'split_1')!;
@@ -1110,6 +1202,47 @@ describe('import-review.utils', () => {
       )!;
 
       expect(merged.movedCategory).toEqual(remembered);
+    });
+
+    it('forgets the type a reader flagged on the target when the two rows sit on opposite sides', () => {
+      // A refund the reviewer flipped from a purchase, folded into a purchase:
+      // the net decides the side afresh, so whichever way it points, the
+      // verdict about the target's own figure no longer describes the row.
+      // Absent, not undefined, the way the other dropped keys leave.
+      const flipped = (amount: number) => target({ type: 'income', amount, typeFlaggedAs: 'expense' });
+
+      const stays = mergeImportRows(flipped(100), source({ type: 'expense', amount: 30 }))!;
+      expect(stays.type).withContext('precondition: the net stays on the target\'s side').toBe('income');
+      expect('typeFlaggedAs' in stays).withContext('the net stays on the target\'s side').toBeFalse();
+
+      const turns = mergeImportRows(flipped(30), source({ type: 'expense', amount: 100 }))!;
+      expect(turns.type).withContext('precondition: the net turns to the source\'s side').toBe('expense');
+      expect('typeFlaggedAs' in turns).withContext('the net turns the row').toBeFalse();
+    });
+
+    it('keeps the target\'s answered flag on one side', () => {
+      // A pin: two rows of one side net to that side, so nothing about the
+      // target's side changed and the reader's flag on it still stands.
+      // Mutation: `delete merged.typeFlaggedAs` on every merge.
+      const merged = mergeImportRows(
+        target({ type: 'income', typeFlaggedAs: 'expense' }),
+        source({ type: 'income' })
+      )!;
+
+      expect(merged.typeFlaggedAs).toBe('expense');
+    });
+
+    it('takes no flag mark from the row merged away', () => {
+      // A pin: the target's identity wins outright, so what the reader
+      // flagged on the source is no part of the row that survives.
+      // Mutation: `typeFlaggedAs: target.typeFlaggedAs ?? source.typeFlaggedAs`
+      // in the merged literal.
+      const merged = mergeImportRows(
+        target({ type: 'income' }),
+        source({ type: 'income', typeFlaggedAs: 'expense' })
+      )!;
+
+      expect('typeFlaggedAs' in merged).toBeFalse();
     });
 
     it('refuses to merge rows in different currencies', () => {

@@ -377,6 +377,50 @@ describe('TransactionPreviewTableComponent', () => {
         .toBeUndefined();
     });
 
+    it('keeps the type the reader flagged when a flip answers the flag', () => {
+      // The flip drops the grade, the only record the reader doubted the row;
+      // the mark keeps the side it was flagged on, whichever side that was.
+      expect(flip({ type: 'expense', fieldConfidence: { amount: 0.8, type: 0.4 } }))
+        .withContext('a purchase whose total printed as a credit')
+        .toEqual(jasmine.objectContaining({ type: 'income', typeFlaggedAs: 'expense' }));
+
+      expect(flip({ type: 'income', suggestedCategoryId: 'salary', fieldConfidence: { type: 0.5 } }))
+        .withContext('a refund the device read')
+        .toEqual(jasmine.objectContaining({ type: 'expense', typeFlaggedAs: 'income' }));
+    });
+
+    it('keeps the reader\'s verdict through a second flip', () => {
+      // The first answer is the one on record: flipping back does not turn
+      // the verdict into the side the row now stands on.
+      const away = flip({ fieldConfidence: { amount: 0.8, type: 0.4 } });
+      expect(away.typeFlaggedAs).withContext('precondition: the first flip filed the verdict').toBe('expense');
+
+      component.toggleType(away);
+
+      const back = component.transactions[0];
+      expect(back.type).withContext('precondition: flipped back').toBe('expense');
+      expect(back.typeFlaggedAs).toBe('expense');
+      expect(back.fieldConfidence).withContext('the type grade stays gone, the amount\'s stays').toEqual({ amount: 0.8 });
+
+      component.toggleType(back);
+
+      expect(component.transactions[0].typeFlaggedAs).withContext('and through a third').toBe('expense');
+    });
+
+    it('marks nothing when the flipped type was never flagged', () => {
+      // A pin: a flip on a row nobody doubted is the reviewer's own change,
+      // not an answer, so no verdict is filed for the count to read.
+      // Mutation: `answerTypeFlag` sets `typeFlaggedAs: row.type` whatever
+      // the grade.
+      expect(flip({}).typeFlaggedAs).withContext('no grade at all').toBeUndefined();
+      expect(flip({ fieldConfidence: { amount: 0.4, date: 0.3 } }).typeFlaggedAs)
+        .withContext('other fields doubted, the type not')
+        .toBeUndefined();
+      expect(flip({ fieldConfidence: { type: 0.7 } }).typeFlaggedAs)
+        .withContext('graded at the bar')
+        .toBeUndefined();
+    });
+
     it('moves a category the new side cannot hold to that side\'s catch-all, graded as an answer that resolved to nothing', () => {
       // Left where it was, the expense category would be written onto an
       // income row by confirm.
@@ -1506,6 +1550,28 @@ describe('TransactionPreviewTableComponent, the offer chip through its own templ
     expect(toggle().querySelector('.verify-flag')).toBeNull();
     expect(toggle().querySelector('mat-icon')?.textContent?.trim()).toBe('trending_up');
     expect(toggle().getAttribute('aria-label')).toBe('common.income');
+  });
+
+  it('wears no flag after a flip back, though the row still carries the reader\'s verdict', () => {
+    // A pin: the verdict is the review's record of what was flagged, not a
+    // question still open, so the toggle reads the grade alone.
+    // Mutation: `needsVerification` reads `readerFlaggedType`.
+    component.transactions = [makeRow({ fieldConfidence: { amount: 0.8, date: 0.8, type: 0.3 } })];
+    component.categories = [];
+    fixture.detectChanges();
+    const emitted = emissions();
+    const toggle = () => fixture.nativeElement.querySelector('.type-toggle') as HTMLButtonElement;
+
+    toggle().click();
+    fixture.detectChanges();
+    toggle().click();
+    fixture.detectChanges();
+
+    expect(emitted[emitted.length - 1][0].typeFlaggedAs)
+      .withContext('precondition: the row still carries the verdict')
+      .toBe('expense');
+    expect(toggle().querySelector('.verify-flag')).toBeNull();
+    expect(toggle().getAttribute('aria-label')).toBe('common.expense');
   });
 
   it('hands each card\'s category menu its row\'s side, and moves it with a flip', () => {
