@@ -25,6 +25,7 @@ import {
   UNCATEGORIZED_CATEGORY_CONFIDENCE,
   UNRESOLVED_CATEGORY_CONFIDENCE,
 } from '../utils/categorization.utils';
+import { REVIEW_AMOUNT_CONFIDENCE } from '../utils/receipt-consolidation';
 import { silenceFirebaseWarnings } from './testing/silence-firebase-warnings';
 silenceFirebaseWarnings();
 
@@ -288,6 +289,32 @@ describe('on-device receipt categories over the live catalog (smoke test)', () =
     expect(gradeCategorySuggestion(transaction, transaction.type, categories)).toEqual({
       suggestedCategoryId: fallbackCategoryFor('income'),
       categoryConfidence: UNRESOLVED_CATEGORY_CONFIDENCE,
+    });
+  });
+
+  /**
+   * A slip prints a credit on one figure while the model read another as the
+   * total. The print cannot make the row income, and the model said purchase,
+   * so the row stays an expense, flagged for the look the disagreement earns.
+   * The category the model named is untouched: the type flag is about which
+   * way the money moved, not what was bought.
+   */
+  it('flags a purchase the model read over a negative printed on another total, and keeps the category it named', async () => {
+    // The printed total is 14.03; the model's 120.50 is a different figure.
+    visionMock.recognizeText.and.resolveTo({
+      ...ocrResult,
+      text: 'Harbour Supplies\n01/15/2026\nTotal: -$14.03',
+    });
+
+    const transaction = await scanAnswering(CUSTOM_NAME, 'purchase');
+    const categories = TestBed.inject(CategoryService).categories();
+
+    expect(transaction.type).toBe('expense');
+    expect(transaction.fieldConfidence).toEqual({ amount: REVIEW_AMOUNT_CONFIDENCE, date: 0.8, type: 0.3 });
+    expect(transaction.suggestedCategoryId).toBe(CUSTOM_ID);
+    expect(gradeCategorySuggestion(transaction, transaction.type, categories)).toEqual({
+      suggestedCategoryId: CUSTOM_ID,
+      categoryConfidence: ocrResult.confidence,
     });
   });
 
