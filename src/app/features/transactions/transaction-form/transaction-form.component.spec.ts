@@ -328,6 +328,80 @@ describe('TransactionFormComponent', () => {
       expect(component.form.get('categoryId')?.value).toBe('');
     });
 
+    it('announces the category a type change clears', () => {
+      const component = build().componentInstance;
+      component.form.patchValue({ categoryId: 'food' });
+
+      component.form.get('type')?.setValue('income');
+
+      expect(component.form.get('categoryId')?.value).toBe('');
+      // The name the field showed, not the id behind it.
+      expect(translation.t).toHaveBeenCalledWith('transactions.categoryClearedForType', { category: expense.name });
+      expect(announcer.announce).toHaveBeenCalledOnceWith('transactions.categoryClearedForType');
+    });
+
+    it('brings a cleared category back when the type returns to the side it fits', () => {
+      const component = build().componentInstance;
+      component.form.patchValue({ categoryId: 'food' });
+      component.form.get('type')?.setValue('income');
+      expect(component.form.get('categoryId')?.value).withContext('on the other side').toBe('');
+
+      component.form.get('type')?.setValue('expense');
+
+      expect(component.form.get('categoryId')?.value).withContext('back on its own side').toBe('food');
+      expect(component.selectedCategory()).toEqual(expense);
+    });
+
+    it('announces the category it brings back', () => {
+      const component = build().componentInstance;
+      component.form.patchValue({ categoryId: 'food' });
+      component.form.get('type')?.setValue('income');
+      announcer.announce.calls.reset();
+
+      component.form.get('type')?.setValue('expense');
+
+      expect(translation.t).toHaveBeenCalledWith('transactions.categoryRestoredForType', { category: expense.name });
+      expect(announcer.announce).toHaveBeenCalledOnceWith('transactions.categoryRestoredForType');
+    });
+
+    // A pin: a category chosen after the blank ends the hold, so a field that
+    // is emptied again some other way is not handed the older category on the
+    // next type change. Mutation: leave the hold standing when a category is
+    // chosen, which this case sees as 'food' coming back.
+    it('forgets the category a type change blanked once another is chosen', () => {
+      const both = createCategory({ id: 'refunds', type: 'both', name: 'Refunds' });
+      categoryService.incomeCategories.set([income, both]);
+      const component = build().componentInstance;
+      component.form.patchValue({ categoryId: 'food' });
+      component.form.get('type')?.setValue('income');
+      component.form.patchValue({ categoryId: 'refunds' });
+      component.form.patchValue({ categoryId: '' });
+      announcer.announce.calls.reset();
+
+      component.form.get('type')?.setValue('expense');
+
+      expect(component.form.get('categoryId')?.value).toBe('');
+      expect(announcer.announce).not.toHaveBeenCalled();
+    });
+
+    // A pin: of the category's branches, only the reset and the restore
+    // speak. The reset speaks for a category the new side cannot hold, and
+    // the restore for the blanked one it gives back. Mutation: announce on
+    // every type change, which this case sees as a call it did not expect.
+    it('says nothing about the category when a type change leaves it in place', () => {
+      const both = createCategory({ id: 'refunds', type: 'both', name: 'Refunds' });
+      categoryService.expenseCategories.set([expense, both]);
+      categoryService.incomeCategories.set([income, both]);
+      const component = build().componentInstance;
+      component.form.patchValue({ categoryId: 'refunds' });
+
+      component.form.get('type')?.setValue('income');
+      component.form.get('type')?.setValue('expense');
+
+      expect(component.form.get('categoryId')?.value).toBe('refunds');
+      expect(announcer.announce).not.toHaveBeenCalled();
+    });
+
     it('drops split parts the new type has no categories for', () => {
       const component = build().componentInstance;
       component.splitParts.set([{ categoryId: 'food', amount: 5 }]);
@@ -339,9 +413,8 @@ describe('TransactionFormComponent', () => {
       expect(component.splitParts()).toEqual([]);
     });
 
-    // The category reset above leaves a visibly empty required field. A
-    // dropped row leaves nothing at all, so it is the one that has to be
-    // said out loud.
+    // Like the category reset above, which says what it cleared, a dropped
+    // row is said out loud: it leaves nothing on screen to notice.
     it('announces the parts a type change drops', () => {
       const component = build().componentInstance;
       component.splitParts.set([
@@ -2337,6 +2410,105 @@ describe('TransactionFormComponent', () => {
 
         expect(component.form.get('type')?.value).toBe('income');
         expect(component.form.get('categoryId')?.value).toBe('');
+      });
+
+      it('brings back the purchase category a scanned refund cleared once the user moves the type back', async () => {
+        // The refund moves the type under a purchase category the form already
+        // held, which the income side cannot show. Said when it goes, and said
+        // again when the way back returns it. A refund scanned into an empty
+        // form clears nothing, which the case above pins.
+        strategy.processReceipt.and.resolveTo(refund());
+        const component = build().componentInstance;
+        component.form.patchValue({ categoryId: 'food' });
+
+        await pickAndScan(component, 'refund');
+
+        expect(component.form.get('type')?.value).withContext('the refund').toBe('income');
+        expect(component.form.get('categoryId')?.value).withContext('the refund').toBe('');
+        expect(announcer.announce).toHaveBeenCalledWith('transactions.categoryClearedForType');
+        expect(translation.t).toHaveBeenCalledWith('transactions.categoryClearedForType', { category: expense.name });
+
+        component.form.get('type')!.setValue('expense');
+
+        expect(component.form.get('categoryId')?.value).withContext('moved back').toBe('food');
+        expect(announcer.announce).toHaveBeenCalledWith('transactions.categoryRestoredForType');
+        expect(translation.t).toHaveBeenCalledWith('transactions.categoryRestoredForType', { category: expense.name });
+      });
+
+      describe('over a category held for the way back', () => {
+        // The user's own pick, on the purchase side, beside the one the scan's
+        // purchase will suggest ('food', the helper's default).
+        const dining = createCategory({ id: 'dining', type: 'expense', name: 'Dining' });
+
+        /**
+         * A form holding `dining`, a refund scanned over it and then discarded:
+         * the type stands on income, the pick is blanked and held, and the
+         * clearing has been said. The next scan is the one under test.
+         */
+        async function afterDiscardedRefund(): Promise<TransactionFormComponent> {
+          categoryService.categories.set([expense, dining, income]);
+          categoryService.expenseCategories.set([expense, dining]);
+          const component = build().componentInstance;
+          component.form.patchValue({ categoryId: 'dining' });
+          strategy.processReceipt.and.resolveTo(refund());
+
+          await pickAndScan(component, 'refund');
+          expect(component.form.get('type')?.value).withContext('the refund').toBe('income');
+          expect(component.form.get('categoryId')?.value).withContext('the refund').toBe('');
+          expect(announcer.announce).withContext('the refund').toHaveBeenCalledWith('transactions.categoryClearedForType');
+
+          component.removePendingReceipt(0);
+          announcer.announce.calls.reset();
+          translation.t.calls.reset();
+          return component;
+        }
+
+        it('fills the purchase\'s own category, and says nothing set back, when a scan moves the type back', async () => {
+          // The scan's reading is the newer answer: it names a category for
+          // the side it lands on and fills it. Announcing the held pick as
+          // set back first told a screen-reader user a category the field
+          // never kept.
+          const component = await afterDiscardedRefund();
+          strategy.processReceipt.and.resolveTo(scanResult({ source: 'native', suggestedCategoryId: 'food' }));
+
+          await pickAndScan(component, 'purchase');
+
+          expect(component.form.get('type')?.value).withContext('the purchase').toBe('expense');
+          expect(component.form.get('categoryId')?.value).withContext('the purchase').toBe('food');
+          expect(announcer.announce).not.toHaveBeenCalledWith('transactions.categoryRestoredForType');
+          expect(translation.t).not.toHaveBeenCalledWith('transactions.categoryRestoredForType', jasmine.anything());
+        });
+
+        // A pin: with no category of the scan's own to fill, the held pick is
+        // the best answer left and the way back still returns it. Mutation:
+        // drop the hold on every type move the scan makes, which this case
+        // sees as an empty field.
+        it('brings the held category back, and says so, when the scan that moves the type back names none for that side', async () => {
+          const component = await afterDiscardedRefund();
+          strategy.processReceipt.and.resolveTo(scanResult({ source: 'native', suggestedCategoryId: undefined }));
+
+          await pickAndScan(component, 'purchase');
+
+          expect(component.form.get('type')?.value).withContext('the purchase').toBe('expense');
+          expect(component.form.get('categoryId')?.value).withContext('the purchase').toBe('dining');
+          expect(announcer.announce).toHaveBeenCalledWith('transactions.categoryRestoredForType');
+          expect(translation.t).toHaveBeenCalledWith('transactions.categoryRestoredForType', { category: dining.name });
+        });
+
+        // A pin: a category of the other side is no answer for the side the
+        // scan lands on, so the held pick still comes back. Mutation: treat any
+        // suggested id as the scan's answer when deciding to drop the hold,
+        // which this case sees as an empty field.
+        it('brings the held category back when the scan names one only the other side offers', async () => {
+          const component = await afterDiscardedRefund();
+          strategy.processReceipt.and.resolveTo(scanResult({ source: 'native', suggestedCategoryId: 'salary' }));
+
+          await pickAndScan(component, 'purchase');
+
+          expect(component.form.get('type')?.value).withContext('the purchase').toBe('expense');
+          expect(component.form.get('categoryId')?.value).withContext('the purchase').toBe('dining');
+          expect(announcer.announce).toHaveBeenCalledWith('transactions.categoryRestoredForType');
+        });
       });
 
       it('scanReceipt flags a type the reader doubted, and stops once the user changes the type, the amount\'s flag staying', async () => {
