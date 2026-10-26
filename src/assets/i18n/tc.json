@@ -1228,6 +1228,8 @@
     "statusProcessing": "處理中",
     "statPhotosSkipped": "未附加的照片",
     "statPhotosFailed": "無法上傳的照片",
+    "statTypeFlagged": "需確認類型",
+    "statTypeFlipped": "已變更類型",
     "errors": "錯誤",
     "moreErrors": "另有 {{others}} 項",
     "engineCloud": "雲端 AI",

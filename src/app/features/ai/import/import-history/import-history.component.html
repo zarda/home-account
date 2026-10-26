@@ -83,6 +83,18 @@
                     <span class="value">{{ item.receiptsFailed }}</span>
                   </div>
                 }
+                @if ((item.typesFlagged ?? 0) > 0) {
+                  <div class="stat types">
+                    <span class="label">{{ 'import.statTypeFlagged' | translate }}</span>
+                    <span class="value">{{ item.typesFlagged }}</span>
+                  </div>
+                }
+                @if ((item.typesFlipped ?? 0) > 0) {
+                  <div class="stat types">
+                    <span class="label">{{ 'import.statTypeFlipped' | translate }}</span>
+                    <span class="value">{{ item.typesFlipped }}</span>
+                  </div>
+                }
               </div>
             }
 

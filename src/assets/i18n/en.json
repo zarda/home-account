@@ -1354,6 +1354,8 @@
     "statusProcessing": "Processing",
     "statPhotosSkipped": "Photos not attached",
     "statPhotosFailed": "Photos not uploaded",
+    "statTypeFlagged": "Type flagged",
+    "statTypeFlipped": "Type changed",
     "errors": "Errors",
     "moreErrors": "+{{others}} more",
     "engineCloud": "Cloud AI",
