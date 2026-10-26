@@ -11,6 +11,7 @@ import { AI_ANSWER_INCOMPLETE } from '../utils/ai-error.utils';
 import { FALLBACK_CATEGORY_ID } from '../utils/categorization.utils';
 import { createBudget, createCategory, createTransaction } from './testing';
 import { dayKey } from '../utils/transaction-date.utils';
+import { MODEL_INCOME_GRADE } from '../utils/receipt-extraction.utils';
 
 /**
  * What the shared base guarantees, independently of any provider.
@@ -828,6 +829,68 @@ describe('CloudLLMProviderBase', () => {
         const receipt = await provider.parseReceipt('img');
 
         expect(receipt.fieldConfidence?.date).toBe(0.95);
+      });
+    });
+
+    /**
+     * Which way the money moved is the model's call (ADR 0162), read strictly
+     * (readTransactionType) and never off the sign of the total (ADR 0147). A
+     * refund is filed as income and graded under the review bar so it is asked
+     * about; a purchase carries no grade at all.
+     */
+    describe('direction', () => {
+      const read = async (json: string) => {
+        provider.response = { text: json, truncated: false };
+        return provider.parseReceipt('img');
+      };
+
+      it('files a receipt the model read as a refund as income, its type graded for review', async () => {
+        const receipt = await read(
+          '{"merchant":"Cafe","amount":12.5,"date":"2026-08-01","type":"income"}'
+        );
+
+        expect(receipt.type).toBe('income');
+        expect(receipt.fieldConfidence).toEqual({ type: MODEL_INCOME_GRADE });
+      });
+
+      it('reads anything but exactly "income" as a purchase, with no type grade', async () => {
+        const answers: unknown[] = [
+          'expense', 'Income', 'INCOME', ' income', 'refund', 'credit', -1, true, '', null, undefined,
+        ];
+
+        for (const answer of answers) {
+          const receipt = await read(JSON.stringify({
+            merchant: 'Cafe', amount: 12.5, date: '2026-08-01', type: answer,
+          }));
+
+          expect(receipt.type).withContext(`the answer ${JSON.stringify(answer)}`).toBe('expense');
+          expect(receipt.fieldConfidence).withContext(`the answer ${JSON.stringify(answer)}`).toBeUndefined();
+        }
+      });
+
+      it('keeps a refund total a magnitude when the model prints it negative', async () => {
+        const receipt = await read(
+          '{"merchant":"Cafe","amount":-12.5,"date":"2026-08-01","type":"income"}'
+        );
+
+        expect(receipt.amount).toBe(12.5);
+        expect(receipt.type).toBe('income');
+      });
+
+      it('never reads the direction off the sign of the total', async () => {
+        const receipt = await read('{"merchant":"Cafe","amount":-12.5,"date":"2026-08-01"}');
+
+        expect(receipt.type).toBe('expense');
+        expect(receipt.amount).toBe(12.5);
+        expect(receipt.fieldConfidence).toBeUndefined();
+      });
+
+      it('keeps the amount and date grades beside the type grade', async () => {
+        const receipt = await read(
+          '{"merchant":"Cafe","amount":12.5,"type":"income","amountConfidence":0.9}'
+        );
+
+        expect(receipt.fieldConfidence).toEqual({ amount: 0.9, date: 0, type: MODEL_INCOME_GRADE });
       });
     });
   });

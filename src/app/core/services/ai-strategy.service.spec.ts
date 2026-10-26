@@ -21,6 +21,7 @@ import {
 } from '../config/ai-models';
 import { AI_PREFERENCES_SCHEMA_VERSION } from '../config/ai-model-migrations';
 import { REVIEW_AMOUNT_CONFIDENCE } from '../utils/receipt-consolidation';
+import { MODEL_INCOME_GRADE } from '../utils/receipt-extraction.utils';
 
 const PREFERENCES_STORAGE_KEY = 'homeaccount_ai_preferences';
 
@@ -1372,6 +1373,29 @@ describe('AIStrategyService', () => {
 
       cloudMock.parseReceipt.and.resolveTo(parsedReceipt);
       expect('receiptCountry' in (await service.processReceipt(imageFile())).transactions[0]).toBeFalse();
+    });
+
+    it('files a refund the cloud read off one photo as income, its type grade carried out', async () => {
+      cloudMock.parseReceipt.and.resolveTo({
+        ...parsedReceipt,
+        type: 'income',
+        fieldConfidence: { type: MODEL_INCOME_GRADE },
+      });
+      const service = createService('web');
+
+      const row = (await service.processReceipt(imageFile())).transactions[0];
+
+      expect(row.type).toBe('income');
+      expect(row.fieldConfidence).toEqual({ type: MODEL_INCOME_GRADE });
+    });
+
+    it('keeps a purchase the cloud read an expense with no type grade', async () => {
+      const service = createService('web');
+
+      const row = (await service.processReceipt(imageFile())).transactions[0];
+
+      expect(row.type).toBe('expense');
+      expect(row.fieldConfidence).toBeUndefined();
     });
 
     it('carries the per-field confidences out', async () => {
