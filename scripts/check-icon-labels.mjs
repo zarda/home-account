@@ -137,6 +137,32 @@
  * `<ng-template ngFor>`; and a trigger with no `aria-label` at all, whose
  * name comes from its text.
  *
+ * A fifth rule puts a flag's tooltip within reach of the keyboard. MatTooltip
+ * opens for a pointer and for keyboard focus, and a `mat-icon` takes focus
+ * from nothing: without a `tabindex` its sentence is shown to the mouse and to
+ * a screen reader's browse mode, and to nobody who reaches the field by Tab.
+ * Three flags had that shape — the form's amount and date flags and the review
+ * card's amount flag — and their sentence is the whole reason the figure is
+ * marked. The rule: a `mat-icon` with a `matTooltip`, a name and a literal
+ * `aria-hidden="false"` carries a literal `tabindex`.
+ *
+ *   - **Only an icon that is named and un-hidden.** One with a literal
+ *     `aria-hidden="true"` is decoration inside a control that already takes
+ *     focus and already names itself: the form's type flag sits in its
+ *     segment, whose own name carries the sentence. One with no literal
+ *     `aria-hidden` at all fails the first rule and is reported once, there.
+ *   - **An `<ng-template>` around the icon exempts it.** The wizard's seal
+ *     icon is stamped through an outlet into a step header, which is the
+ *     `role="tab"` control and the tab stop; a second stop inside it would nest
+ *     a focusable element in a tab.
+ *   - **Any literal `tabindex` counts, whatever its value**, as any literal
+ *     `aria-hidden` does above; the bound forms do not, because this gate
+ *     cannot evaluate them.
+ *
+ * What it cannot see: a tooltip that arrives from a directive's host binding;
+ * a `tabindex="-1"`, which is literal and passes although Tab skips it; and
+ * whether the icon's ancestors are themselves the tab stop.
+ *
  * Reference documentation lives in docs/accessibility.md.
  */
 
@@ -182,6 +208,22 @@ const PROGRESS_NAMED = /aria-label/;
  * rule takes at its word and still requires a name for.
  */
 const PROGRESS_HIDDEN = /(?<![\w.[-])aria-hidden\s*=\s*"true"/;
+
+/**
+ * A tooltip on the tag: `matTooltip="…"` or `[matTooltip]="…"`. The lookbehind
+ * rejects a longer name ending in it, and the `=` rejects the options that
+ * extend it — `matTooltipPosition`, `matTooltipClass`, `[matTooltipDisabled]`.
+ */
+const TOOLTIP = /(?<![\w.-])(?:\[matTooltip\]|matTooltip)\s*=/;
+
+/** A literal `aria-hidden="false"`: the icon is meant to be read. */
+const LITERAL_VISIBLE = /(?<![\w.[-])aria-hidden\s*=\s*"false"/;
+
+/**
+ * A literal `tabindex="…"`. The bound spellings, `[tabindex]` and
+ * `[attr.tabindex]`, are not literal and are rejected by the lookbehind.
+ */
+const LITERAL_TABINDEX = /(?<![\w.[-])tabindex\s*=\s*"/;
 
 /**
  * Blanks comments while preserving every byte offset, so a line number taken
@@ -384,10 +426,10 @@ function readBlocks(text, frames) {
 
 /**
  * Walks a template's opening tags in order, calling
- * `visit({ name, attrs, line, repeated })` for each. `repeated` is true when
- * the element is stamped once per item within this template: inside an
- * `@for` block, or on or under an element carrying a repeating structural
- * directive.
+ * `visit({ name, attrs, line, repeated, inTemplate })` for each. `repeated` is
+ * true when the element is stamped once per item within this template: inside
+ * an `@for` block, or on or under an element carrying a repeating structural
+ * directive. `inTemplate` is true when an `<ng-template>` is open around it.
  */
 export function walkTemplate(source, visit) {
   const masked = maskComments(source);
@@ -413,10 +455,30 @@ export function walkTemplate(source, visit) {
       attrs,
       line: lineOf(masked, match.index),
       repeated: repeat || frames.some((frame) => frame.repeat),
+      inTemplate: frames.some((frame) => frame.element === 'ng-template'),
     });
     const selfClosing = /\/\s*$/.test(attrs) || VOID_ELEMENTS.has(name);
     if (!selfClosing) frames.push({ element: name, repeat });
   }
+}
+
+/** An icon the fifth rule is about: a tooltip, a name and a literal `aria-hidden="false"`. */
+function isTooltipFlag(name, attrs) {
+  return name === 'mat-icon' && TOOLTIP.test(attrs) && NAMED.test(attrs) && LITERAL_VISIBLE.test(attrs);
+}
+
+/**
+ * Every named, un-hidden `mat-icon` that carries a tooltip and no literal
+ * `tabindex`, outside any `<ng-template>`. Returns `{ line, attrs }` for each.
+ */
+export function scanTooltipIcons(source) {
+  const hits = [];
+  walkTemplate(source, ({ name, attrs, line, inTemplate }) => {
+    if (!isTooltipFlag(name, attrs) || inTemplate) return;
+    if (LITERAL_TABINDEX.test(attrs)) return;
+    hits.push({ line, attrs: attrs.replace(/\s+/g, ' ').trim() });
+  });
+  return hits;
 }
 
 /** True when one of the tag's `aria-label`s is drawn from the item-less key. */
@@ -603,6 +665,22 @@ function run() {
     }
   }
 
+  // The tooltip rule needs the same structure: an <ng-template> around an icon
+  // exempts it, and only a template's own tags say whether one is open.
+  let tooltipFlags = 0;
+  let reachableFlags = 0;
+  for (const template of sources) {
+    if (!template.source.includes('<mat-icon')) continue;
+    walkTemplate(template.source, ({ name, attrs, inTemplate }) => {
+      if (!isTooltipFlag(name, attrs)) return;
+      tooltipFlags++;
+      if (inTemplate || LITERAL_TABINDEX.test(attrs)) reachableFlags++;
+    });
+    for (const hit of scanTooltipIcons(template.source)) {
+      findings.push({ rule: 'tooltip', site: `${template.key}:${hit.line + template.offset}`, tag: 'mat-icon', attrs: hit.attrs });
+    }
+  }
+
   const templates = files.filter((file) => file.endsWith('.html')).length;
   console.log(
     `Checked ${icons} mat-icon tag(s) across ${templates} template(s) and ` +
@@ -618,6 +696,10 @@ function run() {
     `Checked ${triggers} menu trigger(s) across ${sources.length} template(s): ` +
       `${repeatedTriggers} are stamped once per item, ${repeatedKeys.size} template(s) belonging to a repeated component.`
   );
+  console.log(
+    `Checked ${tooltipFlags} named icon(s) with a tooltip: ${reachableFlags} take focus ` +
+      `or are stamped through an ng-template.`
+  );
 
   if (findings.length > 0) {
     findings.sort((a, b) => a.site.localeCompare(b.site));
@@ -625,6 +707,7 @@ function run() {
     const progressFindings = findings.filter((f) => f.rule === 'progress');
     const optionFindings = findings.filter((f) => f.rule === 'option');
     const menuFindings = findings.filter((f) => f.rule === 'menu');
+    const tooltipFindings = findings.filter((f) => f.rule === 'tooltip');
 
     if (iconFindings.length > 0) {
       console.error(`\n${iconFindings.length} icon(s) carry a name nothing can read:\n`);
@@ -696,14 +779,31 @@ function run() {
       );
     }
 
+    if (tooltipFindings.length > 0) {
+      console.error(`\n${tooltipFindings.length} tooltip icon(s) the keyboard cannot reach:\n`);
+      for (const finding of tooltipFindings) {
+        console.error(`  ${finding.site}  <${finding.tag} ${finding.attrs}>`);
+        console.error(`    → add a literal tabindex="0"\n`);
+      }
+      console.error(
+        `MatTooltip opens for a pointer and for keyboard focus, and a mat-icon takes\n` +
+          `focus from nothing. Without a literal tabindex the icon's sentence reaches\n` +
+          `a mouse and a screen reader's browse mode and no one who tabs to the\n` +
+          `field. Write tabindex="0" beside the label, as the transaction form's\n` +
+          `amount flag does. An icon stamped through an <ng-template> into a control\n` +
+          `that is itself the tab stop is exempt.\n` +
+          `Reference: ${DOC}.\n`
+      );
+    }
+
     process.exit(1);
   }
 
   console.log(
     `Every named mat-icon carries a literal aria-hidden, every progress indicator ` +
       `carries a name or is hidden inside the control that already announces it, ` +
-      `every option icon sits beside its option's name, and every repeated menu ` +
-      `button names its item.`
+      `every option icon sits beside its option's name, every repeated menu ` +
+      `button names its item, and every tooltip icon takes focus.`
   );
 }
 
@@ -1059,6 +1159,110 @@ function selfTest() {
     ]),
     []
   );
+
+  // --- the tooltip rule: must hit ---
+  const tooltipLines = (source) => scanTooltipIcons(source).map((hit) => hit.line);
+  const FLAG =
+    '<mat-icon class="verify-flag" [matTooltip]="tip()" matTooltipPosition="above" role="img" aria-hidden="false" [attr.aria-label]="tip()">error_outline</mat-icon>';
+
+  check('a named, un-hidden icon with a tooltip and no tabindex, the form\'s amount flag', tooltipLines(FLAG), [1]);
+  check(
+    'the form\'s amount flag in its field, spread over several lines',
+    tooltipLines(
+      '<mat-form-field>\n  @if (doubted) {\n    <mat-icon\n      matIconSuffix\n      class="verify-flag"\n' +
+        '      [matTooltip]="tip()"\n      matTooltipPosition="above"\n      role="img"\n' +
+        '      aria-hidden="false"\n      [attr.aria-label]="tip()"\n    >error_outline</mat-icon>\n  }\n</mat-form-field>'
+    ),
+    [3]
+  );
+  check(
+    'a literal matTooltip and a literal aria-label',
+    tooltipLines('<mat-icon matTooltip="Check" aria-hidden="false" aria-label="Check">error_outline</mat-icon>'),
+    [1]
+  );
+  check(
+    'a bound tabindex is not literal',
+    tooltipLines(FLAG.replace('<mat-icon ', '<mat-icon [tabindex]="0" ')),
+    [1]
+  );
+  check(
+    'an attribute-bound tabindex is not literal either',
+    tooltipLines(FLAG.replace('<mat-icon ', '<mat-icon [attr.tabindex]="0" ')),
+    [1]
+  );
+  check(
+    'an icon after an ng-template has closed is outside it',
+    tooltipLines('<ng-template #seal>\n  <span></span>\n</ng-template>\n' + FLAG),
+    [4]
+  );
+  check(
+    'an icon beside an ng-template is outside it',
+    tooltipLines('<ng-template #seal></ng-template><div>' + FLAG + '</div>'),
+    [1]
+  );
+  check(
+    'a flag that takes focus does not excuse the next one',
+    tooltipLines(FLAG.replace('<mat-icon ', '<mat-icon tabindex="0" ') + '\n' + FLAG),
+    [2]
+  );
+  check(
+    'the tooltip rule reports its attributes collapsed to one line',
+    scanTooltipIcons('<mat-icon\n  [matTooltip]="t()"\n  aria-label="x"\n  aria-hidden="false"\n>a</mat-icon>').map(
+      (hit) => hit.attrs
+    ),
+    ['[matTooltip]="t()" aria-label="x" aria-hidden="false"']
+  );
+
+  // --- the tooltip rule: must not hit (the load-bearing half) ---
+  check('a literal tabindex="0"', tooltipLines(FLAG.replace('<mat-icon ', '<mat-icon tabindex="0" ')), []);
+  check(
+    'the wizard\'s seal icon, stamped through an ng-template into a tab header',
+    tooltipLines(
+      '<mat-stepper>\n  <ng-template #sealIcon>\n    <mat-icon\n      class="seal-icon"\n      aria-hidden="false"\n' +
+        '      role="img"\n      [attr.aria-label]="\'import.stepSealed\' | translate"\n' +
+        '      [matTooltip]="\'import.stepSealed\' | translate"\n    >lock</mat-icon>\n  </ng-template>\n</mat-stepper>'
+    ),
+    []
+  );
+  check(
+    'an icon several elements and a block deep inside an ng-template',
+    tooltipLines('<ng-template #seal>\n  <div>\n    @if (sealed) {\n      ' + FLAG + '\n    }\n  </div>\n</ng-template>'),
+    []
+  );
+  check(
+    'a flag deliberately silent inside a control that names itself, the form\'s type flag',
+    tooltipLines('<mat-icon class="verify-flag" [matTooltip]="tip()" matTooltipPosition="above" aria-hidden="true">error_outline</mat-icon>'),
+    []
+  );
+  check(
+    'a named tooltip icon with no literal aria-hidden is the first rule\'s, and is reported there once',
+    [
+      tooltipLines('<mat-icon role="img" [matTooltip]="t()" [attr.aria-label]="t()">a</mat-icon>'),
+      lines('<mat-icon role="img" [matTooltip]="t()" [attr.aria-label]="t()">a</mat-icon>'),
+    ],
+    [[], [1]]
+  );
+  check(
+    'a named icon with no tooltip, the split indicator',
+    tooltipLines('<mat-icon class="split-indicator" role="img" aria-hidden="false" [attr.aria-label]="k | translate">call_split</mat-icon>'),
+    []
+  );
+  check(
+    'an unnamed icon with a tooltip',
+    tooltipLines('<mat-icon [matTooltip]="t()" aria-hidden="false">info</mat-icon>'),
+    []
+  );
+  check(
+    'a tooltip option alone is not a tooltip',
+    tooltipLines('<mat-icon matTooltipPosition="above" [matTooltipDisabled]="off" role="img" aria-hidden="false" aria-label="x">a</mat-icon>'),
+    []
+  );
+  check(
+    'an element that is not a mat-icon',
+    tooltipLines('<span [matTooltip]="t()" role="img" aria-hidden="false" [attr.aria-label]="t()"></span>'),
+    []
+  );
+  check('a commented-out flag is not a flag', tooltipLines('<!-- ' + FLAG + ' -->'), []);
 
   const failed = cases.filter((c) => !c.ok);
   for (const c of cases) {
