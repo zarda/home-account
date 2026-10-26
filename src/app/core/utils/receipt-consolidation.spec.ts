@@ -4,6 +4,7 @@ import {
   REVIEW_AMOUNT_CONFIDENCE,
 } from './receipt-consolidation';
 import { MultiImageExtractedTransaction } from '../services/gemini.service';
+import { MODEL_INCOME_GRADE } from './receipt-extraction.utils';
 
 describe('formatReceiptItemLines', () => {
   it('formats items one per line with two decimals', () => {
@@ -306,6 +307,70 @@ describe('consolidateReceiptItems', () => {
       ])[0];
 
       expect(merged.dateConfidence).toBeUndefined();
+    });
+  });
+
+  // The type grade is this function's verdict (ADR 0162): a lone line's own
+  // type, or a merged receipt's net. Neither is the model's claim about the
+  // receipt, and a purchase carries no grade at all, so absence still means
+  // "nothing said otherwise".
+  describe('type grade', () => {
+    it('grades a lone line the model read as income for review', () => {
+      const [row] = consolidateReceiptItems([
+        item({ description: 'Refund', amount: 12, type: 'income', receiptId: 1 }),
+      ]);
+
+      expect(row.type).toBe('income');
+      expect(row.typeConfidence).toBe(MODEL_INCOME_GRADE);
+    });
+
+    it('does not take a grade the extraction brought for a lone purchase', () => {
+      const [row] = consolidateReceiptItems([
+        item({ description: 'Lunch', amount: 12, type: 'expense', receiptId: 1, typeConfidence: MODEL_INCOME_GRADE }),
+      ]);
+
+      expect('typeConfidence' in row).toBeFalse();
+    });
+
+    it('grades a merged receipt whose credits outweigh its purchases', () => {
+      const [row] = consolidateReceiptItems([
+        item({ description: 'Purchase', amount: 5, type: 'expense', receiptId: 1 }),
+        item({ description: 'Refund', amount: 20, type: 'income', receiptId: 1 }),
+      ]);
+
+      expect(row.type).toBe('income');
+      expect(row.amount).toBe(15);
+      expect(row.typeConfidence).toBe(MODEL_INCOME_GRADE);
+    });
+
+    // PIN: passes before the implementation. Mutation: grade the merged row
+    // when any of its lines is income.
+    it('leaves a receipt whose lines net to a purchase ungraded, its refund line included', () => {
+      const [row] = consolidateReceiptItems([
+        item({ description: 'Purchase', amount: 10, type: 'expense', receiptId: 1 }),
+        item({ description: 'Refund', amount: 5, type: 'income', receiptId: 1 }),
+      ]);
+
+      expect(row.type).toBe('expense');
+      expect('typeConfidence' in row).toBeFalse();
+    });
+
+    // PIN: passes before the implementation. Mutation: spread
+    // `typeConfidence: MODEL_INCOME_GRADE` whatever the verdict, on both
+    // branches.
+    it('leaves a purchase ungraded', () => {
+      const lone = consolidateReceiptItems([
+        item({ description: 'Lunch', amount: 10, type: 'expense', receiptId: 1 }),
+      ])[0];
+      const merged = consolidateReceiptItems([
+        item({ description: 'Lunch', amount: 10, type: 'expense', receiptId: 2 }),
+        item({ description: 'Snack', amount: 5, type: 'expense', receiptId: 2 }),
+      ])[0];
+
+      expect(lone.wasMerged).withContext('the lone branch').toBeFalse();
+      expect('typeConfidence' in lone).withContext('the lone branch').toBeFalse();
+      expect(merged.wasMerged).withContext('the merged branch').toBeTrue();
+      expect('typeConfidence' in merged).withContext('the merged branch').toBeFalse();
     });
   });
 });

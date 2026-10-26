@@ -1690,6 +1690,25 @@ describe('AIStrategyService', () => {
       expect(result.transactions[0].fieldConfidence).toEqual({ date: 0 });
     });
 
+    it("carries a cloud-read refund's type grade onto its transaction", async () => {
+      const extracted: MultiImageExtractedTransaction[] = [
+        {
+          date: '2026-01-15', description: 'Returned jacket', amount: 40, type: 'income',
+          currency: 'USD', merchant: 'Outfitter', imageIndex: 0,
+          confidence: 0.8, receiptId: 1, receiptTotal: 40,
+        },
+      ];
+      cloudMock.extractTransactionsFromMultipleImages.and.resolveTo(extracted);
+      const service = createService('web');
+
+      const result = await service.processMultipleImages([imageFile()]);
+
+      expect(result.transactions[0].type).toBe('income');
+      // The printed total corroborates the amount, so the type is the only
+      // thing graded: the review row is asked about the direction alone.
+      expect(result.transactions[0].fieldConfidence).toEqual({ type: MODEL_INCOME_GRADE });
+    });
+
     it('carries which photos each transaction came from', async () => {
       const extracted: MultiImageExtractedTransaction[] = [
         {

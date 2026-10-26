@@ -1,5 +1,6 @@
 import { VERIFY_FIELD_THRESHOLD } from '../../models';
 import {
+  extractedFieldConfidence,
   MODEL_INCOME_GRADE,
   modelTypeGrade,
   printedLocationSlot,
@@ -189,6 +190,28 @@ describe('modelTypeGrade', () => {
 
   it('grades no purchase, so absence still means nothing said otherwise', () => {
     expect(modelTypeGrade('expense')).toBeUndefined();
+  });
+});
+
+describe('extractedFieldConfidence', () => {
+  it('is undefined when nothing was graded, so a source that cannot know stays distinguishable', () => {
+    expect(extractedFieldConfidence({}, undefined)).toBeUndefined();
+  });
+
+  it('carries the amount, the date the caller resolved and the type', () => {
+    expect(extractedFieldConfidence({ amountConfidence: 0.5, typeConfidence: MODEL_INCOME_GRADE }, 0.9))
+      .toEqual({ amount: 0.5, date: 0.9, type: MODEL_INCOME_GRADE });
+    // Whichever were graded, and no key for the rest.
+    expect(extractedFieldConfidence({ typeConfidence: MODEL_INCOME_GRADE }, undefined))
+      .toEqual({ type: MODEL_INCOME_GRADE });
+    expect(extractedFieldConfidence({ amountConfidence: 0.4 }, undefined)).toEqual({ amount: 0.4 });
+  });
+
+  // The caller's grade is the resolved one: a fabricated date arrives as an
+  // honest 0, and a falsy test would drop exactly the claim that matters.
+  it('keeps a zero date grade', () => {
+    expect(extractedFieldConfidence({}, 0)).toEqual({ date: 0 });
+    expect(extractedFieldConfidence({ amountConfidence: 0 }, 0)).toEqual({ amount: 0, date: 0 });
   });
 });
 

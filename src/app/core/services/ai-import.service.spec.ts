@@ -43,6 +43,7 @@ import { AnalyticsService } from './analytics.service';
 import { createMockUser } from './testing/mock-auth.service';
 import { createCategory, createRecurring, createTransaction } from './testing/test-data';
 import { REVIEW_AMOUNT_CONFIDENCE } from '../utils/receipt-consolidation';
+import { MODEL_INCOME_GRADE } from '../utils/receipt-extraction.utils';
 import {
   CategorizedImportTransaction,
   Category,
@@ -1571,6 +1572,20 @@ describe('AIImportService', () => {
       expect(result.transactions[0].fieldConfidence?.amount).toBe(REVIEW_AMOUNT_CONFIDENCE);
     });
 
+    it("carries a single-photo refund's type grade to its review row", async () => {
+      cloudLLMProvider.extractTransactionsFromMultipleImages.and.returnValue(Promise.resolve([
+        { date: '2024-06-01', description: 'Returned jacket', amount: 4000, type: 'income', currency: 'JPY',
+          imageIndex: 0, confidence: 0.9, receiptId: 1, merchant: 'Outfitter', receiptTotal: 4000 }
+      ]));
+
+      const result = await service.importFromMultipleImages([makeFile('a.png', 'image/png')]);
+
+      expect(result.transactions[0].type).toBe('income');
+      // The printed total corroborates the amount, so the type is the only
+      // thing graded on the review row.
+      expect(result.transactions[0].fieldConfidence).toEqual({ type: MODEL_INCOME_GRADE });
+    });
+
     it('should merge multiple items sharing a receiptId into one transaction', async () => {
       cloudLLMProvider.extractTransactionsFromMultipleImages.and.returnValue(Promise.resolve([
         { date: '2024-06-01', description: 'Item A', amount: 100, type: 'expense', currency: 'JPY',
@@ -3011,6 +3026,20 @@ describe('AIImportService', () => {
 
       expect(result.map(r => r.type)).toEqual(['expense', 'income']);
       expect(result.map(r => r.suggestedCategoryId)).toEqual(['other_expense', 'other_income']);
+    });
+
+    it('carries a type grade an extraction row brings, and invents none for a row without one', async () => {
+      const result = await service.categorizeTransactions([
+        { date: '2024-06-01', description: 'Returned jacket', amount: 40, type: 'income', currency: 'USD',
+          typeConfidence: MODEL_INCOME_GRADE },
+        { date: '2024-06-02', description: 'Payroll', amount: 900, type: 'income', currency: 'USD' },
+        { date: '2024-06-03', description: 'Lunch', amount: 9, type: 'expense', currency: 'USD' },
+      ]);
+
+      expect(result[0].fieldConfidence).toEqual({ type: MODEL_INCOME_GRADE });
+      // A statement's or a file's income carries no grade: nothing read it off a receipt.
+      expect(result[1].fieldConfidence).toBeUndefined();
+      expect(result[2].fieldConfidence).toBeUndefined();
     });
 
     it('flags an unreadable date with zero confidence instead of silently dating it today', async () => {
