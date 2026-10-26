@@ -13,7 +13,8 @@ import { MatButtonToggleModule } from '@angular/material/button-toggle';
 import { MatIconModule } from '@angular/material/icon';
 import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
 import { MatChipsModule } from '@angular/material/chips';
-import { MatTooltipModule } from '@angular/material/tooltip';
+import { MatTooltip, MatTooltipModule } from '@angular/material/tooltip';
+import { FocusMonitor } from '@angular/cdk/a11y';
 import { CdkTextareaAutosize } from '@angular/cdk/text-field';
 import { LoadingSpinnerComponent } from '../../../shared/components/loading-spinner/loading-spinner.component';
 import { DialogHeaderComponent } from '../../../shared/components/dialog-header/dialog-header.component';
@@ -3219,6 +3220,50 @@ describe('TransactionFormComponent, through its own template', () => {
     fixture.detectChanges();
 
     expect(el().querySelector('.verify-flag')).toBeNull();
+  });
+
+  /**
+   * A flag's sentence is the whole reason the figure is marked, and an icon
+   * takes focus from nothing: the sentence opens for keyboard focus only when
+   * the icon is a tab stop.
+   */
+  it("opens the amount flag's sentence when the keyboard reaches it", async () => {
+    render();
+    component.scanFieldConfidence.set({ amount: 0.2 });
+    fixture.detectChanges();
+
+    const flag = el().querySelector('.amount-field .verify-flag') as HTMLElement | null;
+    expect(flag).withContext('the amount flag renders for a doubted amount').not.toBeNull();
+    expect(flag!.tabIndex).withContext('the flag is in the tab order').toBe(0);
+    const tip = fixture.debugElement.query(By.css('.amount-field .verify-flag')).injector.get(MatTooltip);
+    expect(tip._isTooltipVisible()).withContext('closed before the keyboard arrives').toBeFalse();
+
+    TestBed.inject(FocusMonitor).focusVia(flag!, 'keyboard');
+    await until(() => tip._isTooltipVisible());
+
+    expect(tip._isTooltipVisible()).withContext('keyboard focus opens the sentence').toBeTrue();
+    expect(tip.message).toBe(component.verifyFieldTooltip('amount'));
+  });
+
+  it("opens the date flag's sentence when the keyboard reaches it", async () => {
+    render();
+    component.scanFieldConfidence.set({ date: 0.2 });
+    fixture.detectChanges();
+
+    const flag = el().querySelector('.verify-flag') as HTMLElement | null;
+    expect(flag).withContext('the date flag renders for a doubted date').not.toBeNull();
+    expect(flag!.closest('mat-form-field')?.querySelector('[formControlName="date"]'))
+      .withContext('the flag stands in the date field')
+      .not.toBeNull();
+    expect(flag!.tabIndex).withContext('the flag is in the tab order').toBe(0);
+    const tip = fixture.debugElement.query(By.css('.verify-flag')).injector.get(MatTooltip);
+    expect(tip._isTooltipVisible()).withContext('closed before the keyboard arrives').toBeFalse();
+
+    TestBed.inject(FocusMonitor).focusVia(flag!, 'keyboard');
+    await until(() => tip._isTooltipVisible());
+
+    expect(tip._isTooltipVisible()).withContext('keyboard focus opens the sentence').toBeTrue();
+    expect(tip.message).toBe(component.verifyFieldTooltip('date'));
   });
 
   it("flags a doubted type in the checked segment, whose name leads with the flag's sentence", async () => {

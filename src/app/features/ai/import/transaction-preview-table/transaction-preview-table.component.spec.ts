@@ -4,6 +4,7 @@ import { By } from '@angular/platform-browser';
 import { MatDatepicker } from '@angular/material/datepicker';
 import { MatDialog } from '@angular/material/dialog';
 import { MatTooltip } from '@angular/material/tooltip';
+import { FocusMonitor } from '@angular/cdk/a11y';
 import { provideNativeDateAdapter } from '@angular/material/core';
 import { Subject } from 'rxjs';
 
@@ -1410,6 +1411,39 @@ describe('TransactionPreviewTableComponent, the offer chip through its own templ
     expect(flag).withContext('the flag should render for a doubted amount').not.toBeNull();
     expect(flag.getAttribute('aria-hidden')).toBe('false');
     expect(flag.getAttribute('aria-label')).toBeTruthy();
+  });
+
+  /**
+   * Lets the tooltip's show delay pass and the view settle. A tooltip opens
+   * after a timer, which no zone count of turns waits on, so this waits in
+   * real time.
+   */
+  async function settle(): Promise<void> {
+    await fixture.whenStable();
+    for (let i = 0; i < 10; i++) await new Promise(resolve => setTimeout(resolve, 10));
+    fixture.detectChanges();
+  }
+
+  it('puts the amount flag in the tab order and opens its sentence from the keyboard', async () => {
+    // An icon takes focus from nothing, and a tooltip opens for a pointer or
+    // for keyboard focus: the flag's sentence is the whole reason the figure
+    // is marked, so the flag is a tab stop.
+    const row = makeRow({ fieldConfidence: { amount: 0.2 } });
+    component.transactions = [row];
+    component.categories = [];
+    fixture.detectChanges();
+
+    const flag = fixture.nativeElement.querySelector('.amount-section .verify-flag') as HTMLElement | null;
+    expect(flag).withContext('the flag renders for a doubted amount').not.toBeNull();
+    expect(flag!.tabIndex).withContext('the flag is in the tab order').toBe(0);
+    const tip = fixture.debugElement.query(By.css('.amount-section .verify-flag')).injector.get(MatTooltip);
+    expect(tip._isTooltipVisible()).withContext('closed before the keyboard arrives').toBeFalse();
+
+    TestBed.inject(FocusMonitor).focusVia(flag!, 'keyboard');
+    await settle();
+
+    expect(tip._isTooltipVisible()).withContext('keyboard focus opens the sentence').toBeTrue();
+    expect(tip.message).toBe(component.verificationTooltip(row, 'amount'));
   });
 
   it('marks a doubted type on its toggle, the mark leading the toggle\'s name and the icon decorative', () => {
