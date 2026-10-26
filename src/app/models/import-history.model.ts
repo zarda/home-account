@@ -71,7 +71,9 @@ export interface ImportHistory {
    * successes only (`length === successCount`). Absent on a record that has
    * not completed yet, on an import where every row failed, on records
    * completed before this field was added, and on the doors that write no
-   * success record at all (`form`, `queue` — ADR 0065).
+   * success record at all (the queue, and the form's single scan, whose
+   * transaction is the record — ADR 0065). The form's multi-receipt review
+   * does write one, door `form`.
    */
   transactionIds?: string[];
   /**
@@ -92,6 +94,19 @@ export interface ImportHistory {
 export type ImportProvenance = Pick<
   ImportHistory,
   'door' | 'engine' | 'fellBackFrom' | 'provider' | 'errorType' | 'durationMs'
+>;
+
+/**
+ * What a completed import records: the counters and totals the write landed.
+ * The one shape the importer builds and the history service stores, so a
+ * field added here reaches the record without a second list to keep in step.
+ */
+export type ImportCompletion = Pick<
+  ImportHistory,
+  | 'transactionCount' | 'successCount' | 'skippedCount' | 'errorCount'
+  | 'totalIncome' | 'totalExpenses' | 'totalsByCurrency'
+  | 'duplicatesSkipped' | 'errors'
+  | 'receiptsSkipped' | 'receiptsFailed' | 'transactionIds'
 >;
 
 export interface ImportError {

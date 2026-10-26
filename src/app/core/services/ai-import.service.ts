@@ -55,7 +55,7 @@ import {
   ImportResult,
   ImportWarning,
   CategorizedImportTransaction,
-  ImportCurrencyTotals,
+  ImportCompletion,
   ImportHistory,
   ImportProvenance,
   ImportSource,
@@ -1584,20 +1584,7 @@ export class AIImportService {
 
       // Update import history with final stats
       // Note: Only include errors if there are any (Firestore rejects undefined values)
-      const completeStats: {
-        transactionCount: number;
-        successCount: number;
-        skippedCount: number;
-        errorCount: number;
-        totalIncome: number;
-        totalExpenses: number;
-        totalsByCurrency?: ImportCurrencyTotals[];
-        duplicatesSkipped: number;
-        errors?: ImportHistory['errors'];
-        receiptsSkipped?: number;
-        receiptsFailed?: number;
-        transactionIds?: string[];
-      } = {
+      const completeStats: ImportCompletion = {
         transactionCount: selectedTransactions.length,
         successCount,
         skippedCount: transactions.length - selectedTransactions.length,
