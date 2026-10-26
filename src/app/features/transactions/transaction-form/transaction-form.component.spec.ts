@@ -3214,6 +3214,71 @@ describe('TransactionFormComponent, through its own template', () => {
     expect(locate.querySelector('mat-spinner')?.getAttribute('aria-hidden')).toBe('true');
   });
 
+  describe('the type toggle when the scan doubts the type', () => {
+    const FACE = "Verdana, 'DejaVu Sans', sans-serif";
+
+    /**
+     * The form in a column as wide as the dialog it opens in. Karma never
+     * loads the dialog container's stylesheet, so the content's block display
+     * and padding are set here, and the face is pinned as docs/testing.md
+     * *Karma serves no fonts* says. Under 480px the form's own rule pads the
+     * content 16px `!important`; Karma's window is wider, so that padding is
+     * set inline the same way.
+     */
+    function renderInColumn(hostWidth: number, padding: string, important: boolean): void {
+      render();
+      const host = el();
+      host.style.display = 'block';
+      host.style.width = `${hostWidth}px`;
+      host.style.fontFamily = FACE;
+      for (const token of ['--mat-sys-body-large-font', '--mat-sys-body-small-font', '--mat-sys-label-large-font']) {
+        host.style.setProperty(token, FACE);
+      }
+      const content = host.querySelector('.dialog-content') as HTMLElement;
+      content.style.display = 'block';
+      content.style.setProperty('padding', padding, important ? 'important' : '');
+      fixture.detectChanges();
+    }
+
+    const group = () => el().querySelector('.type-toggle') as HTMLElement;
+    /** The checked segment's own word, not the segment: the part that must not slide. */
+    const checkedLabel = () =>
+      el().querySelector('mat-button-toggle.mat-button-toggle-checked .mat-button-toggle-label-content > span') as HTMLElement;
+    const stand = () => ({ group: group().getBoundingClientRect(), label: checkedLabel().getBoundingClientRect() });
+
+    const columns = [
+      { where: 'in the 500px dialog', hostWidth: 500, padding: '24px', important: false },
+      { where: 'at a 375px phone', hostWidth: 356, padding: '16px', important: true },
+    ] as const;
+
+    for (const { where, hostWidth, padding, important } of columns) {
+      it(`keeps the toggle group and the checked segment's label where they stood when the type flag appears, ${where}`, () => {
+        renderInColumn(hostWidth, padding, important);
+        const before = stand();
+        expect(before.group.width).withContext('the group at its 320px cap').toBe(320);
+        expect(el().querySelector('.type-toggle-container .verify-flag')).toBeNull();
+
+        component.scanFieldConfidence.set({ type: 0.5 });
+        fixture.detectChanges();
+
+        const flag = el().querySelector('mat-button-toggle.mat-button-toggle-checked .verify-flag') as HTMLElement | null;
+        expect(flag).withContext('the flag stands in the checked segment').not.toBeNull();
+        const after = stand();
+        expect(after.group.left).withContext('the group, left').toBeCloseTo(before.group.left, 1);
+        expect(after.group.width).withContext('the group, width').toBeCloseTo(before.group.width, 1);
+        expect(after.label.left).withContext("the checked segment's label, left").toBeCloseTo(before.label.left, 1);
+        expect(after.label.width).withContext("the checked segment's label, width").toBeCloseTo(before.label.width, 1);
+        if (flag) {
+          const drawn = flag.getBoundingClientRect();
+          expect(drawn.left).withContext('the flag, left of the group').toBeGreaterThanOrEqual(after.group.left);
+          expect(drawn.right).withContext('the flag, right of the group').toBeLessThanOrEqual(after.group.right);
+          expect(drawn.top).withContext('the flag, top of the group').toBeGreaterThanOrEqual(after.group.top);
+          expect(drawn.bottom).withContext('the flag, bottom of the group').toBeLessThanOrEqual(after.group.bottom);
+        }
+      });
+    }
+  });
+
   describe('the Shared with control', () => {
     const joined = Timestamp.fromMillis(1_000);
     const HOME = { id: 'h1', name: 'Home', role: 'owner', since: joined, joinedAt: joined };
@@ -3918,12 +3983,14 @@ describe('TransactionFormComponent, through its own template', () => {
         withTheme(theme, () => {
           settleAnimations(document);
           for (const flag of flags) {
-            const field = flag.getAttribute('aria-label');
+            // The type flag stands in the checked segment, which names it, and
+            // is painted on that segment's fill rather than on the dialog.
+            const field = flag.closest('mat-button-toggle') ? 'type' : flag.getAttribute('aria-label');
             expect(getComputedStyle(flag).color)
               .withContext(`${theme} ${field}`)
               .toBe(tokenValue('--color-warning-text'));
             expect(ratio(paintedColor(flag), paintedBackground(flag)))
-              .withContext(`${theme} ${field} on the dialog`)
+              .withContext(`${theme} ${field} on its ground`)
               .toBeGreaterThanOrEqual(3);
           }
         });
