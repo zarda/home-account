@@ -656,6 +656,50 @@ describe('TransactionFormComponent', () => {
           type_flipped: 'none',
         });
       });
+
+      it('sends no receipt_confirm for a manual save', async () => {
+        // A pin: nobody read the type, so there is no flag to have answered.
+        const component = build().componentInstance;
+        validForm(component);
+
+        await component.onSubmit();
+
+        expect(transactionService.addTransaction).toHaveBeenCalledTimes(1);
+        expect(analytics.trackReceiptConfirm).not.toHaveBeenCalled();
+      });
+
+      it('sends no receipt_confirm once the scanned photo is discarded', async () => {
+        // A pin: the discard withdraws the scan's claim on the form, the
+        // reader's doubt included. What is typed afterwards is manual entry.
+        strategy.processReceipt.and.resolveTo(
+          scanResult({ source: 'native', fieldConfidence: { type: 0.3 } }, { diagnostics: nativeRead }),
+        );
+        const component = build().componentInstance;
+        await pickAndScan(component);
+        component.removePendingReceipt(0);
+        validForm(component);
+
+        await component.onSubmit();
+
+        expect(transactionService.addTransaction).toHaveBeenCalledTimes(1);
+        expect(analytics.trackReceiptConfirm).not.toHaveBeenCalled();
+      });
+
+      it('sends no receipt_confirm when editing', async () => {
+        // A pin: the event is about a new row's scan. A photo scanned into an
+        // edit holds a reading too, and the edit still reports nothing.
+        strategy.processReceipt.and.resolveTo(
+          scanResult({ source: 'native', fieldConfidence: { type: 0.3 } }, { diagnostics: nativeRead }),
+        );
+        const component = build({ mode: 'edit', transaction: createTransaction({ id: 'e1' }) }).componentInstance;
+        await pickAndScan(component);
+        validForm(component);
+
+        await component.onSubmit();
+
+        expect(transactionService.updateTransaction).toHaveBeenCalledTimes(1);
+        expect(analytics.trackReceiptConfirm).not.toHaveBeenCalled();
+      });
     });
 
     it('sends the period key when editing clears it, so the stored one is removed', async () => {
