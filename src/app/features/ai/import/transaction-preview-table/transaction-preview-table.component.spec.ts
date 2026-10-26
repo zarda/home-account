@@ -4147,6 +4147,60 @@ describe('TransactionPreviewTableComponent, the offer chip through its own templ
       expect(mockAnnouncer.announce).not.toHaveBeenCalled();
     });
 
+    it('re-files a survivor still holding the other side\'s category when the net stays on its side', () => {
+      // Two income rows, the target still on food, an expense category. The
+      // net stays on income, so the merge turned nothing, but food cannot be
+      // written onto an income row any more than after a turn: the survivor
+      // is held to the side it lands on, whichever side that is. The
+      // catalogue is set before the rows, so nothing has held the target to
+      // its side by the time the merge is asked to.
+      const target = makeRow({ id: 'target', description: 'Coffee Shop', amount: 10, type: 'income' });
+      const source = makeRow({
+        id: 'source', description: 'Coffee Shop refund', amount: 15,
+        type: 'income', suggestedCategoryId: 'salary', categoryConfidence: 0.8,
+      });
+      component.categories = flipCatalogue();
+      component.transactions = [target, source];
+      fixture.detectChanges();
+      expect(component.transactions.find(t => t.id === 'target')!.suggestedCategoryId)
+        .withContext('precondition: the catalogue arrived first, so the target still holds food')
+        .toBe('food');
+
+      component.mergeInto(source, target);
+      fixture.detectChanges();
+
+      expect(filed(component.transactions.find(t => t.id === 'target')!))
+        .toEqual({ type: 'income', amount: 25, category: 'other_income', grade: UNRESOLVED_CATEGORY_CONFIDENCE });
+    });
+
+    it('keeps the mark of two flipped rows merged on their side, so a flip back still brings the category back', () => {
+      // Pin. Mutations: (A) drop the fitsSide guard on branch 1; (B) branch 2 returns movedCategory: undefined.
+      // Two purchases on food, each flipped to income and so filed on the
+      // catch-all with food remembered. The merge stays on income: the
+      // remembered food cannot return there, and the catch-all keeps the
+      // mark, which a flip back to expense then reads.
+      component.categories = flipCatalogue();
+      component.transactions = [makeRow({ id: 'a', amount: 5 }), makeRow({ id: 'b', amount: 7 })];
+      fixture.detectChanges();
+      component.toggleType(component.transactions[0]);
+      component.toggleType(component.transactions[1]);
+      fixture.detectChanges();
+
+      component.mergeInto(component.transactions[1], component.transactions[0]);
+      fixture.detectChanges();
+
+      const survivor = component.transactions.find(t => t.id === 'a')!;
+      expect(component.transactions.length).withContext('b merged into a').toBe(1);
+      expect(filed(survivor))
+        .toEqual({ type: 'income', amount: 12, category: 'other_income', grade: UNRESOLVED_CATEGORY_CONFIDENCE });
+      expect(survivor.movedCategory).toEqual({ suggestedCategoryId: 'food', categoryConfidence: 0.9 });
+
+      component.toggleType(survivor);
+
+      expect(filed(component.transactions.find(t => t.id === 'a')!))
+        .toEqual({ type: 'expense', amount: 12, category: 'food', grade: 0.9 });
+    });
+
     it('does nothing when the source or the target has left the batch by the time the click lands', () => {
       const a = makeRow({ id: 'a', currency: 'USD', description: 'Coffee', amount: 5.5 });
       const b = makeRow({ id: 'b', currency: 'USD', description: 'Lunch', amount: 12 });
@@ -4805,6 +4859,26 @@ describe('TransactionPreviewTableComponent, the offer chip through its own templ
       fixture.detectChanges();
 
       component.mergeInto(refund, purchase);
+
+      expect(mockAnnouncer.announce).toHaveBeenCalledOnceWith(
+        'import.announceCategoryRefiled:{"description":"Coffee Shop","category":"categoryNames.otherIncome"}'
+      );
+    });
+
+    it('announces a category a same-side merge moved', () => {
+      // The net did not turn the survivor, yet the chip moved all the same:
+      // the target still held an expense category on an income row, and the
+      // merge was chosen from the other row's menu.
+      const target = makeRow({ id: 'target', amount: 10, type: 'income' });
+      const source = makeRow({
+        id: 'source', description: 'Coffee Shop refund', amount: 15,
+        type: 'income', suggestedCategoryId: 'salary',
+      });
+      component.categories = flipCatalogue();
+      component.transactions = [target, source];
+      fixture.detectChanges();
+
+      component.mergeInto(source, target);
 
       expect(mockAnnouncer.announce).toHaveBeenCalledOnceWith(
         'import.announceCategoryRefiled:{"description":"Coffee Shop","category":"categoryNames.otherIncome"}'
