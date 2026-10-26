@@ -111,6 +111,17 @@ describe('validateAnalyticsParams', () => {
     expect(validateAnalyticsParams('receipt_import', missingPath)).toBeNull();
   });
 
+  it('accepts a full receipt_confirm payload and rejects one missing a dimension or carrying a raw count', () => {
+    // The counts travel as buckets: how many types one account's reader
+    // flagged is a figure about its receipts, and the enumeration keeps it out.
+    const full = { path: 'form', engine: 'native_after_cloud', type_flagged: 'several', type_flipped: 'one' };
+    expect(validateAnalyticsParams('receipt_confirm', full)).toEqual(full);
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    const { type_flipped: _omitted, ...missingFlipped } = full;
+    expect(validateAnalyticsParams('receipt_confirm', missingFlipped)).toBeNull();
+    expect(validateAnalyticsParams('receipt_confirm', { ...full, type_flagged: 2 })).toBeNull();
+  });
+
   it('should reject free text even in a declared parameter', () => {
     // The case that matters: a call site passing something derived from user
     // data into a slot that only ever holds enumerated values.

@@ -168,7 +168,8 @@ async function until(
  * answers each row with its own side's catch-all at the tried-and-failed
  * grade, as a model that named nothing usable leaves it. The analytics stub
  * carries trackReceiptImport because the wizard's own file picker opens a
- * receipt attempt, which reports through it.
+ * receipt attempt, which reports through it, and trackReceiptConfirm because
+ * a confirmed receipt batch reports its type counts through that.
  */
 function stubReceiptSeams(parsed?: ParsedReceipt, items?: MultiImageExtractedTransaction[]): void {
   const cloudLLMProvider: jasmine.SpyObj<CloudLLMProviderService> = jasmine.createSpyObj(
@@ -218,7 +219,7 @@ function stubReceiptSeams(parsed?: ParsedReceipt, items?: MultiImageExtractedTra
 
   const analytics: jasmine.SpyObj<AnalyticsService> = jasmine.createSpyObj(
     'AnalyticsService',
-    ['trackAiAssistUsed', 'trackReceiptImport']
+    ['trackAiAssistUsed', 'trackReceiptImport', 'trackReceiptConfirm']
   );
 
   TestBed.configureTestingModule({
@@ -675,7 +676,7 @@ describe('ImportWizardComponent camera handoff (emulator smoke test)', () => {
 
       const analytics: jasmine.SpyObj<AnalyticsService> = jasmine.createSpyObj(
         'AnalyticsService',
-        ['trackAiAssistUsed']
+        ['trackAiAssistUsed', 'trackReceiptConfirm']
       );
 
       TestBed.configureTestingModule({
@@ -779,7 +780,7 @@ describe('ImportWizardComponent camera handoff (emulator smoke test)', () => {
 
       const analytics: jasmine.SpyObj<AnalyticsService> = jasmine.createSpyObj(
         'AnalyticsService',
-        ['trackAiAssistUsed']
+        ['trackAiAssistUsed', 'trackReceiptConfirm']
       );
 
       TestBed.configureTestingModule({
@@ -967,7 +968,7 @@ describe('ImportWizardComponent camera handoff (emulator smoke test)', () => {
 
       const analytics: jasmine.SpyObj<AnalyticsService> = jasmine.createSpyObj(
         'AnalyticsService',
-        ['trackAiAssistUsed']
+        ['trackAiAssistUsed', 'trackReceiptConfirm']
       );
 
       TestBed.configureTestingModule({
@@ -1093,7 +1094,7 @@ describe('ImportWizardComponent camera handoff (emulator smoke test)', () => {
 
       const analytics: jasmine.SpyObj<AnalyticsService> = jasmine.createSpyObj(
         'AnalyticsService',
-        ['trackAiAssistUsed']
+        ['trackAiAssistUsed', 'trackReceiptConfirm']
       );
 
       TestBed.configureTestingModule({
@@ -1199,7 +1200,7 @@ describe('ImportWizardComponent camera handoff (emulator smoke test)', () => {
 
       const analytics: jasmine.SpyObj<AnalyticsService> = jasmine.createSpyObj(
         'AnalyticsService',
-        ['trackAiAssistUsed']
+        ['trackAiAssistUsed', 'trackReceiptConfirm']
       );
 
       TestBed.configureTestingModule({
@@ -1309,7 +1310,7 @@ describe('ImportWizardComponent camera handoff (emulator smoke test)', () => {
 
       const analytics: jasmine.SpyObj<AnalyticsService> = jasmine.createSpyObj(
         'AnalyticsService',
-        ['trackAiAssistUsed']
+        ['trackAiAssistUsed', 'trackReceiptConfirm']
       );
 
       TestBed.configureTestingModule({
@@ -1731,6 +1732,11 @@ describe('ImportWizardComponent camera handoff (emulator smoke test)', () => {
       expect({ typesFlagged: record?.typesFlagged, typesFlipped: record?.typesFlipped })
         .withContext('two flags raised, one overturned')
         .toEqual({ typesFlagged: 2, typesFlipped: 1 });
+      // The confirm reports the same counts, bucketed, and the engine as none:
+      // the capture handed over no diagnostics to time.
+      expect(TestBed.inject(AnalyticsService).trackReceiptConfirm)
+        .withContext('the confirm reports what the record counted')
+        .toHaveBeenCalledOnceWith({ path: 'camera', engine: 'none', type_flagged: 'several', type_flipped: 'one' });
 
       history.replaceState({}, '');
       fixture.destroy();

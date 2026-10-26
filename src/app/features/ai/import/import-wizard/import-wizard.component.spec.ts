@@ -12,8 +12,9 @@ import { DuplicateDetectionService } from '../../../../core/services/duplicate-d
 import { CategoryService } from '../../../../core/services/category.service';
 import { TranslationService } from '../../../../core/services/translation.service';
 import { AnnouncerService } from '../../../../core/services/announcer.service';
-import { Category, CategorizedImportTransaction, DuplicateCheck, ImportResult, ProcessingStep } from '../../../../models';
+import { Category, CategorizedImportTransaction, DuplicateCheck, ImportHistory, ImportResult, ProcessingStep } from '../../../../models';
 import { NotificationService } from '../../../../core/services/notification.service';
+import { AnalyticsService } from '../../../../core/services/analytics.service';
 import { ShareIntakeService } from '../../../../core/services/share-intake.service';
 import { ReceiptAttempt, ReceiptAttemptService } from '../../../../core/services/receipt-attempt.service';
 import { CurrencyService } from '../../../../core/services/currency.service';
@@ -53,6 +54,7 @@ describe('ImportWizardComponent', () => {
   let mockDuplicateService: jasmine.SpyObj<DuplicateDetectionService>;
   let mockShareIntake: jasmine.SpyObj<ShareIntakeService>;
   let attempts: ReturnType<typeof attemptStub>;
+  let analytics: jasmine.SpyObj<AnalyticsService>;
   let routeStub: { snapshot: { queryParamMap: ReturnType<typeof convertToParamMap> } };
 
   const mockCategories: Category[] = [
@@ -187,6 +189,7 @@ describe('ImportWizardComponent', () => {
     mockShareIntake = jasmine.createSpyObj('ShareIntakeService', ['consumeAll']);
     mockShareIntake.consumeAll.and.resolveTo([]);
     attempts = attemptStub();
+    analytics = jasmine.createSpyObj<AnalyticsService>('AnalyticsService', ['trackReceiptConfirm']);
     routeStub = { snapshot: { queryParamMap: convertToParamMap({}) } };
 
     await TestBed.configureTestingModule({
@@ -202,6 +205,7 @@ describe('ImportWizardComponent', () => {
         { provide: DuplicateDetectionService, useValue: mockDuplicateService },
         { provide: ShareIntakeService, useValue: mockShareIntake },
         { provide: ReceiptAttemptService, useValue: attempts.service },
+        { provide: AnalyticsService, useValue: analytics },
         { provide: ActivatedRoute, useValue: routeStub },
         // The real one is root-provided and fetches rates from its
         // constructor. The code-and-figure shape is what the assertions read:
@@ -1372,6 +1376,125 @@ describe('ImportWizardComponent', () => {
       } finally {
         history.replaceState({}, '');
       }
+    });
+  });
+
+  describe('the receipt confirm event', () => {
+    // A receipt-shaped hand-off for every case that expects a send: the
+    // shared result above is a CSV, which holds no receipt and sends nothing.
+    const cameraState = () => ({
+      importResult: {
+        ...mockImportResult,
+        source: 'image', fileType: 'receipt_image',
+        fileName: '3 images', fileSize: 999
+      },
+      fromCamera: true
+    });
+    const formState = () => ({
+      importResult: {
+        ...mockImportResult,
+        source: 'image', fileType: 'receipt_image',
+        diagnostics: { engine: 'cloud', provider: 'gemini', durationMs: 500 },
+      },
+      fromCamera: true,
+      door: 'form',
+    });
+    /** The record the confirm read back, carrying the type counts it kept. */
+    const recordKeeping = (counts: Pick<ImportHistory, 'typesFlagged' | 'typesFlipped'>): ImportHistory => ({
+      id: 'history1', userId: 'user1', importedAt: { seconds: 0 } as never,
+      source: 'image', fileType: 'receipt_image',
+      fileName: '3 images', fileSize: 999, transactionCount: 2, successCount: 2,
+      skippedCount: 0, errorCount: 0, totalIncome: 3000, totalExpenses: 5,
+      duplicatesSkipped: 0, status: 'completed', ...counts
+    });
+    /** Opens the wizard a hand-off lands on and confirms its rows. */
+    const confirmHandedOver = async (state: object): Promise<void> => {
+      history.replaceState(state, '');
+      try {
+        const handOff = TestBed.createComponent(ImportWizardComponent);
+        handOff.detectChanges();
+        handOff.componentInstance.extractedTransactions.set(mockTransactions);
+        await handOff.componentInstance.confirmImport();
+      } finally {
+        history.replaceState({}, '');
+      }
+    };
+
+    it('reports a camera receipt\'s confirm by the counts its record kept', async () => {
+      mockImportService.confirmImport.and.resolveTo(recordKeeping({ typesFlagged: 3, typesFlipped: 1 }));
+
+      await confirmHandedOver(cameraState());
+
+      expect(analytics.trackReceiptConfirm).toHaveBeenCalledOnceWith({
+        path: 'camera', engine: 'none', type_flagged: 'several', type_flipped: 'one',
+      });
+    });
+
+    it('reports none and none for a receipt confirm nobody flagged', async () => {
+      // The record leaves a zero count out rather than writing it.
+      mockImportService.confirmImport.and.resolveTo(recordKeeping({}));
+
+      await confirmHandedOver(cameraState());
+
+      expect(analytics.trackReceiptConfirm).toHaveBeenCalledOnceWith({
+        path: 'camera', engine: 'none', type_flagged: 'none', type_flipped: 'none',
+      });
+    });
+
+    it('reports the form\'s door for its multi-receipt review', async () => {
+      mockImportService.confirmImport.and.resolveTo(recordKeeping({ typesFlagged: 1 }));
+
+      await confirmHandedOver(formState());
+
+      expect(analytics.trackReceiptConfirm).toHaveBeenCalledOnceWith({
+        path: 'form', engine: 'cloud', type_flagged: 'one', type_flipped: 'none',
+      });
+    });
+
+    it('sends nothing for a batch that held no receipt', async () => {
+      // Pin. A CSV, through the shared csv result.
+      component.selectedFiles.set([new File(['a,b'], 'rows.csv', { type: 'text/csv' })]);
+      await component.processFiles();
+      await component.confirmImport();
+      expect(mockImportService.confirmImport).withContext('the csv batch confirmed').toHaveBeenCalledTimes(1);
+      expect(analytics.trackReceiptConfirm).withContext('a csv batch').not.toHaveBeenCalled();
+
+      // Photos of a statement, through the statement reader's screenshot
+      // result: an image batch, and still no receipt.
+      const statement = TestBed.createComponent(ImportWizardComponent).componentInstance;
+      statement.imageKind.set('statement');
+      statement.selectedFiles.set([new File(['x'], 'stmt.png', { type: 'image/png' })]);
+      await statement.processFiles();
+      await statement.confirmImport();
+      expect(mockImportService.confirmImport.calls.mostRecent().args[3])
+        .withContext('the statement batch confirmed as an image import').toBe('image');
+      expect(analytics.trackReceiptConfirm).withContext('a statement-image batch').not.toHaveBeenCalled();
+    });
+
+    it('sends nothing when the confirm is refused', async () => {
+      // Pin. Nothing was written, so nothing was confirmed.
+      mockImportService.confirmImport.and.rejectWith(new Error(IMPORT_NOT_STARTED));
+
+      await confirmHandedOver(cameraState());
+
+      expect(mockImportService.confirmImport).withContext('the refused confirm ran').toHaveBeenCalled();
+      expect(analytics.trackReceiptConfirm).not.toHaveBeenCalled();
+    });
+
+    it('keeps a landed import\'s success when the event throws', async () => {
+      // Pin. Usage statistics are never a precondition: the rows landed, and
+      // a broken send must not relabel them failed.
+      mockImportService.confirmImport.and.resolveTo(recordKeeping({ typesFlagged: 2, typesFlipped: 2 }));
+      analytics.trackReceiptConfirm.and.throwError(new Error('analytics down'));
+
+      await confirmHandedOver(cameraState());
+
+      expect(notifications.success).toHaveBeenCalledOnceWith('import.importComplete', { durationMs: 3000 });
+      expect(notifications.error).not.toHaveBeenCalled();
+      expect(mockRouter.navigate).toHaveBeenCalledWith(
+        ['/transactions'],
+        jasmine.objectContaining({ replaceUrl: true, queryParams: { showAll: 'true' } })
+      );
     });
   });
 
@@ -3191,6 +3314,7 @@ describe('ImportWizardComponent', () => {
           { provide: DuplicateDetectionService, useValue: mockDuplicateService },
           { provide: ShareIntakeService, useValue: mockShareIntake },
           { provide: ReceiptAttemptService, useValue: attempts.service },
+          { provide: AnalyticsService, useValue: analytics },
           { provide: ActivatedRoute, useValue: routeStub },
           // Wider than the stub above: the review card builds its whole
           // currency picker in a field initializer, so the narrow shape the

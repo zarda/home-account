@@ -255,6 +255,41 @@ describe('AnalyticsService', () => {
     }));
   });
 
+  describe('receipt_confirm', () => {
+    it('sends a confirm\'s four dimensions through the typed wrapper', fakeAsync(() => {
+      currentUser.set(premiumUser(true));
+      const service = build();
+      TestBed.tick();
+      tick();
+
+      service.trackReceiptConfirm({
+        path: 'camera', engine: 'cloud_after_native', type_flagged: 'several', type_flipped: 'one',
+      });
+      tick();
+
+      expect(transport.events).toEqual([{
+        name: 'receipt_confirm',
+        params: { path: 'camera', engine: 'cloud_after_native', type_flagged: 'several', type_flipped: 'one' },
+      }]);
+    }));
+
+    // Buckets, never the counts behind them, and nothing about the rows the
+    // reviewer answered: not an amount, not a merchant, not a category.
+    it('carries the four dimensions alone', fakeAsync(() => {
+      currentUser.set(premiumUser(true));
+      const service = build();
+      TestBed.tick();
+      tick();
+
+      service.trackReceiptConfirm({ path: 'wizard', engine: 'none', type_flagged: 'none', type_flipped: 'none' });
+      tick();
+
+      expect(transport.events.length).withContext('one event sent').toBe(1);
+      expect(Object.keys(transport.events[0]?.params ?? {}))
+        .toEqual(['path', 'engine', 'type_flagged', 'type_flipped']);
+    }));
+  });
+
   describe('household_action', () => {
     const ACTIONS = [
       'create', 'invite', 'revoke', 'accept', 'decline', 'leave', 'remove', 'dissolve', 'rename',
