@@ -3476,6 +3476,115 @@ describe('ImportWizardComponent', () => {
       expect(card!.textContent).toContain('bad csv');
     }));
 
+    // The service raises its flag only once a reader runs, so an offline scan
+    // is written to the queue with isProcessing still false. Not processing,
+    // no rows and no error is what "found nothing" looks like too, so the step
+    // has to wait for the wizard's own run to settle before it says that.
+    describe('while the photos are still being queued for later', () => {
+      const stepBody = () =>
+        (realFixture.nativeElement as HTMLElement).querySelector<HTMLElement>('.processing-step');
+
+      /** Photos picked, Process pressed: what the button's click handler does. */
+      const processOnePhoto = () => {
+        const real = realFixture.componentInstance;
+        real.onFilesSelected([new File([''], 'r.png', { type: 'image/png' })]);
+        realFixture.detectChanges();
+        real.processFiles();
+        real.stepper.next();
+        realFixture.detectChanges();
+      };
+
+      it('shows no empty result while the photos are still being queued for later', fakeAsync(() => {
+        let refuse!: (reason: unknown) => void;
+        mockImportService.importFromMultipleImages.and.returnValue(
+          new Promise<ImportResult>((_, reject) => { refuse = reject; })
+        );
+
+        processOnePhoto();
+
+        expect(stepBody()).withContext('the processing step').not.toBeNull();
+        expect(mockImportService.isProcessing())
+          .withContext('the service, which the queue write leaves lowered')
+          .toBeFalse();
+        expect(stepBody()!.textContent).not.toContain('import.noTransactionsFound');
+        expect(stepBody()!.querySelector('.processing-card'))
+          .withContext('the processing card')
+          .not.toBeNull();
+
+        refuse(new Error(AI_QUEUED_OFFLINE));
+        tick();
+        realFixture.detectChanges();
+
+        expect(stepBody()!.textContent).toContain('import.queuedForLater');
+        expect(stepBody()!.textContent).not.toContain('import.noTransactionsFound');
+        expect(stepBody()!.querySelector('.processing-card'))
+          .withContext('the processing card, once the queue write has settled')
+          .toBeNull();
+      }));
+
+      // PIN: passes before the fix, and has to keep passing after it. It is
+      // what stops "wait for the run" from turning into "never say it found
+      // nothing". Mutations run and seen failing: processingFinishedEmpty
+      // returning false always, and the run flag never being cleared.
+      it('shows the empty result once a run that found nothing has finished', fakeAsync(() => {
+        mockImportService.importFromMultipleImages.and.returnValue(
+          Promise.resolve({
+            ...mockImportResult,
+            source: 'image' as const,
+            fileType: 'receipt_image' as const,
+            transactions: []
+          })
+        );
+
+        processOnePhoto();
+        tick();
+        realFixture.detectChanges();
+
+        expect(stepBody()!.textContent).toContain('import.noTransactionsFound');
+        expect(stepBody()!.querySelector('.processing-card'))
+          .withContext('the processing card, once the run has ended')
+          .toBeNull();
+      }));
+
+      // A second press during the queue write would queue the same photos
+      // again, and the drain would then write each of them twice.
+      it('disables Process while its own run is still writing photos to the queue', () => {
+        const real = realFixture.componentInstance;
+        real.onFilesSelected([new File([''], 'r.png', { type: 'image/png' })]);
+        real.runInFlight.set(true);
+        realFixture.detectChanges();
+
+        const process = Array.from(
+          (realFixture.nativeElement as HTMLElement).querySelectorAll<HTMLButtonElement>('.step-actions button')
+        ).find(b => b.textContent?.includes('import.processWithAI'));
+        expect(process).withContext('the Process button').toBeDefined();
+        expect(mockImportService.isProcessing())
+          .withContext('the service, which the queue write leaves lowered')
+          .toBeFalse();
+        expect(process!.disabled).withContext('Process, mid-write').toBeTrue();
+      });
+
+      it('starts no second run when called again while its own run is still writing photos to the queue', fakeAsync(() => {
+        let refuse!: (reason: unknown) => void;
+        mockImportService.importFromMultipleImages.and.returnValue(
+          new Promise<ImportResult>((_, reject) => { refuse = reject; })
+        );
+
+        processOnePhoto();
+        tick();
+        realFixture.componentInstance.processFiles();
+        tick();
+
+        expect(mockImportService.importFromMultipleImages).toHaveBeenCalledTimes(1);
+
+        refuse(new Error(AI_QUEUED_OFFLINE));
+        tick();
+        realFixture.detectChanges();
+
+        expect(stepBody()!.textContent).toContain('import.queuedForLater');
+      }));
+    });
+
     // Every step body is eager, so the review step's notices are in the DOM
     // without the stepper reaching it.
     describe('the notices above the review rows', () => {
