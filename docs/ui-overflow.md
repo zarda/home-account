@@ -597,6 +597,17 @@ smoke spec through `npm run smoke`, and the source checks through
 so it is a before/after instrument for UI pull requests, like
 `capture-dialogs.mjs`.
 
+**The camera dialog sets no min-width at any width.** Both doors open it at
+500px (`quick-add.service.ts`, `transaction-form.component.ts`), which leaves
+a 452px content box once Material pads the body 24px a side. The capture
+container once carried `min-width: 500px` from 768px up, 48px wider than that
+box: the body scrolled sideways under the photo controls and the scan badge
+ran past the dialog's right edge at 1024px. The dialog's own width decides, so
+the container keeps its `min-height` and nothing else; below the breakpoint
+the global dialog default (`min(480px, calc(100vw - 32px))`, 288px on a 320px
+screen) already decides. The 768px query is a viewport query and Karma's
+window is 756px, so no rendered spec can apply it.
+
 **The import review at phone width has no row here.** Below 600px the wizard
 trims the 24px a side Material pads each step's content with
 (`import-wizard.component.scss`), which on top of the wizard's own 16px had
