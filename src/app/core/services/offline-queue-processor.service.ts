@@ -297,10 +297,14 @@ export class OfflineQueueProcessorService implements OnDestroy {
         // the row's renames only, and every optional the reader filled
         // travels without this door naming it. The category is held to the
         // row's side by the check the camera's review rows pass through, so a
-        // row named for the other side lands on its own side's catch-all.
+        // row named for the other side lands on its own side's catch-all. A
+        // drain runs on a reconnect or Sync Now, which can come before any page
+        // has started the category listener, so the catalogue it checks against
+        // is the shipped one until the account's has loaded: an empty list
+        // shows no side for any id.
         const resolved = resolveImportDate(tx.date, tx.fieldConfidence?.date);
         const { suggestedCategoryId } =
-          gradeCategorySuggestion(tx, tx.type, this.categoryService.categories());
+          gradeCategorySuggestion(tx, tx.type, this.categoryService.categoriesOrDefaults());
         const bareDto = toCreateTransactionDTO({
           ...tx,
           categoryId: suggestedCategoryId,

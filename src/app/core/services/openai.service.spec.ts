@@ -10,6 +10,7 @@ import { RawTransaction, PreviousPeriodData } from './gemini.service';
 import { ProviderResponse } from './cloud-llm-provider.base';
 import { PromptId, RenderedPrompt, languageInstruction, renderPrompt } from '../prompts';
 import { AI_ANSWER_INCOMPLETE } from '../utils/ai-error.utils';
+import { defaultCategories } from '../utils/category-merge.utils';
 
 /**
  * A minimal stand-in for the OpenAI Responses API client. The service only
@@ -84,7 +85,10 @@ describe('OpenAIService', () => {
   }
 
   beforeEach(() => {
-    mockCategoryService = jasmine.createSpyObj<CategoryService>('CategoryService', ['categories']);
+    mockCategoryService = jasmine.createSpyObj<CategoryService>('CategoryService', [
+      'categories',
+      'categoriesOrDefaults',
+    ]);
     mockCurrencyService = jasmine.createSpyObj<CurrencyService>('CurrencyService', [
       'convert',
       'formatAmount',
@@ -98,6 +102,12 @@ describe('OpenAIService', () => {
     ]);
 
     mockCategoryService.categories.and.returnValue(categories);
+    // The real method over the double's live list: a case that reassigns
+    // `categories` mid-way moves both.
+    mockCategoryService.categoriesOrDefaults.and.callFake(() => {
+      const list = mockCategoryService.categories();
+      return list.length ? list : defaultCategories();
+    });
     // Identity conversion keeps arithmetic in summaries easy to assert.
     mockCurrencyService.convert.and.callFake((amount: number) => amount);
     // Snapshot-or-identity, matching the fixtures below, which never diverge

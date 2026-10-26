@@ -9,6 +9,7 @@ import { createTransaction, createCategory } from './testing/test-data';
 import { environment } from '../../../environments/environment';
 import { DEFAULT_TEXT_MODEL, DEFAULT_VISION_MODEL } from '../config/ai-models';
 import { MODEL_INCOME_GRADE } from '../utils/receipt-extraction.utils';
+import { defaultCategories } from '../utils/category-merge.utils';
 
 /**
  * A fake generative model that records the request it was called with and
@@ -102,8 +103,17 @@ describe('GeminiService', () => {
   }
 
   beforeEach(() => {
-    categoryService = jasmine.createSpyObj<CategoryService>('CategoryService', ['categories']);
+    categoryService = jasmine.createSpyObj<CategoryService>('CategoryService', [
+      'categories',
+      'categoriesOrDefaults',
+    ]);
     categoryService.categories.and.returnValue(categories);
+    // The real method over the double's live list: a case that reassigns
+    // `categories` mid-way moves both.
+    categoryService.categoriesOrDefaults.and.callFake(() => {
+      const list = categoryService.categories();
+      return list.length ? list : defaultCategories();
+    });
 
     currencyService = jasmine.createSpyObj<CurrencyService>('CurrencyService', [
       'convert',

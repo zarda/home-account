@@ -9,6 +9,7 @@ import { CloudLLMProviderBase } from './cloud-llm-provider.base';
 import { Category, MonthlyTotal } from '../../models';
 import { createCategory } from './testing/test-data';
 import { environment } from '../../../environments/environment';
+import { defaultCategories } from '../utils/category-merge.utils';
 
 /**
  * The three providers must fail the *same* way for the same kind of failure.
@@ -77,8 +78,15 @@ describe('provider error parity', () => {
 
     const categoryService = jasmine.createSpyObj<CategoryService>('CategoryService', [
       'categories',
+      'categoriesOrDefaults',
     ]);
     categoryService.categories.and.returnValue(categories);
+    // The real method over the double's live list: a case that reassigns
+    // `categories` mid-way moves both.
+    categoryService.categoriesOrDefaults.and.callFake(() => {
+      const list = categoryService.categories();
+      return list.length ? list : defaultCategories();
+    });
 
     const currencyService = jasmine.createSpyObj<CurrencyService>('CurrencyService', [
       'formatAmount',

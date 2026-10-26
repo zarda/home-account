@@ -11,6 +11,7 @@ import { AI_ANSWER_INCOMPLETE } from '../utils/ai-error.utils';
 import { FALLBACK_CATEGORY_ID } from '../utils/categorization.utils';
 import { createBudget, createCategory, createTransaction } from './testing';
 import { dayKey } from '../utils/transaction-date.utils';
+import { defaultCategories } from '../utils/category-merge.utils';
 import { MODEL_INCOME_GRADE } from '../utils/receipt-extraction.utils';
 
 /**
@@ -128,8 +129,15 @@ describe('CloudLLMProviderBase', () => {
   beforeEach(() => {
     categoryService = jasmine.createSpyObj<CategoryService>('CategoryService', [
       'categories',
+      'categoriesOrDefaults',
     ]);
     categoryService.categories.and.returnValue(categories);
+    // The real method over the double's live list: a case that reassigns
+    // `categories` mid-way moves both.
+    categoryService.categoriesOrDefaults.and.callFake(() => {
+      const list = categoryService.categories();
+      return list.length ? list : defaultCategories();
+    });
 
     const currencyService = jasmine.createSpyObj<CurrencyService>('CurrencyService', [
       'convert',
@@ -735,6 +743,21 @@ describe('CloudLLMProviderBase', () => {
       const receipt = await provider.parseReceipt('img');
 
       expect(receipt.suggestedCategory).toBe(FALLBACK_CATEGORY_ID);
+    });
+
+    it('resolves a receipt\'s category name against the shipped catalogue while the account\'s has not loaded', async () => {
+      // A photo can be read before the account's listener has answered. The
+      // answer is the same name it would have had a moment later, not the
+      // catch-all that an empty list leaves nothing else to offer.
+      categoryService.categories.and.returnValue([]);
+      provider.response = {
+        text: '{"merchant":"Cafe","amount":4,"suggestedCategory":"Groceries"}',
+        truncated: false,
+      };
+
+      const receipt = await provider.parseReceipt('img');
+
+      expect(receipt.suggestedCategory).toBe('food_groceries');
     });
 
     /**

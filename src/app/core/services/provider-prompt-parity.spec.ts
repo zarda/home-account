@@ -10,6 +10,7 @@ import { createCategory } from './testing/test-data';
 import { JSON_ONLY_PREAMBLE, languageInstruction, renderPrompt } from '../prompts';
 import { environment } from '../../../environments/environment';
 import { CLAUDE_MODELS, DEFAULT_CLAUDE_MODEL, acceptsSampling } from '../config/ai-models';
+import { defaultCategories } from '../utils/category-merge.utils';
 
 /**
  * The three providers must send the *same* prompt for the same task.
@@ -59,8 +60,15 @@ describe('provider prompt parity', () => {
   beforeEach(() => {
     const categoryService = jasmine.createSpyObj<CategoryService>('CategoryService', [
       'categories',
+      'categoriesOrDefaults',
     ]);
     categoryService.categories.and.returnValue(categories);
+    // The real method over the double's live list: a case that reassigns
+    // `categories` mid-way moves both.
+    categoryService.categoriesOrDefaults.and.callFake(() => {
+      const list = categoryService.categories();
+      return list.length ? list : defaultCategories();
+    });
 
     const currencyService = jasmine.createSpyObj<CurrencyService>('CurrencyService', [
       'formatAmount',

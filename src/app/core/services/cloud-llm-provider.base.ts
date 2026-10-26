@@ -974,11 +974,15 @@ export abstract class CloudLLMProviderBase implements CloudLLMProviderAdapter {
     return name ? this.translationService.t(name) : 'Other';
   }
 
-  /** Resolve whatever the model called a category onto a catalog id. */
+  /**
+   * Resolve whatever the model called a category onto a catalog id. The one
+   * caller is a receipt read, which can finish before the account's catalog
+   * has loaded; it resolves against the shipped catalog until then.
+   */
   protected mapCategoryNameToId(categoryName: unknown): string {
     return mapCategoryNameToId(
       categoryName,
-      this.categoryService.categories(),
+      this.categoryService.categoriesOrDefaults(),
       name => this.translateCategoryName(name)
     );
   }
