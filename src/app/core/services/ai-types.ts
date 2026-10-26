@@ -26,8 +26,10 @@ export interface ProcessedTransaction {
    * matched (including a match the future-date guard rejected). The
    * on-device readers also grade the type wherever something on the receipt
    * spoke to which way the money moved, and leave it out for a purchase
-   * nothing contradicts; the cloud readers never grade it. Absent entirely
-   * when the source has no reading to grade at all, as a CSV row does not.
+   * nothing contradicts; the cloud receipt readers grade every income reading
+   * and leave an expense ungraded (ADR 0162), while a statement's or a
+   * backup's type carries no grade. Absent entirely when the source has no
+   * reading to grade at all, as a CSV row does not.
    */
   fieldConfidence?: FieldConfidence;
   /**

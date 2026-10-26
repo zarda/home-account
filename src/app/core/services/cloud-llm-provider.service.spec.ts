@@ -80,7 +80,7 @@ describe('CloudLLMProviderService', () => {
   let keyReadFailed: WritableSignal<boolean>;
 
   const sampleReceipt: ParsedReceipt = {
-    merchant: 'Shop', amount: 5, currency: 'USD', date: new Date('2024-01-01'),
+    merchant: 'Shop', amount: 5, type: 'expense', currency: 'USD', date: new Date('2024-01-01'),
     suggestedCategory: 'food_groceries', confidence: 0.85,
   };
 

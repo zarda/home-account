@@ -705,7 +705,7 @@ export class AIStrategyService {
       date: receipt.date,
       description: receipt.merchant,
       amount: receipt.amount,
-      type: 'expense',
+      type: receipt.type,
       currency,
       confidence: receipt.confidence,
       source: 'cloud',

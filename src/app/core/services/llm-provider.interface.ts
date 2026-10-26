@@ -25,7 +25,14 @@ import type { CategoryRowType } from '../utils/categorization.utils';
  */
 export interface ParsedReceipt {
   merchant: string;
+  /** The total as a magnitude: a refund is the sum given back, never a negative figure. `type` says which way it moved. */
   amount: number;
+  /**
+   * Which way the money moved, as the model read it: `income` only on an exact
+   * "income" answer (readTransactionType), a purchase for every other answer
+   * and for none. Never read off the sign of the total.
+   */
+  type: 'income' | 'expense';
   currency: string;
   date: Date;
   items?: ReceiptItem[];

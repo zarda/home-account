@@ -142,7 +142,8 @@ export interface FieldConfidence {
    * moved (ADR 0162): every income verdict an on-device reader reaches, and
    * an expense whose reading was ambiguous. A purchase nothing contradicts
    * carries no `type` at all, so absence means "nothing said otherwise", not
-   * "unread". The cloud readers never set it.
+   * "unread". The cloud receipt readers grade every income reading; a
+   * statement's or a backup's type is never graded.
    */
   type?: number;
 }

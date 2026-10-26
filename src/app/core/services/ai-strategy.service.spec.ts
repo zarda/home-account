@@ -41,6 +41,7 @@ describe('AIStrategyService', () => {
     merchant: 'Coffee Corner',
     amount: 12.5,
     currency: 'USD',
+    type: 'expense',
     date: new Date('2026-01-15'),
     receiptDetails: 'Latte — USD 12.50',
     suggestedCategory: 'food_coffee_&_drinks',

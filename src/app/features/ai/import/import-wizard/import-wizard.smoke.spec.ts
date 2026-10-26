@@ -1017,6 +1017,7 @@ describe('ImportWizardComponent camera handoff (emulator smoke test)', () => {
       const parsedReceipt: ParsedReceipt = {
         merchant: 'Doubtful Diner',
         amount: 12.5,
+        type: 'expense',
         currency: 'USD',
         date: new Date(2026, 5, 1),
         suggestedCategory: 'other_expense',
@@ -1122,6 +1123,7 @@ describe('ImportWizardComponent camera handoff (emulator smoke test)', () => {
       const parsedReceipt: ParsedReceipt = {
         merchant: 'Time Traveler Diner',
         amount: 61.3,
+        type: 'expense',
         currency: 'USD',
         date: farFutureDate,
         suggestedCategory: 'other_expense',
@@ -1329,6 +1331,7 @@ describe('ImportWizardComponent camera handoff (emulator smoke test)', () => {
       stubReceiptSeams({
         merchant: 'セブン-イレブン',
         amount: 538,
+        type: 'expense',
         currency: 'JPY',
         date: new Date(2026, 7, 14),
         suggestedCategory: 'other_expense',
@@ -1867,6 +1870,7 @@ describe('ImportWizardComponent camera handoff (emulator smoke test)', () => {
       stubReceiptSeams({
         merchant: 'セブン-イレブン',
         amount: 539,
+        type: 'expense',
         currency: 'JPY',
         date: new Date(NaN),
         suggestedCategory: 'other_expense',
@@ -1988,6 +1992,7 @@ describe('ImportWizardComponent camera handoff (emulator smoke test)', () => {
       stubReceiptSeams({
         merchant: 'セブン-イレブン',
         amount: 541,
+        type: 'expense',
         currency: 'JPY',
         date: new Date(NaN),
         suggestedCategory: 'other_expense',
@@ -3794,6 +3799,7 @@ describe('ImportWizardComponent camera handoff (emulator smoke test)', () => {
       stubReceiptSeams({
         merchant: 'セブン-イレブン',
         amount: 559.4,
+        type: 'expense',
         currency: 'JPY',
         date: new Date(2026, 7, 14),
         suggestedCategory: 'other_expense',
