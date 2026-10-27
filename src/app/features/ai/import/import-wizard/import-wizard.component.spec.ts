@@ -5,8 +5,10 @@ import { ActivatedRoute, Router, convertToParamMap } from '@angular/router';
 import { MatSnackBar } from '@angular/material/snack-bar';
 import { MatStepper } from '@angular/material/stepper';
 import { provideNativeDateAdapter } from '@angular/material/core';
+import { By } from '@angular/platform-browser';
 
 import { ImportWizardComponent } from './import-wizard.component';
+import { FileDropzoneComponent } from '../file-dropzone/file-dropzone.component';
 import { AIImportService, AI_QUEUED_OFFLINE, IMPORT_NOT_STARTED, IMPORT_READBACK_FAILED } from '../../../../core/services/ai-import.service';
 import { DuplicateDetectionService } from '../../../../core/services/duplicate-detection.service';
 import { CategoryService } from '../../../../core/services/category.service';
@@ -3582,6 +3584,154 @@ describe('ImportWizardComponent', () => {
         realFixture.detectChanges();
 
         expect(stepBody()!.textContent).toContain('import.queuedForLater');
+      }));
+    });
+
+    // The dropzone keeps a list of its own and emits the whole of it on every
+    // change, so a photo the wizard took out of its selection once the queue
+    // stored it, but the zone still held, came back with the next file added
+    // and was queued a second time on the next Process.
+    describe('the dropzone, once the photos are queued for later', () => {
+      const zone = () =>
+        realFixture.debugElement.query(By.directive(FileDropzoneComponent)).componentInstance as FileDropzoneComponent;
+      const names = (files: readonly File[]) => files.map(f => f.name);
+      const rowNames = () =>
+        Array.from((realFixture.nativeElement as HTMLElement).querySelectorAll('app-file-dropzone .file-name'))
+          .map(n => n.textContent?.trim());
+      const photo = (name: string) => new File(['x'], name, { type: 'image/png' });
+      const csv = () => new File(['a,b'], 'ledger.csv', { type: 'text/csv' });
+
+      /** A real drop on the zone, the way the browser delivers one. */
+      function drop(...files: File[]): void {
+        const transfer = new DataTransfer();
+        files.forEach(f => transfer.items.add(f));
+        (realFixture.nativeElement as HTMLElement)
+          .querySelector('app-file-dropzone .dropzone')!
+          .dispatchEvent(new DragEvent('drop', { dataTransfer: transfer, bubbles: true }));
+        realFixture.detectChanges();
+      }
+
+      /** Process pressed, the run settled, and Back to the upload step. */
+      function processAndGoBack(): void {
+        const real = realFixture.componentInstance;
+        real.processFiles();
+        real.stepper.next();
+        tick();
+        realFixture.detectChanges();
+        real.stepper.previous();
+        realFixture.detectChanges();
+      }
+
+      // The partial write rethrows to the error card, but the pages it did
+      // store are as stored as a whole capture, so both take the same lines.
+      for (const sentinel of [AI_QUEUED_OFFLINE, AI_QUEUE_WRITE_PARTIAL]) {
+        it(`keeps only the CSV on the zone after ${sentinel}, so the next photo joins it alone`, fakeAsync(() => {
+          mockImportService.importFromMultipleImages.and.returnValue(Promise.reject(new Error(sentinel)));
+          const real = realFixture.componentInstance;
+          drop(photo('queued.png'), csv());
+          expect(names(real.selectedFiles())).withContext('the wizard, before Process').toEqual(['queued.png', 'ledger.csv']);
+
+          processAndGoBack();
+
+          expect(names(zone().selectedFiles())).withContext('the zone\'s list').toEqual(['ledger.csv']);
+          expect(rowNames()).withContext('the zone\'s rows on screen').toEqual(['ledger.csv']);
+
+          drop(photo('next.png'));
+
+          expect(names(real.selectedFiles())).withContext('the wizard, after the next add').toEqual(['ledger.csv', 'next.png']);
+        }));
+      }
+
+      // Only the batch the queue was handed is stored, so only it leaves: a
+      // photo added while the write ran was never queued, and taking it from
+      // both lists would make it vanish with nothing said.
+      it('keeps a photo added while the queue write is still running on both lists', fakeAsync(() => {
+        let refuse!: (reason: unknown) => void;
+        mockImportService.importFromMultipleImages.and.returnValue(
+          new Promise<ImportResult>((_, reject) => { refuse = reject; })
+        );
+        const real = realFixture.componentInstance;
+        drop(photo('queued.png'), csv());
+
+        real.processFiles();
+        drop(photo('mid-run.png'));
+        refuse(new Error(AI_QUEUED_OFFLINE));
+        tick();
+        realFixture.detectChanges();
+
+        expect(names(real.selectedFiles())).withContext('the wizard').toEqual(['ledger.csv', 'mid-run.png']);
+        expect(names(zone().selectedFiles())).withContext('the zone\'s list').toEqual(['ledger.csv', 'mid-run.png']);
+        expect(rowNames()).withContext('the zone\'s rows on screen').toEqual(['ledger.csv', 'mid-run.png']);
+        expect(real.imagePreviewUrls().map(p => p.name)).withContext('the wizard\'s preview tiles').toEqual(['mid-run.png']);
+      }));
+
+      // Two iOS captures are both image.jpg, so neither list may match the
+      // photo it keeps by name: the wizard's tile and the zone's row preview
+      // are the mid-run photo's own, and neither was revoked with the queued.
+      it('keeps the previews of a mid-run photo named like the queued one', fakeAsync(() => {
+        let refuse!: (reason: unknown) => void;
+        mockImportService.importFromMultipleImages.and.returnValue(
+          new Promise<ImportResult>((_, reject) => { refuse = reject; })
+        );
+        const real = realFixture.componentInstance;
+        const queued = photo('image.jpg');
+        const midRun = photo('image.jpg');
+        drop(queued, csv());
+
+        real.processFiles();
+        drop(midRun);
+        const revoke = spyOn(URL, 'revokeObjectURL');
+        refuse(new Error(AI_QUEUED_OFFLINE));
+        tick();
+        realFixture.detectChanges();
+
+        // By identity: two empty-ish Files of one name are equal to toEqual.
+        const photos = real.selectedFiles().filter(f => f.name === 'image.jpg');
+        expect(photos.length).withContext('the wizard\'s photos').toBe(1);
+        expect(photos[0]).withContext('the wizard\'s photo').toBe(midRun);
+        const tiles = real.imagePreviewUrls();
+        expect(tiles.map(p => p.name)).withContext('the wizard\'s preview tiles').toEqual(['image.jpg']);
+        const revoked = revoke.calls.allArgs().flat();
+        expect(revoked).withContext('the surviving tile\'s url, revoked').not.toContain(tiles[0]?.url);
+        expect(zone().getFilePreview(midRun)).withContext('the zone\'s preview of the mid-run photo').not.toBe('');
+        expect(revoked).withContext('the zone\'s preview of the mid-run photo, revoked').not.toContain(zone().getFilePreview(midRun));
+      }));
+
+      // A queue write can settle after the wizard is gone. Tiles it minted
+      // then would have no ngOnDestroy left to revoke them, so it mints none.
+      it('mints no previews for a mid-run photo once the wizard is destroyed before the queue write settles', fakeAsync(() => {
+        let refuse!: (reason: unknown) => void;
+        mockImportService.importFromMultipleImages.and.returnValue(
+          new Promise<ImportResult>((_, reject) => { refuse = reject; })
+        );
+        const real = realFixture.componentInstance;
+        drop(photo('queued.png'));
+
+        real.processFiles();
+        drop(photo('mid-run.png'));
+        realFixture.destroy();
+        const mint = spyOn(URL, 'createObjectURL').and.callThrough();
+        refuse(new Error(AI_QUEUED_OFFLINE));
+        tick();
+
+        expect(real.queuedOfflineCount()).withContext('the queue catch, which ran').toBe(1);
+        expect(mint).withContext('blob urls minted after the destroy').not.toHaveBeenCalled();
+        expect(real.imagePreviewUrls()).withContext('the wizard\'s preview tiles').toEqual([]);
+      }));
+
+      // PIN: passes before the fix, and has to keep passing after it. It is
+      // what stops "the zone forgets the queued photos" from turning into
+      // "the zone forgets every photo it hands over". Mutation run and seen
+      // failing: forget called on every run, rows or none.
+      it('leaves the zone\'s list alone when the photos are read', fakeAsync(() => {
+        const real = realFixture.componentInstance;
+        drop(photo('receipt.png'), csv());
+
+        processAndGoBack();
+
+        expect(real.extractedTransactions().length).withContext('rows read').toBeGreaterThan(0);
+        expect(names(zone().selectedFiles())).toEqual(['receipt.png', 'ledger.csv']);
+        expect(names(real.selectedFiles())).toEqual(['receipt.png', 'ledger.csv']);
       }));
     });
 
