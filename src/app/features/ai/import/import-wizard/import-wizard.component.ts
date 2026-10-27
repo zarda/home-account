@@ -130,6 +130,12 @@ export class ImportWizardComponent implements OnInit, AfterViewInit, OnDestroy {
    * component's own template to find and scroll to (#430).
    */
   table = viewChild(TransactionPreviewTableComponent);
+  /**
+   * Reached from `processFiles` rather than through a binding: the zone keeps
+   * a list of its own, and the photos the offline queue stored have to leave
+   * it as they leave this selection.
+   */
+  dropzone = viewChild(FileDropzoneComponent);
 
   // JSON here is the backup door (importFromJSON) — the share sheet stays
   // shorter (share-intake.service.ts) since a share is never where a backup
@@ -290,8 +296,9 @@ export class ImportWizardComponent implements OnInit, AfterViewInit, OnDestroy {
    * three times pinned about 50MB for the life of the document, which on the
    * iOS WebView is the kind of pressure that gets the app killed mid-scan.
    *
-   * A plain signal written by onFilesSelected makes creation and revocation
-   * a pair, in one place.
+   * A plain signal minted only through showPreviewsOf (a pick, or a queue
+   * write that kept some photos) makes creation and revocation a pair, in
+   * one place.
    */
   imagePreviewUrls = signal<{ name: string; url: string }[]>([]);
 
@@ -581,14 +588,7 @@ export class ImportWizardComponent implements OnInit, AfterViewInit, OnDestroy {
 
   onFilesSelected(files: File[]): void {
     this.selectedFiles.set(files);
-    // Revoke before minting, so a re-pick releases the previous batch rather
-    // than leaving it alive with nothing pointing at it.
-    this.revokePreviews();
-    this.imagePreviewUrls.set(
-      files
-        .filter(f => looksLikeImageFile(f))
-        .map(f => ({ name: f.name, url: URL.createObjectURL(f) }))
-    );
+    this.showPreviewsOf(files);
     // Reset processing state
     this.extractedTransactions.set([]);
     // The set names the batch's receipt rows, so it is written wherever the
@@ -597,6 +597,22 @@ export class ImportWizardComponent implements OnInit, AfterViewInit, OnDestroy {
     // have to go to processFiles to know that.
     this.receiptRowIds.set(new Set());
     this.processingError.set(null);
+  }
+
+  // Revoke before minting, so a re-pick releases the previous batch rather
+  // than leaving it alive with nothing pointing at it. Each tile is minted
+  // from its own File, never matched to an old one by name: two iOS
+  // captures are both image.jpg.
+  private showPreviewsOf(files: readonly File[]): void {
+    this.revokePreviews();
+    // A queue write that settles after the wizard is gone would mint tiles
+    // no ngOnDestroy is left to revoke.
+    if (this.destroyRef.destroyed) return;
+    this.imagePreviewUrls.set(
+      files
+        .filter(f => looksLikeImageFile(f))
+        .map(f => ({ name: f.name, url: URL.createObjectURL(f) }))
+    );
   }
 
   private revokePreviews(): void {
@@ -691,8 +707,16 @@ export class ImportWizardComponent implements OnInit, AfterViewInit, OnDestroy {
           // Out of the picker, so neither Back nor a second Process can store
           // them again: the queue keys nothing on a photo's content, and two
           // rows for one capture become two transactions when the drain runs.
-          this.selectedFiles.update(list => list.filter(f => !looksLikeImageFile(f)));
-          this.revokePreviews();
+          // Out of the dropzone's list too: it keeps one of its own and emits
+          // the whole of it on its next change, which would hand the stored
+          // photos straight back to this selection. Both drop the batch the
+          // queue was handed, not the photos picked now: one added while the
+          // write ran was never stored, and taking it would lose it unseen.
+          this.selectedFiles.update(list => list.filter(f => !imageFiles.includes(f)));
+          this.dropzone()?.forget(imageFiles);
+          // The tiles follow what is still selected, so a photo added
+          // mid-run keeps its own.
+          this.showPreviewsOf(this.selectedFiles());
           // Still a failure, so it goes to the error card; how many pages
           // were kept is not reported, which is why no count is set here and
           // the card's own wording is what says some were. Raised before the
