@@ -778,4 +778,121 @@ describe('CameraCaptureComponent processing overlay', () => {
       });
     }
   });
+
+  /**
+   * Both doors open this dialog at width: 500px (quick-add.service.ts and
+   * transaction-form.component.ts) and Material pads its content 24px a side,
+   * so the body has a 452px box to fill. A min-width of 500px on the
+   * container, set from 768px up, made it 48px wider than that box: a
+   * horizontal scrollbar under the photo controls and the scan badge running
+   * past the dialog's right edge at 1024px.
+   *
+   * Karma's window is 756px, so the 768px query never applies here and the
+   * rendered case below cannot reproduce the defect: it holds the content to
+   * the box at the width Karma has, and would fail on a min-width set at every
+   * width. The 768px half is the stylesheet case, which reads the rules from
+   * the CSSOM, since a rule that never applies can still be looked at. The
+   * dialog itself at 1024px is measured in the browser, not here.
+   */
+  describe('in a 500px dialog', () => {
+    const contentBox = 452;
+
+    function pinFonts(host: HTMLElement): void {
+      const face = "Verdana, 'DejaVu Sans', sans-serif";
+      host.style.fontFamily = face;
+      for (const token of ['--mat-sys-body-large-font', '--mat-sys-body-small-font', '--mat-sys-label-large-font']) {
+        host.style.setProperty(token, face);
+      }
+    }
+
+    /** Every rule of every stylesheet naming the container, with the media condition it sits under. */
+    function containerRules(): { media: string | null; rule: CSSStyleRule }[] {
+      const found: { media: string | null; rule: CSSStyleRule }[] = [];
+      const walk = (rules: CSSRuleList, media: string | null): void => {
+        for (const rule of Array.from(rules)) {
+          if (rule instanceof CSSStyleRule && rule.selectorText.includes('.camera-capture-container')) {
+            found.push({ media, rule });
+          }
+          if (rule instanceof CSSMediaRule) walk(rule.cssRules, rule.media.mediaText);
+        }
+      };
+      for (const sheet of Array.from(document.styleSheets)) {
+        try {
+          walk(sheet.cssRules, null);
+        } catch {
+          // A cross-origin sheet refuses cssRules; the component's is ours.
+        }
+      }
+      return found;
+    }
+
+    it("finds the container's rule in the stylesheet, so the next case reads something", () => {
+      // A pin, and the partner of the next case: a selector that matched
+      // nothing would let that one pass on an empty list.
+      fixture.detectChanges();
+      const heights = containerRules().map(({ rule }) => rule.style.minHeight).filter((h) => h !== '');
+      expect(heights).toContain('200px');
+    });
+
+    it('sets no min-width on the container at any width', () => {
+      fixture.detectChanges();
+      const offenders = containerRules()
+        .filter(({ rule }) => rule.style.minWidth !== '' || rule.style.minInlineSize !== '')
+        .map(({ media, rule }) =>
+          `${media ? `@media ${media} ` : ''}min-width: ${rule.style.minWidth || rule.style.minInlineSize}`
+        );
+      expect(offenders)
+        .withContext('the dialog is 500px wide with a 452px content box, so its own width decides')
+        .toEqual([]);
+    });
+
+    it("keeps its content inside a 500px dialog's 452px content box", () => {
+      const strategyService = TestBed.inject(AIStrategyService) as jasmine.SpyObj<AIStrategyService>;
+      strategyService.canUseCloud.and.returnValue(true);
+      const host = fixture.nativeElement as HTMLElement;
+      host.style.display = 'block';
+      host.style.width = `${contentBox}px`;
+      pinFonts(host);
+      // mat-dialog-content is an inline custom element until the dialog
+      // container's stylesheet, which Karma never loads, makes it a block.
+      fixture.detectChanges();
+      (host.querySelector('mat-dialog-content') as HTMLElement).style.display = 'block';
+
+      const photo = (id: string) => ({
+        id,
+        file: new File(['x'], `${id}.jpg`, { type: 'image/jpeg' }),
+        previewUrl: onePixelGif,
+      });
+      const states = [
+        { name: 'no photo yet', images: [] as ReturnType<typeof photo>[] },
+        { name: 'four photos', images: ['a', 'b', 'c', 'd'].map(photo) },
+      ];
+
+      for (const state of states) {
+        component.capturedImages.set(state.images);
+        fixture.detectChanges();
+
+        const container = host.querySelector('.camera-capture-container') as HTMLElement | null;
+        expect(container).withContext(`${state.name}: the container renders`).not.toBeNull();
+        if (!container) continue;
+        const badge = container.querySelector('.mode-indicator');
+        expect(badge).withContext(`${state.name}: the scan badge renders`).not.toBeNull();
+
+        const hostRight = host.getBoundingClientRect().right;
+        const pastTheEdge = Array.from(host.querySelectorAll('*'))
+          .filter((el) => el.getBoundingClientRect().width > 0 && el.getBoundingClientRect().right > hostRight + 1)
+          .map((el) => el.className || el.tagName.toLowerCase());
+        expect(container.getBoundingClientRect().width)
+          .withContext(`${state.name}: the container's width, px`)
+          .toBeLessThanOrEqual(contentBox);
+        expect(container.scrollWidth)
+          .withContext(`${state.name}: the container's scroll width, px`)
+          .toBeLessThanOrEqual(contentBox);
+        expect(pastTheEdge).withContext(`${state.name}: elements ending past the content box`).toEqual([]);
+        expect(host.scrollWidth)
+          .withContext(`${state.name}: the body scrolls sideways`)
+          .toBeLessThanOrEqual(host.clientWidth + 1);
+      }
+    });
+  });
 });

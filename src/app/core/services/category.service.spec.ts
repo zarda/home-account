@@ -161,6 +161,30 @@ describe('CategoryService', () => {
     });
   });
 
+  describe('categoriesOrDefaults', () => {
+    // A receipt read and a queued-photo drain can both run before the account's
+    // listener has answered. `loadCategories` always merges the built-ins in, so
+    // a non-empty cache is a loaded one, and an empty one is not loaded yet.
+    it('answers the shipped catalogue until the account\'s has loaded, then the account\'s', () => {
+      const custom = createCategory({ id: 'custom-1', name: 'Hobbies', order: 9999 });
+      mockFirestore.setMockCollection('users/test-user-123/categories', [custom]);
+
+      expect(service.categories()).withContext('nothing has loaded').toEqual([]);
+      expect(service.categoriesOrDefaults())
+        .withContext('before the account\'s catalogue has loaded')
+        .toEqual(service.getDefaultCategories());
+
+      const subscription = service.loadCategories().subscribe();
+      const loaded = service.categories();
+      subscription.unsubscribe();
+
+      expect(loaded.some(c => c.id === 'custom-1')).withContext('the account\'s own row loaded').toBeTrue();
+      expect(service.categoriesOrDefaults())
+        .withContext('after the account\'s catalogue has loaded')
+        .toEqual(loaded);
+    });
+  });
+
   describe('computed signals', () => {
     beforeEach(() => {
       // Set up test categories

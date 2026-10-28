@@ -21,6 +21,7 @@ describe('ReceiptToNoteService', () => {
   const receipt = (overrides: Partial<ParsedReceipt> = {}): ParsedReceipt => ({
     merchant: 'Cafe',
     amount: 12,
+    type: 'expense',
     currency: 'USD',
     date: new Date(2026, 0, 1),
     items: [],

@@ -299,4 +299,30 @@ describe('Analytics opt-in (emulator smoke test)', () => {
       },
     ]);
   }));
+
+  it('should send a receipt confirm\'s buckets through the real pipeline', fakeAsync(() => {
+    // The unit specs prove the taxonomy enumerates each bucket; this proves a
+    // confirm's four dimensions clear the consent gate and the validator
+    // together and reach the transport exactly as sent.
+    authService.currentUser.set({
+      id: uid,
+      subscription: { tier: 'premium' },
+      preferences: {
+        ...authService.currentUser()?.preferences,
+        enableUsageAnalytics: true,
+      },
+    } as User);
+    TestBed.tick();
+    tick();
+
+    service.trackReceiptConfirm({ path: 'camera', engine: 'none', type_flagged: 'several', type_flipped: 'one' });
+    tick();
+
+    expect(transport.events).toEqual([
+      {
+        name: 'receipt_confirm',
+        params: { path: 'camera', engine: 'none', type_flagged: 'several', type_flipped: 'one' },
+      },
+    ]);
+  }));
 });

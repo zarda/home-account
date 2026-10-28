@@ -21,6 +21,7 @@ import {
 } from '../config/ai-models';
 import { AI_PREFERENCES_SCHEMA_VERSION } from '../config/ai-model-migrations';
 import { REVIEW_AMOUNT_CONFIDENCE } from '../utils/receipt-consolidation';
+import { MODEL_INCOME_GRADE } from '../utils/receipt-extraction.utils';
 
 const PREFERENCES_STORAGE_KEY = 'homeaccount_ai_preferences';
 
@@ -41,6 +42,7 @@ describe('AIStrategyService', () => {
     merchant: 'Coffee Corner',
     amount: 12.5,
     currency: 'USD',
+    type: 'expense',
     date: new Date('2026-01-15'),
     receiptDetails: 'Latte — USD 12.50',
     suggestedCategory: 'food_coffee_&_drinks',
@@ -1373,6 +1375,29 @@ describe('AIStrategyService', () => {
       expect('receiptCountry' in (await service.processReceipt(imageFile())).transactions[0]).toBeFalse();
     });
 
+    it('files a refund the cloud read off one photo as income, its type grade carried out', async () => {
+      cloudMock.parseReceipt.and.resolveTo({
+        ...parsedReceipt,
+        type: 'income',
+        fieldConfidence: { type: MODEL_INCOME_GRADE },
+      });
+      const service = createService('web');
+
+      const row = (await service.processReceipt(imageFile())).transactions[0];
+
+      expect(row.type).toBe('income');
+      expect(row.fieldConfidence).toEqual({ type: MODEL_INCOME_GRADE });
+    });
+
+    it('keeps a purchase the cloud read an expense with no type grade', async () => {
+      const service = createService('web');
+
+      const row = (await service.processReceipt(imageFile())).transactions[0];
+
+      expect(row.type).toBe('expense');
+      expect(row.fieldConfidence).toBeUndefined();
+    });
+
     it('carries the per-field confidences out', async () => {
       cloudMock.parseReceipt.and.resolveTo({
         ...parsedReceipt,
@@ -1663,6 +1688,25 @@ describe('AIStrategyService', () => {
       // 0 through. The reported receipt total keeps deriveAmount from adding
       // its own review-flag noise to the amount slot.
       expect(result.transactions[0].fieldConfidence).toEqual({ date: 0 });
+    });
+
+    it("carries a cloud-read refund's type grade onto its transaction", async () => {
+      const extracted: MultiImageExtractedTransaction[] = [
+        {
+          date: '2026-01-15', description: 'Returned jacket', amount: 40, type: 'income',
+          currency: 'USD', merchant: 'Outfitter', imageIndex: 0,
+          confidence: 0.8, receiptId: 1, receiptTotal: 40,
+        },
+      ];
+      cloudMock.extractTransactionsFromMultipleImages.and.resolveTo(extracted);
+      const service = createService('web');
+
+      const result = await service.processMultipleImages([imageFile()]);
+
+      expect(result.transactions[0].type).toBe('income');
+      // The printed total corroborates the amount, so the type is the only
+      // thing graded: the review row is asked about the direction alone.
+      expect(result.transactions[0].fieldConfidence).toEqual({ type: MODEL_INCOME_GRADE });
     });
 
     it('carries which photos each transaction came from', async () => {

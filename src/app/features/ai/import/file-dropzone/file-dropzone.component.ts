@@ -224,6 +224,26 @@ export class FileDropzoneComponent implements OnDestroy {
     }
   }
 
+  // For a host that has already let these files go from its own selection:
+  // every change here emits the whole list, so a file this list still held
+  // would walk back into the host's with the next add, remove or reorder.
+  // It emits nothing: the host is the one asking, its selection is written
+  // already, and an emit would run its handler over that selection again.
+  forget(files: readonly File[]): void {
+    const gone = this.selectedFiles().filter(f => files.includes(f));
+    const kept = this.selectedFiles().filter(f => !gone.includes(f));
+    // A name a kept image still uses is not revoked: previews are keyed by
+    // name, and every image here when the wizard's run began is in the batch
+    // it forgets, so a kept one sharing a name was added later and its own
+    // blob already replaced the entry (processFiles revoked the old one).
+    // Skipping it leaks nothing and keeps that row's image. A kept document
+    // owns no preview, so it never holds a forgotten photo's blob back.
+    gone
+      .filter(f => !kept.some(k => k.name === f.name && this.isImageFile(k)))
+      .forEach(f => this.revokePreview(f.name));
+    this.selectedFiles.set(kept);
+  }
+
   removeFile(file: File, event: Event): void {
     event.stopPropagation();
 

@@ -35,6 +35,7 @@ function isReason(value: unknown): value is ReceiptFailureReason {
 }
 
 type ReceiptImportPayload = AnalyticsEventParams<'receipt_import'>;
+type ReceiptConfirmPayload = AnalyticsEventParams<'receipt_confirm'>;
 
 /**
  * One receipt attempt, from the moment a door decides to run it to the one
@@ -75,6 +76,38 @@ export function buildReceiptImportPayload(
     failure: failure ?? 'none',
     duration: durationBucket(diagnostics?.durationMs),
   };
+}
+
+/**
+ * The analytics payload for one confirmed receipt review: the import wizard's
+ * batch holding a receipt, its record read back, or the transaction form's
+ * save of a new transaction its scan filled, counted off that one row (no
+ * record is written there). It names the door whose review was confirmed, the
+ * engine that read it, named as `receipt_import` names it, and how many of the
+ * types its reader flagged landed and how many were flipped, each as a bucket
+ * rather than the count.
+ *
+ * `door` excludes 'queue' as `buildReceiptImportPayload`'s does: the drain
+ * confirms nothing a reviewer saw. It is the only compile-time guard on
+ * `path`, which the taxonomy's derived type reads as a plain string.
+ */
+export function buildReceiptConfirmPayload(
+  door: Exclude<ReceiptDoor, 'queue'>,
+  diagnostics: ReceiptAttemptDiagnostics | null,
+  counts: Pick<ImportHistory, 'typesFlagged' | 'typesFlipped'>
+): ReceiptConfirmPayload {
+  return {
+    path: door,
+    engine: engineOf(diagnostics),
+    type_flagged: countBucket(counts.typesFlagged),
+    type_flipped: countBucket(counts.typesFlipped),
+  };
+}
+
+/** A record leaves a zero count out, so an absent count reads as none. */
+function countBucket(count: number | undefined): ReceiptConfirmPayload['type_flagged'] {
+  if (count === undefined || count < 1) return 'none';
+  return count === 1 ? 'one' : 'several';
 }
 
 function engineOf(diagnostics: ReceiptAttemptDiagnostics | null): ReceiptImportPayload['engine'] {

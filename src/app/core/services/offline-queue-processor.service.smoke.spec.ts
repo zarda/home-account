@@ -31,6 +31,9 @@ import { ProviderKeyService } from './provider-key.service';
 import { NotificationService } from './notification.service';
 import { TranslationService } from './translation.service';
 import { AnalyticsService } from './analytics.service';
+import { CloudLLMProviderService } from './cloud-llm-provider.service';
+import { ParsedReceipt } from './llm-provider.interface';
+import { MODEL_INCOME_GRADE } from '../utils/receipt-extraction.utils';
 import { silenceFirebaseWarnings } from './testing/silence-firebase-warnings';
 silenceFirebaseWarnings();
 
@@ -51,6 +54,8 @@ silenceFirebaseWarnings();
  * whoever happens to be signed in (#164), that a row stranded mid-sync is
  * still a working queue item after the next launch reclaims it (#169), and
  * that draining such a row a second time does not post its rows twice (#205).
+ * One case stubs a seam deeper, at the cloud provider, so the real strategy
+ * reads the photo and its own converter decides the row's type.
  *
  * Runs only under the emulators:
  *   npm run smoke
@@ -140,13 +145,47 @@ describe('OfflineQueueProcessorService (emulator smoke test)', () => {
   });
 
   /**
+   * The cloud provider under the real strategy, answering as the import
+   * wizard's smoke stubs it (stubReceiptSeams there): the only thing on that
+   * path with no local emulator. The strategy's constructor and its account
+   * effect each bring the providers up, and a bring-up sets both models
+   * first, so both setters are on it.
+   */
+  function cloudProvider(parsed?: ParsedReceipt): jasmine.SpyObj<CloudLLMProviderService> {
+    const cloud = jasmine.createSpyObj<CloudLLMProviderService>('CloudLLMProviderService', [
+      'hasAnyCloudProvider',
+      'parseReceipt',
+      'initializeProviders',
+      'resetProviders',
+      'setOpenAIModel',
+      'setClaudeModel',
+      'availableProviders',
+      'providerStatus',
+      'resolveProvider',
+    ]);
+    cloud.hasAnyCloudProvider.and.returnValue(true);
+    if (parsed) {
+      cloud.parseReceipt.and.resolveTo(parsed);
+    }
+    cloud.initializeProviders.and.resolveTo({ keyReadFailed: false });
+    cloud.resetProviders.and.resolveTo(undefined);
+    cloud.availableProviders.and.returnValue([]);
+    cloud.providerStatus.and.returnValue({ gemini: false, openai: false, claude: false });
+    cloud.resolveProvider.and.returnValue(null);
+    return cloud;
+  }
+
+  /**
    * Build the TestBed and take fresh instances.
    *
    * Extracted so a test can relaunch the app over the same IndexedDB: both
    * services are `providedIn: 'root'`, so re-injecting after ngOnDestroy hands
    * back the same closed instance. Only a module reset gives a new one.
+   *
+   * `strategy: 'real'` puts the real AIStrategyService in place of the stub,
+   * over a cloud provider answering `parsed`, and holds its providers up.
    */
-  async function configure(): Promise<void> {
+  async function configure(options: { strategy?: 'real'; parsed?: ParsedReceipt } = {}): Promise<void> {
     const pwa = jasmine.createSpyObj('PwaService', ['isOnline']);
     pwa.isOnline.and.returnValue(true);
 
@@ -186,8 +225,11 @@ describe('OfflineQueueProcessorService (emulator smoke test)', () => {
           },
         },
         // The one stub: reading a photo reaches a cloud or native provider with
-        // no local emulator. Everything downstream of it is real.
-        { provide: AIStrategyService, useValue: ai },
+        // no local emulator. Everything downstream of it is real. The real
+        // strategy moves the stub one seam deeper, onto the cloud provider.
+        options.strategy === 'real'
+          ? { provide: CloudLLMProviderService, useValue: cloudProvider(options.parsed) }
+          : { provide: AIStrategyService, useValue: ai },
         // Stubbed so the processor's user feedback stays out of this test:
         // the real NotificationService pulls in the snackbar and the HTTP-backed
         // translation loader, neither of which the emulator run has.
@@ -203,6 +245,11 @@ describe('OfflineQueueProcessorService (emulator smoke test)', () => {
     queue = TestBed.inject(OfflineQueueService);
     processor = TestBed.inject(OfflineQueueProcessorService);
     firestoreService = TestBed.inject(FirestoreService);
+    if (options.strategy === 'real') {
+      // The drain waits for the account's providers first; up, as the stub
+      // says. How they come up is the strategy's own suite's to prove.
+      spyOn(TestBed.inject(AIStrategyService), 'cloudProvidersReady').and.resolveTo(true);
+    }
 
     await waitFor(() => queue.isReady());
   }
@@ -477,11 +524,12 @@ describe('OfflineQueueProcessorService (emulator smoke test)', () => {
   it('stores a queued on-device refund as income on the income catch-all, its grades unwritten', async () => {
     // A pin: the drain already writes the row's own type, files an unnamed
     // income row under the income catch-all, and stores no grade, and this
-    // keeps all three true for a refund the device doubted. The row is
-    // unnamed on purpose: this run loads no catalogue, and with none loaded
-    // a named id is kept whichever side it sits on, so only an unnamed row
-    // says which catch-all the drain picks. The regex lane's shape — no
-    // category tried, a type grade under the verify threshold.
+    // keeps all three true for a refund the device doubted. This run loads
+    // none of the account's categories, so the drain grades against the
+    // shipped catalogue, as a launch's drain does before the account's has
+    // loaded; the cloud case below names an expense category and is held to
+    // the same catch-all. The regex lane's shape — no category tried, a type
+    // grade under the verify threshold.
     ai.processReceipt.and.resolveTo({
       transactions: [{
         date: new Date(2026, 5, 15), description: 'Smoke on-device refund', amount: 14.03, type: 'income',
@@ -499,6 +547,43 @@ describe('OfflineQueueProcessorService (emulator smoke test)', () => {
       description: string; amount: number; type: string; categoryId: string;
     }>(`users/${uid}/transactions`);
     const row = stored.find((t) => t.description === 'Smoke on-device refund');
+    expect(row).toBeDefined();
+    expect(row && [row.type, row.categoryId, row.amount]).toEqual(['income', 'other_income', 14.03]);
+    expect(row && 'fieldConfidence' in row).toBeFalse();
+  }, 20000);
+
+  // The same door with the cloud reading the photo. The strategy runs for
+  // real over the provider stub, so its own converter decides the row's type,
+  // and the drain holds the category to that side against the shipped
+  // catalogue, none of the account's having loaded.
+  it('drains a refund the cloud read off one photo as income through the real strategy, its type grade unwritten', async () => {
+    // A pin written after the fix. The single-photo reader's shape for a
+    // refund: income, its type graded for review, and named for the expense
+    // side, as a refund of groceries is.
+    processor.ngOnDestroy();
+    queue.ngOnDestroy();
+    await configure({
+      strategy: 'real',
+      parsed: {
+        merchant: 'Smoke cloud refund',
+        amount: 14.03,
+        type: 'income',
+        currency: 'USD',
+        date: new Date(2026, 5, 15),
+        suggestedCategory: 'food_groceries',
+        confidence: 0.85,
+        fieldConfidence: { amount: 0.9, date: 0.9, type: MODEL_INCOME_GRADE },
+      },
+    });
+    const id = await queue.queueImage(receiptFile());
+
+    window.dispatchEvent(new CustomEvent('process-queued-image', { detail: { id } }));
+    await waitFor(async () => (await queue.getPendingImages()).length === 0);
+
+    const stored = await firestoreService.getCollection<{
+      description: string; amount: number; type: string; categoryId: string;
+    }>(`users/${uid}/transactions`);
+    const row = stored.find((t) => t.description === 'Smoke cloud refund');
     expect(row).toBeDefined();
     expect(row && [row.type, row.categoryId, row.amount]).toEqual(['income', 'other_income', 14.03]);
     expect(row && 'fieldConfidence' in row).toBeFalse();

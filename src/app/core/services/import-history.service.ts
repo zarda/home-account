@@ -3,7 +3,7 @@ import { Observable, of, map } from 'rxjs';
 import { Timestamp } from '@angular/fire/firestore';
 import { FirestoreService } from './firestore.service';
 import { AuthService } from './auth.service';
-import { ImportCurrencyTotals, ImportHistory, ImportProvenance, ImportStatus } from '../../models';
+import { ImportCompletion, ImportHistory, ImportProvenance, ImportStatus } from '../../models';
 import { optionalTimestamp, reviveTimestamp } from '../utils/backup-revive.utils';
 
 /**
@@ -245,23 +245,7 @@ export class ImportHistoryService {
   /**
    * Mark an import as completed with final stats
    */
-  async completeImport(
-    id: string,
-    stats: {
-      transactionCount: number;
-      successCount: number;
-      skippedCount: number;
-      errorCount: number;
-      totalIncome: number;
-      totalExpenses: number;
-      totalsByCurrency?: ImportCurrencyTotals[];
-      duplicatesSkipped: number;
-      errors?: ImportHistory['errors'];
-      receiptsSkipped?: number;
-      receiptsFailed?: number;
-      transactionIds?: string[];
-    }
-  ): Promise<void> {
+  async completeImport(id: string, stats: ImportCompletion): Promise<void> {
     const status: ImportStatus = stats.errorCount > 0
       ? (stats.successCount > 0 ? 'partial' : 'failed')
       : 'completed';

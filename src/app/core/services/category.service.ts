@@ -86,6 +86,21 @@ export class CategoryService {
     return defaultCategories();
   }
 
+  /**
+   * The account's catalogue once it has loaded, the shipped one until then.
+   *
+   * For a reader that can run before the account's listener has answered — a
+   * receipt read, a queued photo's drain — and would otherwise find an empty
+   * list, which names no category and shows no side for any id.
+   * `loadCategories` always merges the built-ins in, so a non-empty cache is a
+   * loaded one and an empty cache is one that has not loaded yet (or belongs
+   * to nobody signed in).
+   */
+  categoriesOrDefaults(): Category[] {
+    const loaded = this.categories();
+    return loaded.length > 0 ? loaded : this.getDefaultCategories();
+  }
+
   // Get category by ID
   getCategoryById(id: string): Category | undefined {
     return this.categories().find(c => c.id === id);

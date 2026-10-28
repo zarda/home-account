@@ -5,6 +5,7 @@ import { TranslationService } from './translation.service';
 import {
   Budget,
   Category,
+  FieldConfidence,
   Goal,
   MonthlyTotal,
   SearchIntent,
@@ -42,9 +43,11 @@ import {
   printedLocationSlot,
   readCountryCode,
   readCurrencyCode,
+  modelTypeGrade,
   readFieldConfidence,
   readPrintedLocation,
   readReceiptTotal,
+  readTransactionType,
 } from '../utils/receipt-extraction.utils';
 import { groupExpensesByCategoryWithCounts } from '../utils/transaction-aggregation.utils';
 import { dayKey, parseDateInput } from '../utils/transaction-date.utils';
@@ -325,10 +328,26 @@ export abstract class CloudLLMProviderBase implements CloudLLMProviderAdapter {
       const printed = readPrintedLocation(parsed.location, parsed.merchant);
       const country = readCountryCode(parsed.country);
       const parsedDate = parseDateInput(parsed.date);
+      // Which way the money moved is the model's call on the type it was asked
+      // for, read strictly and graded for review when it says income (ADR 0162).
+      // The total is a magnitude whatever the model printed, and its sign is
+      // never a witness for the direction (ADR 0147).
+      const type = readTransactionType(parsed.type);
+      const typeGrade = modelTypeGrade(type);
+      const graded: FieldConfidence = {
+        ...readFieldConfidence(parsed),
+        // A date the model claimed to read clearly is not a real claim once
+        // it turned out to be unreadable: `date` below is `now`, and a
+        // confidence copied straight from the model would let the fallback
+        // pass for a real reading downstream.
+        ...(parsedDate === null ? { date: 0 } : {}),
+        ...(typeGrade !== undefined ? { type: typeGrade } : {}),
+      };
 
       return {
         merchant: parsed.merchant || 'Unknown',
-        amount: Number(parsed.amount) || 0,
+        amount: Math.abs(Number(parsed.amount) || 0),
+        type,
         currency: readCurrencyCode(parsed.currency),
         date: parsedDate ?? new Date(),
         items: parsed.items || [],
@@ -336,13 +355,9 @@ export abstract class CloudLLMProviderBase implements CloudLLMProviderAdapter {
         suggestedCategory: this.mapCategoryNameToId(parsed.suggestedCategory),
         confidence: parsed.amount && parsed.merchant ? 0.85 : 0.5,
         receiptCount: Number(parsed.receiptCount) || 1,
-        // A date the model claimed to read clearly is not a real claim once
-        // it turned out to be unreadable: `date` above is `now`, and a
-        // confidence copied straight from the model would let the fallback
-        // pass for a real reading downstream.
-        fieldConfidence: parsedDate === null
-          ? { ...readFieldConfidence(parsed), date: 0 }
-          : readFieldConfidence(parsed),
+        // Undefined when nothing was graded, so a source that cannot know stays
+        // distinguishable from one that read the fields clearly.
+        fieldConfidence: Object.keys(graded).length > 0 ? graded : undefined,
         ...(printed ? { location: printed } : {}),
         ...(country ? { receiptCountry: country } : {}),
       };
@@ -380,7 +395,7 @@ export abstract class CloudLLMProviderBase implements CloudLLMProviderAdapter {
         date: t.date || dayKey(new Date()),
         description: t.description || 'Unknown',
         amount: Math.abs(t.amount || 0),
-        type: t.type || 'expense',
+        type: readTransactionType(t.type),
         currency: readCurrencyCode(t.currency),
         category: this.matchedCategoryId(t.category),
         merchant: t.merchant,
@@ -442,7 +457,7 @@ export abstract class CloudLLMProviderBase implements CloudLLMProviderAdapter {
         date: t.date || dayKey(new Date()),
         description: t.description || 'Unknown',
         amount: Math.abs(t.amount || 0),
-        type: t.type || 'expense',
+        type: readTransactionType(t.type),
         currency: readCurrencyCode(t.currency),
         category: this.matchedCategoryId(t.category),
         merchant: t.merchant,
@@ -959,11 +974,15 @@ export abstract class CloudLLMProviderBase implements CloudLLMProviderAdapter {
     return name ? this.translationService.t(name) : 'Other';
   }
 
-  /** Resolve whatever the model called a category onto a catalog id. */
+  /**
+   * Resolve whatever the model called a category onto a catalog id. The one
+   * caller is a receipt read, which can finish before the account's catalog
+   * has loaded; it resolves against the shipped catalog until then.
+   */
   protected mapCategoryNameToId(categoryName: unknown): string {
     return mapCategoryNameToId(
       categoryName,
-      this.categoryService.categories(),
+      this.categoryService.categoriesOrDefaults(),
       name => this.translateCategoryName(name)
     );
   }

@@ -1,4 +1,8 @@
+import { VERIFY_FIELD_THRESHOLD } from '../../models';
 import {
+  extractedFieldConfidence,
+  MODEL_INCOME_GRADE,
+  modelTypeGrade,
   printedLocationSlot,
   readConfidence,
   readCountryCode,
@@ -6,6 +10,7 @@ import {
   readFieldConfidence,
   readPrintedLocation,
   readReceiptTotal,
+  readTransactionType,
 } from './receipt-extraction.utils';
 
 describe('readCurrencyCode', () => {
@@ -156,6 +161,57 @@ describe('readFieldConfidence', () => {
 
   it('keeps a reported zero rather than dropping the field', () => {
     expect(readFieldConfidence({ amountConfidence: 0 })).toEqual({ amount: 0 });
+  });
+});
+
+describe('readTransactionType', () => {
+  it('reads exactly "income" as income', () => {
+    expect(readTransactionType('income')).toBe('income');
+  });
+
+  // Strict on purpose: a normalizing reader would file a model's "Income" or
+  // " income" as income, and a refund the model merely worded differently is
+  // not an answer the reader may guess at (ADR 0162, ADR 0147).
+  it('reads every other answer as an expense: another casing, a synonym, a number or nothing', () => {
+    const answers: unknown[] = ['Income', 'INCOME', ' income', 'refund', 'credit', -1, '', null, undefined, {}];
+    for (const answer of answers) {
+      expect(readTransactionType(answer))
+        .withContext(`the answer ${JSON.stringify(answer) ?? 'undefined'}`)
+        .toBe('expense');
+    }
+  });
+});
+
+describe('modelTypeGrade', () => {
+  it('grades an income reading under the review bar, so it is always asked about', () => {
+    expect(modelTypeGrade('income')).withContext('an income reading carries a grade').toBe(MODEL_INCOME_GRADE);
+    expect(MODEL_INCOME_GRADE).toBeLessThan(VERIFY_FIELD_THRESHOLD);
+  });
+
+  it('grades no purchase, so absence still means nothing said otherwise', () => {
+    expect(modelTypeGrade('expense')).toBeUndefined();
+  });
+});
+
+describe('extractedFieldConfidence', () => {
+  it('is undefined when nothing was graded, so a source that cannot know stays distinguishable', () => {
+    expect(extractedFieldConfidence({}, undefined)).toBeUndefined();
+  });
+
+  it('carries the amount, the date the caller resolved and the type', () => {
+    expect(extractedFieldConfidence({ amountConfidence: 0.5, typeConfidence: MODEL_INCOME_GRADE }, 0.9))
+      .toEqual({ amount: 0.5, date: 0.9, type: MODEL_INCOME_GRADE });
+    // Whichever were graded, and no key for the rest.
+    expect(extractedFieldConfidence({ typeConfidence: MODEL_INCOME_GRADE }, undefined))
+      .toEqual({ type: MODEL_INCOME_GRADE });
+    expect(extractedFieldConfidence({ amountConfidence: 0.4 }, undefined)).toEqual({ amount: 0.4 });
+  });
+
+  // The caller's grade is the resolved one: a fabricated date arrives as an
+  // honest 0, and a falsy test would drop exactly the claim that matters.
+  it('keeps a zero date grade', () => {
+    expect(extractedFieldConfidence({}, 0)).toEqual({ date: 0 });
+    expect(extractedFieldConfidence({ amountConfidence: 0 }, 0)).toEqual({ amount: 0, date: 0 });
   });
 });
 

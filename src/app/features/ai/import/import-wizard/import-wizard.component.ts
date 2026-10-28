@@ -38,7 +38,12 @@ import {
   NotificationTone,
 } from '../../../../core/services/notification.service';
 import { AnnouncerService } from '../../../../core/services/announcer.service';
-import { ReceiptAttemptService, provenanceOf } from '../../../../core/services/receipt-attempt.service';
+import {
+  ReceiptAttemptService,
+  buildReceiptConfirmPayload,
+  provenanceOf,
+} from '../../../../core/services/receipt-attempt.service';
+import { AnalyticsService } from '../../../../core/services/analytics.service';
 import { ReceiptAttemptDiagnostics } from '../../../../core/services/ai-types';
 import { ShareIntakeService } from '../../../../core/services/share-intake.service';
 import { AI_QUEUE_WRITE_PARTIAL } from '../../../../core/utils/ai-error.utils';
@@ -108,6 +113,7 @@ export class ImportWizardComponent implements OnInit, AfterViewInit, OnDestroy {
   private importService = inject(AIImportService);
   private duplicateService = inject(DuplicateDetectionService);
   private receiptAttempts = inject(ReceiptAttemptService);
+  private analytics = inject(AnalyticsService);
   private categoryService = inject(CategoryService);
   private translationService = inject(TranslationService);
   private currencyService = inject(CurrencyService);
@@ -124,6 +130,12 @@ export class ImportWizardComponent implements OnInit, AfterViewInit, OnDestroy {
    * component's own template to find and scroll to (#430).
    */
   table = viewChild(TransactionPreviewTableComponent);
+  /**
+   * Reached from `processFiles` rather than through a binding: the zone keeps
+   * a list of its own, and the photos the offline queue stored have to leave
+   * it as they leave this selection.
+   */
+  dropzone = viewChild(FileDropzoneComponent);
 
   // JSON here is the backup door (importFromJSON) — the share sheet stays
   // shorter (share-intake.service.ts) since a share is never where a backup
@@ -142,8 +154,9 @@ export class ImportWizardComponent implements OnInit, AfterViewInit, OnDestroy {
   // Which door actually ran the extraction the state carries — the camera
   // dialog's own capture by default, since it is the door that predates
   // this field; a producer that is not the camera (the transaction form's
-  // own multi-receipt review) names itself explicitly (#151).
-  private resultDoor: ReceiptDoor = 'camera';
+  // own multi-receipt review) names itself explicitly (#151). Only those two
+  // hand a review over: the queue drain confirms nothing a reviewer saw.
+  private resultDoor: Exclude<ReceiptDoor, 'queue'> = 'camera';
 
   /**
    * What each processed result actually was, row-counted.
@@ -242,6 +255,17 @@ export class ImportWizardComponent implements OnInit, AfterViewInit, OnDestroy {
    * image was queued" after dropping four would re-shoot the other three.
    */
   queuedOfflineCount = signal(0);
+  /**
+   * Raised when processFiles starts a run, and lowered on the first line of
+   * its `finally`, before the review notices are set.
+   *
+   * The service raises `isProcessing` only once a reader runs, so a photo
+   * being written to the offline queue leaves it lowered, and "not
+   * processing, no rows, no error" is then what a run that found nothing
+   * looks like too. The step names a finished state only after the wizard's
+   * own run has settled.
+   */
+  runInFlight = signal(false);
   isImporting = signal(false);
   /**
    * Re-checks still waiting on their stored-history read. Import waits on
@@ -272,8 +296,9 @@ export class ImportWizardComponent implements OnInit, AfterViewInit, OnDestroy {
    * three times pinned about 50MB for the life of the document, which on the
    * iOS WebView is the kind of pressure that gets the app killed mid-scan.
    *
-   * A plain signal written by onFilesSelected makes creation and revocation
-   * a pair, in one place.
+   * A plain signal minted only through showPreviewsOf (a pick, or a queue
+   * write that kept some photos) makes creation and revocation a pair, in
+   * one place.
    */
   imagePreviewUrls = signal<{ name: string; url: string }[]>([]);
 
@@ -297,11 +322,13 @@ export class ImportWizardComponent implements OnInit, AfterViewInit, OnDestroy {
     }
   });
   uploadComplete = computed(() => this.selectedFiles().length > 0);
+  /** The reader is working, or the run that will use it has not settled: the processing card stands. */
+  processingBusy = computed(() => this.isProcessing() || this.runInFlight());
   processingComplete = computed(() =>
     !this.isProcessing() && this.extractedTransactions().length > 0
   );
   processingFinishedEmpty = computed(() =>
-    !this.isProcessing() &&
+    !this.processingBusy() &&
     this.extractedTransactions().length === 0 &&
     !this.processingError() &&
     this.queuedOfflineCount() === 0 &&
@@ -455,7 +482,7 @@ export class ImportWizardComponent implements OnInit, AfterViewInit, OnDestroy {
       importResult?: ImportResult;
       fromCamera?: boolean;
       multiImage?: boolean;
-      door?: ReceiptDoor;
+      door?: Exclude<ReceiptDoor, 'queue'>;
     } | undefined;
 
     if (state?.importResult && state?.fromCamera) {
@@ -561,14 +588,7 @@ export class ImportWizardComponent implements OnInit, AfterViewInit, OnDestroy {
 
   onFilesSelected(files: File[]): void {
     this.selectedFiles.set(files);
-    // Revoke before minting, so a re-pick releases the previous batch rather
-    // than leaving it alive with nothing pointing at it.
-    this.revokePreviews();
-    this.imagePreviewUrls.set(
-      files
-        .filter(f => looksLikeImageFile(f))
-        .map(f => ({ name: f.name, url: URL.createObjectURL(f) }))
-    );
+    this.showPreviewsOf(files);
     // Reset processing state
     this.extractedTransactions.set([]);
     // The set names the batch's receipt rows, so it is written wherever the
@@ -579,12 +599,32 @@ export class ImportWizardComponent implements OnInit, AfterViewInit, OnDestroy {
     this.processingError.set(null);
   }
 
+  // Revoke before minting, so a re-pick releases the previous batch rather
+  // than leaving it alive with nothing pointing at it. Each tile is minted
+  // from its own File, never matched to an old one by name: two iOS
+  // captures are both image.jpg.
+  private showPreviewsOf(files: readonly File[]): void {
+    this.revokePreviews();
+    // A queue write that settles after the wizard is gone would mint tiles
+    // no ngOnDestroy is left to revoke.
+    if (this.destroyRef.destroyed) return;
+    this.imagePreviewUrls.set(
+      files
+        .filter(f => looksLikeImageFile(f))
+        .map(f => ({ name: f.name, url: URL.createObjectURL(f) }))
+    );
+  }
+
   private revokePreviews(): void {
     this.imagePreviewUrls().forEach(p => URL.revokeObjectURL(p.url));
     this.imagePreviewUrls.set([]);
   }
 
   async processFiles(): Promise<void> {
+    // One run at a time: a second one during the queue write would queue the
+    // same photos again, and the drain would write each of them twice.
+    if (this.processingBusy()) return;
+    this.runInFlight.set(true);
     this.processingError.set(null);
     this.queuedOfflineCount.set(0);
     this.answerIncomplete.set(false);
@@ -667,8 +707,16 @@ export class ImportWizardComponent implements OnInit, AfterViewInit, OnDestroy {
           // Out of the picker, so neither Back nor a second Process can store
           // them again: the queue keys nothing on a photo's content, and two
           // rows for one capture become two transactions when the drain runs.
-          this.selectedFiles.update(list => list.filter(f => !looksLikeImageFile(f)));
-          this.revokePreviews();
+          // Out of the dropzone's list too: it keeps one of its own and emits
+          // the whole of it on its next change, which would hand the stored
+          // photos straight back to this selection. Both drop the batch the
+          // queue was handed, not the photos picked now: one added while the
+          // write ran was never stored, and taking it would lose it unseen.
+          this.selectedFiles.update(list => list.filter(f => !imageFiles.includes(f)));
+          this.dropzone()?.forget(imageFiles);
+          // The tiles follow what is still selected, so a photo added
+          // mid-run keeps its own.
+          this.showPreviewsOf(this.selectedFiles());
           // Still a failure, so it goes to the error card; how many pages
           // were kept is not reported, which is why no count is set here and
           // the card's own wording is what says some were. Raised before the
@@ -732,6 +780,7 @@ export class ImportWizardComponent implements OnInit, AfterViewInit, OnDestroy {
       // later file finds it already settled and this is a no-op.
       receiptAttempt?.failed(error);
     } finally {
+      this.runInFlight.set(false);
       this.showReviewNotices(warnings);
     }
   }
@@ -1057,8 +1106,9 @@ export class ImportWizardComponent implements OnInit, AfterViewInit, OnDestroy {
       const diagnostics = this.fromCamera
         ? this.cameraImportResult?.diagnostics ?? null
         : this.imageDiagnostics;
+      const door = this.fromCamera ? this.resultDoor : 'wizard';
       const provenance = this.processedBatches.some(b => b.source === 'image')
-        ? provenanceOf(this.fromCamera ? this.resultDoor : 'wizard', diagnostics)
+        ? provenanceOf(door, diagnostics)
         : undefined;
       const result = await this.importService.confirmImport(
         this.extractedTransactions(),
@@ -1070,6 +1120,20 @@ export class ImportWizardComponent implements OnInit, AfterViewInit, OnDestroy {
         provenance
       );
       this.recordReached = true;
+
+      // A batch holding a receipt reports how many of the types its readers
+      // flagged landed and how many the reviewer flipped, as the record read
+      // back counted them. Sent before the round's outcome is sorted, so a
+      // partial round reports too, and in a try of its own, so a throw here
+      // can never relabel rows that landed as a failed import. A statement
+      // screenshot is an image and not a receipt, so the kind decides.
+      if (this.processedBatches.some(b => b.fileType === 'receipt_image')) {
+        try {
+          this.analytics.trackReceiptConfirm(buildReceiptConfirmPayload(door, diagnostics, result));
+        } catch {
+          // Usage statistics are never a precondition: the rows have landed.
+        }
+      }
 
       // Rows that saved without their photos. Said as sentences of their own
       // rather than folded into a failure count, because "partial" here would

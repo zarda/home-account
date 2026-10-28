@@ -1,6 +1,8 @@
 # 162. A refund read on the device is filed as income, and the review asks about it
 
-**Status:** Accepted, implemented · **Date:** 2026-10-02 · **Issues:** #464
+**Status:** Accepted, implemented; amended by
+[0185](0185-a-refund-is-asked-about-at-every-door-and-a-category-follows-its-rows-side-there-and-back.md)
+· **Date:** 2026-10-02 · **Issues:** #464
 
 Reference documentation lives in [../receipt-import.md](../receipt-import.md)
 and [../import-fields.md](../import-fields.md).
@@ -19,6 +21,27 @@ button pattern to the flag on the review card's type toggle, and its literal
 step says what it changed to a category a flip or a merge moves. The Swift
 schema and its TypeScript mirror ship in one commit, as
 [0049](0049-the-model-never-sees-an-i18n-key.md)'s coupled pair does.
+
+**Amended by
+[0185](0185-a-refund-is-asked-about-at-every-door-and-a-category-follows-its-rows-side-there-and-back.md).**
+The rules below stand — the parser reads the marks on the total and never a
+word, the type is explicit and never read from a sign, and every income
+verdict is graded under the bar as policy — but several statements do not.
+The cloud receipt readers now grade a type: a model's income reading carries
+`MODEL_INCOME_GRADE` wherever it was read, from one home outside the native
+service, so no cloud receipt prompt's reader is without one, the flag's code
+is no longer idle on the web, and the rejection of teaching the cloud
+single-image prompts a type is reversed. The form's type flag no longer
+stands beside the toggle as `role="img"` with a literal
+`aria-hidden="false"`: it takes the checked segment's trend icon, hidden,
+and the segment's name leads with its sentence.
+A merge whose net stays on the target's side no longer leaves the category
+where it was: the survivor is held to its side whichever side the net lands
+on. A minus now also counts after an equals sign, an opening parenthesis or a
+Han or Hangul label, so `合計-1,280`, `(-12.50)` and `=-12.50` read as
+credits. And a purchase the model read over a negative printed on another
+total is flagged at `DISPUTED_TYPE_GRADE`. Each Known gap below says what
+0185 did to it.
 
 ## Context
 
@@ -437,27 +460,42 @@ changed there; its specs pin that a queued device refund lands as income on
   through `convertParsedReceipt` by the in-form scan and the drain off the
   device; `receiptItems`, Gemini's read of a single photo on the camera and
   wizard paths; and Gemini's `receiptSummary`. A refund read there lands as an
-  unflagged purchase.
+  unflagged purchase. *Closed by
+  [0185](0185-a-refund-is-asked-about-at-every-door-and-a-category-follows-its-rows-side-there-and-back.md).*
 - **The drain writes unreviewed**, and keeps an expense id a device refund
   named while the account's catalogue has not loaded
   (`categorization.utils.ts:227-233`), since an empty list cannot show it is on
-  the wrong side.
+  the wrong side. *Narrowed by
+  [0185](0185-a-refund-is-asked-about-at-every-door-and-a-category-follows-its-rows-side-there-and-back.md):
+  the cloud resolver and the drain read the shipped catalogue until the
+  account's loads, so a wrong-side id no longer reaches the drain that way;
+  it still writes unreviewed.*
 - **A `purchase` verdict over a marked print with a different total is an
   unflagged expense.** The print is ignored because it speaks of another
   figure; the amount is flagged when the parser's own grade is at least 0.7,
-  and the type is not.
+  and the type is not. *Closed by
+  [0185](0185-a-refund-is-asked-about-at-every-door-and-a-category-follows-its-rows-side-there-and-back.md),
+  which flags it at 0.3.*
 - **A second flip does not bring a moved category back.** A purchase on
   *Groceries* flipped to income and back lands on `other_expense`, the
-  catch-all of the side it returned to.
+  catch-all of the side it returned to. *Closed by
+  [0185](0185-a-refund-is-asked-about-at-every-door-and-a-category-follows-its-rows-side-there-and-back.md).*
 - **A same-value figure on a priced line counts as a copy.** A size of
   `10m -$10.00` on a slip whose total is `-$10.00` reads as a copy of the
   total, unmarked, so the refund is an ambiguous purchase, flagged — the safe
-  side, but a miss.
+  side, but a miss. *Re-examined by
+  [0185](0185-a-refund-is-asked-about-at-every-door-and-a-category-follows-its-rows-side-there-and-back.md),
+  which keeps this reading on measured evidence and pins it.*
 - **Misses.** `合計-1,280` (a minus glued to a label), `(-12.50)`, `=-12.50`,
-  and a minus Vision dropped all read as a purchase.
+  and a minus Vision dropped all read as a purchase. *Narrowed by
+  [0185](0185-a-refund-is-asked-about-at-every-door-and-a-category-follows-its-rows-side-there-and-back.md):
+  the first three read as credits; a minus Vision dropped still reads as a
+  purchase.*
 - **False credits.** A lone `(¥1,280)` restatement that wins its tier, or a
   `Points (1,250)` line on a receipt that prints no currency sign, reads as a
-  credit. Each lands as flagged income, never silently.
+  credit. Each lands as flagged income, never silently. *Re-examined by
+  [0185](0185-a-refund-is-asked-about-at-every-door-and-a-category-follows-its-rows-side-there-and-back.md),
+  which keeps both readings on measured evidence and pins them.*
 - **The simulator never showed the AI lane answering.** On the iPhone 17 /
   iOS 26.2 simulator the on-device model failed every request
   (FoundationModels `GenerationError` -1), so every scan fell back to the
@@ -468,10 +506,13 @@ changed there; its specs pin that a queued device refund lands as income on
   and the compile check.
 - **The type grade is in neither analytics nor Import History.** A refund
   read on the device, and how often a reviewer flips one back, are invisible
-  past the review step.
+  past the review step. *Closed by
+  [0185](0185-a-refund-is-asked-about-at-every-door-and-a-category-follows-its-rows-side-there-and-back.md).*
 - **The form's centred toggle group shifts** by the flag's width when the flag
-  appears.
+  appears. *Closed by
+  [0185](0185-a-refund-is-asked-about-at-every-door-and-a-category-follows-its-rows-side-there-and-back.md).*
 - **A merge on one side leaves a wrong-side category where it was.** The
   re-file runs only when the net changes sides, so a target that already held
   a category of the other side — one kept while the catalogue had not loaded —
-  keeps it through a same-side merge.
+  keeps it through a same-side merge. *Closed by
+  [0185](0185-a-refund-is-asked-about-at-every-door-and-a-category-follows-its-rows-side-there-and-back.md).*

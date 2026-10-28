@@ -8,6 +8,7 @@ import { Category, Transaction, MonthlyTotal, Budget, currencyDecimalPlaces } fr
 import { createCategory, createTransaction } from './testing';
 import { RawTransaction, PreviousPeriodData } from './gemini.service';
 import { AI_ANSWER_INCOMPLETE } from '../utils/ai-error.utils';
+import { defaultCategories } from '../utils/category-merge.utils';
 
 /**
  * Stand-in for the Anthropic Messages client. The service only calls
@@ -81,7 +82,10 @@ describe('ClaudeService', () => {
   }
 
   beforeEach(() => {
-    mockCategoryService = jasmine.createSpyObj<CategoryService>('CategoryService', ['categories']);
+    mockCategoryService = jasmine.createSpyObj<CategoryService>('CategoryService', [
+      'categories',
+      'categoriesOrDefaults',
+    ]);
     mockCurrencyService = jasmine.createSpyObj<CurrencyService>('CurrencyService', [
       'convert',
       'formatAmount',
@@ -95,6 +99,12 @@ describe('ClaudeService', () => {
     ]);
 
     mockCategoryService.categories.and.returnValue(categories);
+    // The real method over the double's live list: a case that reassigns
+    // `categories` mid-way moves both.
+    mockCategoryService.categoriesOrDefaults.and.callFake(() => {
+      const list = mockCategoryService.categories();
+      return list.length ? list : defaultCategories();
+    });
     mockCurrencyService.convert.and.callFake((amount: number) => amount);
     // Snapshot-or-identity, matching the fixtures below, which never diverge
     // amountInBaseCurrency from amount.

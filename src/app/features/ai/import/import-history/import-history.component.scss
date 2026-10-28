@@ -84,9 +84,15 @@
   border-radius: var(--radius-sm);
   background: var(--surface-muted);
 
+  // A two-line caption stays under its own centre, and a caption that is one
+  // unbroken run (a key shown for want of its text) breaks at the tile's edge
+  // rather than carrying past it (G3).
+  text-align: center;
+
   .label {
     font-size: var(--text-xs);
     color: var(--text-muted);
+    overflow-wrap: anywhere;
   }
 
   .value {
@@ -103,7 +109,8 @@
     color: var(--color-expense-text);
   }
 
-  &.skipped .value {
+  &.skipped .value,
+  &.photos .value {
     color: var(--color-warning-text);
   }
 }

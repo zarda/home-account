@@ -1,4 +1,4 @@
-import { CategorizedImportTransaction, FieldConfidence, ImagePositionMetadata, ImportCurrencyTotals, ImportWarning, roundToMinorUnit } from '../../models';
+import { CategorizedImportTransaction, FieldConfidence, gradeNeedsVerification, ImagePositionMetadata, ImportCurrencyTotals, ImportWarning, roundToMinorUnit } from '../../models';
 import { dayKey } from './transaction-date.utils';
 import { normalizeTags } from './tag.utils';
 
@@ -21,6 +21,13 @@ export function datedToday(date: Date, now = new Date()): boolean {
  * and manual rows carry, and `needsVerification` already reads a missing
  * grade as "nobody doubts it". A copy, never the row's own object: the
  * parent still holds that row.
+ *
+ * Dropping the `type` entry also drops the only record that the reader
+ * doubted the row, which is why a flip that answers the type's flag goes
+ * through `answerTypeFlag`: it files the type the reader flagged
+ * (`typeFlaggedAs`) beside the grade this removes, so the batch can still
+ * count the flags raised and the ones overturned (`countTypeAnswers`). The
+ * amount's and the date's entries leave no such record; nothing counts them.
  */
 export function withoutFieldConfidence(
   fc: FieldConfidence | undefined,
@@ -31,6 +38,73 @@ export function withoutFieldConfidence(
     Object.entries(fc).filter(([key]) => key !== field)
   ) as FieldConfidence;
   return Object.keys(rest).length ? rest : undefined;
+}
+
+/** What the type flag's helpers read of a row: its side, its grade and the verdict a flip filed. */
+export type TypeFlagRow = Pick<CategorizedImportTransaction, 'type' | 'fieldConfidence' | 'typeFlaggedAs'>;
+
+/**
+ * The type the reader flagged on this row, or `undefined` when it flagged
+ * none (ADR 0162).
+ *
+ * A standing flag is read off the grade and is the type the row shows now:
+ * the question is still open and has not moved the row. Once a flip answers
+ * it the grade is gone, and the verdict the flip filed (`typeFlaggedAs`)
+ * says which side was flagged, whichever side the row now stands on. The
+ * verdict wins whenever it is present, so it outlives the grade it replaced.
+ * A grade exactly at the bar is no flag (`gradeNeedsVerification`), and an
+ * ungraded type is nobody's doubt.
+ *
+ * It answers "was this row's type ever flagged", never "is it flagged now":
+ * the card's own flag reads the grade alone, so an answered row wears no
+ * flag.
+ */
+export function readerFlaggedType(row: TypeFlagRow): 'income' | 'expense' | undefined {
+  return row.typeFlaggedAs ?? (gradeNeedsVerification(row.fieldConfidence?.type) ? row.type : undefined);
+}
+
+/**
+ * What a flip changes on the row's side of the type flag: the type grade
+ * goes, because the flip is the reviewer's answer to the question it asked,
+ * and the type the reader flagged stays, filed as the verdict
+ * (`typeFlaggedAs`) so the answer can still be counted.
+ *
+ * The first verdict is the one on record. A second flip finds the grade
+ * already gone and the verdict already filed, and files the same side again
+ * rather than the one the row stood on when it was pressed. A row whose type
+ * nobody flagged files nothing: the flip is the reviewer's own change, not
+ * an answer. The key is always present on the result, and `undefined` when
+ * there is nothing to file, the way `movedCategory` is cleared by the same
+ * spread; the rest of the grade is untouched, since a flip says nothing
+ * about the figure or the day.
+ */
+export function answerTypeFlag(
+  row: TypeFlagRow
+): Pick<CategorizedImportTransaction, 'fieldConfidence' | 'typeFlaggedAs'> {
+  return {
+    fieldConfidence: withoutFieldConfidence(row.fieldConfidence, 'type'),
+    typeFlaggedAs: readerFlaggedType(row),
+  };
+}
+
+/**
+ * How many rows had their type flagged by the reader, and how many of those
+ * now stand on the other side: the reviewer's flip stood, or an earlier one
+ * did. A row flipped and flipped back is flagged and not flipped, because
+ * only the side it ends on decides. The parameter is the narrow slice the
+ * count reads, so the transaction form's own scanned row can be counted
+ * through the same function as the review step's rows.
+ */
+export function countTypeAnswers(rows: readonly TypeFlagRow[]): { typesFlagged: number; typesFlipped: number } {
+  let typesFlagged = 0;
+  let typesFlipped = 0;
+  for (const row of rows) {
+    const flagged = readerFlaggedType(row);
+    if (flagged === undefined) continue;
+    typesFlagged++;
+    if (flagged !== row.type) typesFlipped++;
+  }
+  return { typesFlagged, typesFlipped };
 }
 
 /**
@@ -407,12 +481,17 @@ export function sameSplit(
  *    what was read, the same rule a hand-typed correction follows
  *    (`commitAmount`). The date's grade, and every other review-step mark
  *    (`dateAssumed`, `dateReviewed`, `currencyFellBack`, `currencySuggestion`,
- *    `receiptCountry`) and reader-supplied field (`tags`, `location`,
- *    `merchant`, `suggestedCategoryId`, `categoryConfidence`,
- *    `period`), travel to both untouched: the receipt was read once, and
- *    splitting the amount does not reread the date. A part born of a row
- *    whose date question is still open carries `dateAssumed` and shows the
- *    chip too — but the part's id is new, so the wizard's `receiptRowIds`
+ *    `receiptCountry`, `movedCategory`, `typeFlaggedAs`) and reader-supplied
+ *    field (`tags`, `location`, `merchant`, `suggestedCategoryId`,
+ *    `categoryConfidence`, `period`), travel to both untouched: the receipt
+ *    was read once, and splitting the amount does not reread the date. Nor
+ *    does it move either half to the other side, so each can still be
+ *    flipped back to the category a flip once moved off the row, and each
+ *    still says which type the reader flagged: a split does not undo a
+ *    flip's answer, and the count of flags overturned (`countTypeAnswers`)
+ *    reads both halves for it. A part born of a row whose
+ *    date question is still open carries `dateAssumed` and shows the chip
+ *    too — but the part's id is new, so the wizard's `receiptRowIds`
  *    (stamped once, at extraction) never contains it, and the question does
  *    not gate Continue or Import the way a receipt row's does. It stands on
  *    the same footing as any other assumed date outside a receipt batch.
@@ -428,9 +507,9 @@ export function sameSplit(
  *    `blankImportRow` copies a neighbour's date — and `fieldConfidence` its
  *    own call per half rather than one object handed to both, so an edit to
  *    one half can never reach through a shared object into the other. `tags`,
- *    `location`, `period` and `currencySuggestion` stay exactly as shared as
- *    they already were on `row`, which every editor on the card only ever
- *    replaces, never mutates.
+ *    `location`, `period`, `currencySuggestion` and `movedCategory` stay
+ *    exactly as shared as they already were on `row`, which every editor on
+ *    the card only ever replaces, never mutates.
  */
 export function splitImportRow(
   row: CategorizedImportTransaction,
@@ -536,9 +615,26 @@ export function mergeableRow(row: CategorizedImportTransaction): boolean {
  * the direction, and the reader's doubt about which way the target's own
  * figure went no longer bears on it. Two rows on one side net to that side
  * whatever their figures, so there the target's grade rides through as the
- * date's does. The category stays the target's even when the net turns the
- * row to the other side; holding it to that side needs the catalogue, which
- * the card has and this function does not (`mergeInto`).
+ * date's does.
+ *
+ * The target's `movedCategory` — the category a change of side once moved
+ * off it — rides a same-side merge the way the type grade does, and is
+ * deleted when the rows sit on opposite sides: the net decides the side
+ * afresh, so the mark no longer says what the row left. Whichever side the
+ * net lands on, `mergeInto` then holds the category to it and writes a
+ * fresh mark where it moves one. The source's never rides.
+ *
+ * The target's `typeFlaggedAs` — the type the reader flagged, filed by a
+ * flip that answered the flag — follows the same rule: it rides a same-side
+ * merge, since the row's side is the one the reader flagged and answered,
+ * and is deleted when the rows sit on opposite sides, since the net decides
+ * the side afresh and an answer about the target's own figure no longer
+ * bears on it. The source's never rides, standing flag or filed verdict
+ * (its grade goes with the rest of its fields).
+ *
+ * The category stays the target's whichever side the net lands on; holding
+ * it to that side needs the catalogue, which the card has and this function
+ * does not (`mergeInto`).
  *
  * `imageMetadata` unions through `imageSources` rather than reading the two
  * `imageIndex`/`mergedFromImages` pairs directly, because a row already
@@ -613,6 +709,14 @@ export function mergeImportRows(
     selected: true,
     fieldConfidence: target.type === source.type ? graded : withoutFieldConfidence(graded, 'type'),
   };
+  // Across sides the net decides the side afresh, so what a flip once moved
+  // off the target is no longer what the row left, and the type its reader
+  // flagged no longer describes the row the net produced. Absent, not
+  // undefined.
+  if (target.type !== source.type) {
+    delete merged.movedCategory;
+    delete merged.typeFlaggedAs;
+  }
   // Absent, not undefined, the way splitImportRow leaves what it drops: the
   // spread carries every key the target had, a stale duplicateOf included.
   if (imageMetadata) merged.imageMetadata = imageMetadata;

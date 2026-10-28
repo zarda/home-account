@@ -25,7 +25,14 @@ import type { CategoryRowType } from '../utils/categorization.utils';
  */
 export interface ParsedReceipt {
   merchant: string;
+  /** The total as a magnitude: a refund is the sum given back, never a negative figure. `type` says which way it moved. */
   amount: number;
+  /**
+   * Which way the money moved, as the model read it: `income` only on an exact
+   * "income" answer (readTransactionType), a purchase for every other answer
+   * and for none. Never read off the sign of the total.
+   */
+  type: 'income' | 'expense';
   currency: string;
   date: Date;
   items?: ReceiptItem[];
@@ -97,6 +104,14 @@ export interface ExtractedTransaction {
   details?: string;                // Additional details (card last 4 digits, reference number, etc.)
   amountConfidence?: number;       // How legible the amount was (0-1); absent when unreported
   dateConfidence?: number;         // How legible the date was (0-1); absent when unreported
+  /**
+   * How firmly the app holds this row's `type`, from `modelTypeGrade`: set
+   * on an income verdict by receipt consolidation (a lone line's own type or
+   * a group's net) and by Gemini's single-row `receiptSummary` reader (ADRs
+   * 0162, 0185). Absent on a purchase and on every statement, CSV or backup
+   * row, whose type carries no grade.
+   */
+  typeConfidence?: number;
   // The optional fields a transaction can hold and an import source may or
   // may not answer. Absent means "nobody looked" — no producer defaults any
   // of them, so a slot only carries a value somebody actually read.

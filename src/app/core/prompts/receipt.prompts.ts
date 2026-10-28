@@ -65,6 +65,25 @@ const RECEIPT_COUNTRY_FIELD =
   `On that same LAST item, ALSO include a "country" field: ${COUNTRY_FIELD}`;
 
 /**
+ * How every receipt prompt asks which way the money moved.
+ *
+ * One sentence for the four of them, so a lone receipt, a summary, a list of
+ * items and a stack of photos are all told the same thing about a refund. The
+ * clarifier at the end is deliberate: receipts print the payment method as
+ * *CREDIT* or *クレジット*, and the offline drain files a cloud read
+ * unreviewed, so the bare word "credits" could file a card purchase as income
+ * there. A credit here is money given back to the customer, whatever the
+ * payment is called.
+ *
+ * The answer is read strictly on the way back — exactly "income" is income,
+ * anything else an expense — and the amount stays a magnitude (ADRs 0147,
+ * 0162). The statement prompt keeps its own credits/deposits wording: a
+ * deposit on a statement is not a refund.
+ */
+const RECEIPT_TYPE_FIELD =
+  '"income" for credits/refunds — money given back to the customer — "expense" for purchases/debits, whatever the payment method is called';
+
+/**
  * Summarize one receipt photo into a single transaction.
  *
  * Canonical text is Gemini's. It is the only variant that asks for
@@ -77,6 +96,7 @@ export function renderReceiptParse(): RenderedPrompt {
     user: `Analyze this receipt image and extract into this JSON structure (no markdown, no code blocks):
 {
   "merchant": "store/restaurant name",
+  "type": "<income or expense>",
   "amount": total amount as number,
   "currency": "ISO 4217 code, or empty when unreadable",
   "date": "YYYY-MM-DD format, or empty when no date is printed",
@@ -91,14 +111,15 @@ export function renderReceiptParse(): RenderedPrompt {
 }
 
 IMPORTANT:
-- "amount" is the TOTAL amount paid (bottom of receipt).
+- "type": ${RECEIPT_TYPE_FIELD}
+- "amount" is the TOTAL amount paid (bottom of receipt); on a refund, the total given back. Always a positive number: "type" says which way the money moved.
 - If MORE THAN ONE receipt is visible, extract the LARGEST/primary receipt into the fields above and set receiptCount to how many receipts are visible.
 - "currency": ${CURRENCY_FIELD}
 - "location": ${LOCATION_FIELD}
 - "country": ${COUNTRY_FIELD}
 - "items" array: each purchased item with its individual price.
 - "receiptDetails": Reproduce the FULL receipt content line by line. Include ALL items with prices, quantities, discounts, tax lines, subtotals, service charges, payment method, change, etc. Use newline to separate lines. Keep the receipt's own language and script exactly as printed — do not translate or transliterate.
-- If fields cannot be extracted, use defaults: merchant="Unknown", currency="", date="", items=[], amount=0.
+- If fields cannot be extracted, use defaults: merchant="Unknown", currency="", date="", items=[], amount=0, type="expense".
 - Lower "amountConfidence" and "dateConfidence" when a figure is blurred, cut off, ambiguous or inferred rather than read. Use 0.0 for "dateConfidence" when no date is printed or legible — never invent today's date.
 Return ONLY the JSON, nothing else.`,
     expects: 'json',
@@ -121,6 +142,7 @@ Return ONLY a JSON object (not an array):
 {
   "date": "YYYY-MM-DD",
   "merchant": "Store/Restaurant Name",
+  "type": "<income or expense>",
   "totalAmount": 123.45,
   "currency": "ISO 4217 code",
   "location": "<branch or address as printed, or empty>",
@@ -134,7 +156,8 @@ Return ONLY a JSON object (not an array):
 Rules:
 - date: Receipt date (YYYY-MM-DD), use "" if not visible
 - merchant: Store or restaurant name
-- totalAmount: Total amount paid (positive number only)
+- type: ${RECEIPT_TYPE_FIELD}
+- totalAmount: Total amount paid; on a refund, the total given back. Always a positive number: "type" says which way the money moved.
 - currency: ${CURRENCY_FIELD}
 - location: ${LOCATION_FIELD}
 - country: ${COUNTRY_FIELD}
@@ -265,7 +288,7 @@ For each UNIQUE transaction/line item found, extract:
 - date: in YYYY-MM-DD format (use the receipt date if individual items don't have dates)
 - description: item name or transaction description
 - amount: FINAL amount after any discounts applied (as a positive number)
-- type: "income" for credits/refunds, "expense" for purchases/debits
+- type: ${RECEIPT_TYPE_FIELD}
 - currency: ${CURRENCY_FIELD}
 - receiptId: integer grouping items from the same receipt (1, 2, 3...)
 - imageIndex: which image this item appears in (0-based)
@@ -327,8 +350,8 @@ Do NOT include total, subtotal, tax, or service charge as items.
 FIELDS PER ITEM:
 - date: YYYY-MM-DD
 - description: product name
-- amount: individual item price
-- type: "expense"
+- amount: individual item price. Always a positive number: "type" says which way the money moved.
+- type: ${RECEIPT_TYPE_FIELD}
 - currency: ${CURRENCY_FIELD}
 - receiptId: Integer grouping items from the same receipt (1, 2, 3...)
 - confidence: 0.0-1.0

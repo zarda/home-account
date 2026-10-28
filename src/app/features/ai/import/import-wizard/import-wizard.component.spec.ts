@@ -5,15 +5,18 @@ import { ActivatedRoute, Router, convertToParamMap } from '@angular/router';
 import { MatSnackBar } from '@angular/material/snack-bar';
 import { MatStepper } from '@angular/material/stepper';
 import { provideNativeDateAdapter } from '@angular/material/core';
+import { By } from '@angular/platform-browser';
 
 import { ImportWizardComponent } from './import-wizard.component';
+import { FileDropzoneComponent } from '../file-dropzone/file-dropzone.component';
 import { AIImportService, AI_QUEUED_OFFLINE, IMPORT_NOT_STARTED, IMPORT_READBACK_FAILED } from '../../../../core/services/ai-import.service';
 import { DuplicateDetectionService } from '../../../../core/services/duplicate-detection.service';
 import { CategoryService } from '../../../../core/services/category.service';
 import { TranslationService } from '../../../../core/services/translation.service';
 import { AnnouncerService } from '../../../../core/services/announcer.service';
-import { Category, CategorizedImportTransaction, DuplicateCheck, ImportResult, ProcessingStep } from '../../../../models';
+import { Category, CategorizedImportTransaction, DuplicateCheck, ImportHistory, ImportResult, ProcessingStep } from '../../../../models';
 import { NotificationService } from '../../../../core/services/notification.service';
+import { AnalyticsService } from '../../../../core/services/analytics.service';
 import { ShareIntakeService } from '../../../../core/services/share-intake.service';
 import { ReceiptAttempt, ReceiptAttemptService } from '../../../../core/services/receipt-attempt.service';
 import { CurrencyService } from '../../../../core/services/currency.service';
@@ -53,6 +56,7 @@ describe('ImportWizardComponent', () => {
   let mockDuplicateService: jasmine.SpyObj<DuplicateDetectionService>;
   let mockShareIntake: jasmine.SpyObj<ShareIntakeService>;
   let attempts: ReturnType<typeof attemptStub>;
+  let analytics: jasmine.SpyObj<AnalyticsService>;
   let routeStub: { snapshot: { queryParamMap: ReturnType<typeof convertToParamMap> } };
 
   const mockCategories: Category[] = [
@@ -187,6 +191,7 @@ describe('ImportWizardComponent', () => {
     mockShareIntake = jasmine.createSpyObj('ShareIntakeService', ['consumeAll']);
     mockShareIntake.consumeAll.and.resolveTo([]);
     attempts = attemptStub();
+    analytics = jasmine.createSpyObj<AnalyticsService>('AnalyticsService', ['trackReceiptConfirm']);
     routeStub = { snapshot: { queryParamMap: convertToParamMap({}) } };
 
     await TestBed.configureTestingModule({
@@ -202,6 +207,7 @@ describe('ImportWizardComponent', () => {
         { provide: DuplicateDetectionService, useValue: mockDuplicateService },
         { provide: ShareIntakeService, useValue: mockShareIntake },
         { provide: ReceiptAttemptService, useValue: attempts.service },
+        { provide: AnalyticsService, useValue: analytics },
         { provide: ActivatedRoute, useValue: routeStub },
         // The real one is root-provided and fetches rates from its
         // constructor. The code-and-figure shape is what the assertions read:
@@ -1372,6 +1378,125 @@ describe('ImportWizardComponent', () => {
       } finally {
         history.replaceState({}, '');
       }
+    });
+  });
+
+  describe('the receipt confirm event', () => {
+    // A receipt-shaped hand-off for every case that expects a send: the
+    // shared result above is a CSV, which holds no receipt and sends nothing.
+    const cameraState = () => ({
+      importResult: {
+        ...mockImportResult,
+        source: 'image', fileType: 'receipt_image',
+        fileName: '3 images', fileSize: 999
+      },
+      fromCamera: true
+    });
+    const formState = () => ({
+      importResult: {
+        ...mockImportResult,
+        source: 'image', fileType: 'receipt_image',
+        diagnostics: { engine: 'cloud', provider: 'gemini', durationMs: 500 },
+      },
+      fromCamera: true,
+      door: 'form',
+    });
+    /** The record the confirm read back, carrying the type counts it kept. */
+    const recordKeeping = (counts: Pick<ImportHistory, 'typesFlagged' | 'typesFlipped'>): ImportHistory => ({
+      id: 'history1', userId: 'user1', importedAt: { seconds: 0 } as never,
+      source: 'image', fileType: 'receipt_image',
+      fileName: '3 images', fileSize: 999, transactionCount: 2, successCount: 2,
+      skippedCount: 0, errorCount: 0, totalIncome: 3000, totalExpenses: 5,
+      duplicatesSkipped: 0, status: 'completed', ...counts
+    });
+    /** Opens the wizard a hand-off lands on and confirms its rows. */
+    const confirmHandedOver = async (state: object): Promise<void> => {
+      history.replaceState(state, '');
+      try {
+        const handOff = TestBed.createComponent(ImportWizardComponent);
+        handOff.detectChanges();
+        handOff.componentInstance.extractedTransactions.set(mockTransactions);
+        await handOff.componentInstance.confirmImport();
+      } finally {
+        history.replaceState({}, '');
+      }
+    };
+
+    it('reports a camera receipt\'s confirm by the counts its record kept', async () => {
+      mockImportService.confirmImport.and.resolveTo(recordKeeping({ typesFlagged: 3, typesFlipped: 1 }));
+
+      await confirmHandedOver(cameraState());
+
+      expect(analytics.trackReceiptConfirm).toHaveBeenCalledOnceWith({
+        path: 'camera', engine: 'none', type_flagged: 'several', type_flipped: 'one',
+      });
+    });
+
+    it('reports none and none for a receipt confirm nobody flagged', async () => {
+      // The record leaves a zero count out rather than writing it.
+      mockImportService.confirmImport.and.resolveTo(recordKeeping({}));
+
+      await confirmHandedOver(cameraState());
+
+      expect(analytics.trackReceiptConfirm).toHaveBeenCalledOnceWith({
+        path: 'camera', engine: 'none', type_flagged: 'none', type_flipped: 'none',
+      });
+    });
+
+    it('reports the form\'s door for its multi-receipt review', async () => {
+      mockImportService.confirmImport.and.resolveTo(recordKeeping({ typesFlagged: 1 }));
+
+      await confirmHandedOver(formState());
+
+      expect(analytics.trackReceiptConfirm).toHaveBeenCalledOnceWith({
+        path: 'form', engine: 'cloud', type_flagged: 'one', type_flipped: 'none',
+      });
+    });
+
+    it('sends nothing for a batch that held no receipt', async () => {
+      // Pin. A CSV, through the shared csv result.
+      component.selectedFiles.set([new File(['a,b'], 'rows.csv', { type: 'text/csv' })]);
+      await component.processFiles();
+      await component.confirmImport();
+      expect(mockImportService.confirmImport).withContext('the csv batch confirmed').toHaveBeenCalledTimes(1);
+      expect(analytics.trackReceiptConfirm).withContext('a csv batch').not.toHaveBeenCalled();
+
+      // Photos of a statement, through the statement reader's screenshot
+      // result: an image batch, and still no receipt.
+      const statement = TestBed.createComponent(ImportWizardComponent).componentInstance;
+      statement.imageKind.set('statement');
+      statement.selectedFiles.set([new File(['x'], 'stmt.png', { type: 'image/png' })]);
+      await statement.processFiles();
+      await statement.confirmImport();
+      expect(mockImportService.confirmImport.calls.mostRecent().args[3])
+        .withContext('the statement batch confirmed as an image import').toBe('image');
+      expect(analytics.trackReceiptConfirm).withContext('a statement-image batch').not.toHaveBeenCalled();
+    });
+
+    it('sends nothing when the confirm is refused', async () => {
+      // Pin. Nothing was written, so nothing was confirmed.
+      mockImportService.confirmImport.and.rejectWith(new Error(IMPORT_NOT_STARTED));
+
+      await confirmHandedOver(cameraState());
+
+      expect(mockImportService.confirmImport).withContext('the refused confirm ran').toHaveBeenCalled();
+      expect(analytics.trackReceiptConfirm).not.toHaveBeenCalled();
+    });
+
+    it('keeps a landed import\'s success when the event throws', async () => {
+      // Pin. Usage statistics are never a precondition: the rows landed, and
+      // a broken send must not relabel them failed.
+      mockImportService.confirmImport.and.resolveTo(recordKeeping({ typesFlagged: 2, typesFlipped: 2 }));
+      analytics.trackReceiptConfirm.and.throwError(new Error('analytics down'));
+
+      await confirmHandedOver(cameraState());
+
+      expect(notifications.success).toHaveBeenCalledOnceWith('import.importComplete', { durationMs: 3000 });
+      expect(notifications.error).not.toHaveBeenCalled();
+      expect(mockRouter.navigate).toHaveBeenCalledWith(
+        ['/transactions'],
+        jasmine.objectContaining({ replaceUrl: true, queryParams: { showAll: 'true' } })
+      );
     });
   });
 
@@ -3191,6 +3316,7 @@ describe('ImportWizardComponent', () => {
           { provide: DuplicateDetectionService, useValue: mockDuplicateService },
           { provide: ShareIntakeService, useValue: mockShareIntake },
           { provide: ReceiptAttemptService, useValue: attempts.service },
+          { provide: AnalyticsService, useValue: analytics },
           { provide: ActivatedRoute, useValue: routeStub },
           // Wider than the stub above: the review card builds its whole
           // currency picker in a field initializer, so the narrow shape the
@@ -3351,6 +3477,263 @@ describe('ImportWizardComponent', () => {
       expect(card).withContext('the rows are offered').not.toBeNull();
       expect(card!.textContent).toContain('bad csv');
     }));
+
+    // The service raises its flag only once a reader runs, so an offline scan
+    // is written to the queue with isProcessing still false. Not processing,
+    // no rows and no error is what "found nothing" looks like too, so the step
+    // has to wait for the wizard's own run to settle before it says that.
+    describe('while the photos are still being queued for later', () => {
+      const stepBody = () =>
+        (realFixture.nativeElement as HTMLElement).querySelector<HTMLElement>('.processing-step');
+
+      /** Photos picked, Process pressed: what the button's click handler does. */
+      const processOnePhoto = () => {
+        const real = realFixture.componentInstance;
+        real.onFilesSelected([new File([''], 'r.png', { type: 'image/png' })]);
+        realFixture.detectChanges();
+        real.processFiles();
+        real.stepper.next();
+        realFixture.detectChanges();
+      };
+
+      it('shows no empty result while the photos are still being queued for later', fakeAsync(() => {
+        let refuse!: (reason: unknown) => void;
+        mockImportService.importFromMultipleImages.and.returnValue(
+          new Promise<ImportResult>((_, reject) => { refuse = reject; })
+        );
+
+        processOnePhoto();
+
+        expect(stepBody()).withContext('the processing step').not.toBeNull();
+        expect(mockImportService.isProcessing())
+          .withContext('the service, which the queue write leaves lowered')
+          .toBeFalse();
+        expect(stepBody()!.textContent).not.toContain('import.noTransactionsFound');
+        expect(stepBody()!.querySelector('.processing-card'))
+          .withContext('the processing card')
+          .not.toBeNull();
+
+        refuse(new Error(AI_QUEUED_OFFLINE));
+        tick();
+        realFixture.detectChanges();
+
+        expect(stepBody()!.textContent).toContain('import.queuedForLater');
+        expect(stepBody()!.textContent).not.toContain('import.noTransactionsFound');
+        expect(stepBody()!.querySelector('.processing-card'))
+          .withContext('the processing card, once the queue write has settled')
+          .toBeNull();
+      }));
+
+      // PIN: passes before the fix, and has to keep passing after it. It is
+      // what stops "wait for the run" from turning into "never say it found
+      // nothing". Mutations run and seen failing: processingFinishedEmpty
+      // returning false always, and the run flag never being cleared.
+      it('shows the empty result once a run that found nothing has finished', fakeAsync(() => {
+        mockImportService.importFromMultipleImages.and.returnValue(
+          Promise.resolve({
+            ...mockImportResult,
+            source: 'image' as const,
+            fileType: 'receipt_image' as const,
+            transactions: []
+          })
+        );
+
+        processOnePhoto();
+        tick();
+        realFixture.detectChanges();
+
+        expect(stepBody()!.textContent).toContain('import.noTransactionsFound');
+        expect(stepBody()!.querySelector('.processing-card'))
+          .withContext('the processing card, once the run has ended')
+          .toBeNull();
+      }));
+
+      // A second press during the queue write would queue the same photos
+      // again, and the drain would then write each of them twice.
+      it('disables Process while its own run is still writing photos to the queue', () => {
+        const real = realFixture.componentInstance;
+        real.onFilesSelected([new File([''], 'r.png', { type: 'image/png' })]);
+        real.runInFlight.set(true);
+        realFixture.detectChanges();
+
+        const process = Array.from(
+          (realFixture.nativeElement as HTMLElement).querySelectorAll<HTMLButtonElement>('.step-actions button')
+        ).find(b => b.textContent?.includes('import.processWithAI'));
+        expect(process).withContext('the Process button').toBeDefined();
+        expect(mockImportService.isProcessing())
+          .withContext('the service, which the queue write leaves lowered')
+          .toBeFalse();
+        expect(process!.disabled).withContext('Process, mid-write').toBeTrue();
+      });
+
+      it('starts no second run when called again while its own run is still writing photos to the queue', fakeAsync(() => {
+        let refuse!: (reason: unknown) => void;
+        mockImportService.importFromMultipleImages.and.returnValue(
+          new Promise<ImportResult>((_, reject) => { refuse = reject; })
+        );
+
+        processOnePhoto();
+        tick();
+        realFixture.componentInstance.processFiles();
+        tick();
+
+        expect(mockImportService.importFromMultipleImages).toHaveBeenCalledTimes(1);
+
+        refuse(new Error(AI_QUEUED_OFFLINE));
+        tick();
+        realFixture.detectChanges();
+
+        expect(stepBody()!.textContent).toContain('import.queuedForLater');
+      }));
+    });
+
+    // The dropzone keeps a list of its own and emits the whole of it on every
+    // change, so a photo the wizard took out of its selection once the queue
+    // stored it, but the zone still held, came back with the next file added
+    // and was queued a second time on the next Process.
+    describe('the dropzone, once the photos are queued for later', () => {
+      const zone = () =>
+        realFixture.debugElement.query(By.directive(FileDropzoneComponent)).componentInstance as FileDropzoneComponent;
+      const names = (files: readonly File[]) => files.map(f => f.name);
+      const rowNames = () =>
+        Array.from((realFixture.nativeElement as HTMLElement).querySelectorAll('app-file-dropzone .file-name'))
+          .map(n => n.textContent?.trim());
+      const photo = (name: string) => new File(['x'], name, { type: 'image/png' });
+      const csv = () => new File(['a,b'], 'ledger.csv', { type: 'text/csv' });
+
+      /** A real drop on the zone, the way the browser delivers one. */
+      function drop(...files: File[]): void {
+        const transfer = new DataTransfer();
+        files.forEach(f => transfer.items.add(f));
+        (realFixture.nativeElement as HTMLElement)
+          .querySelector('app-file-dropzone .dropzone')!
+          .dispatchEvent(new DragEvent('drop', { dataTransfer: transfer, bubbles: true }));
+        realFixture.detectChanges();
+      }
+
+      /** Process pressed, the run settled, and Back to the upload step. */
+      function processAndGoBack(): void {
+        const real = realFixture.componentInstance;
+        real.processFiles();
+        real.stepper.next();
+        tick();
+        realFixture.detectChanges();
+        real.stepper.previous();
+        realFixture.detectChanges();
+      }
+
+      // The partial write rethrows to the error card, but the pages it did
+      // store are as stored as a whole capture, so both take the same lines.
+      for (const sentinel of [AI_QUEUED_OFFLINE, AI_QUEUE_WRITE_PARTIAL]) {
+        it(`keeps only the CSV on the zone after ${sentinel}, so the next photo joins it alone`, fakeAsync(() => {
+          mockImportService.importFromMultipleImages.and.returnValue(Promise.reject(new Error(sentinel)));
+          const real = realFixture.componentInstance;
+          drop(photo('queued.png'), csv());
+          expect(names(real.selectedFiles())).withContext('the wizard, before Process').toEqual(['queued.png', 'ledger.csv']);
+
+          processAndGoBack();
+
+          expect(names(zone().selectedFiles())).withContext('the zone\'s list').toEqual(['ledger.csv']);
+          expect(rowNames()).withContext('the zone\'s rows on screen').toEqual(['ledger.csv']);
+
+          drop(photo('next.png'));
+
+          expect(names(real.selectedFiles())).withContext('the wizard, after the next add').toEqual(['ledger.csv', 'next.png']);
+        }));
+      }
+
+      // Only the batch the queue was handed is stored, so only it leaves: a
+      // photo added while the write ran was never queued, and taking it from
+      // both lists would make it vanish with nothing said.
+      it('keeps a photo added while the queue write is still running on both lists', fakeAsync(() => {
+        let refuse!: (reason: unknown) => void;
+        mockImportService.importFromMultipleImages.and.returnValue(
+          new Promise<ImportResult>((_, reject) => { refuse = reject; })
+        );
+        const real = realFixture.componentInstance;
+        drop(photo('queued.png'), csv());
+
+        real.processFiles();
+        drop(photo('mid-run.png'));
+        refuse(new Error(AI_QUEUED_OFFLINE));
+        tick();
+        realFixture.detectChanges();
+
+        expect(names(real.selectedFiles())).withContext('the wizard').toEqual(['ledger.csv', 'mid-run.png']);
+        expect(names(zone().selectedFiles())).withContext('the zone\'s list').toEqual(['ledger.csv', 'mid-run.png']);
+        expect(rowNames()).withContext('the zone\'s rows on screen').toEqual(['ledger.csv', 'mid-run.png']);
+        expect(real.imagePreviewUrls().map(p => p.name)).withContext('the wizard\'s preview tiles').toEqual(['mid-run.png']);
+      }));
+
+      // Two iOS captures are both image.jpg, so neither list may match the
+      // photo it keeps by name: the wizard's tile and the zone's row preview
+      // are the mid-run photo's own, and neither was revoked with the queued.
+      it('keeps the previews of a mid-run photo named like the queued one', fakeAsync(() => {
+        let refuse!: (reason: unknown) => void;
+        mockImportService.importFromMultipleImages.and.returnValue(
+          new Promise<ImportResult>((_, reject) => { refuse = reject; })
+        );
+        const real = realFixture.componentInstance;
+        const queued = photo('image.jpg');
+        const midRun = photo('image.jpg');
+        drop(queued, csv());
+
+        real.processFiles();
+        drop(midRun);
+        const revoke = spyOn(URL, 'revokeObjectURL');
+        refuse(new Error(AI_QUEUED_OFFLINE));
+        tick();
+        realFixture.detectChanges();
+
+        // By identity: two empty-ish Files of one name are equal to toEqual.
+        const photos = real.selectedFiles().filter(f => f.name === 'image.jpg');
+        expect(photos.length).withContext('the wizard\'s photos').toBe(1);
+        expect(photos[0]).withContext('the wizard\'s photo').toBe(midRun);
+        const tiles = real.imagePreviewUrls();
+        expect(tiles.map(p => p.name)).withContext('the wizard\'s preview tiles').toEqual(['image.jpg']);
+        const revoked = revoke.calls.allArgs().flat();
+        expect(revoked).withContext('the surviving tile\'s url, revoked').not.toContain(tiles[0]?.url);
+        expect(zone().getFilePreview(midRun)).withContext('the zone\'s preview of the mid-run photo').not.toBe('');
+        expect(revoked).withContext('the zone\'s preview of the mid-run photo, revoked').not.toContain(zone().getFilePreview(midRun));
+      }));
+
+      // A queue write can settle after the wizard is gone. Tiles it minted
+      // then would have no ngOnDestroy left to revoke them, so it mints none.
+      it('mints no previews for a mid-run photo once the wizard is destroyed before the queue write settles', fakeAsync(() => {
+        let refuse!: (reason: unknown) => void;
+        mockImportService.importFromMultipleImages.and.returnValue(
+          new Promise<ImportResult>((_, reject) => { refuse = reject; })
+        );
+        const real = realFixture.componentInstance;
+        drop(photo('queued.png'));
+
+        real.processFiles();
+        drop(photo('mid-run.png'));
+        realFixture.destroy();
+        const mint = spyOn(URL, 'createObjectURL').and.callThrough();
+        refuse(new Error(AI_QUEUED_OFFLINE));
+        tick();
+
+        expect(real.queuedOfflineCount()).withContext('the queue catch, which ran').toBe(1);
+        expect(mint).withContext('blob urls minted after the destroy').not.toHaveBeenCalled();
+        expect(real.imagePreviewUrls()).withContext('the wizard\'s preview tiles').toEqual([]);
+      }));
+
+      // PIN: passes before the fix, and has to keep passing after it. It is
+      // what stops "the zone forgets the queued photos" from turning into
+      // "the zone forgets every photo it hands over". Mutation run and seen
+      // failing: forget called on every run, rows or none.
+      it('leaves the zone\'s list alone when the photos are read', fakeAsync(() => {
+        const real = realFixture.componentInstance;
+        drop(photo('receipt.png'), csv());
+
+        processAndGoBack();
+
+        expect(real.extractedTransactions().length).withContext('rows read').toBeGreaterThan(0);
+        expect(names(zone().selectedFiles())).toEqual(['receipt.png', 'ledger.csv']);
+        expect(names(real.selectedFiles())).toEqual(['receipt.png', 'ledger.csv']);
+      }));
+    });
 
     // Every step body is eager, so the review step's notices are in the DOM
     // without the stepper reaching it.

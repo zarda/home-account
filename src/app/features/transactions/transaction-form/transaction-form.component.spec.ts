@@ -13,7 +13,8 @@ import { MatButtonToggleModule } from '@angular/material/button-toggle';
 import { MatIconModule } from '@angular/material/icon';
 import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
 import { MatChipsModule } from '@angular/material/chips';
-import { MatTooltipModule } from '@angular/material/tooltip';
+import { MatTooltip, MatTooltipModule } from '@angular/material/tooltip';
+import { FocusMonitor } from '@angular/cdk/a11y';
 import { CdkTextareaAutosize } from '@angular/cdk/text-field';
 import { LoadingSpinnerComponent } from '../../../shared/components/loading-spinner/loading-spinner.component';
 import { DialogHeaderComponent } from '../../../shared/components/dialog-header/dialog-header.component';
@@ -220,7 +221,7 @@ describe('TransactionFormComponent', () => {
     receiptQuota = jasmine.createSpyObj('ReceiptQuotaService', ['canAddImages']);
     receiptQuota.canAddImages.and.resolveTo(true);
     receiptToNote = jasmine.createSpyObj('ReceiptToNoteService', ['convertReceiptToNote']);
-    analytics = jasmine.createSpyObj('AnalyticsService', ['trackTransactionAdd', 'trackAiAssistUsed', 'trackHouseholdAction']);
+    analytics = jasmine.createSpyObj('AnalyticsService', ['trackTransactionAdd', 'trackAiAssistUsed', 'trackHouseholdAction', 'trackReceiptConfirm']);
     tagSuggestions = jasmine.createSpyObj<TagSuggestionService>('TagSuggestionService', ['suggest']);
     tagSuggestions.suggest.and.resolveTo([[]]);
     groundingHistory = jasmine.createSpyObj<GroundingHistoryService>('GroundingHistoryService', ['recent']);
@@ -328,6 +329,80 @@ describe('TransactionFormComponent', () => {
       expect(component.form.get('categoryId')?.value).toBe('');
     });
 
+    it('announces the category a type change clears', () => {
+      const component = build().componentInstance;
+      component.form.patchValue({ categoryId: 'food' });
+
+      component.form.get('type')?.setValue('income');
+
+      expect(component.form.get('categoryId')?.value).toBe('');
+      // The name the field showed, not the id behind it.
+      expect(translation.t).toHaveBeenCalledWith('transactions.categoryClearedForType', { category: expense.name });
+      expect(announcer.announce).toHaveBeenCalledOnceWith('transactions.categoryClearedForType');
+    });
+
+    it('brings a cleared category back when the type returns to the side it fits', () => {
+      const component = build().componentInstance;
+      component.form.patchValue({ categoryId: 'food' });
+      component.form.get('type')?.setValue('income');
+      expect(component.form.get('categoryId')?.value).withContext('on the other side').toBe('');
+
+      component.form.get('type')?.setValue('expense');
+
+      expect(component.form.get('categoryId')?.value).withContext('back on its own side').toBe('food');
+      expect(component.selectedCategory()).toEqual(expense);
+    });
+
+    it('announces the category it brings back', () => {
+      const component = build().componentInstance;
+      component.form.patchValue({ categoryId: 'food' });
+      component.form.get('type')?.setValue('income');
+      announcer.announce.calls.reset();
+
+      component.form.get('type')?.setValue('expense');
+
+      expect(translation.t).toHaveBeenCalledWith('transactions.categoryRestoredForType', { category: expense.name });
+      expect(announcer.announce).toHaveBeenCalledOnceWith('transactions.categoryRestoredForType');
+    });
+
+    // A pin: a category chosen after the blank ends the hold, so a field that
+    // is emptied again some other way is not handed the older category on the
+    // next type change. Mutation: leave the hold standing when a category is
+    // chosen, which this case sees as 'food' coming back.
+    it('forgets the category a type change blanked once another is chosen', () => {
+      const both = createCategory({ id: 'refunds', type: 'both', name: 'Refunds' });
+      categoryService.incomeCategories.set([income, both]);
+      const component = build().componentInstance;
+      component.form.patchValue({ categoryId: 'food' });
+      component.form.get('type')?.setValue('income');
+      component.form.patchValue({ categoryId: 'refunds' });
+      component.form.patchValue({ categoryId: '' });
+      announcer.announce.calls.reset();
+
+      component.form.get('type')?.setValue('expense');
+
+      expect(component.form.get('categoryId')?.value).toBe('');
+      expect(announcer.announce).not.toHaveBeenCalled();
+    });
+
+    // A pin: of the category's branches, only the reset and the restore
+    // speak. The reset speaks for a category the new side cannot hold, and
+    // the restore for the blanked one it gives back. Mutation: announce on
+    // every type change, which this case sees as a call it did not expect.
+    it('says nothing about the category when a type change leaves it in place', () => {
+      const both = createCategory({ id: 'refunds', type: 'both', name: 'Refunds' });
+      categoryService.expenseCategories.set([expense, both]);
+      categoryService.incomeCategories.set([income, both]);
+      const component = build().componentInstance;
+      component.form.patchValue({ categoryId: 'refunds' });
+
+      component.form.get('type')?.setValue('income');
+      component.form.get('type')?.setValue('expense');
+
+      expect(component.form.get('categoryId')?.value).toBe('refunds');
+      expect(announcer.announce).not.toHaveBeenCalled();
+    });
+
     it('drops split parts the new type has no categories for', () => {
       const component = build().componentInstance;
       component.splitParts.set([{ categoryId: 'food', amount: 5 }]);
@@ -339,9 +414,8 @@ describe('TransactionFormComponent', () => {
       expect(component.splitParts()).toEqual([]);
     });
 
-    // The category reset above leaves a visibly empty required field. A
-    // dropped row leaves nothing at all, so it is the one that has to be
-    // said out loud.
+    // Like the category reset above, which says what it cleared, a dropped
+    // row is said out loud: it leaves nothing on screen to notice.
     it('announces the parts a type change drops', () => {
       const component = build().componentInstance;
       component.splitParts.set([
@@ -504,6 +578,128 @@ describe('TransactionFormComponent', () => {
       await component.onSubmit();
 
       expect(analytics.trackTransactionAdd).not.toHaveBeenCalled();
+    });
+
+    describe('receipt_confirm for a scanned save', () => {
+      const nativeRead = { engine: 'native' as const, provider: null, durationMs: 800 };
+
+      /**
+       * Picks one photo into the empty strip, which starts a scan the pick does
+       * not wait for, and waits that scan out. The photo is the one the scan
+       * ran against, so discarding it withdraws the scan.
+       */
+      async function pickAndScan(component: TransactionFormComponent): Promise<void> {
+        const file = new File(['r'], 'r.jpg', { type: 'image/jpeg' });
+        await component.onReceiptSelected({ target: { files: [file], value: '' } } as unknown as Event);
+        await until(() => !component.isScanning());
+      }
+
+      it('reports a scanned save whose reader flagged the type and the user kept it', async () => {
+        // A purchase the device could not tell from a refund: read as expense,
+        // its type doubted. The save leaves it where the scan put it.
+        strategy.processReceipt.and.resolveTo(
+          scanResult({ source: 'native', fieldConfidence: { type: 0.3 } }, { diagnostics: nativeRead }),
+        );
+        const component = build().componentInstance;
+        await pickAndScan(component);
+        validForm(component);
+
+        await component.onSubmit();
+
+        expect(analytics.trackReceiptConfirm).toHaveBeenCalledOnceWith({
+          path: 'form',
+          engine: 'native',
+          type_flagged: 'one',
+          type_flipped: 'none',
+        });
+      });
+
+      it('reports a flip when a flagged scan is saved on the other side', async () => {
+        // A refund read as income and doubted; the user files it as the
+        // purchase it was. The scan's own grade went with the type change, so
+        // the reading the scan kept is the only record of the doubt.
+        strategy.processReceipt.and.resolveTo(
+          scanResult(
+            { type: 'income', source: 'native', suggestedCategoryId: 'salary', fieldConfidence: { type: 0.5 } },
+            { diagnostics: nativeRead },
+          ),
+        );
+        const component = build().componentInstance;
+        await pickAndScan(component);
+        expect(component.form.get('type')?.value).withContext('the scan').toBe('income');
+        validForm(component);
+
+        await component.onSubmit();
+
+        expect(transactionService.addTransaction.calls.mostRecent().args[0].type).toBe('expense');
+        expect(analytics.trackReceiptConfirm).toHaveBeenCalledOnceWith({
+          path: 'form',
+          engine: 'native',
+          type_flagged: 'one',
+          type_flipped: 'one',
+        });
+      });
+
+      it('reports a scanned save nobody flagged as none and none', async () => {
+        const cloudRead = { engine: 'cloud' as const, provider: 'gemini' as const, durationMs: 1200 };
+        strategy.processReceipt.and.resolveTo(scanResult({}, { diagnostics: cloudRead }));
+        const component = build().componentInstance;
+        await pickAndScan(component);
+        validForm(component);
+
+        await component.onSubmit();
+
+        expect(analytics.trackReceiptConfirm).toHaveBeenCalledOnceWith({
+          path: 'form',
+          engine: 'cloud',
+          type_flagged: 'none',
+          type_flipped: 'none',
+        });
+      });
+
+      it('sends no receipt_confirm for a manual save', async () => {
+        // A pin: nobody read the type, so there is no flag to have answered.
+        const component = build().componentInstance;
+        validForm(component);
+
+        await component.onSubmit();
+
+        expect(transactionService.addTransaction).toHaveBeenCalledTimes(1);
+        expect(analytics.trackReceiptConfirm).not.toHaveBeenCalled();
+      });
+
+      it('sends no receipt_confirm once the scanned photo is discarded', async () => {
+        // A pin: the discard withdraws the scan's claim on the form, the
+        // reader's doubt included. What is typed afterwards is manual entry.
+        strategy.processReceipt.and.resolveTo(
+          scanResult({ source: 'native', fieldConfidence: { type: 0.3 } }, { diagnostics: nativeRead }),
+        );
+        const component = build().componentInstance;
+        await pickAndScan(component);
+        component.removePendingReceipt(0);
+        validForm(component);
+
+        await component.onSubmit();
+
+        expect(transactionService.addTransaction).toHaveBeenCalledTimes(1);
+        expect(analytics.trackReceiptConfirm).not.toHaveBeenCalled();
+      });
+
+      it('sends no receipt_confirm when editing', async () => {
+        // A pin: the event is about a new row's scan. A photo scanned into an
+        // edit holds a reading too, and the edit still reports nothing.
+        strategy.processReceipt.and.resolveTo(
+          scanResult({ source: 'native', fieldConfidence: { type: 0.3 } }, { diagnostics: nativeRead }),
+        );
+        const component = build({ mode: 'edit', transaction: createTransaction({ id: 'e1' }) }).componentInstance;
+        await pickAndScan(component);
+        validForm(component);
+
+        await component.onSubmit();
+
+        expect(transactionService.updateTransaction).toHaveBeenCalledTimes(1);
+        expect(analytics.trackReceiptConfirm).not.toHaveBeenCalled();
+      });
     });
 
     it('sends the period key when editing clears it, so the stored one is removed', async () => {
@@ -2339,6 +2535,105 @@ describe('TransactionFormComponent', () => {
         expect(component.form.get('categoryId')?.value).toBe('');
       });
 
+      it('brings back the purchase category a scanned refund cleared once the user moves the type back', async () => {
+        // The refund moves the type under a purchase category the form already
+        // held, which the income side cannot show. Said when it goes, and said
+        // again when the way back returns it. A refund scanned into an empty
+        // form clears nothing, which the case above pins.
+        strategy.processReceipt.and.resolveTo(refund());
+        const component = build().componentInstance;
+        component.form.patchValue({ categoryId: 'food' });
+
+        await pickAndScan(component, 'refund');
+
+        expect(component.form.get('type')?.value).withContext('the refund').toBe('income');
+        expect(component.form.get('categoryId')?.value).withContext('the refund').toBe('');
+        expect(announcer.announce).toHaveBeenCalledWith('transactions.categoryClearedForType');
+        expect(translation.t).toHaveBeenCalledWith('transactions.categoryClearedForType', { category: expense.name });
+
+        component.form.get('type')!.setValue('expense');
+
+        expect(component.form.get('categoryId')?.value).withContext('moved back').toBe('food');
+        expect(announcer.announce).toHaveBeenCalledWith('transactions.categoryRestoredForType');
+        expect(translation.t).toHaveBeenCalledWith('transactions.categoryRestoredForType', { category: expense.name });
+      });
+
+      describe('over a category held for the way back', () => {
+        // The user's own pick, on the purchase side, beside the one the scan's
+        // purchase will suggest ('food', the helper's default).
+        const dining = createCategory({ id: 'dining', type: 'expense', name: 'Dining' });
+
+        /**
+         * A form holding `dining`, a refund scanned over it and then discarded:
+         * the type stands on income, the pick is blanked and held, and the
+         * clearing has been said. The next scan is the one under test.
+         */
+        async function afterDiscardedRefund(): Promise<TransactionFormComponent> {
+          categoryService.categories.set([expense, dining, income]);
+          categoryService.expenseCategories.set([expense, dining]);
+          const component = build().componentInstance;
+          component.form.patchValue({ categoryId: 'dining' });
+          strategy.processReceipt.and.resolveTo(refund());
+
+          await pickAndScan(component, 'refund');
+          expect(component.form.get('type')?.value).withContext('the refund').toBe('income');
+          expect(component.form.get('categoryId')?.value).withContext('the refund').toBe('');
+          expect(announcer.announce).withContext('the refund').toHaveBeenCalledWith('transactions.categoryClearedForType');
+
+          component.removePendingReceipt(0);
+          announcer.announce.calls.reset();
+          translation.t.calls.reset();
+          return component;
+        }
+
+        it('fills the purchase\'s own category, and says nothing set back, when a scan moves the type back', async () => {
+          // The scan's reading is the newer answer: it names a category for
+          // the side it lands on and fills it. Announcing the held pick as
+          // set back first told a screen-reader user a category the field
+          // never kept.
+          const component = await afterDiscardedRefund();
+          strategy.processReceipt.and.resolveTo(scanResult({ source: 'native', suggestedCategoryId: 'food' }));
+
+          await pickAndScan(component, 'purchase');
+
+          expect(component.form.get('type')?.value).withContext('the purchase').toBe('expense');
+          expect(component.form.get('categoryId')?.value).withContext('the purchase').toBe('food');
+          expect(announcer.announce).not.toHaveBeenCalledWith('transactions.categoryRestoredForType');
+          expect(translation.t).not.toHaveBeenCalledWith('transactions.categoryRestoredForType', jasmine.anything());
+        });
+
+        // A pin: with no category of the scan's own to fill, the held pick is
+        // the best answer left and the way back still returns it. Mutation:
+        // drop the hold on every type move the scan makes, which this case
+        // sees as an empty field.
+        it('brings the held category back, and says so, when the scan that moves the type back names none for that side', async () => {
+          const component = await afterDiscardedRefund();
+          strategy.processReceipt.and.resolveTo(scanResult({ source: 'native', suggestedCategoryId: undefined }));
+
+          await pickAndScan(component, 'purchase');
+
+          expect(component.form.get('type')?.value).withContext('the purchase').toBe('expense');
+          expect(component.form.get('categoryId')?.value).withContext('the purchase').toBe('dining');
+          expect(announcer.announce).toHaveBeenCalledWith('transactions.categoryRestoredForType');
+          expect(translation.t).toHaveBeenCalledWith('transactions.categoryRestoredForType', { category: dining.name });
+        });
+
+        // A pin: a category of the other side is no answer for the side the
+        // scan lands on, so the held pick still comes back. Mutation: treat any
+        // suggested id as the scan's answer when deciding to drop the hold,
+        // which this case sees as an empty field.
+        it('brings the held category back when the scan names one only the other side offers', async () => {
+          const component = await afterDiscardedRefund();
+          strategy.processReceipt.and.resolveTo(scanResult({ source: 'native', suggestedCategoryId: 'salary' }));
+
+          await pickAndScan(component, 'purchase');
+
+          expect(component.form.get('type')?.value).withContext('the purchase').toBe('expense');
+          expect(component.form.get('categoryId')?.value).withContext('the purchase').toBe('dining');
+          expect(announcer.announce).toHaveBeenCalledWith('transactions.categoryRestoredForType');
+        });
+      });
+
       it('scanReceipt flags a type the reader doubted, and stops once the user changes the type, the amount\'s flag staying', async () => {
         // A purchase the device could not tell from a refund, its amount
         // doubted too. Dated today, so no flag is the date's.
@@ -2846,7 +3141,7 @@ describe('TransactionFormComponent, through its own template', () => {
         { provide: MatDialog, useValue: jasmine.createSpyObj('MatDialog', ['open']) },
         { provide: ReceiptQuotaService, useValue: quota },
         { provide: ReceiptToNoteService, useValue: jasmine.createSpyObj('ReceiptToNoteService', ['convertReceiptToNote']) },
-        { provide: AnalyticsService, useValue: jasmine.createSpyObj('AnalyticsService', ['trackTransactionAdd', 'trackAiAssistUsed', 'trackHouseholdAction']) },
+        { provide: AnalyticsService, useValue: jasmine.createSpyObj('AnalyticsService', ['trackTransactionAdd', 'trackAiAssistUsed', 'trackHouseholdAction', 'trackReceiptConfirm']) },
         { provide: TagSuggestionService, useValue: tagSuggest },
         { provide: GroundingHistoryService, useValue: grounding },
         { provide: TagMemoryService, useValue: jasmine.createSpyObj<TagMemoryService>('TagMemoryService', ['remember']) },
@@ -3049,7 +3344,51 @@ describe('TransactionFormComponent, through its own template', () => {
     expect(el().querySelector('.verify-flag')).toBeNull();
   });
 
-  it('flags a doubted type beside the type toggle, where a screen reader reads it', async () => {
+  /**
+   * A flag's sentence is the whole reason the figure is marked, and an icon
+   * takes focus from nothing: the sentence opens for keyboard focus only when
+   * the icon is a tab stop.
+   */
+  it("opens the amount flag's sentence when the keyboard reaches it", async () => {
+    render();
+    component.scanFieldConfidence.set({ amount: 0.2 });
+    fixture.detectChanges();
+
+    const flag = el().querySelector('.amount-field .verify-flag') as HTMLElement | null;
+    expect(flag).withContext('the amount flag renders for a doubted amount').not.toBeNull();
+    expect(flag!.tabIndex).withContext('the flag is in the tab order').toBe(0);
+    const tip = fixture.debugElement.query(By.css('.amount-field .verify-flag')).injector.get(MatTooltip);
+    expect(tip._isTooltipVisible()).withContext('closed before the keyboard arrives').toBeFalse();
+
+    TestBed.inject(FocusMonitor).focusVia(flag!, 'keyboard');
+    await until(() => tip._isTooltipVisible());
+
+    expect(tip._isTooltipVisible()).withContext('keyboard focus opens the sentence').toBeTrue();
+    expect(tip.message).toBe(component.verifyFieldTooltip('amount'));
+  });
+
+  it("opens the date flag's sentence when the keyboard reaches it", async () => {
+    render();
+    component.scanFieldConfidence.set({ date: 0.2 });
+    fixture.detectChanges();
+
+    const flag = el().querySelector('.verify-flag') as HTMLElement | null;
+    expect(flag).withContext('the date flag renders for a doubted date').not.toBeNull();
+    expect(flag!.closest('mat-form-field')?.querySelector('[formControlName="date"]'))
+      .withContext('the flag stands in the date field')
+      .not.toBeNull();
+    expect(flag!.tabIndex).withContext('the flag is in the tab order').toBe(0);
+    const tip = fixture.debugElement.query(By.css('.verify-flag')).injector.get(MatTooltip);
+    expect(tip._isTooltipVisible()).withContext('closed before the keyboard arrives').toBeFalse();
+
+    TestBed.inject(FocusMonitor).focusVia(flag!, 'keyboard');
+    await until(() => tip._isTooltipVisible());
+
+    expect(tip._isTooltipVisible()).withContext('keyboard focus opens the sentence').toBeTrue();
+    expect(tip.message).toBe(component.verifyFieldTooltip('date'));
+  });
+
+  it("flags a doubted type in the checked segment, whose name leads with the flag's sentence", async () => {
     // A purchase the device could not tell from a refund: the form stays on
     // its default expense, and the type is graded under the bar.
     strategySpy.processReceipt.and.resolveTo({
@@ -3068,32 +3407,38 @@ describe('TransactionFormComponent, through its own template', () => {
       processingTimeMs: 1,
     });
     render();
-    const typeFlag = () => el().querySelector('.type-toggle-container .verify-flag') as HTMLElement | null;
-    expect(typeFlag()).toBeNull();
+    // Anywhere in the type control: a flag left on either segment, or beside
+    // the group, would be found.
+    const anyTypeFlag = () => el().querySelector('.type-toggle-container .verify-flag') as HTMLElement | null;
+    expect(anyTypeFlag()).toBeNull();
 
     const photo = new File(['refund?'], 'slip.jpg', { type: 'image/jpeg' });
     await component.onReceiptSelected({ target: { files: [photo], value: '' } } as unknown as Event);
     await until(() => !component.isScanning());
     fixture.detectChanges();
 
-    const flag = typeFlag();
-    expect(flag).not.toBeNull();
+    const flag = el().querySelector('mat-button-toggle.mat-button-toggle-checked .verify-flag') as HTMLElement | null;
+    expect(flag).withContext('the flag stands where the checked segment shows its trend icon').not.toBeNull();
     expect(component.form.get('type')?.value).toBe('expense');
-    // Beside the toggle rather than inside a button, so the icon carries the
-    // sentence itself.
-    expect(flag!.closest('mat-button-toggle-group'))
-      .withContext('beside the toggle group, not inside one of its buttons')
-      .toBeNull();
-    expect(flag!.getAttribute('role')).toBe('img');
-    expect(flag!.getAttribute('aria-hidden')).toBe('false');
-    expect(flag!.getAttribute('aria-label')).toBe('import.verifyType');
-    expect(flag!.getAttribute('aria-label')).toBe(component.verifyFieldTooltip('type'));
+    // The segment's button carries the sentence, so the icon is decoration.
+    // Its role is the one every icon in the toggle has from Material; the
+    // template adds none, and no name of its own.
+    expect(flag?.getAttribute('aria-hidden')).toBe('true');
+    expect(flag?.getAttribute('role')).toBe(toggle('income').querySelector('mat-icon')?.getAttribute('role') ?? null);
+    expect(flag?.hasAttribute('aria-label')).toBeFalse();
+    // MatButtonToggle forwards its aria-label input to the inner button; its
+    // host attribute is always null.
+    expect(toggle('expense').getAttribute('aria-label')).toBe('import.verifyType. common.expense');
+    expect(toggle('income').getAttribute('aria-label')).toBe('common.income');
+    expect(toggle('income').querySelector('mat-icon')?.textContent?.trim()).toBe('trending_up');
 
     toggle('income').click();
     fixture.detectChanges();
 
     expect(component.form.get('type')?.value).toBe('income');
-    expect(typeFlag()).toBeNull();
+    expect(anyTypeFlag()).toBeNull();
+    expect(toggle('expense').getAttribute('aria-label')).toBe('common.expense');
+    expect(toggle('expense').querySelector('mat-icon')?.textContent?.trim()).toBe('trending_down');
   });
 
   it('tells a part it is one', () => {
@@ -3206,6 +3551,71 @@ describe('TransactionFormComponent, through its own template', () => {
 
     const locate = el().querySelector('button[aria-label="transactions.useMyLocation"]') as HTMLElement;
     expect(locate.querySelector('mat-spinner')?.getAttribute('aria-hidden')).toBe('true');
+  });
+
+  describe('the type toggle when the scan doubts the type', () => {
+    const FACE = "Verdana, 'DejaVu Sans', sans-serif";
+
+    /**
+     * The form in a column as wide as the dialog it opens in. Karma never
+     * loads the dialog container's stylesheet, so the content's block display
+     * and padding are set here, and the face is pinned as docs/testing.md
+     * *Karma serves no fonts* says. Under 480px the form's own rule pads the
+     * content 16px `!important`; Karma's window is wider, so that padding is
+     * set inline the same way.
+     */
+    function renderInColumn(hostWidth: number, padding: string, important: boolean): void {
+      render();
+      const host = el();
+      host.style.display = 'block';
+      host.style.width = `${hostWidth}px`;
+      host.style.fontFamily = FACE;
+      for (const token of ['--mat-sys-body-large-font', '--mat-sys-body-small-font', '--mat-sys-label-large-font']) {
+        host.style.setProperty(token, FACE);
+      }
+      const content = host.querySelector('.dialog-content') as HTMLElement;
+      content.style.display = 'block';
+      content.style.setProperty('padding', padding, important ? 'important' : '');
+      fixture.detectChanges();
+    }
+
+    const group = () => el().querySelector('.type-toggle') as HTMLElement;
+    /** The checked segment's own word, not the segment: the part that must not slide. */
+    const checkedLabel = () =>
+      el().querySelector('mat-button-toggle.mat-button-toggle-checked .mat-button-toggle-label-content > span') as HTMLElement;
+    const stand = () => ({ group: group().getBoundingClientRect(), label: checkedLabel().getBoundingClientRect() });
+
+    const columns = [
+      { where: 'in the 500px dialog', hostWidth: 500, padding: '24px', important: false },
+      { where: 'at a 375px phone', hostWidth: 356, padding: '16px', important: true },
+    ] as const;
+
+    for (const { where, hostWidth, padding, important } of columns) {
+      it(`keeps the toggle group and the checked segment's label where they stood when the type flag appears, ${where}`, () => {
+        renderInColumn(hostWidth, padding, important);
+        const before = stand();
+        expect(before.group.width).withContext('the group at its 320px cap').toBe(320);
+        expect(el().querySelector('.type-toggle-container .verify-flag')).toBeNull();
+
+        component.scanFieldConfidence.set({ type: 0.5 });
+        fixture.detectChanges();
+
+        const flag = el().querySelector('mat-button-toggle.mat-button-toggle-checked .verify-flag') as HTMLElement | null;
+        expect(flag).withContext('the flag stands in the checked segment').not.toBeNull();
+        const after = stand();
+        expect(after.group.left).withContext('the group, left').toBeCloseTo(before.group.left, 1);
+        expect(after.group.width).withContext('the group, width').toBeCloseTo(before.group.width, 1);
+        expect(after.label.left).withContext("the checked segment's label, left").toBeCloseTo(before.label.left, 1);
+        expect(after.label.width).withContext("the checked segment's label, width").toBeCloseTo(before.label.width, 1);
+        if (flag) {
+          const drawn = flag.getBoundingClientRect();
+          expect(drawn.left).withContext('the flag, left of the group').toBeGreaterThanOrEqual(after.group.left);
+          expect(drawn.right).withContext('the flag, right of the group').toBeLessThanOrEqual(after.group.right);
+          expect(drawn.top).withContext('the flag, top of the group').toBeGreaterThanOrEqual(after.group.top);
+          expect(drawn.bottom).withContext('the flag, bottom of the group').toBeLessThanOrEqual(after.group.bottom);
+        }
+      });
+    }
   });
 
   describe('the Shared with control', () => {
@@ -3912,12 +4322,14 @@ describe('TransactionFormComponent, through its own template', () => {
         withTheme(theme, () => {
           settleAnimations(document);
           for (const flag of flags) {
-            const field = flag.getAttribute('aria-label');
+            // The type flag stands in the checked segment, which names it, and
+            // is painted on that segment's fill rather than on the dialog.
+            const field = flag.closest('mat-button-toggle') ? 'type' : flag.getAttribute('aria-label');
             expect(getComputedStyle(flag).color)
               .withContext(`${theme} ${field}`)
               .toBe(tokenValue('--color-warning-text'));
             expect(ratio(paintedColor(flag), paintedBackground(flag)))
-              .withContext(`${theme} ${field} on the dialog`)
+              .withContext(`${theme} ${field} on its ground`)
               .toBeGreaterThanOrEqual(3);
           }
         });

@@ -116,8 +116,13 @@ export class DuplicateDetectionService {
         d.getDate() === txn.date.getDate();
 
       if (sameDay) {
-        // Check exact match (same day + same amount + similar description)
-        if (this.descriptionsSimilar(txn.description, existing.description, descBigramCache)) {
+        // Check exact match (same day + same amount + same type + similar
+        // description). A purchase and its refund share a merchant, an amount
+        // and, when returned the same day, a date: they are two transactions.
+        if (
+          txn.type === existing.type &&
+          this.descriptionsSimilar(txn.description, existing.description, descBigramCache)
+        ) {
           return {
             transactionId: txn.id, isDuplicate: true, matchType: 'exact',
             existingTransactionId: existing.id, confidence: 1.0

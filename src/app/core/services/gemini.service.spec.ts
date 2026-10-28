@@ -8,6 +8,8 @@ import { Category, Transaction, MonthlyTotal, Budget, currencyDecimalPlaces } fr
 import { createTransaction, createCategory } from './testing/test-data';
 import { environment } from '../../../environments/environment';
 import { DEFAULT_TEXT_MODEL, DEFAULT_VISION_MODEL } from '../config/ai-models';
+import { MODEL_INCOME_GRADE } from '../utils/receipt-extraction.utils';
+import { defaultCategories } from '../utils/category-merge.utils';
 
 /**
  * A fake generative model that records the request it was called with and
@@ -101,8 +103,17 @@ describe('GeminiService', () => {
   }
 
   beforeEach(() => {
-    categoryService = jasmine.createSpyObj<CategoryService>('CategoryService', ['categories']);
+    categoryService = jasmine.createSpyObj<CategoryService>('CategoryService', [
+      'categories',
+      'categoriesOrDefaults',
+    ]);
     categoryService.categories.and.returnValue(categories);
+    // The real method over the double's live list: a case that reassigns
+    // `categories` mid-way moves both.
+    categoryService.categoriesOrDefaults.and.callFake(() => {
+      const list = categoryService.categories();
+      return list.length ? list : defaultCategories();
+    });
 
     currencyService = jasmine.createSpyObj<CurrencyService>('CurrencyService', [
       'convert',
@@ -635,6 +646,33 @@ describe('GeminiService', () => {
       expect(result[1].location).toEqual({ name: 'Shibuya 1-2-3', country: 'JP' });
     });
 
+    it('files a row as income only when the model answered exactly "income"', async () => {
+      // The strict reader: any other casing, a synonym, a number or no answer
+      // at all is an expense (ADR 0162, ADR 0147).
+      const answers: [unknown, 'income' | 'expense'][] = [
+        ['income', 'income'],
+        ['Income', 'expense'],
+        ['INCOME', 'expense'],
+        [' income', 'expense'],
+        ['refund', 'expense'],
+        ['credit', 'expense'],
+        ['expense', 'expense'],
+        [-1, 'expense'],
+        ['', 'expense'],
+        [null, 'expense'],
+        [undefined, 'expense'],
+      ];
+      visionModel.generateContent.and.resolveTo(makeResult(JSON.stringify(
+        answers.map(([type], index) => ({
+          date: '2026-07-01', description: `Row ${index}`, amount: 3.5, type, currency: 'USD', confidence: 0.9,
+        }))
+      )));
+
+      const result = await service.extractTransactionsFromMultipleImages(['AAA']);
+
+      expect(result.map(row => row.type)).toEqual(answers.map(([, filed]) => filed));
+    });
+
     it('tells the model a single photo may contain several receipts', async () => {
       visionModel.generateContent.and.resolveTo(makeResult('[]'));
       await service.extractTransactionsFromMultipleImages(['AAA']);
@@ -1007,6 +1045,47 @@ describe('GeminiService', () => {
       expect(result[0].type).toBe('expense');
       expect(result[0].category).toBe('food_restaurants');
       expect(result[0].details).toBe('Coffee 25.5');
+    });
+
+    it('files a summary the model read as a refund as income, graded for review', async () => {
+      // The direction is the model's answer on the type it was asked for
+      // (ADR 0162). The total stays a magnitude whatever it printed, and its
+      // sign says nothing about which way the money moved (ADR 0147).
+      visionModel.generateContent.and.resolveTo(makeResult(JSON.stringify({
+        date: '2024-05-10',
+        merchant: 'Outfitter',
+        totalAmount: -25.5,
+        type: 'income',
+        currency: 'JPY',
+        receiptDetails: 'Returned jacket 25.5',
+      })));
+
+      const result = await service.extractTransactionsFromImage('data:image/png;base64,xyz');
+
+      expect(result[0].type).toBe('income');
+      expect(result[0].amount).toBe(25.5);
+      expect(result[0].typeConfidence).toBe(MODEL_INCOME_GRADE);
+    });
+
+    it('reads anything but exactly "income" as a purchase with no type grade', async () => {
+      // A wrong casing, a stray space, a synonym, another type and no answer at
+      // all are all the side an unanswered row already lands on. Reading them
+      // as a refund on a guess would flag an ordinary receipt for review.
+      const answers: unknown[] = ['INCOME', ' income', 'Income', 'refund', 'expense', 1, true, null, undefined];
+      for (const answer of answers) {
+        visionModel.generateContent.and.resolveTo(makeResult(JSON.stringify({
+          date: '2024-05-10',
+          merchant: 'Cafe',
+          totalAmount: -25.5,
+          type: answer,
+          currency: 'JPY',
+        })));
+
+        const [row] = await service.extractTransactionsFromImage('abc');
+
+        expect(row.type).withContext(`type answer ${String(answer)}`).toBe('expense');
+        expect(Object.keys(row)).withContext(`type answer ${String(answer)}`).not.toContain('typeConfidence');
+      }
     });
 
     it('applies defaults when fields are missing', async () => {

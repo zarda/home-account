@@ -18,7 +18,7 @@ import { IMAGE_FILE_EXTENSIONS } from '../utils/file.utils';
 import { OfflineQueueService } from './offline-queue.service';
 import { PwaService } from './pwa.service';
 import { consolidateReceiptItems } from '../utils/receipt-consolidation';
-import { readCurrencyCode } from '../utils/receipt-extraction.utils';
+import { extractedFieldConfidence, readCurrencyCode, readTransactionType } from '../utils/receipt-extraction.utils';
 import { localeRegion, suggestCurrency } from '../utils/currency-suggestion.utils';
 import { CurrencyChoiceSessionService } from './currency-choice-session.service';
 import {
@@ -55,7 +55,7 @@ import {
   ImportResult,
   ImportWarning,
   CategorizedImportTransaction,
-  ImportCurrencyTotals,
+  ImportCompletion,
   ImportHistory,
   ImportProvenance,
   ImportSource,
@@ -83,7 +83,7 @@ import {
   toCreateTransactionDTO,
   TransactionSnapshot,
 } from '../utils/import-dto.utils';
-import { sumByCurrency } from '../utils/import-review.utils';
+import { countTypeAnswers, sumByCurrency } from '../utils/import-review.utils';
 import { matchRecurringRule } from '../utils/recurring-conversion.utils';
 import { planReceiptAttachments } from '../utils/receipt-attachment.utils';
 
@@ -823,12 +823,7 @@ export class AIImportService {
         suggestedCategoryId: t.suggestedCategoryId,
         categoryConfidence: t.confidence,
         notes: this.formatItemNotes(original.details),
-        fieldConfidence: (original.amountConfidence !== undefined || resolved.dateConfidence !== undefined)
-          ? {
-              ...(original.amountConfidence !== undefined ? { amount: original.amountConfidence } : {}),
-              ...(resolved.dateConfidence !== undefined ? { date: resolved.dateConfidence } : {})
-            }
-          : undefined,
+        fieldConfidence: extractedFieldConfidence(original, resolved.dateConfidence),
         isDuplicate: false,
         selected: true,
         imageMetadata: {
@@ -1238,7 +1233,7 @@ export class AIImportService {
           // `.seconds` here by hand was what left that row silently dated
           // today, and a `date` of any other shape an Invalid Date.
           const resolved = resolveImportDate(t['date']);
-          const type = (t['type'] as 'income' | 'expense') || 'expense';
+          const type = readTransactionType(t['type']);
           const categoryId = typeof t['categoryId'] === 'string' && t['categoryId'] ? t['categoryId'] : undefined;
           const recurringId = typeof t['recurringId'] === 'string' && ruleIds.has(t['recurringId'])
             ? t['recurringId']
@@ -1387,7 +1382,7 @@ export class AIImportService {
     // that way lands on other_income, as an answer nobody could place.
     const categories = this.categoryService.categories();
     return transactions.map(t => {
-      const type = t.type || 'expense';
+      const type = readTransactionType(t.type);
       const named = t.category && this.onRowSide(t.category, type, categories) ? t.category : undefined;
       const resolved = resolveImportDate(t.date, t.dateConfidence);
       const money = resolveImportCurrency(t.currency, baseCurrency);
@@ -1411,12 +1406,7 @@ export class AIImportService {
         // verbatim; formatItemNotes is for receipt item lists and splits
         // plain commas into newlines.
         notes: t.note ?? this.formatItemNotes(t.details),
-        fieldConfidence: (t.amountConfidence !== undefined || resolved.dateConfidence !== undefined)
-          ? {
-              ...(t.amountConfidence !== undefined ? { amount: t.amountConfidence } : {}),
-              ...(resolved.dateConfidence !== undefined ? { date: resolved.dateConfidence } : {})
-            }
-          : undefined,
+        fieldConfidence: extractedFieldConfidence(t, resolved.dateConfidence),
         isDuplicate: false,
         selected: true,
         ...(t.merchant ? { merchant: t.merchant } : {}),
@@ -1592,22 +1582,13 @@ export class AIImportService {
         }
       }
 
+      // The type flags are counted over the rows the write took, the way the
+      // totals are: a flagged row that failed or was left out answered nothing.
+      const { typesFlagged, typesFlipped } = countTypeAnswers(written);
+
       // Update import history with final stats
       // Note: Only include errors if there are any (Firestore rejects undefined values)
-      const completeStats: {
-        transactionCount: number;
-        successCount: number;
-        skippedCount: number;
-        errorCount: number;
-        totalIncome: number;
-        totalExpenses: number;
-        totalsByCurrency?: ImportCurrencyTotals[];
-        duplicatesSkipped: number;
-        errors?: ImportHistory['errors'];
-        receiptsSkipped?: number;
-        receiptsFailed?: number;
-        transactionIds?: string[];
-      } = {
+      const completeStats: ImportCompletion = {
         transactionCount: selectedTransactions.length,
         successCount,
         skippedCount: transactions.length - selectedTransactions.length,
@@ -1630,6 +1611,12 @@ export class AIImportService {
       }
       if (receiptsFailed > 0) {
         completeStats.receiptsFailed = receiptsFailed;
+      }
+      if (typesFlagged > 0) {
+        completeStats.typesFlagged = typesFlagged;
+      }
+      if (typesFlipped > 0) {
+        completeStats.typesFlipped = typesFlipped;
       }
 
       await this.importHistoryService.completeImport(historyId, completeStats);

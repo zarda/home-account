@@ -337,10 +337,11 @@ describe('NativeReceiptService', () => {
      * The model answers a magnitude and, from the receipt's words, its own
      * verdict on which way the money moved. The print is the second witness:
      * the same OCR text runs through the text reader, and its reading of the
-     * marks counts only when it read the same total the model did. A mark on
-     * some other figure says nothing about this one. Neither witness is a
-     * measurement, so an income verdict is always flagged for review, and so
-     * is a purchase the print argued with.
+     * marks backs a verdict only when it read the same total the model did. A
+     * credit on some other total backs no refund and files no income, but it
+     * flags a purchase, and only where the model read a total at all. Neither
+     * witness is a measurement, so an income verdict is always flagged for
+     * review, and so is a purchase the print argued with.
      */
     describe('which way the money moved', () => {
       // An answer with no verdict on it: the print alone decides, as on the
@@ -451,17 +452,58 @@ describe('NativeReceiptService', () => {
           expect(marked.fieldConfidence).toEqual({ amount: 0.8, date: 0.8, type: 0.5 });
         });
 
-        it('leaves a purchase the model read unflagged when the negative prints on another total', async () => {
-          // Guard: the known gap ADR 0162 records. The mark is on a figure the
-          // model did not answer, so it says nothing about this one, and the
-          // purchase stands as the model read it; only its amount is flagged.
+        it('flags a purchase the model read when the negative prints on another total', async () => {
+          // The mark is on a figure the model did not answer, so it backs
+          // nothing here, but the print argues with the model's reading all
+          // the same: the purchase stands as an expense, flagged beside its
+          // amount.
           visionMock.recognizeText.and.resolveTo({ ...ocrResult, text: REFUND_TEXT });
           withKind('purchase', { amount: 99 });
 
           const transaction = (await service.processImage(imageFile())).transactions[0];
 
           expect(transaction.type).toBe('expense');
+          expect(transaction.fieldConfidence).toEqual({ amount: REVIEW_AMOUNT_CONFIDENCE, date: 0.8, type: 0.3 });
+        });
+
+        it('flags a purchase over a negative on another total even where its amount carries no flag', async () => {
+          // No currency sign sits beside the printed figure, so the parser
+          // grades it under VERIFY_FIELD_THRESHOLD and the amount keeps the
+          // model's 0.8: the type flag is the only thing asking for a look.
+          visionMock.recognizeText.and.resolveTo({
+            ...ocrResult, text: 'Harbour Supplies\n2026-01-15\nTotal -14.03',
+          });
+          withKind('purchase', { amount: 99 });
+
+          const transaction = (await service.processImage(imageFile())).transactions[0];
+
+          expect(transaction.type).toBe('expense');
+          expect(transaction.fieldConfidence).toEqual({ amount: 0.8, date: 0.8, type: 0.3 });
+        });
+
+        it('leaves a purchase ungraded when a total printed both ways is another figure', async () => {
+          // Pin: the print argued with itself over a figure the model did not
+          // read, which is no credit mark on any total of the model's. Only
+          // the amount is flagged.
+          visionMock.recognizeText.and.resolveTo({ ...ocrResult, text: TWIN_TEXT });
+          withKind('purchase', { amount: 99 });
+
+          const transaction = (await service.processImage(imageFile())).transactions[0];
+
+          expect(transaction.type).toBe('expense');
           expect(transaction.fieldConfidence).toEqual({ amount: REVIEW_AMOUNT_CONFIDENCE, date: 0.8 });
+        });
+
+        it('leaves a purchase the model read no total for to its amount flag', async () => {
+          // Pin: with nothing read there is no total for the print to argue
+          // with, however it marks its own.
+          visionMock.recognizeText.and.resolveTo({ ...ocrResult, text: REFUND_TEXT });
+          withKind('purchase', { amount: 0 });
+
+          const transaction = (await service.processImage(imageFile())).transactions[0];
+
+          expect(transaction.type).toBe('expense');
+          expect(transaction.fieldConfidence).toEqual({ amount: 0, date: 0.8 });
         });
 
         it('grades a refund the model read as one the print is silent on when the negative prints on another total', async () => {
@@ -499,16 +541,16 @@ describe('NativeReceiptService', () => {
         expect(transaction.fieldConfidence).toEqual({ amount: 0.8, date: 0.8, type: 0.3 });
       });
 
-      it('reads nothing from a mark printed on a total other than the one the model read', async () => {
-        // Guard: the print speaks of another figure, so the row is the
-        // purchase it would be anyway, and only its amount is flagged.
+      it('flags the purchase, and files no income, when the mark prints on a total other than the one the model read', async () => {
+        // The print speaks of another figure, so it cannot make the row
+        // income; it still disputes the purchase the row would be anyway.
         visionMock.recognizeText.and.resolveTo({ ...ocrResult, text: REFUND_TEXT });
         answering(99);
 
         const transaction = (await service.processImage(imageFile())).transactions[0];
 
         expect(transaction.type).toBe('expense');
-        expect(transaction.fieldConfidence).toEqual({ amount: REVIEW_AMOUNT_CONFIDENCE, date: 0.8 });
+        expect(transaction.fieldConfidence).toEqual({ amount: REVIEW_AMOUNT_CONFIDENCE, date: 0.8, type: 0.3 });
       });
 
       it('reads no verdict from a minus the model left on its amount', async () => {

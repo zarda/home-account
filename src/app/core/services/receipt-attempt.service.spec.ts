@@ -2,6 +2,7 @@ import { TestBed } from '@angular/core/testing';
 import { WritableSignal, signal } from '@angular/core';
 import {
   ReceiptAttemptService,
+  buildReceiptConfirmPayload,
   buildReceiptImportPayload,
   classifyReceiptFailure,
   provenanceOf,
@@ -80,6 +81,45 @@ describe('ReceiptAttemptService', () => {
       expect(buildReceiptImportPayload('camera', 'queued_offline', null, null)).toEqual({
         outcome: 'queued_offline', path: 'camera', engine: 'none', provider: 'none',
         failure: 'none', duration: 'none',
+      });
+    });
+  });
+
+  describe('buildReceiptConfirmPayload', () => {
+    it('buckets each count as none, one or several', () => {
+      const at = (count: number | undefined) => {
+        const payload = buildReceiptConfirmPayload('camera', cloud, { typesFlagged: count, typesFlipped: count });
+        return [payload.type_flagged, payload.type_flipped];
+      };
+      // A record leaves a zero count out, so absent and zero read alike.
+      expect(at(undefined)).toEqual(['none', 'none']);
+      expect(at(0)).toEqual(['none', 'none']);
+      expect(at(1)).toEqual(['one', 'one']);
+      expect(at(2)).toEqual(['several', 'several']);
+      expect(at(17)).toEqual(['several', 'several']);
+      // Each count takes its own bucket.
+      expect(buildReceiptConfirmPayload('wizard', cloud, { typesFlagged: 3, typesFlipped: 1 })).toEqual({
+        path: 'wizard', engine: 'cloud', type_flagged: 'several', type_flipped: 'one',
+      });
+    });
+
+    it('names the engine as receipt_import does, the fallback pair included', () => {
+      const ran: ReceiptAttemptDiagnostics[] = [
+        cloud,
+        { ...cloud, engine: 'native', provider: null },
+        { ...cloud, fellBackFrom: 'native' },
+        { engine: 'native', fellBackFrom: 'cloud', provider: 'openai', durationMs: 1 },
+      ];
+      const confirmed = ran.map(diagnostics => buildReceiptConfirmPayload('form', diagnostics, {}).engine);
+      expect(confirmed).toEqual(['cloud', 'native', 'cloud_after_native', 'native_after_cloud']);
+      expect(confirmed)
+        .withContext('the two events name one attempt alike')
+        .toEqual(ran.map(diagnostics => buildReceiptImportPayload('form', 'ok', diagnostics, null).engine));
+    });
+
+    it('reports the engine as none when nothing was timed', () => {
+      expect(buildReceiptConfirmPayload('camera', null, {})).toEqual({
+        path: 'camera', engine: 'none', type_flagged: 'none', type_flipped: 'none',
       });
     });
   });

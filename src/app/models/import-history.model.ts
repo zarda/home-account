@@ -71,9 +71,24 @@ export interface ImportHistory {
    * successes only (`length === successCount`). Absent on a record that has
    * not completed yet, on an import where every row failed, on records
    * completed before this field was added, and on the doors that write no
-   * success record at all (`form`, `queue` — ADR 0065).
+   * success record at all (the queue, and the form's single scan, whose
+   * transaction is the record — ADR 0065). The form's multi-receipt review
+   * does write one, door `form`.
    */
   transactionIds?: string[];
+  /**
+   * Written rows whose type the reader flagged, whatever side each stands on
+   * now (`countTypeAnswers` over the rows the write took). Absent when no
+   * landed row was flagged, and on records completed before the field existed.
+   */
+  typesFlagged?: number;
+  /**
+   * Written rows whose type the reader flagged and which stand on the other
+   * side now: the reviewer's flip stood. A row flipped and flipped back is
+   * flagged and not flipped. Absent when none was, so an absent figure and a
+   * zero mean the same thing.
+   */
+  typesFlipped?: number;
   /**
    * How the attempt ran, recorded for receipts only. Written at extraction
    * time for a failed attempt and at confirm time for a successful one.
@@ -92,6 +107,20 @@ export interface ImportHistory {
 export type ImportProvenance = Pick<
   ImportHistory,
   'door' | 'engine' | 'fellBackFrom' | 'provider' | 'errorType' | 'durationMs'
+>;
+
+/**
+ * What a completed import records: the counters and totals the write landed.
+ * The one shape the importer builds and the history service stores, so a
+ * field added here reaches the record without a second list to keep in step.
+ */
+export type ImportCompletion = Pick<
+  ImportHistory,
+  | 'transactionCount' | 'successCount' | 'skippedCount' | 'errorCount'
+  | 'totalIncome' | 'totalExpenses' | 'totalsByCurrency'
+  | 'duplicatesSkipped' | 'errors'
+  | 'receiptsSkipped' | 'receiptsFailed' | 'transactionIds'
+  | 'typesFlagged' | 'typesFlipped'
 >;
 
 export interface ImportError {
@@ -142,13 +171,24 @@ export interface FieldConfidence {
    * moved (ADR 0162): every income verdict an on-device reader reaches, and
    * an expense whose reading was ambiguous. A purchase nothing contradicts
    * carries no `type` at all, so absence means "nothing said otherwise", not
-   * "unread". The cloud readers never set it.
+   * "unread". The cloud receipt readers grade every income reading; a
+   * statement's or a backup's type is never graded.
    */
   type?: number;
 }
 
 /** Below this, a field is worth the reviewer's attention before importing. */
 export const VERIFY_FIELD_THRESHOLD = 0.7;
+
+/**
+ * Whether a grade sends its field to the reviewer. A grade under the bar does;
+ * one exactly at it passes. An ungraded field is nobody's doubt: CSV and JSON
+ * rows have no reader to grade them, and flagging every one would train the
+ * user to ignore the marker.
+ */
+export function gradeNeedsVerification(grade: number | undefined): boolean {
+  return grade !== undefined && grade < VERIFY_FIELD_THRESHOLD;
+}
 
 /** The rule a row looks like, as offered on the review card. Never written. */
 export interface RecurringMatchSuggestion {
@@ -240,6 +280,31 @@ export interface CategorizedImportTransaction {
    * (`rowCarriesReviewerWork`).
    */
   editedOnCard?: true;
+  /**
+   * A review-step mark, never written: the category a change of side moved
+   * off this row, with the grade it held there. A flip that finds the
+   * row's category on the wrong side files the row on the new side's
+   * catch-all and remembers what it had; a flip back restores it at its
+   * grade (`categoryOnSide`). A pick on the card forgets it, a split
+   * carries it on both halves, a merge between two rows of one side keeps
+   * the target's, and a merge across sides drops it; the re-file that
+   * follows (`mergeInto`) writes a fresh one only where it moves the
+   * survivor's category.
+   */
+  movedCategory?: { suggestedCategoryId: string; categoryConfidence: number };
+  /**
+   * A review-step mark, never written: the type the reader flagged on this
+   * row, kept once a flip answers the flag. The flip drops the type grade
+   * (the flag asked its question and was answered), and with it the only
+   * record that the reader doubted the row, so the flip files the type it
+   * stood on here (`answerTypeFlag`) and the batch can still count the
+   * flags raised and the ones the reviewer overturned (`countTypeAnswers`).
+   * The first verdict stays through a second flip. A pick or edit on the
+   * card never touches it, a split carries it on both halves, a merge
+   * between two rows of one side keeps the target's, and a merge across
+   * sides deletes it.
+   */
+  typeFlaggedAs?: 'income' | 'expense';
   merchant?: string;
   notes?: string;                  // Optional notes/details (e.g., items list from receipt)
   isDuplicate: boolean;

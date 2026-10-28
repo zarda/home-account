@@ -139,28 +139,46 @@
         </div>
       }
 
-      <!-- Type Toggle -->
+      <!-- Type Toggle. A doubted type swaps the checked segment's trend icon
+           for the flag, so the group keeps its place and width; the
+           segment's name carries the flag's sentence. -->
       <div class="type-toggle-container">
         <mat-button-toggle-group formControlName="type" class="type-toggle">
-          <mat-button-toggle value="expense" class="type-button expense">
-            <mat-icon>trending_down</mat-icon>
+          <mat-button-toggle
+            value="expense"
+            class="type-button expense"
+            [aria-label]="typeButtonLabel('expense')"
+          >
+            @if (flagsType('expense')) {
+              <mat-icon
+                class="verify-flag"
+                [matTooltip]="verifyFieldTooltip('type')"
+                matTooltipPosition="above"
+                aria-hidden="true"
+              >error_outline</mat-icon>
+            } @else {
+              <mat-icon>trending_down</mat-icon>
+            }
             <span>{{ 'common.expense' | translate }}</span>
           </mat-button-toggle>
-          <mat-button-toggle value="income" class="type-button income">
-            <mat-icon>trending_up</mat-icon>
+          <mat-button-toggle
+            value="income"
+            class="type-button income"
+            [aria-label]="typeButtonLabel('income')"
+          >
+            @if (flagsType('income')) {
+              <mat-icon
+                class="verify-flag"
+                [matTooltip]="verifyFieldTooltip('type')"
+                matTooltipPosition="above"
+                aria-hidden="true"
+              >error_outline</mat-icon>
+            } @else {
+              <mat-icon>trending_up</mat-icon>
+            }
             <span>{{ 'common.income' | translate }}</span>
           </mat-button-toggle>
         </mat-button-toggle-group>
-        @if (shouldVerifyField('type')) {
-          <mat-icon
-            class="verify-flag"
-            [matTooltip]="verifyFieldTooltip('type')"
-            matTooltipPosition="above"
-            role="img"
-            aria-hidden="false"
-            [attr.aria-label]="verifyFieldTooltip('type')"
-          >error_outline</mat-icon>
-        }
       </div>
 
       <!-- Amount Section -->
@@ -177,6 +195,7 @@
                 matTooltipPosition="above"
                 role="img"
                 aria-hidden="false"
+                tabindex="0"
                 [attr.aria-label]="verifyFieldTooltip('amount')"
               >error_outline</mat-icon>
             }
@@ -322,6 +341,7 @@
             matTooltipPosition="above"
             role="img"
             aria-hidden="false"
+            tabindex="0"
             [attr.aria-label]="verifyFieldTooltip('date')"
           >error_outline</mat-icon>
         }

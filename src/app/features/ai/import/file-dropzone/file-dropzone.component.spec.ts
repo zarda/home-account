@@ -139,6 +139,91 @@ describe('FileDropzoneComponent', () => {
     });
   });
 
+  // The wizard drops photos the offline queue has stored from its own
+  // selection, and this list has to drop them too: every change here emits
+  // the whole list, so a photo left on it returns with the next one.
+  describe('forget', () => {
+    const image = (name: string) => new File([''], name, { type: 'image/jpeg' });
+    const csv = (name: string) => new File([''], name, { type: 'text/csv' });
+    const names = (files: readonly File[]) => files.map(f => f.name);
+
+    /** Drives the private processFiles the way the file input does. */
+    function select(...files: File[]): void {
+      component.onFileSelect({ target: { files, value: 'x' } } as unknown as Event);
+    }
+
+    it('takes out exactly the named files, releasing their previews, without emitting', () => {
+      const first = image('first.jpg');
+      const kept = image('kept.jpg');
+      const third = image('third.jpg');
+      select(first, csv('ledger.csv'), kept, third, csv('last.csv'));
+      const released = [first, third].map(f => component.getFilePreview(f));
+      const keptPreview = component.getFilePreview(kept);
+      const revoke = spyOn(URL, 'revokeObjectURL');
+      const emit = spyOn(component.filesSelected, 'emit');
+
+      component.forget([first, third]);
+
+      expect(names(component.selectedFiles())).toEqual(['ledger.csv', 'kept.jpg', 'last.csv']);
+      expect(revoke.calls.allArgs().flat().sort()).toEqual(released.sort());
+      expect(component.getFilePreview(first)).withContext('a forgotten preview').toBe('');
+      expect(component.getFilePreview(kept)).withContext('a kept preview').toBe(keptPreview);
+      // The host already holds the list it wants; an emit would run its
+      // selection handler again over the one it just wrote.
+      expect(emit).not.toHaveBeenCalled();
+    });
+
+    it('leaves the forgotten files out of what the next add emits', () => {
+      const queued = image('queued.jpg');
+      select(queued, csv('ledger.csv'));
+      component.forget([queued]);
+      const emitted: File[][] = [];
+      component.filesSelected.subscribe(files => emitted.push(files));
+
+      select(image('next.jpg'));
+
+      expect(emitted.map(names)).toEqual([['ledger.csv', 'next.jpg']]);
+    });
+
+    // Previews are keyed by name and two iOS captures are both image.jpg:
+    // the later one's blob replaced the queued one's entry when it was
+    // added, so revoking that name would blank the photo still listed.
+    it('keeps the preview of a later photo that shares the forgotten one\'s name', () => {
+      const queued = image('image.jpg');
+      const later = image('image.jpg');
+      select(queued);
+      select(later);
+      const laterPreview = component.getFilePreview(later);
+      const revoke = spyOn(URL, 'revokeObjectURL');
+
+      component.forget([queued]);
+
+      // By identity: two empty Files of one name are equal to toEqual.
+      expect(component.selectedFiles().length).withContext('the list').toBe(1);
+      expect(component.selectedFiles()[0]).withContext('the file kept').toBe(later);
+      expect(component.getFilePreview(later)).withContext('the later photo\'s preview').toBe(laterPreview);
+      expect(component.getFilePreview(later)).withContext('the later photo\'s preview').not.toBe('');
+      expect(revoke).withContext('a blob the later row still shows').not.toHaveBeenCalled();
+    });
+
+    // Only an image owns a preview, so a kept document of the same name
+    // holds no blob of its own and must not keep the photo's alive.
+    it('releases a forgotten photo\'s preview when only a document of its name stays', () => {
+      const photo = new File([''], 'scan', { type: 'image/png' });
+      const document = new File([''], 'scan', { type: 'application/pdf' });
+      select(photo, document);
+      const photoPreview = component.getFilePreview(photo);
+      const revoke = spyOn(URL, 'revokeObjectURL');
+
+      component.forget([photo]);
+
+      expect(component.selectedFiles().length).withContext('the list').toBe(1);
+      expect(component.selectedFiles()[0]).withContext('the file kept').toBe(document);
+      expect(photoPreview).withContext('the photo had a preview').not.toBe('');
+      expect(revoke).withContext('the forgotten photo\'s blob').toHaveBeenCalledOnceWith(photoPreview);
+    });
+  });
+
   describe('file type validation', () => {
     it('should return correct icon for CSV files', () => {
       const file = new File([''], 'test.csv', { type: 'text/csv' });

@@ -1,5 +1,5 @@
 import { TestBed } from '@angular/core/testing';
-import { WritableSignal, signal } from '@angular/core';
+import { Signal, WritableSignal, signal } from '@angular/core';
 import { OfflineQueueProcessorService } from './offline-queue-processor.service';
 import { OfflineQueueService, QueuedImage, queueRowTxId } from './offline-queue.service';
 import { AuthService } from './auth.service';
@@ -18,6 +18,21 @@ import { AppleIntelligenceService } from './apple-intelligence.service';
 import { NativeReceiptService } from './native-receipt.service';
 import { createCategory } from './testing/test-data';
 import { opaqueRowId } from '../utils/opaque-id.utils';
+import { defaultCategories } from '../utils/category-merge.utils';
+import { Category } from '../../models';
+
+/**
+ * The two members of the category service the drain reads: the cache, and the
+ * cache or, until the account's catalogue has loaded, the shipped one. It is
+ * the real method over the double's live list, so a case that empties or
+ * refills `categories` moves both.
+ */
+function categoryServiceDouble(categories: Signal<Category[]>) {
+  return {
+    categories,
+    categoriesOrDefaults: () => (categories().length ? categories() : defaultCategories()),
+  };
+}
 
 function attemptStub() {
   const handle = jasmine.createSpyObj<ReceiptAttempt>('ReceiptAttempt', ['succeeded', 'failed', 'queued']);
@@ -100,6 +115,7 @@ describe('OfflineQueueProcessorService', () => {
   let translation: jasmine.SpyObj<TranslationService>;
   let userId: WritableSignal<string | null>;
   let attempts: ReturnType<typeof attemptStub>;
+  let categories: WritableSignal<Category[]>;
 
   beforeEach(() => {
     // Only the drain's one read and its status write: a call to any other
@@ -135,8 +151,9 @@ describe('OfflineQueueProcessorService', () => {
     translation.t.and.callFake((key: string) => key);
     attempts = attemptStub();
     // One entry on each side of the ledger, so a suggestion can be checked
-    // against the side of the row it was read for.
-    const categories = signal([
+    // against the side of the row it was read for. Writable, so a case can
+    // empty it: the account's catalogue before its listener has answered.
+    categories = signal([
       createCategory({ id: 'food', type: 'expense' }),
       createCategory({ id: 'employment_salary', type: 'income' }),
     ]);
@@ -151,7 +168,7 @@ describe('OfflineQueueProcessorService', () => {
         { provide: TranslationService, useValue: translation },
         { provide: AuthService, useValue: { userId, currentUser: signal(null) } },
         { provide: ReceiptAttemptService, useValue: attempts.service },
-        { provide: CategoryService, useValue: { categories } },
+        { provide: CategoryService, useValue: categoryServiceDouble(categories) },
       ],
     });
     processor = TestBed.inject(OfflineQueueProcessorService);
@@ -300,6 +317,47 @@ describe('OfflineQueueProcessorService', () => {
         ['expense', 'other_expense'],
         ['income', 'other_income'],
       ]);
+    });
+
+    it('files a cloud-read refund named for the expense side under the income catch-all while the account\'s categories have not loaded', async () => {
+      // The queue drains on the launch that starts the category listener, so a
+      // photo can be read before it has answered. An empty list shows no side
+      // for any id and used to let the name through; the shipped catalogue
+      // that stands in for it shows that this one is an expense category.
+      categories.set([]);
+      ai.processReceipt.and.resolveTo(
+        processingResult([
+          extracted({ description: 'Refund', type: 'income', suggestedCategoryId: 'food_groceries' }),
+        ]),
+      );
+
+      dispatchImage('img_1');
+      await waitFor(() => queue.updateImageStatus.calls.any());
+
+      expect(transactions.addTransaction).toHaveBeenCalledOnceWith(
+        jasmine.objectContaining({ type: 'income', categoryId: 'other_income' }),
+        { id: await queueRowTxId({ id: 'img_1', rowSeed: undefined }, 0) },
+      );
+      expect(queue.updateImageStatus).toHaveBeenCalledWith('img_1', 'completed');
+    });
+
+    it('keeps an expense row\'s id no catalogue holds', async () => {
+      // A pin: the review card keeps an id its catalogue cannot place, because
+      // nothing shows it is wrong. The shipped catalogue the drain reads while
+      // the account's has not loaded is a lookup for an id's side, not a list
+      // of the ids allowed through, so an id it does not hold is kept too.
+      categories.set([]);
+      ai.processReceipt.and.resolveTo(
+        processingResult([extracted({ suggestedCategoryId: 'custom_hobbies' })]),
+      );
+
+      dispatchImage('img_1');
+      await waitFor(() => queue.updateImageStatus.calls.any());
+
+      expect(transactions.addTransaction).toHaveBeenCalledOnceWith(
+        jasmine.objectContaining({ type: 'expense', categoryId: 'custom_hobbies' }),
+        { id: await queueRowTxId({ id: 'img_1', rowSeed: undefined }, 0) },
+      );
     });
 
     it('drains an on-device refund as income on the income catch-all, whatever its type grade', async () => {
@@ -1147,7 +1205,7 @@ describe('OfflineQueueProcessorService: a key saved while Sync Now drains', () =
         { provide: TranslationService, useValue: translation },
         { provide: AuthService, useValue: { userId, currentUser: signal(null) } },
         { provide: ReceiptAttemptService, useValue: attempts.service },
-        { provide: CategoryService, useValue: { categories } },
+        { provide: CategoryService, useValue: categoryServiceDouble(categories) },
         { provide: CloudLLMProviderService, useValue: facade },
         { provide: ProviderKeyService, useValue: providerKeys },
         { provide: PwaService, useValue: { isOnline: () => true } },

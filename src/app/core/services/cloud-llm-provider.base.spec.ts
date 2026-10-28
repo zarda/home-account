@@ -11,6 +11,8 @@ import { AI_ANSWER_INCOMPLETE } from '../utils/ai-error.utils';
 import { FALLBACK_CATEGORY_ID } from '../utils/categorization.utils';
 import { createBudget, createCategory, createTransaction } from './testing';
 import { dayKey } from '../utils/transaction-date.utils';
+import { defaultCategories } from '../utils/category-merge.utils';
+import { MODEL_INCOME_GRADE } from '../utils/receipt-extraction.utils';
 
 /**
  * What the shared base guarantees, independently of any provider.
@@ -127,8 +129,15 @@ describe('CloudLLMProviderBase', () => {
   beforeEach(() => {
     categoryService = jasmine.createSpyObj<CategoryService>('CategoryService', [
       'categories',
+      'categoriesOrDefaults',
     ]);
     categoryService.categories.and.returnValue(categories);
+    // The real method over the double's live list: a case that reassigns
+    // `categories` mid-way moves both.
+    categoryService.categoriesOrDefaults.and.callFake(() => {
+      const list = categoryService.categories();
+      return list.length ? list : defaultCategories();
+    });
 
     const currencyService = jasmine.createSpyObj<CurrencyService>('CurrencyService', [
       'convert',
@@ -604,6 +613,58 @@ describe('CloudLLMProviderBase', () => {
     });
   });
 
+  describe('the type a model answers', () => {
+    // The strict reader (readTransactionType): only the exact string "income"
+    // files a row as income. A refund worded any other way, in another casing
+    // or as something that is not text at all is an expense, the side every
+    // row without an answer already lands on (ADR 0162, ADR 0147).
+    const answers: [unknown, 'income' | 'expense'][] = [
+      ['income', 'income'],
+      ['Income', 'expense'],
+      ['INCOME', 'expense'],
+      [' income', 'expense'],
+      ['refund', 'expense'],
+      ['credit', 'expense'],
+      ['expense', 'expense'],
+      [-1, 'expense'],
+      ['', 'expense'],
+      [null, 'expense'],
+      [undefined, 'expense'],
+    ];
+
+    it('files a row as income only when the model answered exactly "income"', async () => {
+      provider.response = {
+        text: JSON.stringify(answers.map(([type], index) => ({
+          date: '2024-06-01', description: `Row ${index}`, amount: 5, type, currency: 'USD',
+          imageIndex: 0, confidence: 0.9, receiptId: 1,
+        }))),
+        truncated: false,
+      };
+
+      const rows = await provider.extractTransactionsFromMultipleImages(['img']);
+
+      expect(rows.map(row => row.type)).toEqual(answers.map(([, filed]) => filed));
+    });
+
+    it('files a statement row as income only on an exact "income", and never grades it', async () => {
+      provider.response = {
+        text: JSON.stringify(answers.map(([type], index) => ({
+          date: '2024-06-01', description: `Row ${index}`, amount: 5, type, currency: 'USD',
+        }))),
+        truncated: false,
+      };
+
+      const rows = await provider.extractStatementTransactions('img');
+
+      expect(rows.map(row => row.type)).toEqual(answers.map(([, filed]) => filed));
+      // A statement's credits are the page's own words, not a model's call on a
+      // receipt, so the type is all the reading carries: no grade rides on it.
+      for (const row of rows) {
+        expect('typeConfidence' in row).withContext(`${row.description} carries no type grade`).toBeFalse();
+      }
+    });
+  });
+
   describe('extractJson', () => {
     it('strips markdown fences', () => {
       expect(provider.callExtractJson('```json\n{"a":1}\n```')).toBe('{"a":1}');
@@ -682,6 +743,21 @@ describe('CloudLLMProviderBase', () => {
       const receipt = await provider.parseReceipt('img');
 
       expect(receipt.suggestedCategory).toBe(FALLBACK_CATEGORY_ID);
+    });
+
+    it('resolves a receipt\'s category name against the shipped catalogue while the account\'s has not loaded', async () => {
+      // A photo can be read before the account's listener has answered. The
+      // answer is the same name it would have had a moment later, not the
+      // catch-all that an empty list leaves nothing else to offer.
+      categoryService.categories.and.returnValue([]);
+      provider.response = {
+        text: '{"merchant":"Cafe","amount":4,"suggestedCategory":"Groceries"}',
+        truncated: false,
+      };
+
+      const receipt = await provider.parseReceipt('img');
+
+      expect(receipt.suggestedCategory).toBe('food_groceries');
     });
 
     /**
@@ -776,6 +852,68 @@ describe('CloudLLMProviderBase', () => {
         const receipt = await provider.parseReceipt('img');
 
         expect(receipt.fieldConfidence?.date).toBe(0.95);
+      });
+    });
+
+    /**
+     * Which way the money moved is the model's call (ADR 0162), read strictly
+     * (readTransactionType) and never off the sign of the total (ADR 0147). A
+     * refund is filed as income and graded under the review bar so it is asked
+     * about; a purchase carries no grade at all.
+     */
+    describe('direction', () => {
+      const read = async (json: string) => {
+        provider.response = { text: json, truncated: false };
+        return provider.parseReceipt('img');
+      };
+
+      it('files a receipt the model read as a refund as income, its type graded for review', async () => {
+        const receipt = await read(
+          '{"merchant":"Cafe","amount":12.5,"date":"2026-08-01","type":"income"}'
+        );
+
+        expect(receipt.type).toBe('income');
+        expect(receipt.fieldConfidence).toEqual({ type: MODEL_INCOME_GRADE });
+      });
+
+      it('reads anything but exactly "income" as a purchase, with no type grade', async () => {
+        const answers: unknown[] = [
+          'expense', 'Income', 'INCOME', ' income', 'refund', 'credit', -1, true, '', null, undefined,
+        ];
+
+        for (const answer of answers) {
+          const receipt = await read(JSON.stringify({
+            merchant: 'Cafe', amount: 12.5, date: '2026-08-01', type: answer,
+          }));
+
+          expect(receipt.type).withContext(`the answer ${JSON.stringify(answer)}`).toBe('expense');
+          expect(receipt.fieldConfidence).withContext(`the answer ${JSON.stringify(answer)}`).toBeUndefined();
+        }
+      });
+
+      it('keeps a refund total a magnitude when the model prints it negative', async () => {
+        const receipt = await read(
+          '{"merchant":"Cafe","amount":-12.5,"date":"2026-08-01","type":"income"}'
+        );
+
+        expect(receipt.amount).toBe(12.5);
+        expect(receipt.type).toBe('income');
+      });
+
+      it('never reads the direction off the sign of the total', async () => {
+        const receipt = await read('{"merchant":"Cafe","amount":-12.5,"date":"2026-08-01"}');
+
+        expect(receipt.type).toBe('expense');
+        expect(receipt.amount).toBe(12.5);
+        expect(receipt.fieldConfidence).toBeUndefined();
+      });
+
+      it('keeps the amount and date grades beside the type grade', async () => {
+        const receipt = await read(
+          '{"merchant":"Cafe","amount":12.5,"type":"income","amountConfidence":0.9}'
+        );
+
+        expect(receipt.fieldConfidence).toEqual({ amount: 0.9, date: 0, type: MODEL_INCOME_GRADE });
       });
     });
   });

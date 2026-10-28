@@ -110,6 +110,21 @@ const PAIRS = [
   { fg: '--text-muted', bg: '--surface-card', why: 'captions and hints on a card' },
   { fg: '--text-muted', bg: '--surface-muted', why: 'captions inside a nested chip or stat tile' },
   { fg: '--text-primary', bg: '--surface-muted', why: "the command palette's key caps (<kbd>)" },
+  {
+    fg: '--color-income-text',
+    bg: '--surface-muted',
+    why: "the import history's income figure on its stat tile, which is --surface-muted",
+  },
+  {
+    fg: '--color-expense-text',
+    bg: '--surface-muted',
+    why: "the import history's expense figure on its stat tile, which is --surface-muted",
+  },
+  {
+    fg: '--color-warning-text',
+    bg: '--surface-muted',
+    why: "the import history's duplicates figure and its two photo figures, on stat tiles that are --surface-muted",
+  },
   { fg: '--text-muted', bg: '--surface-strong', why: "the category manager's Default badge" },
   { fg: '--text-muted', bg: '--surface-background', why: 'captions on the page' },
   {
@@ -192,8 +207,23 @@ const PAIRS = [
     why: "the import review card's amount and type flags and the category suggestion's medium-confidence dot on an " +
       "unchecked card, which is the page's own fill: graphics, so 3:1, as --color-ai. On a checked or flagged card " +
       'they sit on --surface-review-selected or --surface-review-duplicate, which this script cannot read, and ' +
-      "clear 4.61:1 and 4.82:1 there in light. The transaction form's flags sit on the dialog's --mat-sys-surface, " +
-      'which Material declares, and clear 4.78:1 there',
+      "clear 4.61:1 and 4.82:1 there in light. The transaction form's amount and date flags sit on the dialog's " +
+      "--mat-sys-surface, which Material declares, and clear 4.78:1 there; its type flag sits in the checked " +
+      'segment, scored below',
+  },
+  {
+    fg: '--color-warning-text',
+    bg: '--color-expense-light',
+    threshold: 3,
+    why: "the transaction form's type flag in the checked Expense segment, which fills with this token: a graphic, so " +
+      '3:1, as --color-ai. It clears 4.11:1 in light and 6.95:1 in dark',
+  },
+  {
+    fg: '--color-warning-text',
+    bg: '--color-income-light',
+    threshold: 3,
+    why: "the transaction form's type flag in the checked Income segment, which fills with this token: a graphic, so " +
+      '3:1, as --color-ai. It clears 4.57:1 in light and 4.95:1 in dark',
   },
   {
     fg: '--color-error-text',

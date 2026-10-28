@@ -25,6 +25,21 @@ import { SearchQueryContext } from '../../models';
 const COUNTRY_CODE_RUN = /\b[A-Z]{2}\b(?:\s*(?:,|\/|\||\bor\b)\s*\b[A-Z]{2}\b){2,}/;
 
 /**
+ * How every receipt prompt asks which way the money moved, spelled out in full
+ * so a reword in receipt.prompts.ts fails here instead of passing silently.
+ * The clarifier at the end is what keeps a card purchase printed as CREDIT (or
+ * クレジット) from being read as a credit.
+ */
+const RECEIPT_TYPE_WORDS =
+  '"income" for credits/refunds — money given back to the customer — "expense" for purchases/debits, whatever the payment method is called';
+
+/**
+ * What the single-receipt prompts say about the amount once the direction has
+ * its own field: the figure stays a magnitude, and `type` carries the sign.
+ */
+const AMOUNT_IS_A_MAGNITUDE = 'Always a positive number: "type" says which way the money moved';
+
+/**
  * One rendering per prompt id, so every registered prompt is exercised and the
  * consistency check can require that this file names each of them.
  *
@@ -188,6 +203,22 @@ describe('prompt registry', () => {
     }
   });
 
+  it('asks every receipt prompt for the direction in one set of words, and leaves the statement prompt its own', () => {
+    // One fragment, four prompts: a model reading a lone receipt, a summary, a
+    // list of items or several photos is told the same thing about a refund.
+    // A bank statement is a different document (a deposit is not a refund),
+    // so it keeps the credits/deposits wording and none of the clarifier.
+    for (const id of ['receiptParse', 'receiptSummary', 'receiptItems', 'multiImageReceipts'] as const) {
+      expect(render(id))
+        .withContext(`${id} words the direction differently from the other receipt prompts`)
+        .toContain(RECEIPT_TYPE_WORDS);
+    }
+
+    const statement = render('statementTransactions');
+    expect(statement).toContain('type: "income" for credits/deposits, "expense" for debits/withdrawals');
+    expect(statement).not.toContain(RECEIPT_TYPE_WORDS);
+  });
+
   describe('receiptParse', () => {
     it('asks for receiptCount, which drives the multi-receipt review flow', () => {
       // Only Gemini's copy asked for this before the registry, so the flow
@@ -201,6 +232,31 @@ describe('prompt registry', () => {
       const prompt = render('receiptParse');
       expect(prompt).toContain('"amount" is the TOTAL amount paid');
       expect(prompt).toContain('"receiptDetails"');
+    });
+
+    it('asks which way the money moved, in the words every receipt prompt shares', () => {
+      const prompt = render('receiptParse');
+      expect(prompt).toContain(`- "type": ${RECEIPT_TYPE_WORDS}`);
+      // In the skeleton too, ahead of the amount it qualifies (the order the
+      // native reader's `kind` already has).
+      expect(prompt.indexOf('"type"'))
+        .withContext('"type" is missing from the JSON skeleton')
+        .toBeGreaterThan(-1);
+      expect(prompt.indexOf('"type"')).toBeLessThan(prompt.indexOf('"amount"'));
+    });
+
+    it('asks for the total as a positive number whichever way the money moved', () => {
+      // The whole sentence, not a bare "positive number": the multi-photo
+      // prompt still asks "(as a positive number)" without naming the type,
+      // and that wording would pass a bare match here while saying nothing
+      // about which way the money moved.
+      const prompt = render('receiptParse');
+      expect(prompt).toContain('on a refund, the total given back');
+      expect(prompt).toContain(AMOUNT_IS_A_MAGNITUDE);
+    });
+
+    it('falls back to an expense when the direction cannot be told', () => {
+      expect(render('receiptParse')).toContain('type="expense"');
     });
 
     it('asks for the printed location, as printed and never translated', () => {
@@ -575,6 +631,12 @@ describe('prompt registry', () => {
       expect(prompt).toContain('BOTTOM portion of Image N likely overlaps');
     });
 
+    it('asks for the direction in the words every receipt prompt shares', () => {
+      // The clarifier is new here too: the list used to say only "credits",
+      // which a receipt's own CREDIT payment line could be mistaken for.
+      expect(render('multiImageReceipts')).toContain(`- type: ${RECEIPT_TYPE_WORDS}`);
+    });
+
     it('asks for the fields the consolidation pass reads back', () => {
       const prompt = render('multiImageReceipts');
       for (const field of ['receiptId', 'imageIndex', 'confidence', 'dateConfidence', 'mergedFromImages']) {
@@ -692,6 +754,24 @@ describe('prompt registry', () => {
       expect(prompt).toContain('Capture EVERYTHING on the receipt.');
     });
 
+    it('asks which way the money moved, in the words every receipt prompt shares', () => {
+      const prompt = render('receiptSummary');
+      expect(prompt).toContain(`- type: ${RECEIPT_TYPE_WORDS}`);
+      // In the skeleton too, ahead of the total it qualifies.
+      expect(prompt.indexOf('"type"'))
+        .withContext('"type" is missing from the JSON skeleton')
+        .toBeGreaterThan(-1);
+      expect(prompt.indexOf('"type"')).toBeLessThan(prompt.indexOf('"totalAmount"'));
+    });
+
+    it('asks for the total as a positive number whichever way the money moved', () => {
+      // Not a bare "positive number": the old line already said
+      // "(positive number only)", so that would pass without this sentence.
+      const prompt = render('receiptSummary');
+      expect(prompt).toContain('on a refund, the total given back');
+      expect(prompt).toContain(AMOUNT_IS_A_MAGNITUDE);
+    });
+
     it('asks for the printed location, as printed and never translated', () => {
       const prompt = render('receiptSummary');
       expect(prompt).toContain('"location"');
@@ -724,6 +804,18 @@ describe('prompt registry', () => {
       const prompt = render('receiptItems');
       expect(prompt).toContain('Return each item as a SEPARATE JSON object');
       expect(prompt).toContain('Do NOT include total, subtotal, tax, or service charge as items.');
+    });
+
+    it('asks for income on a refund line instead of expense on every line', () => {
+      const prompt = render('receiptItems');
+      expect(prompt).toContain(`- type: ${RECEIPT_TYPE_WORDS}`);
+      // The field line used to be the bare constant "expense": the example rows
+      // keep that value as their shape, the field description no longer is it.
+      expect(prompt).not.toContain('- type: "expense"');
+    });
+
+    it('asks for each item price as a positive number', () => {
+      expect(render('receiptItems')).toContain(`- amount: individual item price. ${AMOUNT_IS_A_MAGNITUDE}`);
     });
 
     it('never asks the model where on the photo an item sat: nothing reads it', () => {

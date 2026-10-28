@@ -1,12 +1,12 @@
-// No min-width below the tablet breakpoint: the global dialog default is
-// width: min(480px, calc(100vw - 32px)) (app.config.ts), which is 288px on a
-// 320px screen — a 300px body overflowed its own dialog by 12px.
+// No min-width at any width: the dialog's own width decides. Both doors open
+// it at 500px, which leaves a 452px content box once Material pads the body
+// 24px a side, so a 500px floor made the content 48px wider than its box
+// from 768px up (a sideways scrollbar, the scan badge past the edge). The
+// 500px holds down to about 526px, where 95vw falls under it; below that the
+// doors' own maxWidth: 95vw decides (it replaces the global dialog default in
+// app.config.ts): 304px on a 320px screen, a 256px content box.
 .camera-capture-container {
   min-height: 200px;
-
-  @media (min-width: 768px) {
-    min-width: 500px;
-  }
 }
 
 .capture-area {

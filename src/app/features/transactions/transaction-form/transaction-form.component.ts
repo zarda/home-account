@@ -43,7 +43,8 @@ import { AuthService } from '../../../core/services/auth.service';
 import { TranslationService } from '../../../core/services/translation.service';
 import { AIStrategyService, ProcessedTransaction } from '../../../core/services/ai-strategy.service';
 import { AIImportService } from '../../../core/services/ai-import.service';
-import { ReceiptAttemptService } from '../../../core/services/receipt-attempt.service';
+import type { ReceiptAttemptDiagnostics } from '../../../core/services/ai-types';
+import { ReceiptAttemptService, buildReceiptConfirmPayload } from '../../../core/services/receipt-attempt.service';
 import { GroundingHistoryService } from '../../../core/services/grounding-history.service';
 import { TagMemoryService } from '../../../core/services/tag-memory.service';
 import { TagSuggestionService } from '../../../core/services/tag-suggestion.service';
@@ -59,8 +60,8 @@ import {
   FieldConfidence,
   Goal,
   SplitPart,
-  VERIFY_FIELD_THRESHOLD,
   baseCurrencyOf,
+  gradeNeedsVerification,
   normalizeShares,
   shareKey
 } from '../../../models';
@@ -74,7 +75,7 @@ import { countryForCoordinates, currencyForCountry } from '../../../core/utils/c
 import { locationSlot } from '../../../core/utils/import-dto.utils';
 import { countryDisplayName, currencyReasonKey, localeRegion, suggestCurrency } from '../../../core/utils/currency-suggestion.utils';
 import { readCountryCode } from '../../../core/utils/receipt-extraction.utils';
-import { datedToday, joinSentences, withoutFieldConfidence } from '../../../core/utils/import-review.utils';
+import { countTypeAnswers, datedToday, joinSentences, readerFlaggedType, withoutFieldConfidence } from '../../../core/utils/import-review.utils';
 import { CurrencyChoiceSessionService } from '../../../core/services/currency-choice-session.service';
 import { LocaleFormatService } from '../../../core/services/locale-format.service';
 import { normalizeTag, normalizeTags } from '../../../core/utils/tag.utils';
@@ -204,6 +205,22 @@ export class TransactionFormComponent implements OnInit, AfterViewInit, OnDestro
   private filledByScan = false;
   // The queued image the scan ran against; discarding it clears filledByScan.
   private scannedReceipt: { file: File; preview: string } | null = null;
+  /**
+   * What the last scan said about the type, held for the save to report.
+   *
+   * The scan's own grade does not outlive the user's answer: any type change
+   * drops it (scanFieldConfidence), so by the time the form is saved nothing
+   * on the form says the reader doubted the type. The side the reader flagged
+   * is filed here instead, beside the diagnostics of the engine that read it,
+   * and the save counts it against the side the type ends on, the way the
+   * import review counts its rows (`countTypeAnswers`). Cleared with the scan
+   * itself: a failed or discarded scan leaves nothing to report, and a
+   * manual entry never had one.
+   */
+  private scanReading: {
+    flaggedType: 'income' | 'expense' | undefined;
+    diagnostics: ReceiptAttemptDiagnostics | null;
+  } | null = null;
   /** What the last scan offered, so saving can record which offers were refused. */
   private scanSuggestedTags: string[] = [];
   /**
@@ -235,6 +252,17 @@ export class TransactionFormComponent implements OnInit, AfterViewInit, OnDestro
    * the type the scan filed is still standing in the field.
    */
   private typeFromScan = false;
+
+  /**
+   * The category a type change blanked, kept so the way back can return it.
+   * The field is required and the category list is per side, so a category of
+   * the side the form has left cannot stay; but a type tapped by mistake, or
+   * a scan that read a refund and moved the type under a purchase category,
+   * would otherwise cost the user a category they had already chosen. It is
+   * set before the field is patched, and any category chosen afterwards ends
+   * it: from then on the field holds something of the user's own.
+   */
+  private categoryBlankedByType: string | null = null;
 
   // Images already stored on the item being edited, by storage slot. Kept as
   // local state so per-image removal and conversion update the strip without
@@ -453,13 +481,12 @@ export class TransactionFormComponent implements OnInit, AfterViewInit, OnDestro
   private datesSubs: Subscription[] = [];
 
   // Computed signal that reacts to both type changes and category loading
-  filteredCategories = computed(() => {
-    const type = this.transactionType();
-    if (type === 'income') {
-      return this.incomeCategories();
-    }
-    return this.expenseCategories();
-  });
+  filteredCategories = computed(() => this.categoriesOfType(this.transactionType()));
+
+  /** The categories a form of this type offers, whichever type the form stands on now. */
+  private categoriesOfType(type: 'expense' | 'income'): Category[] {
+    return type === 'income' ? this.incomeCategories() : this.expenseCategories();
+  }
 
   // Computed signal for selected category (used by mat-select-trigger)
   selectedCategory = computed(() => {
@@ -467,6 +494,16 @@ export class TransactionFormComponent implements OnInit, AfterViewInit, OnDestro
     if (!categoryId) return null;
     return this.filteredCategories().find(c => c.id === categoryId) || null;
   });
+
+  /**
+   * The name the field shows for a category, for a sentence about it. A
+   * category of the side the form has left is still in the catalogue; the id
+   * stands in only for one the catalogue does not hold at all.
+   */
+  private categoryDisplayName(categoryId: string): string {
+    const name = this.categoryService.categories().find(c => c.id === categoryId)?.name;
+    return name ? this.translationService.t(name) : categoryId;
+  }
 
   constructor() {
     // Only load categories if not already loaded
@@ -709,12 +746,34 @@ export class TransactionFormComponent implements OnInit, AfterViewInit, OnDestro
         this.typeFromScan = false;
         this.scanFieldConfidence.update(fc => withoutFieldConfidence(fc ?? undefined, 'type') ?? null);
         this.transactionType.set(type);
-        // Reset category if it doesn't match the type
+        // A category the new side cannot hold is blanked, and the blank is
+        // said out loud with the name of what went; an empty field whose
+        // blanked category fits the side the type has come back to is given
+        // that category again, and that is said too.
         const currentCategoryId = this.form.get('categoryId')?.value;
         const validCategories = this.filteredCategories();
         if (currentCategoryId) {
           if (!validCategories.some(c => c.id === currentCategoryId)) {
+            // Recorded first, so the blank the patch writes is never seen
+            // without the category it replaced.
+            this.categoryBlankedByType = currentCategoryId;
             this.form.patchValue({ categoryId: '' });
+            this.announcer.announce(
+              this.translationService.t('transactions.categoryClearedForType', {
+                category: this.categoryDisplayName(currentCategoryId),
+              })
+            );
+          }
+        } else if (this.categoryBlankedByType) {
+          const blanked = validCategories.find(c => c.id === this.categoryBlankedByType);
+          if (blanked) {
+            // The patch is a category chosen, which ends the hold.
+            this.form.patchValue({ categoryId: blanked.id });
+            this.announcer.announce(
+              this.translationService.t('transactions.categoryRestoredForType', {
+                category: this.categoryDisplayName(blanked.id),
+              })
+            );
           }
         }
         // The suggestion chip too: it was asked for on the side the form has
@@ -727,9 +786,9 @@ export class TransactionFormComponent implements OnInit, AfterViewInit, OnDestro
         }
         // Same for the split's own rows, which the picker no longer offers: a
         // part naming a category of the other type renders as a blank select
-        // and would still be written. The category reset above leaves a
-        // visibly empty required field; a dropped row leaves nothing at all,
-        // so it is the one that has to be said out loud.
+        // and would still be written. Said out loud like the category reset
+        // above: a blank required field shows that something changed, not
+        // which category went, and a dropped row leaves nothing to see at all.
         const before = this.splitParts().length;
         this.splitParts.update(parts =>
           parts.filter(part => validCategories.some(c => c.id === part.categoryId))
@@ -749,6 +808,9 @@ export class TransactionFormComponent implements OnInit, AfterViewInit, OnDestro
       // Clear suggestion when category is manually selected
       if (categoryId) {
         this.suggestedCategory.set(null);
+        // The field holds a category again, so the one a type change blanked
+        // is no longer the way back to anything.
+        this.categoryBlankedByType = null;
       }
     });
 
@@ -837,6 +899,22 @@ export class TransactionFormComponent implements OnInit, AfterViewInit, OnDestro
           has_location: !!transactionData.location,
           receipt_image_count: receipts.length,
         });
+        // A scan the user kept reports how its reader's type flag fared: that
+        // it was raised and whether the type saved is the other side. A
+        // manual entry and a discarded or failed scan hold no reading, and an
+        // edit takes the other branch.
+        if (this.scanReading) {
+          const { flaggedType, diagnostics } = this.scanReading;
+          this.analytics.trackReceiptConfirm(
+            buildReceiptConfirmPayload(
+              'form',
+              diagnostics,
+              countTypeAnswers([
+                { type: transactionData.type, ...(flaggedType ? { typeFlaggedAs: flaggedType } : {}) },
+              ])
+            )
+          );
+        }
         // One share however many households: see landedKinds.
         if (transactionData.sharedWith?.length) this.analytics.trackHouseholdAction({ action: 'share' });
         // The chips left on and the offers taken off, so the next scan of
@@ -1194,9 +1272,25 @@ export class TransactionFormComponent implements OnInit, AfterViewInit, OnDestro
       const standingType = this.form.get('type')?.value;
       const typeWasFromScan = this.typeFromScan;
       if ((primary.type === 'income' || typeWasFromScan) && primary.type !== standingType) {
+        // A category a type change blanked is the way back for the user's own
+        // pick. A scan that moves the type back and names a category for the
+        // side it lands on has a newer answer, filled below: handing the held
+        // pick back first would announce a category the field never keeps. A
+        // scan that names none leaves the hold standing, and the pick still
+        // comes back, said aloud.
+        const suggested = primary.suggestedCategoryId;
+        if (suggested && this.categoriesOfType(primary.type).some(c => c.id === suggested)) {
+          this.categoryBlankedByType = null;
+        }
         this.form.patchValue({ type: primary.type });
       }
       this.typeFromScan = primary.type === 'income' && (standingType !== 'income' || typeWasFromScan);
+      // Filed after the patch above, whose valueChanges drops the type grade
+      // from the form: the reader's doubt is read off the scan's own row.
+      this.scanReading = {
+        flaggedType: readerFlaggedType({ type: primary.type, fieldConfidence: primary.fieldConfidence }),
+        diagnostics: result.diagnostics ?? null,
+      };
 
       // Set category if suggested
       if (primary.suggestedCategoryId) {
@@ -1253,6 +1347,7 @@ export class TransactionFormComponent implements OnInit, AfterViewInit, OnDestro
       // A failed scan leaves the user filling the form in by hand. An offer
       // the previous scan made no longer describes anything on the form.
       this.filledByScan = false;
+      this.scanReading = null;
       this.scanFieldConfidence.set(null);
       this.scanDate.set(null);
       this.suggestedCurrency.set(null);
@@ -1465,9 +1560,30 @@ export class TransactionFormComponent implements OnInit, AfterViewInit, OnDestro
     return this.readerDoubts(field) || (field === 'date' && this.scanDateOnAnotherDay() !== null);
   }
 
+  /**
+   * True for the segment that shows the type the scan doubted: the checked
+   * one, whose trend icon the flag replaces. The flag sits inside the
+   * segment rather than beside the toggle, so the group never moves or
+   * shrinks when it appears.
+   */
+  flagsType(type: 'expense' | 'income'): boolean {
+    return this.transactionType() === type && this.shouldVerifyField('type');
+  }
+
+  /**
+   * A segment's accessible name. The flag icon is hidden from assistive
+   * technology, so a flagged segment leads with the flag's sentence and then
+   * says its type, as the review card's type toggle does.
+   */
+  typeButtonLabel(type: 'expense' | 'income'): string {
+    return joinSentences(
+      this.flagsType(type) ? this.verifyFieldTooltip('type') : '',
+      this.translationService.t(type === 'income' ? 'common.income' : 'common.expense')
+    );
+  }
+
   private readerDoubts(field: keyof FieldConfidence): boolean {
-    const confidence = this.scanFieldConfidence()?.[field];
-    return confidence !== undefined && confidence < VERIFY_FIELD_THRESHOLD;
+    return gradeNeedsVerification(this.scanFieldConfidence()?.[field]);
   }
 
   /** The scanned date still standing in the field, when it is on another day than today. */
@@ -1576,6 +1692,7 @@ export class TransactionFormComponent implements OnInit, AfterViewInit, OnDestro
     if (removed && removed === this.scannedReceipt) {
       this.scannedReceipt = null;
       this.filledByScan = false;
+      this.scanReading = null;
       this.scanError.set(null);
       this.scanFieldConfidence.set(null);
       this.scanDate.set(null);

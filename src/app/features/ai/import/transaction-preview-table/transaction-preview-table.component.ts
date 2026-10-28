@@ -1,4 +1,5 @@
 import {
+  AfterViewInit,
   ChangeDetectionStrategy,
   ChangeDetectorRef,
   Component,
@@ -26,8 +27,8 @@ import {
   CurrencyInfo,
   CurrencySuggestionReason,
   FieldConfidence,
+  gradeNeedsVerification,
   roundToMinorUnit,
-  VERIFY_FIELD_THRESHOLD,
 } from '../../../../models';
 import { MatTooltipModule } from '@angular/material/tooltip';
 import { TranslationService } from '../../../../core/services/translation.service';
@@ -46,6 +47,7 @@ import {
 } from '../../../../core/utils/categorization.utils';
 import {
   amountIsUnfilled,
+  answerTypeFlag,
   blankImportRow,
   datedToday,
   descriptionIsUnfilled,
@@ -147,7 +149,7 @@ let vocabularyListSeq = 0;
   templateUrl: './transaction-preview-table.component.html',
   styleUrl: './transaction-preview-table.component.scss'
 })
-export class TransactionPreviewTableComponent {
+export class TransactionPreviewTableComponent implements AfterViewInit {
   private translationService = inject(TranslationService);
   private currencyService = inject(CurrencyService);
   private currencySession = inject(CurrencyChoiceSessionService);
@@ -163,7 +165,25 @@ export class TransactionPreviewTableComponent {
   private dialog = inject(MatDialog);
 
   @Input() transactions: CategorizedImportTransaction[] = [];
-  @Input() categories: Category[] = [];
+  /**
+   * The account's catalogue, which the wizard reads live and which can land
+   * after the rows it judges. Until it does, any category fits either side
+   * (`fitsSide`), so a row a door filed on the other side's category paints
+   * holding it. Its arrival is the first moment the card can tell, so that
+   * is when every row is held to its side (`holdRowsToTheirSides`). Only the
+   * arrival: a catalogue that changes once loaded moves no chip under the
+   * reviewer's hands, and a merge's re-file is the guard for that case.
+   */
+  @Input()
+  get categories(): Category[] {
+    return this.catalogue;
+  }
+  set categories(categories: Category[]) {
+    const arriving = this.catalogue.length === 0 && categories.length > 0;
+    this.catalogue = categories;
+    if (arriving) this.holdRowsToTheirSides();
+  }
+  private catalogue: Category[] = [];
   /**
    * The rows a receipt reader produced, by id: the ones whose date is a
    * question the reviewer answers (`needsDateAnswer`). The wizard fills it.
@@ -215,6 +235,16 @@ export class TransactionPreviewTableComponent {
 
   /** What every row's tag input points its `list` at. */
   readonly vocabularyListId = `tag-vocabulary-${++vocabularyListSeq}`;
+
+  /**
+   * Whether the rows have painted: from then on a chip the card moves on
+   * its own is one a reviewer may already have read.
+   */
+  private viewInitialized = false;
+
+  ngAfterViewInit(): void {
+    this.viewInitialized = true;
+  }
 
   // Plain methods, not computed(): `transactions` is a regular @Input array,
   // not a signal — a computed would evaluate once and
@@ -286,19 +316,22 @@ export class TransactionPreviewTableComponent {
    * A flip is the reviewer's answer to the question the type's flag asked,
    * so the type grade goes with it, the way a date answer takes the date's.
    * The rest of the grade stays: the flip says nothing about the figure or
-   * the day.
+   * the day. The type the reader flagged stays on the row as a mark of its
+   * own (`answerTypeFlag`), since the grade was the only record of it, and
+   * the first flag survives a second flip.
    *
    * The category is held to the new side (`categoryOnSide`); left where it
-   * was, an expense category would be written onto an income row. A move is
-   * announced, because the chip it changed sits elsewhere on the row from
-   * the toggle that was pressed (ADR 0149).
+   * was, an expense category would be written onto an income row, and a
+   * flip back brings back the one the flip moved. A move is announced,
+   * because the chip it changed sits elsewhere on the row from the toggle
+   * that was pressed (ADR 0149).
    */
   toggleType(transaction: CategorizedImportTransaction): void {
     const type = transaction.type === 'income' ? 'expense' : 'income';
     const filed = this.categoryOnSide(transaction, type);
     this.replaceRow(transaction, {
       type,
-      fieldConfidence: withoutFieldConfidence(transaction.fieldConfidence, 'type'),
+      ...answerTypeFlag(transaction),
       ...filed,
       ...EDITED_ON_CARD,
     });
@@ -308,11 +341,12 @@ export class TransactionPreviewTableComponent {
   }
 
   /**
-   * Says that a row's category moved to the other side's catch-all, for the
-   * two edits that can move it: a flip on the toggle and a merge whose net
-   * points the other way. The catalogue entry's own name is what the chip
-   * shows, and the id stands in only if the catalogue does not hold the
-   * catch-all at all.
+   * Says that a row's category moved, for the two edits that can move it: a
+   * flip on the toggle, which files the row on the other side's catch-all or
+   * brings back the category an earlier flip moved, and a merge whose
+   * survivor lands on a side its category does not fit, the net's turn or
+   * not. The catalogue entry's own name is what the chip shows, and the id
+   * stands in only if the catalogue does not hold the category at all.
    */
   private announceCategoryRefiled(row: CategorizedImportTransaction, categoryId: string): void {
     const name = this.categories.find(c => c.id === categoryId)?.name;
@@ -325,30 +359,93 @@ export class TransactionPreviewTableComponent {
   }
 
   /**
-   * The row's category, held to one side. One the side cannot hold moves to
-   * that side's catch-all, graded as an answer that resolved to nothing, and
-   * never above what the row had: a catch-all nobody categorized stays at
-   * its floor, and a hand-added row at 0. A category that serves both sides
-   * stays with its grade, and so does one the catalogue does not hold,
-   * since nothing shows it is on the wrong side. The doors file a row with
-   * the same grader, so the card cannot disagree with them about which side
-   * an id sits on.
+   * The row's category, held to one side, by the first of three answers.
+   *
+   * 1. The category a change of side moved off the row (`movedCategory`),
+   *    once this side can hold it again: it returns at the grade it held
+   *    and the mark is cleared. A reviewer who flips a row and flips it
+   *    back is undoing the flip, not asking for the catch-all it was
+   *    filed on in between.
+   * 2. Otherwise a category this side can hold stays with its grade, and
+   *    the mark with it. So does one the catalogue does not hold, since
+   *    nothing shows it is on the wrong side.
+   * 3. Otherwise the category moves to this side's catch-all, graded as an
+   *    answer that resolved to nothing and never above what the row had: a
+   *    catch-all nobody categorized stays at its floor, and a hand-added
+   *    row at 0. The row remembers the category and grade it left.
+   *
+   * Which side an id sits on is `fitsSide`'s, the doors' own grader, so the
+   * card cannot disagree with them about it.
    */
   private categoryOnSide(
     row: CategorizedImportTransaction,
     type: CategoryRowType
-  ): Pick<CategorizedImportTransaction, 'suggestedCategoryId' | 'categoryConfidence'> {
-    const graded = gradeCategorySuggestion(
-      { suggestedCategoryId: row.suggestedCategoryId, confidence: row.categoryConfidence },
-      type,
-      this.categories
-    );
-    return graded.suggestedCategoryId === row.suggestedCategoryId
-      ? { suggestedCategoryId: row.suggestedCategoryId, categoryConfidence: row.categoryConfidence }
-      : {
-          suggestedCategoryId: fallbackCategoryFor(type),
-          categoryConfidence: Math.min(row.categoryConfidence, UNRESOLVED_CATEGORY_CONFIDENCE),
-        };
+  ): Pick<CategorizedImportTransaction, 'suggestedCategoryId' | 'categoryConfidence' | 'movedCategory'> {
+    const moved = row.movedCategory;
+    if (moved && this.fitsSide(moved.suggestedCategoryId, type)) {
+      return {
+        suggestedCategoryId: moved.suggestedCategoryId,
+        categoryConfidence: moved.categoryConfidence,
+        movedCategory: undefined,
+      };
+    }
+    if (this.fitsSide(row.suggestedCategoryId, type)) {
+      return {
+        suggestedCategoryId: row.suggestedCategoryId,
+        categoryConfidence: row.categoryConfidence,
+        movedCategory: row.movedCategory,
+      };
+    }
+    return {
+      suggestedCategoryId: fallbackCategoryFor(type),
+      categoryConfidence: Math.min(row.categoryConfidence, UNRESOLVED_CATEGORY_CONFIDENCE),
+      movedCategory: { suggestedCategoryId: row.suggestedCategoryId, categoryConfidence: row.categoryConfidence },
+    };
+  }
+
+  /**
+   * Whether the catalogue lets a row of `type` hold `categoryId`: the
+   * grader the doors file a row with, asked about the id alone, so the
+   * confidence it is handed is beside the point. An id the catalogue does
+   * not hold, and a catalogue that has not loaded, fit, because nothing
+   * shows the id is on the wrong side.
+   */
+  private fitsSide(categoryId: string, type: CategoryRowType): boolean {
+    return gradeCategorySuggestion({ suggestedCategoryId: categoryId, confidence: 0 }, type, this.categories)
+      .suggestedCategoryId === categoryId;
+  }
+
+  /**
+   * Every row held to its own side (`categoryOnSide`), for the catalogue's
+   * arrival: a row filed before it landed may hold the other side's
+   * category, and is moved as a flip onto its side would move it. A row
+   * that already fits keeps its identity, so an arrival that moves nothing
+   * hands the wizard nothing. No row is marked edited: the move is not the
+   * reviewer's work, and Remove has nothing of theirs to ask about.
+   *
+   * It is said once for the batch, and only once the rows have painted. On
+   * the first binding the card simply opens with each row on its side, and
+   * no reviewer saw a chip move.
+   */
+  private holdRowsToTheirSides(): void {
+    let moved = false;
+    const rows = this.transactions.map(row => {
+      const filed = this.categoryOnSide(row, row.type);
+      if (filed.suggestedCategoryId === row.suggestedCategoryId
+        && filed.categoryConfidence === row.categoryConfidence
+        && filed.movedCategory === row.movedCategory) {
+        return row;
+      }
+      moved = true;
+      return { ...row, ...filed };
+    });
+    if (!moved) return;
+    this.transactions = rows;
+    this.emitChanges();
+    this.cdr.markForCheck();
+    if (this.viewInitialized) {
+      this.announcer.announce(this.translationService.t('import.announceCategoriesRefiledOnLoad'));
+    }
   }
 
   /**
@@ -362,11 +459,18 @@ export class TransactionPreviewTableComponent {
     return joinSentences(this.needsVerification(row, 'type') ? this.verificationTooltip(row, 'type') : '', label);
   }
 
+  /**
+   * A pick is the reviewer's own answer, so the category a flip moved off
+   * the row (`movedCategory`) is forgotten: a flip back would otherwise
+   * bring it back over what was chosen. Picking the category the row
+   * already holds changes nothing, and forgets nothing either.
+   */
   updateCategory(transaction: CategorizedImportTransaction, categoryId: string): void {
     if (categoryId === transaction.suggestedCategoryId) return;
     this.replaceRow(transaction, {
       suggestedCategoryId: categoryId,
       categoryConfidence: 1.0, // User confirmed
+      movedCategory: undefined,
       ...EDITED_ON_CARD,
     });
   }
@@ -806,8 +910,7 @@ export class TransactionPreviewTableComponent {
    * ignore the marker.
    */
   needsVerification(transaction: CategorizedImportTransaction, field: keyof FieldConfidence): boolean {
-    const confidence = transaction.fieldConfidence?.[field];
-    return confidence !== undefined && confidence < VERIFY_FIELD_THRESHOLD;
+    return gradeNeedsVerification(transaction.fieldConfidence?.[field]);
   }
 
   /**
@@ -1478,14 +1581,17 @@ export class TransactionPreviewTableComponent {
    * from the batch by then is the stale-commit no-op commitSplit models
    * with its indexOf guard.
    *
-   * A net that points the other way puts the survivor on the other side,
-   * and its category is held there as a flip holds it (`categoryOnSide`);
-   * mergeImportRows keeps the target's category, having no catalogue to
-   * judge it by. A move is announced, as a flip's is, because the chip it
-   * changed sits on the survivor while the menu was opened from the row
-   * that left. A net that stays on the target's side leaves the category
-   * as it was: the merge did not move the row, so the category is no more
-   * the merge's to judge than it was before.
+   * The survivor's category is held to the side the net lands on, as a flip
+   * holds it (`categoryOnSide`), whichever side that is. A net that points
+   * the other way puts the survivor there; a survivor still holding the
+   * other side's category is re-filed on the side it stays on. The
+   * target's category is what mergeImportRows hands over, having no
+   * catalogue to judge it by, and a category that fits is left as it was.
+   * The catalogue's arrival already holds every row to its side
+   * (`holdRowsToTheirSides`), so after it this re-file is the guard for a
+   * catalogue that changes once loaded, a category edited in another tab.
+   * A move is announced, as a flip's is, because the chip it changed sits
+   * on the survivor while the menu was opened from the row that left.
    *
    * row's own trigger leaves with it, so focus has nowhere on row to return
    * to; it goes to the survivor instead — its own merge trigger when a third
@@ -1500,7 +1606,7 @@ export class TransactionPreviewTableComponent {
     if (!source || !dest || source === dest) return;
     const folded = mergeImportRows(dest, source);
     if (!folded) return;
-    const filed = folded.type === dest.type ? undefined : this.categoryOnSide(folded, folded.type);
+    const filed = this.categoryOnSide(folded, folded.type);
     // mergedReceiptIds records a merge only between two receipts' rows; the
     // mark records every one. The survivor is not the row that was refused,
     // so it keeps neither the reason nor the count of failed attempts —
@@ -1510,7 +1616,7 @@ export class TransactionPreviewTableComponent {
     this.transactions = this.transactions.filter(t => t !== source).map(t => t === dest ? merged : t);
     this.emitChanges();
     this.cdr.markForCheck();
-    if (filed && filed.suggestedCategoryId !== folded.suggestedCategoryId) {
+    if (filed.suggestedCategoryId !== folded.suggestedCategoryId) {
       this.announceCategoryRefiled(merged, filed.suggestedCategoryId);
     }
     this.focusWhenRendered(this.inRow(merged, '.merge-trigger'), this.inRow(merged, '.description-section .inline-edit'));

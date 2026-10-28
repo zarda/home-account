@@ -115,7 +115,7 @@ process button). Idle, the visible text names it.
 npm run icon-labels:check
 ```
 
-`scripts/check-icon-labels.mjs` holds four rules over every template:
+`scripts/check-icon-labels.mjs` holds five rules over every template:
 
 - a `mat-icon` carrying `role="img"` or a label also carries a literal
   `aria-hidden` ([ADR 0146](ADR/0146-an-icon-that-carries-a-label-is-not-hidden-and-a-category-id-is-never-empty.md));
@@ -140,14 +140,25 @@ npm run icon-labels:check
   definition, or a component that another template stamps that way: the
   budget card's button sits in no repeat of its own, and the overview's
   `@for` repeats it
-  ([ADR 0169](ADR/0169-a-categorys-colour-is-drawn-through-the-chip-or-a-pipe-that-knows-its-surface-and-the-axe-pass-sweeps-both-themes-below-the-fold.md)).
+  ([ADR 0169](ADR/0169-a-categorys-colour-is-drawn-through-the-chip-or-a-pipe-that-knows-its-surface-and-the-axe-pass-sweeps-both-themes-below-the-fold.md));
+- a `mat-icon` with a `matTooltip`, a name and a literal
+  `aria-hidden="false"` carries a literal `tabindex`, so its sentence opens
+  for the keyboard: MatTooltip opens on focus, and an icon takes none by
+  itself. The form's amount and date flags and the review card's amount flag
+  carry `tabindex="0"`. An icon under an open `<ng-template>` is exempt — the
+  wizard's seal icon is stamped into a step header that is already the
+  `role="tab"` control and the tab stop — and so is a hidden icon inside a
+  control that takes focus and names itself, as both type flags are
+  ([ADR 0185](ADR/0185-a-refund-is-asked-about-at-every-door-and-a-category-follows-its-rows-side-there-and-back.md)).
 
 It reads the markup, so it cannot tell a useful label from a useless one, nor
 whether the control a hidden indicator sits in really announces the state;
 and it reads each tag alone, so an indicator under a hidden parent repeats the
 attribute. Nor can it see a block that holds an option's icon beside other
 nodes, which Angular projects whole into the label, or a menu button's name
-built in TypeScript. The script's header lists the rest.
+built in TypeScript, nor a tooltip a directive's host binding adds, and a
+literal `tabindex="-1"` passes the fifth rule although Tab skips it. The
+script's header lists the rest.
 
 ## A transaction row is a button beside its controls
 
@@ -235,6 +246,18 @@ typing stops the last count is the last count placed. A failed move's
 correction leads with the failed save, an event, and queues
 ([ADR 0149](ADR/0149-the-review-step-says-what-it-changed.md)).
 
+**The transaction form says what a type change did to the category.** The
+category list is per side, so changing the type blanks a category the new
+side cannot hold, and the blank alone shows that something went, not what:
+*Category cleared: {category} is not offered for this type*. The form holds
+the category it blanked, and turning the type back to the side it fits,
+while the field is still empty, gives it back: *Category set back to
+{category}*. Any category chosen in between ends the hold, and a scan that
+moves the type and fills its own category ends it silently, since what the
+field then shows is the scan's newer answer. The split's parts the new type
+cannot hold were already said the same way
+([ADR 0185](ADR/0185-a-refund-is-asked-about-at-every-door-and-a-category-follows-its-rows-side-there-and-back.md)).
+
 ### The import review step
 
 The review step says each change below once, naming the row where the
@@ -250,7 +273,8 @@ the set-aside notice, an error, is assertive.
 | A tag removed | *Tag {tag} removed from {description}* | the card |
 | A country withdrawn | *Country removed from {description}* | the card |
 | A location removed | *Location removed from {description}* | the card |
-| A category moved to the other side's catch-all — by a flip of the row's type, or by a merge whose net turns the survivor to the other side ([ADR 0162](ADR/0162-a-refund-read-on-the-device-is-filed-as-income-and-the-review-asks-about-it.md)) | *Category for {description} changed to {category}* | the card |
+| A category moved — to the other side's catch-all by a flip of the row's type or by a merge, whichever side its net lands on, or back to the category an earlier flip moved, by a flip back ([ADR 0162](ADR/0162-a-refund-read-on-the-device-is-filed-as-income-and-the-review-asks-about-it.md), [ADR 0185](ADR/0185-a-refund-is-asked-about-at-every-door-and-a-category-follows-its-rows-side-there-and-back.md)) | *Category for {description} changed to {category}* | the card |
+| Rows already on screen moved to their side's catch-all when the account's categories arrive after them, said once for the batch ([ADR 0185](ADR/0185-a-refund-is-asked-about-at-every-door-and-a-category-follows-its-rows-side-there-and-back.md)) | *Rows filed under the other side's category moved to this side's catch-all now that your categories have loaded* | the card |
 | A row removed — after *Remove this row?* when it carries work made on the card | *{description} removed* | the card |
 | A re-check flipping verdicts, the edited row's or any other's | *{count} duplicate verdicts updated* | the wizard |
 | A currency change that rounds amounts to nothing, one row or the selection | *{count} amounts round to nothing in {currency} — add them again* | the snackbar |
@@ -434,7 +458,7 @@ today, pinned at the ratio it measures, may only improve; when one reaches
 its threshold the script asks to have it promoted).
 
 A required row's threshold is 4.5:1, the bar for text, unless the row names
-3:1, the bar WCAG 1.4.11 sets for a graphic that carries meaning. Five rows
+3:1, the bar WCAG 1.4.11 sets for a graphic that carries meaning. Seven rows
 do, because what they hold is a glyph or a dot, never a word:
 
 | Pair | What it holds |
@@ -444,6 +468,8 @@ do, because what they hold is a glyph or a dot, never a word:
 | `--color-error` on `--surface-background` | the import wizard's failure icons, and the low-confidence dot on an unchecked review card |
 | `--color-warning-text` on `--surface-background` | the review card's amount and type flags, and the medium-confidence dot |
 | `--color-success-text` on `--surface-background` | the wizard's success glyph, and the high-confidence dot |
+| `--color-warning-text` on `--color-expense-light` | the transaction form's type flag in the checked Expense segment: 4.11:1 in light, 6.95:1 in dark |
+| `--color-warning-text` on `--color-income-light` | the transaction form's type flag in the checked Income segment: 4.57:1 in light, 4.95:1 in dark |
 
 A row at 3:1 says nothing about text in the same colour: `--color-error`
 is 3.76:1 on the light card, so error text reads in `--color-error-text`.
@@ -865,6 +891,14 @@ items into each state it measures.
   moves its text into a live region of its own, beside the announcement
   `NotificationService` makes through the queue
   ([ADR 0149](ADR/0149-the-review-step-says-what-it-changed.md)).
+- **A doubted type's tooltip opens for a pointer only.** The type flags on
+  the transaction form and the review card are hidden icons inside the
+  control the keyboard reaches, whose name speaks the flag's sentence, so a
+  screen reader hears it; but the tooltip that shows it belongs to the icon,
+  which takes no focus, so a sighted keyboard user sees the amber flag and
+  not its sentence. A tab stop inside the segment would nest a focusable
+  element in a button
+  ([ADR 0185](ADR/0185-a-refund-is-asked-about-at-every-door-and-a-category-follows-its-rows-side-there-and-back.md)).
 - **RTL layout is groundwork only** (#86). Direction follows the locale and the
   physical CSS that remains is frozen per file, but no right-to-left locale
   ships and 97 hits are still unconverted (#445) — see [rtl.md](rtl.md).

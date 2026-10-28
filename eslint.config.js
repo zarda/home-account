@@ -96,6 +96,29 @@ const REJECTION_LISTENER_MESSAGE =
   "code created inside the Angular zone. Spy on the console or subscribe to " +
   "NgZone.onError (docs/testing.md).";
 
+// A transaction type read loosely: `x.type || 'expense'`, or the same with a
+// cast in front of the member. The right-hand default is the tell. It reads as
+// "expense unless told otherwise", but it keeps whatever truthy value the left
+// side holds, so a model that answered "Income", "refund" or "credit", or a
+// hand-edited file that did, goes on as that string: a row typed by a word no
+// category can sit under, and no gate asking about it (ADR 0162). Five sites
+// read a type this way until readTransactionType replaced them. The left side
+// is matched on its member name, so `transaction?.type || 'expense'` (an
+// optional chain, the transaction form's own seed) and `x.type ?? 'expense'`
+// (a test-data default) stay legal: neither is reading an answer off a model
+// or a file. scripts/check-lint-guards.mjs carries its own copy of the string.
+const LOOSE_TYPE_DEFAULT_SELECTOR =
+  "LogicalExpression[operator='||'][right.value=/^(expense|income)$/]" +
+  ":matches([left.type='MemberExpression'][left.property.name='type'], " +
+  "[left.type='MemberExpression'][left.property.value='type'], " +
+  "[left.type='TSAsExpression'][left.expression.property.name='type'], " +
+  "[left.type='TSAsExpression'][left.expression.property.value='type'])";
+const LOOSE_TYPE_DEFAULT_MESSAGE =
+  "Read a model's or a file's type with readTransactionType " +
+  "(core/utils/receipt-extraction.utils.ts). `|| 'expense'` keeps any truthy " +
+  "answer as the type, \"Income\" and \"refund\" included; the reader files exactly " +
+  "\"income\" as income and everything else as an expense (ADR 0162).";
+
 const MODEL_IMPORT_PATHS = [
   {
     name: "@google/generative-ai",
@@ -277,7 +300,10 @@ module.exports = defineConfig([
     // hazard this file's header exists to warn about, and the way the
     // analytics import ban died once already (#262, ADR 0038).
     //
-    // Appending it here also means specs inherit the ignores above, so the
+    // The loose type default (readTransactionType, ADR 0162) is appended the
+    // same way and for the same reason; the next block restates it.
+    //
+    // Appending them here also means specs inherit the ignores above, so the
     // dynamic ban is narrower than the static one, which does reach specs.
     // That is the right side to err on: the analytics owners' specs and
     // app.config.spec.ts already import the SDK on purpose to assert the
@@ -304,6 +330,10 @@ module.exports = defineConfig([
           selector: DYNAMIC_ANALYTICS_IMPORT_SELECTOR,
           message: DYNAMIC_ANALYTICS_IMPORT_MESSAGE,
         },
+        {
+          selector: LOOSE_TYPE_DEFAULT_SELECTOR,
+          message: LOOSE_TYPE_DEFAULT_MESSAGE,
+        },
       ],
     },
   },
@@ -319,8 +349,10 @@ module.exports = defineConfig([
     // one restates BOTH firstValueFrom selectors in full. Dropping them here
     // would leave this file — a service, with a Firestore-backed consent
     // signal — as the one place in the app where a warm-cache listener read
-    // is legal, with nothing saying so. scripts/check-lint-guards.mjs
-    // asserts exactly this file's resolved selector list.
+    // is legal, with nothing saying so. It restates the loose type default
+    // too: the exemption is from the dynamic analytics import alone.
+    // scripts/check-lint-guards.mjs asserts exactly this file's resolved
+    // selector list.
     files: ["src/app/core/services/analytics-transport.ts"],
     rules: {
       "no-restricted-syntax": [
@@ -337,6 +369,10 @@ module.exports = defineConfig([
             "[callee.property.name='pipe']" +
             `[callee.object.callee.property.name=/^(${LISTENER_METHOD_ALTERNATION})$/]`,
           message: FIRST_VALUE_FROM_LISTENER_MESSAGE,
+        },
+        {
+          selector: LOOSE_TYPE_DEFAULT_SELECTOR,
+          message: LOOSE_TYPE_DEFAULT_MESSAGE,
         },
       ],
     },

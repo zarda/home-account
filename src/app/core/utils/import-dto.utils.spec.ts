@@ -397,6 +397,28 @@ describe('toCreateTransactionDTO and the review flags', () => {
     );
     expect('editedOnCard' in dto).toBeFalse();
   });
+
+  it('never forwards movedCategory — a review-step mark, not a field', () => {
+    // A pin. Mutation: spread `...row` into toCreateTransactionDTO.
+    const dto = toCreateTransactionDTO(
+      {
+        amount: 5,
+        date: new Date(2026, 0, 1),
+        movedCategory: { suggestedCategoryId: 'food', categoryConfidence: 0.9 },
+      } as never,
+      'USD'
+    );
+    expect('movedCategory' in dto).toBeFalse();
+  });
+
+  it('never forwards typeFlaggedAs — a review-step mark, not a field', () => {
+    // A pin. Mutation: spread `...row` into toCreateTransactionDTO.
+    const dto = toCreateTransactionDTO(
+      { amount: 5, date: new Date(2026, 0, 1), typeFlaggedAs: 'expense' } as never,
+      'USD'
+    );
+    expect('typeFlaggedAs' in dto).toBeFalse();
+  });
 });
 
 describe('readTransactionSnapshot', () => {

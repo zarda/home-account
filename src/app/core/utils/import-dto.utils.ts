@@ -1,4 +1,4 @@
-import { BudgetPeriod, CreateTransactionDTO, ImagePositionMetadata, roundToMinorUnit, TransactionLocation, VERIFY_FIELD_THRESHOLD } from '../../models';
+import { BudgetPeriod, CreateTransactionDTO, gradeNeedsVerification, ImagePositionMetadata, roundToMinorUnit, TransactionLocation } from '../../models';
 import { fallbackCategoryFor } from './categorization.utils';
 import { parseDateInput } from './transaction-date.utils';
 
@@ -121,7 +121,7 @@ export function resolveImportDate(
   ) {
     return { date: now, dateConfidence: confidence, dateAssumed: true, dateImplausible: true };
   }
-  if (confidence !== undefined && confidence < VERIFY_FIELD_THRESHOLD) {
+  if (confidence !== undefined && gradeNeedsVerification(confidence)) {
     return { date: now, dateConfidence: confidence, dateAssumed: true };
   }
   return { date: parsed, ...(confidence !== undefined ? { dateConfidence: confidence } : {}) };

@@ -1841,6 +1841,41 @@ describe('firestore.rules (emulator smoke test)', () => {
       );
     });
 
+    it('rejects a type count that is not a count', async () => {
+      // The counts of rows whose type the reader flagged, and of those the
+      // ones that now stand on the other side. Whole numbers, never prose or
+      // a sign.
+      await expectDenied(
+        setDoc(doc(firestore, path('imports')), validImport({ typesFlagged: -1 })),
+        'negative flagged count'
+      );
+      await expectDenied(
+        setDoc(doc(firestore, path('imports')), validImport({ typesFlipped: 'one' })),
+        'flipped count as prose'
+      );
+    });
+
+    it('rejects a type count that is not a count on the completion update', async () => {
+      // The completion write is an update of the pending record, so it runs
+      // through importUpdateValid: the same validator has to hold there.
+      const p = path('imports');
+      await setDoc(doc(firestore, p), validImport({ status: 'processing' }));
+      await expectDenied(
+        updateDoc(doc(firestore, p), { status: 'completed', typesFlagged: 1.5 }),
+        'fractional flagged count on completion'
+      );
+    });
+
+    it('accepts the type counts a confirmed receipt records', async () => {
+      await expectAllowed(
+        setDoc(doc(firestore, path('imports')), validImport({
+          source: 'image', fileType: 'receipt_image', fileName: 'r.jpg',
+          typesFlagged: 2, typesFlipped: 1,
+        })),
+        'import with type counts'
+      );
+    });
+
     it('rejects a failure class the enumeration does not list', async () => {
       await expectDenied(
         setDoc(doc(firestore, path('imports')), validImport({ errorType: 'truncated' })),

@@ -11,7 +11,7 @@ import { ProviderKeyService } from './provider-key.service';
 import { ProcessedTransaction, ProcessingResult, ReceiptAttemptDiagnostics } from './ai-types';
 import { fileToBase64 } from '../utils/file.utils';
 import { consolidateReceiptItems, formatReceiptItemLines } from '../utils/receipt-consolidation';
-import { printedLocationSlot } from '../utils/receipt-extraction.utils';
+import { extractedFieldConfidence, printedLocationSlot } from '../utils/receipt-extraction.utils';
 import { DEFAULT_TEXT_MODEL, DEFAULT_VISION_MODEL, DEFAULT_OPENAI_MODEL, DEFAULT_CLAUDE_MODEL } from '../config/ai-models';
 import { AI_PREFERENCES_SCHEMA_VERSION, migrateModelPreferences } from '../config/ai-model-migrations';
 import { Category, LLMProvider, baseCurrencyOf} from '../../models';
@@ -617,13 +617,7 @@ export class AIStrategyService {
         notes: t.details,
         suggestedCategoryId: t.category,
         receiptId: t.receiptId,
-        fieldConfidence:
-          t.amountConfidence !== undefined || dateGrade !== undefined
-            ? {
-                ...(t.amountConfidence !== undefined ? { amount: t.amountConfidence } : {}),
-                ...(dateGrade !== undefined ? { date: dateGrade } : {}),
-              }
-            : undefined,
+        fieldConfidence: extractedFieldConfidence(t, dateGrade),
         // Which photos the row came from. Consolidation hardcodes imageIndex 0
         // on merged rows, so mergedFromImages is the honest list there; both
         // used to die on this hop, leaving the confirm step unable to attach
@@ -705,7 +699,7 @@ export class AIStrategyService {
       date: receipt.date,
       description: receipt.merchant,
       amount: receipt.amount,
-      type: 'expense',
+      type: receipt.type,
       currency,
       confidence: receipt.confidence,
       source: 'cloud',

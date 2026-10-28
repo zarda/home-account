@@ -67,8 +67,32 @@
                 </div>
                 @if (item.duplicatesSkipped > 0) {
                   <div class="stat skipped">
-                    <span class="label">{{ 'import.skipped' | translate }}</span>
+                    <span class="label">{{ 'import.duplicatesSkipped' | translate }}</span>
                     <span class="value">{{ item.duplicatesSkipped }}</span>
+                  </div>
+                }
+                @if ((item.receiptsSkipped ?? 0) > 0) {
+                  <div class="stat photos">
+                    <span class="label">{{ 'import.statPhotosSkipped' | translate }}</span>
+                    <span class="value">{{ item.receiptsSkipped }}</span>
+                  </div>
+                }
+                @if ((item.receiptsFailed ?? 0) > 0) {
+                  <div class="stat photos">
+                    <span class="label">{{ 'import.statPhotosFailed' | translate }}</span>
+                    <span class="value">{{ item.receiptsFailed }}</span>
+                  </div>
+                }
+                @if ((item.typesFlagged ?? 0) > 0) {
+                  <div class="stat types">
+                    <span class="label">{{ 'import.statTypeFlagged' | translate }}</span>
+                    <span class="value">{{ item.typesFlagged }}</span>
+                  </div>
+                }
+                @if ((item.typesFlipped ?? 0) > 0) {
+                  <div class="stat types">
+                    <span class="label">{{ 'import.statTypeFlipped' | translate }}</span>
+                    <span class="value">{{ item.typesFlipped }}</span>
                   </div>
                 }
               </div>

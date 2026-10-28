@@ -43,6 +43,7 @@ import { AnalyticsService } from './analytics.service';
 import { createMockUser } from './testing/mock-auth.service';
 import { createCategory, createRecurring, createTransaction } from './testing/test-data';
 import { REVIEW_AMOUNT_CONFIDENCE } from '../utils/receipt-consolidation';
+import { MODEL_INCOME_GRADE } from '../utils/receipt-extraction.utils';
 import {
   CategorizedImportTransaction,
   Category,
@@ -434,6 +435,30 @@ describe('AIImportService', () => {
         engine: 'cloud', provider: 'gemini',
       }));
       expect(result.transactions.length).toBe(1);
+    });
+
+    it("carries the single-shot read's type grade to the review row", async () => {
+      // The façade stands in for gemini.service.ts here: it answers with the
+      // one income row the summary reader files for a refund (ADR 0162), and
+      // this door has to hand that row's grade on rather than re-derive it.
+      const warn = spyOn(console, 'warn');
+      strategyService.processReceipt.and.returnValue(Promise.reject(new Error('503 service unavailable')));
+      cloudLLMProvider.extractTransactionsFromImage.and.returnValue(Promise.resolve([{
+        date: '2024-06-01',
+        description: 'Returned jacket',
+        amount: 40,
+        type: 'income',
+        currency: 'USD',
+        typeConfidence: MODEL_INCOME_GRADE,
+      }]));
+
+      const result = await service.importFromImage(makeFile('r.png', 'image/png'));
+
+      expect(result.transactions[0].type).toBe('income');
+      expect(result.transactions[0].fieldConfidence).toEqual({ type: MODEL_INCOME_GRADE });
+      expect(warn).toHaveBeenCalledOnceWith(
+        '[AIImport] Strategy processing failed:', 'server', jasmine.any(Error)
+      );
     });
 
     it('wraps a direct-provider failure with cloud diagnostics', async () => {
@@ -1571,6 +1596,20 @@ describe('AIImportService', () => {
       expect(result.transactions[0].fieldConfidence?.amount).toBe(REVIEW_AMOUNT_CONFIDENCE);
     });
 
+    it("carries a single-photo refund's type grade to its review row", async () => {
+      cloudLLMProvider.extractTransactionsFromMultipleImages.and.returnValue(Promise.resolve([
+        { date: '2024-06-01', description: 'Returned jacket', amount: 4000, type: 'income', currency: 'JPY',
+          imageIndex: 0, confidence: 0.9, receiptId: 1, merchant: 'Outfitter', receiptTotal: 4000 }
+      ]));
+
+      const result = await service.importFromMultipleImages([makeFile('a.png', 'image/png')]);
+
+      expect(result.transactions[0].type).toBe('income');
+      // The printed total corroborates the amount, so the type is the only
+      // thing graded on the review row.
+      expect(result.transactions[0].fieldConfidence).toEqual({ type: MODEL_INCOME_GRADE });
+    });
+
     it('should merge multiple items sharing a receiptId into one transaction', async () => {
       cloudLLMProvider.extractTransactionsFromMultipleImages.and.returnValue(Promise.resolve([
         { date: '2024-06-01', description: 'Item A', amount: 100, type: 'expense', currency: 'JPY',
@@ -2427,6 +2466,24 @@ describe('AIImportService', () => {
         .toEqual([]);
     });
 
+    it('types a backup row an expense unless its type is exactly "income"', async () => {
+      // The strict reader (ADR 0162, ADR 0147): a hand-edited file's "Income"
+      // is not a word the app reads as a refund, and the old `|| 'expense'`
+      // carried it through as a type no category row can sit under.
+      const backup = {
+        transactions: [
+          { description: 'Reworded', amount: 9, type: 'Income' },
+          { description: 'Salary', amount: 5000, type: 'income' },
+        ]
+      };
+      const file = makeFile('backup.json', 'application/json', JSON.stringify(backup));
+
+      const result = await service.importFromJSON(file);
+
+      expect(result.transactions.map(t => t.type)).toEqual(['expense', 'income']);
+      expect(result.transactions.map(t => t.suggestedCategoryId)).toEqual(['other_expense', 'other_income']);
+    });
+
     it('grades an empty category id as a default, not as the backup\'s own', async () => {
       const backup = {
         transactions: [
@@ -2980,6 +3037,33 @@ describe('AIImportService', () => {
       expect(result[0].currency).toBe('USD'); // fallback base currency
       expect(result[0].type).toBe('expense');
       expect(result[0].date instanceof Date).toBeTrue();
+    });
+
+    it('types a row an expense unless its type is exactly "income"', async () => {
+      // The strict reader (ADR 0162, ADR 0147): a model's "Income" is not an
+      // answer the app reads as income, and the old `|| 'expense'` carried it
+      // through as a type no category row can sit under.
+      const result = await service.categorizeTransactions([
+        { date: '2024-06-01', description: 'Reworded', amount: 9, type: 'Income' as never, currency: 'USD' },
+        { date: '2024-06-02', description: 'Payroll', amount: 900, type: 'income', currency: 'USD' },
+      ]);
+
+      expect(result.map(r => r.type)).toEqual(['expense', 'income']);
+      expect(result.map(r => r.suggestedCategoryId)).toEqual(['other_expense', 'other_income']);
+    });
+
+    it('carries a type grade an extraction row brings, and invents none for a row without one', async () => {
+      const result = await service.categorizeTransactions([
+        { date: '2024-06-01', description: 'Returned jacket', amount: 40, type: 'income', currency: 'USD',
+          typeConfidence: MODEL_INCOME_GRADE },
+        { date: '2024-06-02', description: 'Payroll', amount: 900, type: 'income', currency: 'USD' },
+        { date: '2024-06-03', description: 'Lunch', amount: 9, type: 'expense', currency: 'USD' },
+      ]);
+
+      expect(result[0].fieldConfidence).toEqual({ type: MODEL_INCOME_GRADE });
+      // A statement's or a file's income carries no grade: nothing read it off a receipt.
+      expect(result[1].fieldConfidence).toBeUndefined();
+      expect(result[2].fieldConfidence).toBeUndefined();
     });
 
     it('flags an unreadable date with zero confidence instead of silently dating it today', async () => {
@@ -3760,6 +3844,93 @@ describe('AIImportService', () => {
       expect(stats['errorCount']).toBe(1);
       expect(stats['successCount']).toBe(0);
       expect('receiptsFailed' in stats).toBeFalse();
+    });
+
+    describe('the reader\'s type flags', () => {
+      // A standing flag is a low type grade; a flip files the flagged side as
+      // `typeFlaggedAs` and drops the grade, so a flipped row is flagged and
+      // stands on the other side.
+      const standing = (overrides: Partial<CategorizedImportTransaction> = {}) =>
+        selected({ type: 'income', fieldConfidence: { type: 0.4 }, ...overrides });
+      const flipped = (overrides: Partial<CategorizedImportTransaction> = {}) =>
+        selected({ type: 'expense', typeFlaggedAs: 'income', ...overrides });
+
+      const completion = () =>
+        importHistoryService.completeImport.calls.mostRecent().args[1] as Record<string, unknown>;
+
+      it('counts the rows whose type a reader flagged, and those confirmed on the other side', async () => {
+        await service.confirmImport(
+          [standing({ id: 'a' }), flipped({ id: 'b' }), selected({ id: 'c' })],
+          'r.png', 10, 'image', 'receipt_image'
+        );
+
+        expect(completion()['typesFlagged']).toBe(2);
+        expect(completion()['typesFlipped']).toBe(1);
+      });
+
+      it('counts a flagged row only once the write took it', async () => {
+        // The middle row fails its write: of the three flagged rows only the
+        // first and the last landed, and one of those two was flipped.
+        transactionService.addTransaction.and.returnValues(
+          Promise.resolve('id-1'),
+          Promise.reject(new Error('save failed')),
+          Promise.resolve('id-3')
+        );
+
+        await service.confirmImport(
+          [standing({ id: 'a' }), flipped({ id: 'b' }), flipped({ id: 'c' })],
+          'r.png', 10, 'image', 'receipt_image'
+        );
+
+        expect(completion()['successCount']).toBe(2);
+        expect(completion()['typesFlagged']).toBe(2);
+        expect(completion()['typesFlipped']).toBe(1);
+      });
+
+      // Pin: an unflagged record carries neither figure, since an absent count
+      // and a zero mean the same thing.
+      it('leaves both type counts off a record nobody flagged', async () => {
+        await service.confirmImport(
+          [selected({ id: 'a' }), selected({ id: 'b', type: 'income' })],
+          'r.png', 10, 'image', 'receipt_image'
+        );
+
+        expect('typesFlagged' in completion()).toBeFalse();
+        expect('typesFlipped' in completion()).toBeFalse();
+      });
+
+      // Pin: a flag that kept its side is a flag and not a flip, so the flip
+      // count has a guard of its own.
+      it('leaves the flip count off when every flagged row kept its side', async () => {
+        await service.confirmImport(
+          [standing({ id: 'a' }), selected({ id: 'b', type: 'expense', typeFlaggedAs: 'expense' })],
+          'r.png', 10, 'image', 'receipt_image'
+        );
+
+        expect('typesFlipped' in completion()).toBeFalse();
+      });
+
+      // Pin: the counts read the rows the write took, not the rows the review
+      // step held.
+      it('does not count a flagged row the reviewer left out', async () => {
+        await service.confirmImport(
+          [flipped({ id: 'a', selected: false }), selected({ id: 'b' })],
+          'r.png', 10, 'image', 'receipt_image'
+        );
+
+        expect('typesFlagged' in completion()).toBeFalse();
+        expect('typesFlipped' in completion()).toBeFalse();
+      });
+
+      // Pin: the verdict is a review-step mark, and the DTO builder names the
+      // fields it writes, so it never reaches the document.
+      it('never writes the reader\'s verdict onto the transaction', async () => {
+        await service.confirmImport([flipped()], 'r.png', 10, 'image', 'receipt_image');
+
+        const dto = transactionService.addTransaction.calls.mostRecent().args[0];
+        expect(dto.type).toBe('expense');
+        expect('typeFlaggedAs' in dto).toBeFalse();
+      });
     });
 
     describe('transactionIds', () => {

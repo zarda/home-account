@@ -6,16 +6,32 @@
  *   1. the taxonomy in src/app/core/config/analytics-events.json,
  *   2. the AnalyticsService call sites under src/app,
  *   3. the registry table in docs/analytics.md.
- * A fourth pair is checked the same way — the routed paths in app.routes.ts
- * against the automatic screen_view table — because the iOS transport builds
- * screen names by hand and the table is the only place the two platforms are
- * stated to match.
+ * Two further pairs are checked the same way. The routed paths in
+ * app.routes.ts against the automatic screen_view table, because the iOS
+ * transport builds screen names by hand and the table is the only place the
+ * two platforms are stated to match. And the parameter names the taxonomy
+ * declares against the doc's Parameter values table and against the list of
+ * GA4 custom dimensions its console setup tells whoever sets it up to
+ * register: a parameter nobody registered is collected but appears in no
+ * report, and GA4 does not backfill, so the days before it is registered stay
+ * unreported. A name in either place that no event declares fails too. Both
+ * are read between markers (`analytics-params`, `analytics-dimensions`), the
+ * way the registry and screen tables are.
  *
  * Without this, "where does this event come from" and "is this screen tagged"
  * are answerable only by grepping, and a renamed route or a deleted call site
  * leaves a row that documents something the app no longer does.
  *
+ * `--self-test` runs the parameter comparison over synthetic documents — each
+ * way the two lists can drift, and the pair that must stay quiet — and exits
+ * before anything reads the repository.
+ *
  * What it deliberately cannot see:
+ *   - Which values a parameter takes. The table's second column is prose
+ *     around the backticked values (`0`–`5` is a range, the `action` row is
+ *     per event), so only the names are held.
+ *   - Whether the console has the dimensions. The list is what the doc says to
+ *     register; the registering is done by hand.
  *   - Which parameters a call site actually passes. The payload is an object
  *     literal spanning lines, carrying conditionals and values computed from
  *     signals; a regex over it would fail more often than it would catch. The
@@ -108,6 +124,225 @@ function sliceBetween(text, marker) {
     return null;
   }
   return { body: text.slice(start, end), offset: start };
+}
+
+// -------------------------------------------- parameter table and dimensions
+
+/** A Parameter values row: | `name` | values | — only the first cell names one. */
+const PARAM_ROW = /^\|\s*`([^`]+)`\s*\|/;
+
+/** Every `name` a marked list spells out. */
+const BACKTICKED = /`([^`]+)`/g;
+
+/** The names a table's rows lead with, each with its offset into `body`. */
+function tableNames(body) {
+  const found = [];
+  let offset = 0;
+  for (const line of body.split('\n')) {
+    const match = PARAM_ROW.exec(line);
+    if (match) found.push({ name: match[1], index: offset });
+    offset += line.length + 1;
+  }
+  return found;
+}
+
+/** The backticked names of a list, each with its offset into `body`. */
+function listNames(body) {
+  return [...body.matchAll(BACKTICKED)].map(match => ({ name: match[1], index: match.index }));
+}
+
+/**
+ * The two places the doc spells every parameter name out. Each is read between
+ * its own markers, so a backticked word anywhere else in the page cannot be
+ * mistaken for a name.
+ */
+const PARAMETER_REGIONS = [
+  {
+    marker: 'analytics-params',
+    label: 'the Parameter values table',
+    namesIn: tableNames,
+  },
+  {
+    marker: 'analytics-dimensions',
+    label: 'the custom-dimension list under Console setup',
+    namesIn: listNames,
+  },
+];
+
+/** Every parameter name any event declares. */
+function declaredParameters(taxonomy) {
+  return new Set(Object.values(taxonomy).flatMap(event => Object.keys(event.params)));
+}
+
+/**
+ * Pure: the problems between the parameter names the taxonomy declares and
+ * the doc's two spellings of them, as `{ message, sites }`. Names are compared
+ * as sets, so order, repeats across events and the values beside a name do not
+ * matter.
+ */
+function parameterProblems(taxonomy, docText) {
+  const declared = declaredParameters(taxonomy);
+  const problems = [];
+
+  for (const { marker, label, namesIn } of PARAMETER_REGIONS) {
+    const region = sliceBetween(docText, marker);
+    if (!region) {
+      problems.push({
+        message: `${DOC} is missing the <!-- ${marker}:start/end --> markers around ${label}`,
+        sites: [],
+      });
+      continue;
+    }
+
+    const at = index => `${DOC}:${lineOf(docText, region.offset + index)}`;
+    const found = namesIn(region.body);
+    if (found.length === 0) {
+      problems.push({ message: `${label} has its markers but names no parameter`, sites: [at(0)] });
+      continue;
+    }
+
+    const named = new Set(found.map(entry => entry.name));
+    for (const name of declared) {
+      if (!named.has(name)) {
+        problems.push({
+          message: `${name} — declared in the taxonomy but missing from ${label}`,
+          sites: [at(0)],
+        });
+      }
+    }
+    for (const { name, index } of found) {
+      if (!declared.has(name)) {
+        problems.push({
+          message: `${name} — in ${label} but declared by no event in the taxonomy`,
+          sites: [at(index)],
+        });
+      }
+    }
+  }
+
+  return problems;
+}
+
+// ---------------------------------------------------------------- self-test
+
+function selfTest() {
+  const results = [];
+  const check = (name, actual, expected) => {
+    results.push({ name, ok: JSON.stringify(actual) === JSON.stringify(expected), actual, expected });
+  };
+
+  // `action` is shared by two events and `method` is declared once; an event
+  // with no parameters declares none.
+  const taxonomy = {
+    first: { since: '1.0.0', params: { method: ['a', 'b'], setting: ['x'] } },
+    second: { since: '1.0.0', params: { action: ['x', 'y'] } },
+    third: { since: '1.0.0', params: { method: ['a', 'b'] } },
+    fourth: { since: '1.0.0', params: {} },
+  };
+  const names = ['method', 'setting', 'action'];
+
+  // Lines: the table's rows start on 6, its end marker follows them, and the
+  // dimension list's start marker sits two lines under the step.
+  const page = (rows, dimensions, { table = true, list = true } = {}) =>
+    [
+      '### Parameter values',
+      '',
+      ...(table ? ['<!-- analytics-params:start -->'] : []),
+      '| Parameter | Values |',
+      '|---|---|',
+      ...rows.map(name => `| \`${name}\` | \`a\`, \`b\` — a \`word\` in the prose |`),
+      ...(table ? ['<!-- analytics-params:end -->'] : []),
+      '',
+      '4. **Register custom dimensions.** One dimension per parameter:',
+      ...(list ? ['   <!-- analytics-dimensions:start -->'] : []),
+      `   ${dimensions.map(name => `\`${name}\``).join(', ')}.`,
+      ...(list ? ['   <!-- analytics-dimensions:end -->'] : []),
+      '   Unregistered `ignored` parameters are still collected.',
+    ].join('\n');
+  const messages = text => parameterProblems(taxonomy, text).map(problem => problem.message);
+
+  check('matching rows and dimensions report nothing', messages(page(names, names)), []);
+  check(
+    'order, a repeated name and backticked prose around the lists are not compared',
+    messages(page([...names].reverse(), [...names, 'method'])),
+    []
+  );
+
+  check(
+    'a parameter with no row is reported',
+    messages(page(['method', 'action'], names)),
+    ['setting — declared in the taxonomy but missing from the Parameter values table']
+  );
+  check(
+    'a row for a parameter no event declares is reported',
+    messages(page([...names, 'merchant'], names)),
+    ['merchant — in the Parameter values table but declared by no event in the taxonomy']
+  );
+  check(
+    'a parameter missing from the dimension list is reported',
+    messages(page(names, ['method', 'setting'])),
+    ['action — declared in the taxonomy but missing from the custom-dimension list under Console setup']
+  );
+  check(
+    'a dimension no event declares is reported',
+    messages(page(names, [...names, 'merchant'])),
+    ['merchant — in the custom-dimension list under Console setup but declared by no event in the taxonomy']
+  );
+  check(
+    'the table and the list are held independently',
+    messages(page(['method'], [...names, 'merchant'])),
+    [
+      'setting — declared in the taxonomy but missing from the Parameter values table',
+      'action — declared in the taxonomy but missing from the Parameter values table',
+      'merchant — in the custom-dimension list under Console setup but declared by no event in the taxonomy',
+    ]
+  );
+
+  check(
+    'a missing row is reported where the table starts, a stray one on its own line',
+    parameterProblems(taxonomy, page(['method', 'merchant', 'setting'], names)).map(problem => problem.sites),
+    [['docs/analytics.md:3'], ['docs/analytics.md:7']]
+  );
+  check(
+    'a stray dimension is reported on the list line',
+    parameterProblems(taxonomy, page(names, [...names, 'merchant'])).map(problem => problem.sites),
+    [['docs/analytics.md:13']]
+  );
+
+  check('a page without the table markers is reported', messages(page(names, names, { table: false })), [
+    'docs/analytics.md is missing the <!-- analytics-params:start/end --> markers around the Parameter values table',
+  ]);
+  check('a page without the list markers is reported', messages(page(names, names, { list: false })), [
+    'docs/analytics.md is missing the <!-- analytics-dimensions:start/end --> markers around the custom-dimension list under Console setup',
+  ]);
+  check('markers around nothing are reported', messages(page([], [])), [
+    'the Parameter values table has its markers but names no parameter',
+    'the custom-dimension list under Console setup has its markers but names no parameter',
+  ]);
+
+  let failed = 0;
+  for (const result of results) {
+    if (result.ok) {
+      console.log(`  ok  ${result.name}`);
+    } else {
+      failed += 1;
+      console.error(`  FAIL ${result.name}`);
+      console.error(`       expected ${JSON.stringify(result.expected)}`);
+      console.error(`       actual   ${JSON.stringify(result.actual)}`);
+    }
+  }
+
+  if (failed > 0) {
+    console.error(`\n${failed} self-test failure(s) — the checker itself is broken.`);
+    process.exit(1);
+  }
+  console.log(`check-analytics-registry self-test: ${results.length} passed`);
+}
+
+// Before anything reads the repository: the fixtures above are all it needs.
+if (process.argv.includes('--self-test')) {
+  selfTest();
+  process.exit(0);
 }
 
 // ---------------------------------------------------------------- taxonomy
@@ -291,13 +526,21 @@ for (const path of documentedScreens) {
   }
 }
 
+// ------------------------------------------------ parameter names in the doc
+
+for (const { message, sites } of parameterProblems(taxonomy, doc)) {
+  fail(message, sites);
+}
+
 // ------------------------------------------------------------------- report
 
 console.log(
   `Checked ${taxonomyEvents.length} events ` +
     `(${unknownMethods} unrelated track*() call${unknownMethods === 1 ? '' : 's'} skipped) ` +
     `against ${rows.size} registry rows, ` +
-    `and ${routedPaths.size} routed paths against ${documentedScreens.size} documented screens`
+    `and ${routedPaths.size} routed paths against ${documentedScreens.size} documented screens, ` +
+    `and ${declaredParameters(taxonomy).size} parameters against the Parameter values table ` +
+    `and the custom-dimension list`
 );
 
 if (failures.length > 0) {
@@ -312,4 +555,4 @@ if (failures.length > 0) {
   process.exit(1);
 }
 
-console.log(`Every analytics call site is registered in ${DOC}.`);
+console.log(`Every analytics call site and parameter is registered in ${DOC}.`);
