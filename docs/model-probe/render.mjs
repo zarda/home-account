@@ -10,9 +10,9 @@
 // dependencies of its own, and is loaded only when a render launches it.
 // Usage: node render.mjs
 //
-// It draws every fixture, the device-only ones included. probe.mjs reads
-// CASE_IDS alone, so a device fixture costs no model request and has no
-// baseline entry; it is a picture to push into the iOS simulator.
+// It draws every fixture. probe.mjs sends each of CASE_IDS; the two refund
+// slips are also pictures to push into the iOS simulator for the on-device
+// reader, which reads the marks on the figures where the model reads words.
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -20,9 +20,7 @@ import { childEnv } from './key-variables.mjs';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const OUT = path.join(HERE, 'receipts');
-export const CASE_IDS = ['jp', 'kr', 'none', 'long', 'cropped'];
-/** Fixtures for the on-device reader, which no cloud probe sends. */
-export const DEVICE_CASE_IDS = ['refund', 'refund-tender'];
+export const CASE_IDS = ['jp', 'kr', 'none', 'long', 'cropped', 'refund', 'refund-tender'];
 
 /** Playwright's bundled Chromium, or an override for a machine whose cache differs. */
 function chromiumPath() {
@@ -64,7 +62,7 @@ export async function render({ quiet = false, env, launcher } = {}) {
     const page = await browser.newPage({ deviceScaleFactor: 2 });
     await page.goto(`file://${path.join(HERE, 'receipts.html')}`);
     await page.waitForTimeout(600);
-    for (const id of [...CASE_IDS, ...DEVICE_CASE_IDS]) {
+    for (const id of CASE_IDS) {
       const el = page.locator(`#${id}`);
       const box = await el.boundingBox();
       if (!box) throw new Error(`fixture #${id} did not render — receipts.html may have drifted`);

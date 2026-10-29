@@ -835,10 +835,14 @@ build went otherwise:
 - **`receiptSummary` has no door.** It asks for the type and grades an income
   reading, but only `importFromImage`'s fallback reaches it, and no screen
   hands that a file.
-- **No keyed model has read a refund through the new prompts.** No vendor was
-  contacted. The wording rests on the registry specs and on the page-answered
-  browser runs; a keyed run of the model probe's refund fixtures is drafted
-  and not filed.
+- **No OpenAI or Claude model has read a refund through the new prompts.**
+  Two keyed runs of `gemini-3.5-flash-lite`, the app's default vision model,
+  over the model probe's two refund fixtures (28 October 2026) each answered
+  exactly `income` with the total as the magnitude 14.03, so the strict reader
+  accepted the word and the row was graded 0.5 and asked about; the probe's
+  baseline records them. The other two providers' runs need their keys in the
+  environment and were not made. The browser runs answer from the page, so no
+  vendor was contacted there.
 - **No simulator run.** No Swift changed, and the device-lane changes are
   TypeScript the specs drive on the same text, so 0162's simulator gap stands
   as it was.

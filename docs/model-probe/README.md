@@ -105,9 +105,9 @@ variable, never its value: unset it and run again. `--dry-run` and
   rendered by the app's own registry from fixed fixture inputs:
   `categorySuggestion` 50, `searchQuery` 400, `csvMapping` 500, `suggestTags`
   600 and `categorizeTransactions` 800.
-- `--prompts receipt`, the default, sends **all five** receipt fixtures, on any
+- `--prompts receipt`, the default, sends **all seven** receipt fixtures, on any
   provider, as the Gemini run does. There is no flag for a single case, so a
-  receipt run costs five vision calls per model.
+  receipt run costs seven vision calls per model.
 - `--repeat N` (1 to 10, with 10 pinned as the bound) sends each prompt N times,
   because answers vary.
 - `--model <id>` takes any id, offered by the app or not, written the way the
@@ -227,7 +227,7 @@ image, and a diff shows what changed.
 | `none` | **No country cues anywhere.** The prompt says answer `""` when it cannot tell. A model that guesses instead would confidently mislabel receipts, so this case is the guard on the whole country feature. |
 | `long` | 34 items, and a printed total (¥12,723) that differs from the item sum (¥12,281). Pins [ADR 0013](../ADR/0013-the-printed-total-is-the-amount-not-the-item-sum.md) at the model. |
 | `cropped` | The same long receipt, physically cut off mid-item. The header survives; no printed total does. |
-| `refund`, `refund-tender` | **Device only** — `render.mjs` draws them, but they are not in `CASE_IDS`, so `probe.mjs` never sends them and `baseline.json` has no entry for them. A refund slip whose `TOTAL -$14.03` prints with a minus, plus the words a model reads (*REFUND*, *Returned to card ending 4242*); `refund-tender` adds an unmarked `VISA $14.03`, the same figure printed both ways. They are pictures for the on-device reader, pushed into the iOS simulator with `xcrun simctl addmedia`. Their lines are the ones `receipt-text-parser.spec.ts` pins, so the regex lane's answer is known: a credit for `refund`, an ambiguous purchase for `refund-tender`. |
+| `refund`, `refund-tender` | A refund slip whose `TOTAL -$14.03` prints with a minus, plus the words a model reads (*REFUND*, *Returned to card ending 4242*); `refund-tender` adds an unmarked `VISA $14.03`, the same figure printed both ways. Both expect `type` `income` and the total as the magnitude 14.03: the receipt prompts ask which way the money moved and the app reads the answer strictly, never the sign ([ADR 0185](../ADR/0185-a-refund-is-asked-about-at-every-door-and-a-category-follows-its-rows-side-there-and-back.md)). They are also pictures for the on-device reader, pushed into the iOS simulator with `xcrun simctl addmedia`; their lines are the ones `receipt-text-parser.spec.ts` pins, so the regex lane's answer is known: a credit for `refund`, an ambiguous purchase for `refund-tender`. |
 
 ## Confidence is not stable — read this before trusting a green run
 
@@ -262,7 +262,9 @@ so nobody ever sees a chip there at all.
 ## Reading a run
 
 `ok`/`FAIL` per field is measured against the expectations in `probe.mjs`, which
-encode what a correct answer looks like. The drift block underneath compares
+encode what a correct answer looks like. The `type` line prints the app's strict
+reading beside the word the model wrote, so an answer the reader refuses
+(`Refund`, `credit`) shows as `"expense"` with the model's word in brackets. The drift block underneath compares
 against `baseline.json` instead: expectations catch *wrong*, drift catches
 *different*, and a model update usually shows up as the second before it shows
 up as the first.

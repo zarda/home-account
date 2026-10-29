@@ -202,14 +202,19 @@ if (ARGS.opts.help) {
  * What each receipt fixture is for, and what a correct answer looks like.
  *
  * `total: null` means the receipt prints no total, so any number is invented —
- * see the cropped case, which is the one that matters most.
+ * see the cropped case, which is the one that matters most. `type` is the
+ * direction the receipt prints: a refund slip is `income`, read strictly off
+ * the model's `type` field (ADR 0185), never off the sign of the total, which
+ * the app takes as a magnitude.
  */
 const CASES = {
-  jp:      { country: 'JP', currency: 'JPY', total: 538,   why: 'Japanese conbini: address, phone, tax registration number, yen' },
-  kr:      { country: 'KR', currency: 'KRW', total: 10400, why: 'Korean cafe: address, phone, business number, won' },
-  none:    { country: '',   currency: '',    total: 6.85,  why: 'No country cues anywhere — the honest answer is "" and NOT a guess' },
-  long:    { country: 'JP', currency: 'JPY', total: 12723, why: '34 items; the printed total (12,723) differs from the item sum (12,281)' },
-  cropped: { country: 'JP', currency: 'JPY', total: null,  why: 'Cut off mid-item: the header survives, no printed total does' },
+  jp:      { country: 'JP', currency: 'JPY', total: 538,   type: 'expense', why: 'Japanese conbini: address, phone, tax registration number, yen' },
+  kr:      { country: 'KR', currency: 'KRW', total: 10400, type: 'expense', why: 'Korean cafe: address, phone, business number, won' },
+  none:    { country: '',   currency: '',    total: 6.85,  type: 'expense', why: 'No country cues anywhere — the honest answer is "" and NOT a guess' },
+  long:    { country: 'JP', currency: 'JPY', total: 12723, type: 'expense', why: '34 items; the printed total (12,723) differs from the item sum (12,281)' },
+  cropped: { country: 'JP', currency: 'JPY', total: null,  type: 'expense', why: 'Cut off mid-item: the header survives, no printed total does' },
+  'refund':        { country: '', currency: 'USD', total: 14.03, type: 'income', why: 'A refund slip: TOTAL -$14.03, REFUND, "Returned to card" — income, and the total a magnitude' },
+  'refund-tender': { country: '', currency: 'USD', total: 14.03, type: 'income', why: 'The same slip with VISA $14.03 printed unmarked below: still a refund to the model' },
 };
 
 /** The app's own threshold for "ask the user to check this figure". */
@@ -467,6 +472,7 @@ function buildAppApi() {
 export { renderPrompt, PROMPT_IDS, JSON_ONLY_PREAMBLE } from '${path.join(REPO, 'src/app/core/prompts/prompt-registry')}';
 export {
   readCountryCode, readCurrencyCode, readPrintedLocation, readReceiptTotal, readFieldConfidence,
+  readTransactionType, modelTypeGrade,
 } from '${path.join(REPO, 'src/app/core/utils/receipt-extraction.utils')}';
 export {
   acceptsSampling, OPENAI_MODELS, CLAUDE_MODELS,
@@ -906,7 +912,7 @@ function isObject(value) {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
-const DRIFT_FIELDS = ['country', 'currency', 'total'];
+const DRIFT_FIELDS = ['country', 'currency', 'total', 'type'];
 
 /**
  * Each receipt run against the baseline's one record per case. `runs` holds
@@ -1025,6 +1031,11 @@ async function runReceipts({ opts, api, model, send, recorder, fixtures = render
       const total = api.readReceiptTotal(parsed.receiptTotal ?? parsed.amount);
       const conf = api.readFieldConfidence(parsed) ?? {};
       const location = api.readPrintedLocation(parsed.location, parsed.merchant);
+      // Strict: exactly "income" is income, and anything else — a synonym, another
+      // casing, no answer — is an expense. The model's own word is kept beside the
+      // reading, so a near miss the strict reader refuses is visible as such.
+      const type = api.readTransactionType(parsed.type);
+      const typeGrade = api.modelTypeGrade(type);
 
       const countryOk = country === expect.country;
       const currencyOk = currency === expect.currency;
@@ -1033,10 +1044,14 @@ async function runReceipts({ opts, api, model, send, recorder, fixtures = render
       const totalOk = expect.total === null
         ? conf.amount !== undefined && conf.amount < VERIFY_FIELD_THRESHOLD
         : total === expect.total;
+      const typeOk = type === expect.type;
 
-      if (!countryOk || !currencyOk || !totalOk) failures++;
+      if (!countryOk || !currencyOk || !totalOk || !typeOk) failures++;
 
-      runs[id].push({ country, currency, total, amountConfidence: conf.amount, location, merchant: parsed.merchant, countryOk, currencyOk, totalOk });
+      runs[id].push({
+        country, currency, total, type, typeAnswered: parsed.type, amountConfidence: conf.amount, location, merchant: parsed.merchant,
+        countryOk, currencyOk, totalOk, typeOk,
+      });
 
       const flag = (ok) => (ok ? 'ok  ' : 'FAIL');
       say(`${label.padEnd(8)} ${expect.why}`);
@@ -1047,6 +1062,7 @@ async function runReceipts({ opts, api, model, send, recorder, fixtures = render
           ? `         ${flag(totalOk)} total    ${total} invented; amount confidence ${conf.amount} must be < ${VERIFY_FIELD_THRESHOLD} so the review chip fires`
           : `         ${flag(totalOk)} total    ${total} (want ${expect.total})`
       );
+      say(`         ${flag(typeOk)} type     ${JSON.stringify(type)} (want ${JSON.stringify(expect.type)}; the model wrote ${JSON.stringify(parsed.type)}${typeGrade === undefined ? '' : `; graded ${typeGrade}, asked about`})`);
       say(`         call     ${describeCall(call)}  parsed ${answerParsed ? 'yes' : 'NO'}`);
       say();
     }
@@ -1235,6 +1251,8 @@ async function selfTest() {
     throw new Error('the self-test reached the platform fetch, which would have sent a request to a vendor');
   };
   const output = captureOutput();
+  // Importing render.mjs loads no browser: Chromium is imported at a launch alone.
+  const { CASE_IDS: CASE_IDS_RENDERED } = await import('./render.mjs');
   // The real environment, under the tripwire: a canary set here is what an SDK would find there.
   const underlyingEnv = process.env;
   const keyReads = installKeyTripwire();
@@ -1553,6 +1571,20 @@ async function selfTest() {
   check(starved.stop === 'max_tokens' && starved.text === '' && sameList(starved.items, ['thinking']) && starved.reasoningTokens === 50,
     'a Claude answer that only thought records max_tokens, [thinking] and no text');
 
+  // The refund fixtures are sent like every other receipt, and judged on the
+  // direction too: the app's strict reader takes exactly "income" as income and
+  // every other word as an expense, so a near miss reads as the wrong side.
+  check(sameList(Object.keys(CASES), CASE_IDS_RENDERED),
+    'every fixture render.mjs draws has a case, the two refund slips included, and the probe sends each one');
+  check(['refund', 'refund-tender'].every(id => CASES[id].type === 'income' && CASES[id].total === 14.03)
+    && Object.keys(CASES).filter(id => CASES[id].type === 'expense').length === 5,
+  'the refund fixtures expect income and the magnitude 14.03, and the other five expect an expense');
+  const typeReadings = [['income', 'income'], ['expense', 'expense'], ['Income', 'expense'], ['refund', 'expense'], [undefined, 'expense']];
+  check(typeReadings.every(([answer, want]) => api.readTransactionType(answer) === want),
+    'the type is read strictly: "income" alone is income; "Income", "refund" and no answer are an expense');
+  check(api.modelTypeGrade('income') !== undefined && api.modelTypeGrade('income') < VERIFY_FIELD_THRESHOLD && api.modelTypeGrade('expense') === undefined,
+    'an income reading carries a grade under the review bar and an expense carries none');
+
   // A repeated receipt case: the run that drifted is reported though the last one did not.
   const drift = driftLines(
     { jp: { country: 'JP', currency: 'JPY', total: 538 } },
@@ -1560,6 +1592,14 @@ async function selfTest() {
   );
   check(sameList(drift, ['  jp#1.country: baseline "JP" -> now "KR"']),
     'the drift block compares every run of a repeated receipt case, each under its own label');
+  // A baseline recorded before the type was read reads as a drift on every case, so a run against the
+  // old baseline says so once per case rather than passing a reading the baseline never held.
+  const typeDrift = driftLines(
+    { refund: { country: '', currency: 'USD', total: 14.03 } },
+    { refund: [{ country: '', currency: 'USD', total: 14.03, type: 'income' }] },
+  );
+  check(sameList(typeDrift, ['  refund.type: baseline undefined -> now "income"']),
+    'the drift block reports a type the baseline never recorded');
   // And the run that drifted is the last one: a compare of the first run alone reads this as no drift.
   const lastDrift = driftLines(
     { jp: { country: 'JP', currency: 'JPY', total: 538 } },
