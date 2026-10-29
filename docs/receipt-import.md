@@ -1404,10 +1404,12 @@ names the image and the status it dropped, with the drain's warning beside it.
   receipt prompt asks which way the money moved, but the cloud has one
   reader: nothing reads the paper behind its answer, and a purchase carries
   no type grade, so nothing flags it. A purchase receipt with a refund line
-  inside nets to a purchase the same way. No keyed model has yet read a
-  refund through the new wording; the specs and the browser runs answer from
-  the page. The reviewer flips such a row on the card, or the user in the
-  form or the ledger.
+  inside nets to a purchase the same way. Two keyed runs of the default Gemini
+  vision model read the model probe's two refund slips as `income` at the
+  printed magnitude (`docs/model-probe/baseline.json`); no OpenAI or Claude
+  model has read them, and the specs and the browser runs answer from the
+  page. The reviewer flips such a row on the card, or the user in the form or
+  the ledger.
 - **The device's reading has its own limits.** A minus Vision did not read;
   a minus glued to kana, or to a Thai, Arabic, Hebrew or Devanagari label; a
   restated or labelled figure in parentheses that outranks the total and
