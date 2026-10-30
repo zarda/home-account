@@ -1290,5 +1290,133 @@ describe('FileDropzoneComponent, through its own template', () => {
         });
       }
     });
+
+    /**
+     * A row's move arrows, drag handle and remove button are glyphs, owed a
+     * graphic's 3:1 (WCAG 1.4.11). Karma serves no icon font, so axe scores
+     * each ligature as text, and a resting glyph is held to text's 4.5:1
+     * here as elsewhere. A fade by opacity would leave the handle at 2.3:1,
+     * so each rests at full strength in --text-muted. An arrow with nowhere
+     * to move is disabled, which no contrast bar covers (WCAG 1.4.3, and axe
+     * skips it), and stays fainter than one that moves.
+     */
+    it('rests a two-photo pick\'s move arrows, drag handles and remove buttons in --text-muted at AA on the row, in both themes', () => {
+      fixture.detectChanges();
+      dropFiles([imageFile('first.png'), imageFile('second.png')]);
+      const [first, second] = all('.file-item');
+      const icon = (control: Element | null | undefined) => control?.querySelector<HTMLElement>('mat-icon') ?? null;
+      const contrast = (glyph: HTMLElement) => ratio(paintedColor(glyph), paintedBackground(glyph));
+      const [firstUp, firstDown] = Array.from(first.querySelectorAll<HTMLButtonElement>('.reorder-btn'));
+      const [secondUp, secondDown] = Array.from(second.querySelectorAll<HTMLButtonElement>('.reorder-btn'));
+      expect([firstUp?.disabled, firstDown?.disabled, secondUp?.disabled, secondDown?.disabled])
+        .withContext('the arrows with nowhere to move')
+        .toEqual([true, false, false, true]);
+
+      const resting: [string, HTMLElement | null][] = [
+        ['the first photo\'s down arrow', icon(firstDown)],
+        ['the second photo\'s up arrow', icon(secondUp)],
+        ['the first photo\'s drag handle', icon(first.querySelector('.drag-handle'))],
+        ['the second photo\'s drag handle', icon(second.querySelector('.drag-handle'))],
+        ['the first photo\'s remove button', icon(first.querySelector('.remove-btn'))],
+        ['the second photo\'s remove button', icon(second.querySelector('.remove-btn'))],
+      ];
+      const disabled: [string, HTMLElement, HTMLElement][] = [
+        ['the first photo\'s up arrow', icon(firstUp) as HTMLElement, icon(firstDown) as HTMLElement],
+        ['the second photo\'s down arrow', icon(secondDown) as HTMLElement, icon(secondUp) as HTMLElement],
+      ];
+
+      for (const theme of THEMES) {
+        withTheme(theme, () => {
+          settleAnimations(document);
+          for (const [label, glyph] of resting) {
+            expectPainted(glyph, '--text-muted', `${theme} ${label} at rest`);
+          }
+          for (const [label, glyph, moving] of disabled) {
+            expect(contrast(glyph))
+              .withContext(`${theme} ${label}, disabled, against the arrow that moves`)
+              .toBeLessThan(contrast(moving));
+          }
+        });
+      }
+    });
+
+    /**
+     * Under the pointer each control takes a colour of its own: the arrows
+     * and the handle --text-primary, the remove button the error colour.
+     * Karma cannot hover, so each :hover rule's colour is set on what it
+     * styles and the glyph is measured against itself at rest. A hovered
+     * glyph is held to a graphic's 3:1; axe never hovers.
+     */
+    it('turns a hovered move arrow and drag handle --text-primary and a hovered remove button --color-error, apart from their resting colour, in both themes', () => {
+      fixture.detectChanges();
+      dropFiles([imageFile('first.png'), imageFile('second.png')]);
+      const row = all('.file-item')[1];
+      const arrow = row.querySelector<HTMLElement>('.reorder-btn:not(:disabled)') as HTMLElement;
+      const handle = row.querySelector<HTMLElement>('.drag-handle mat-icon') as HTMLElement;
+      const remove = row.querySelector<HTMLElement>('.remove-btn') as HTMLElement;
+      const controls = [
+        { label: 'move arrow', styled: arrow, glyph: arrow.querySelector<HTMLElement>('mat-icon') as HTMLElement, hovered: hoverValue(arrow, '.reorder-btn', 'color') },
+        { label: 'drag handle', styled: handle, glyph: handle, hovered: hoverValue(handle, '.drag-handle', 'color') },
+        { label: 'remove button', styled: remove, glyph: remove.querySelector<HTMLElement>('mat-icon') as HTMLElement, hovered: hoverValue(remove, '.remove-btn', 'color') },
+      ];
+      expect(controls.map(({ hovered }) => hovered))
+        .withContext('the arrow\'s, the handle\'s and the remove button\'s hover rules')
+        .toEqual(['var(--text-primary)', 'var(--text-primary)', 'var(--color-error)']);
+
+      for (const theme of THEMES) {
+        withTheme(theme, () => {
+          settleAnimations(document);
+          for (const { label, styled, glyph, hovered } of controls) {
+            const resting = paintedColor(glyph);
+            styled.style.color = hovered;
+            try {
+              const shown = paintedColor(glyph);
+              expect(shown).withContext(`${theme} the ${label} hovered, against itself at rest`).not.toEqual(resting);
+              expect(ratio(shown, paintedBackground(glyph)))
+                .withContext(`${theme} the ${label} hovered, on the row`)
+                .toBeGreaterThanOrEqual(3);
+            } finally {
+              styled.style.color = '';
+            }
+          }
+        });
+      }
+    });
+
+    // A lone file's row has no arrows or handle; its remove button rests as a
+    // photo's does, and its name, size and type read at text's bar.
+    it('rests a lone file\'s remove button in --text-muted at AA, and reads its name, size and type at AA, in both themes', () => {
+      fixture.detectChanges();
+      dropFiles([csvFile('rows.csv')]);
+      const row = all('.file-item')[0];
+
+      for (const theme of THEMES) {
+        withTheme(theme, () => {
+          settleAnimations(document);
+          expectPainted(row.querySelector<HTMLElement>('.remove-btn mat-icon'), '--text-muted', `${theme} the remove button at rest`);
+          expectPainted(row.querySelector<HTMLElement>('.file-name'), '--text-primary', `${theme} the name`);
+          expectPainted(row.querySelector<HTMLElement>('.file-size'), '--text-muted', `${theme} the size`);
+          expectPainted(row.querySelector<HTMLElement>('.file-type-label'), '--text-muted', `${theme} the type`);
+        });
+      }
+    });
+
+    // The rest of a photo's row reads in tokens that clear text's bar; the
+    // closest is the type chip on its own --surface-hover fill, 4.6:1 in dark.
+    it('reads a photo row\'s name, size, type and number at AA, in both themes', () => {
+      fixture.detectChanges();
+      dropFiles([imageFile('first.png'), imageFile('second.png')]);
+      const row = all('.file-item')[0];
+
+      for (const theme of THEMES) {
+        withTheme(theme, () => {
+          settleAnimations(document);
+          expectPainted(row.querySelector<HTMLElement>('.file-name'), '--text-primary', `${theme} the name`);
+          expectPainted(row.querySelector<HTMLElement>('.file-size'), '--text-muted', `${theme} the size`);
+          expectPainted(row.querySelector<HTMLElement>('.file-type-label'), '--text-muted', `${theme} the type`);
+          expectPainted(row.querySelector<HTMLElement>('.image-number'), '--text-inverse', `${theme} the number`);
+        });
+      }
+    });
   });
 });
