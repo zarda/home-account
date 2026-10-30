@@ -219,7 +219,8 @@ export interface CategorizedImportTransaction {
   suggestedCategoryId: string;
   categoryConfidence: number;
   /**
-   * How sure the model was that it read the amount and the date correctly,
+   * How sure the reader was that it read the amount and the date correctly
+   * (a cloud model's own report, or the device's policy: `readOnDevice`),
    * and — where something on the receipt spoke to it — the type.
    *
    * Separate from categoryConfidence, which is about where the transaction
@@ -233,6 +234,21 @@ export interface CategorizedImportTransaction {
    * said the row was other than the type it shows.
    */
   fieldConfidence?: FieldConfidence;
+  /**
+   * A review-step mark, never written: the row was read on the device, so
+   * its amount and date grades are the reader's policy (the text parser's
+   * evidence tiers and demotions, the cross-check's agreement and dispute
+   * grades), and no model reported them; on the regex lane no model ran at
+   * all. A doubted amount's flag then names the scan instead of quoting a
+   * percentage, as the type's flag always has (ADR 0162). A doubted date
+   * keeps the assumed wording on the card: the converter dates every grade
+   * under the bar today (`resolveImportDate`), so no device row reaches the
+   * card with a doubted date still standing, and the date's scan sentence
+   * is the form's. Set by `convertStrategyResultToCategories` from the
+   * row's `source`, carried by the spread through a split and a merge's
+   * target, and absent on every other door's rows.
+   */
+  readOnDevice?: true;
   /**
    * True when `currency` is the account's base currency because the source
    * reported none — a fallback, not a reading. The review step marks it the

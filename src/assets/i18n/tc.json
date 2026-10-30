@@ -1313,6 +1313,8 @@
     "verifyAmount": "請再確認此金額，AI 的辨識信心僅有 {{percent}}%",
     "verifyDate": "請再確認此日期，AI 的辨識信心僅有 {{percent}}%",
     "verifyType": "請再確認是收入還是支出，掃描無法確定這是消費還是退款",
+    "verifyAmountOnDevice": "請再確認此金額，掃描無法確定是否讀取正確",
+    "verifyDateOnDevice": "請再確認此日期，掃描無法確定是否讀取正確",
     "currencyFellBack": "未能從來源讀取貨幣 — 顯示你的基礎貨幣",
     "dateAssumedTooltip": "掃描的日期無法可靠讀取，因此這一列的日期設為今天 — 可在此保留或變更。",
     "dateImplausibleTooltip": "掃描的日期距離現在過去太久或未來太遠，不可能正確，因此這一列的日期設為今天 — 可在此保留或變更。",

@@ -51,6 +51,7 @@ import {
   blankImportRow,
   datedToday,
   descriptionIsUnfilled,
+  fieldDoubtSentence,
   joinSentences,
   mergeImportRows,
   mergeableRow,
@@ -925,15 +926,21 @@ export class TransactionPreviewTableComponent implements AfterViewInit {
   }
 
   /**
-   * Tooltip for a flagged field, carrying the percentage the model reported —
-   * except a date whose row already carries `dateAssumed`: the shown value
-   * is "now", not a reading, so a confidence percentage would describe a
-   * date that isn't there anymore. The assumed wording takes over instead.
+   * Tooltip for a flagged field, carrying the percentage a cloud model
+   * reported — except a date whose row already carries `dateAssumed`: the
+   * shown value is "now", not a reading, so a confidence percentage would
+   * describe a date that isn't there anymore. The assumed wording takes over
+   * instead.
    *
    * The type has a sentence of its own and no percentage. Its grade is the
    * device reader's policy rather than a measurement — every income verdict
    * it reaches is graded under the bar so that the reviewer is asked (ADR
-   * 0162) — and a percentage would report a reading nothing took.
+   * 0162) — and a percentage would report a reading nothing took. A row the
+   * device read (`readOnDevice`) grades its amount and date by policy too
+   * (the parser's tiers and demotions, the cross-check's 0.5 and 0.8), so
+   * their sentences name the scan, for the same reason. The order is the
+   * point: the type, then an assumed date, then the device, then the
+   * percentage.
    */
   verificationTooltip(
     transaction: CategorizedImportTransaction,
@@ -945,10 +952,11 @@ export class TransactionPreviewTableComponent implements AfterViewInit {
     if (field === 'date' && transaction.dateAssumed) {
       return this.dateAssumedTooltip(transaction);
     }
-    const percent = Math.round((transaction.fieldConfidence?.[field] ?? 0) * 100);
-    return this.translationService.t(
-      field === 'amount' ? 'import.verifyAmount' : 'import.verifyDate',
-      { percent }
+    return fieldDoubtSentence(
+      this.translationService.t.bind(this.translationService),
+      field,
+      !!transaction.readOnDevice,
+      transaction.fieldConfidence?.[field],
     );
   }
 
