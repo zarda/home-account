@@ -189,7 +189,7 @@ describe('ImportWizardComponent', () => {
     mockDuplicateService.checkDuplicates.and.resolveTo([]);
 
     mockShareIntake = jasmine.createSpyObj('ShareIntakeService', ['consumeAll']);
-    mockShareIntake.consumeAll.and.resolveTo([]);
+    mockShareIntake.consumeAll.and.resolveTo({ accepted: [], refused: [] });
     attempts = attemptStub();
     analytics = jasmine.createSpyObj<AnalyticsService>('AnalyticsService', ['trackReceiptConfirm']);
     routeStub = { snapshot: { queryParamMap: convertToParamMap({}) } };
@@ -292,7 +292,7 @@ describe('ImportWizardComponent', () => {
   describe('share intake', () => {
     it('consumes shared files when arriving from a share', fakeAsync(() => {
       const shared = [new File(['x'], 'shared.png', { type: 'image/png' })];
-      mockShareIntake.consumeAll.and.resolveTo(shared);
+      mockShareIntake.consumeAll.and.resolveTo({ accepted: shared, refused: [] });
       routeStub.snapshot = { queryParamMap: convertToParamMap({ source: 'share' }) };
 
       component.ngOnInit();

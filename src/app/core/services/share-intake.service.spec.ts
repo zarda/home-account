@@ -4,7 +4,7 @@ import { Router } from '@angular/router';
 import { Capacitor } from '@capacitor/core';
 import { EMPTY } from 'rxjs';
 
-import { IMPORT_FILE_MAX_BYTES, ShareIntakeService, isAcceptedShare } from './share-intake.service';
+import { IMPORT_FILE_MAX_BYTES, ShareIntakeService, shareRefusal } from './share-intake.service';
 import { ShareStashStore, StashedShare } from './share-stash.store';
 import { AuthService } from './auth.service';
 import { NativeShareService } from './native-share.service';
@@ -105,10 +105,11 @@ describe('ShareIntakeService', () => {
       stashedRow({ id: 's2', name: 'doc.pdf', type: 'application/pdf' })
     ]);
 
-    const files = await service.consumeAll();
+    const { accepted, refused } = await service.consumeAll();
 
-    expect(files.map(f => f.name)).toEqual(['receipt.png', 'doc.pdf']);
-    expect(files[0].type).toBe('image/png');
+    expect(accepted.map(f => f.name)).toEqual(['receipt.png', 'doc.pdf']);
+    expect(accepted[0].type).toBe('image/png');
+    expect(refused).toEqual([]);
     expect(stash.consume).toHaveBeenCalled();
   });
 
@@ -126,17 +127,17 @@ describe('ShareIntakeService', () => {
     });
     stash.consume.and.resolveTo([stashedRow(), oversized, executable]);
 
-    const files = await service.consumeAll();
+    const files = (await service.consumeAll()).accepted;
 
     expect(files.map(f => f.name)).toEqual(['receipt.png']);
   });
 
   it('accepts a csv by extension when the mime type is blank', () => {
-    expect(isAcceptedShare(new File(['a,b'], 'statement.csv', { type: '' }))).toBeTrue();
+    expect(shareRefusal(new File(['a,b'], 'statement.csv', { type: '' }))).toBeNull();
   });
 
   it('rejects an unknown type with an unknown extension', () => {
-    expect(isAcceptedShare(new File(['x'], 'movie.mkv', { type: 'video/x-matroska' }))).toBeFalse();
+    expect(shareRefusal(new File(['x'], 'movie.mkv', { type: 'video/x-matroska' }))).toBe('type');
   });
 
   describe('consumeNative', () => {
@@ -158,7 +159,7 @@ describe('ShareIntakeService', () => {
     it('builds a File carrying the mime type the sidecar recorded', async () => {
       nativeShare.consumePendingShares.and.resolveTo({ files: [sidecarFile()] });
 
-      const files = await service.consumeAll();
+      const files = (await service.consumeAll()).accepted;
 
       expect(files.length).toBe(1);
       expect(files[0].name).toBe('receipt.jpg');
@@ -173,7 +174,7 @@ describe('ShareIntakeService', () => {
       });
       nativeShare.consumePendingShares.and.resolveTo({ files: [sidecarFile(), stale] });
 
-      const files = await service.consumeAll();
+      const files = (await service.consumeAll()).accepted;
 
       expect(files.map(f => f.name)).toEqual(['receipt.jpg']);
     });
@@ -199,9 +200,7 @@ describe('ShareIntakeService', () => {
         files: [sidecarFile({ receivedAt: '' })]
       });
 
-      const files = await service.consumeAll();
-
-      expect(files).toEqual([]);
+      expect(await service.consumeAll()).toEqual({ accepted: [], refused: [] });
       expect(nativeShare.completePendingShares).toHaveBeenCalledWith({ ids: ['e1'] });
     });
 

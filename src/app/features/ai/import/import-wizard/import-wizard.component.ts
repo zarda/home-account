@@ -536,9 +536,9 @@ export class ImportWizardComponent implements OnInit, AfterViewInit, OnDestroy {
   }
 
   private async consumeSharedFiles(lostAlreadySaid: boolean): Promise<void> {
-    let files: File[];
+    let accepted: File[];
     try {
-      files = await this.shareIntake.consumeAll();
+      ({ accepted } = await this.shareIntake.consumeAll());
     } catch {
       // The files never reach the picker, so to the user this share is lost
       // as surely as one the worker could not stash.
@@ -547,8 +547,8 @@ export class ImportWizardComponent implements OnInit, AfterViewInit, OnDestroy {
       }
       return;
     }
-    if (files.length > 0) {
-      this.onFilesSelected(files);
+    if (accepted.length > 0) {
+      this.onFilesSelected(accepted);
     }
   }
 
