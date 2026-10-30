@@ -23,7 +23,7 @@ describe('LocaleFormatService', () => {
   }
 
   beforeEach(() => {
-    translation = jasmine.createSpyObj('TranslationService', ['getIntlLocale']);
+    translation = jasmine.createSpyObj('TranslationService', ['getIntlLocale', 't']);
     translation.getIntlLocale.and.returnValue('en-US');
 
     TestBed.configureTestingModule({
@@ -256,6 +256,69 @@ describe('LocaleFormatService', () => {
       expect(service.formatNumber(undefined)).toBe('');
       expect(service.formatNumber(Number.NaN)).toBe('');
       expect(service.formatNumber(Number.POSITIVE_INFINITY)).toBe('');
+    });
+  });
+
+  describe('file sizes', () => {
+    /** What Intl writes for `value` of `unit` in `tag`, asked the way the service asks. */
+    const unitIn = (tag: string, unit: string, value: number) =>
+      new Intl.NumberFormat(tag, { style: 'unit', unit, unitDisplay: 'short', maximumFractionDigits: 1 }).format(value);
+
+    beforeEach(() => {
+      translation.t.and.callFake((key: string, params?: Record<string, string | number>) =>
+        params ? `${key}:${JSON.stringify(params)}` : key);
+    });
+
+    // Red by mutation, as main has no formatFileSize.
+    // Mutation: unitDisplay 'long' ("10 megabytes").
+    it('writes the dropzone\'s 10 MB limit as Intl writes it in each language', () => {
+      expect(service.formatFileSize(10 * 1024 * 1024)).withContext('en').toBe('10 MB');
+      for (const tag of ['ja-JP', 'zh-Hant-TW']) {
+        useLocale(tag);
+        expect(service.formatFileSize(10 * 1024 * 1024)).withContext(tag).toBe(unitIn(tag, 'megabyte', 10));
+      }
+    });
+
+    // Red by mutation, as main has no formatFileSize.
+    // Mutation: steps of 1000, or two fraction digits.
+    it('steps by 1024 and keeps one decimal place', () => {
+      expect(service.formatFileSize(1024)).toBe(unitIn('en-US', 'kilobyte', 1));
+      expect(service.formatFileSize(1_000_000)).toBe(unitIn('en-US', 'kilobyte', 976.6));
+      expect(service.formatFileSize(1500 * 1024)).toBe(unitIn('en-US', 'megabyte', 1.5));
+      expect(service.formatFileSize(1024 ** 3)).toBe(unitIn('en-US', 'gigabyte', 1));
+      expect(service.formatFileSize(1024 ** 4)).toBe(unitIn('en-US', 'gigabyte', 1024));
+    });
+
+    // Mutation: the loop steps on the raw value, and 1,048,525 B reads 1,024 kB.
+    it('steps up where the figure would be written as 1,024 of its unit', () => {
+      expect(service.formatFileSize(1_048_524)).withContext('below the boundary').toBe(unitIn('en-US', 'kilobyte', 1023.9));
+      expect(service.formatFileSize(1_048_525)).withContext('kB to MB').toBe(unitIn('en-US', 'megabyte', 1));
+      expect(service.formatFileSize(1024 ** 3 - 50_000)).withContext('MB to GB').toBe(unitIn('en-US', 'gigabyte', 1));
+    });
+
+    // CLDR writes the byte in English for zh-Hant, and "281 byte" in short en.
+    // Red by mutation, as main has no formatFileSize.
+    // Mutation: the byte step through Intl's 'byte' unit.
+    it('reads the byte step from the catalog, its figure grouped in the active locale', () => {
+      expect(service.formatFileSize(0)).toBe('common.fileSizeBytes:{"size":"0"}');
+      expect(service.formatFileSize(281)).toBe('common.fileSizeBytes:{"size":"281"}');
+      expect(service.formatFileSize(1023)).toBe('common.fileSizeBytes:{"size":"1,023"}');
+    });
+
+    // Red by mutation, as main has no formatFileSize.
+    // Mutation: the absent-value guard removed.
+    it('writes nothing for an absent or non-finite size', () => {
+      expect(service.formatFileSize(null)).toBe('');
+      expect(service.formatFileSize(undefined)).toBe('');
+      expect(service.formatFileSize(Number.NaN)).toBe('');
+    });
+
+    // Red by mutation, as main has no formatFileSize.
+    // Mutation: the unit formatter's memo keyed on the unit alone.
+    it('follows a locale switch', () => {
+      expect(service.formatFileSize(1536)).withContext('en').toBe(unitIn('en-US', 'kilobyte', 1.5));
+      useLocale('ja-JP');
+      expect(service.formatFileSize(1536)).withContext('ja').toBe(unitIn('ja-JP', 'kilobyte', 1.5));
     });
   });
 

@@ -13,6 +13,7 @@ import {
   provideNoMotion,
   ratio,
   settleAnimations,
+  type TranslationStub,
   withTheme,
 } from '../../../../core/services/testing';
 
@@ -595,6 +596,19 @@ describe('FileDropzoneComponent, through its own template', () => {
     expect(text('.file-size')).toBe('common.fileSizeBytes:{"size":"3"}');
     expect(text('.file-type-label')).toBe('CSV');
     expect(text('.file-icon-wrapper mat-icon')).toBe('table_chart');
+  });
+
+  // A Japanese reader read "281 Bytes" beside each file, the one English
+  // word on the row. The byte step is the catalog's, its figure the locale's.
+  it('writes a small file\'s size in the reader\'s words', () => {
+    const stub = TestBed.inject(TranslationService) as unknown as TranslationStub;
+    const echo = stub.t;
+    stub.t = (key, params) => (key === 'common.fileSizeBytes' ? `${params?.['size']} バイト` : echo(key, params));
+    fixture.detectChanges();
+
+    dropFiles([new File(['x'.repeat(281)], 'receipt.csv', { type: 'text/csv' })]);
+
+    expect(text('.file-size')).toBe('281 バイト');
   });
 
   it('gives an image a thumbnail rather than an icon', () => {
