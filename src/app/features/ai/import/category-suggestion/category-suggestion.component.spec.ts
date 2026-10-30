@@ -513,6 +513,30 @@ describe('CategorySuggestionComponent, the chip through its own template', () =>
     }
   });
 
+  // The caret is a glyph, owed a graphic's 3:1 (WCAG 1.4.11). Karma serves no
+  // icon font, so axe scores its ligature as text, and a resting glyph is held
+  // to text's 4.5:1 here as elsewhere. It rests at full strength in the
+  // button's own colour, the colour the category's name is painted in.
+  it('draws the caret in the name\'s colour at AA or better on an unchecked, a checked and a flagged card, in both themes', () => {
+    const host = fixture.nativeElement as HTMLElement;
+    host.style.display = 'block';
+    const cards = ['--surface-background', '--surface-review-selected', '--surface-review-duplicate'];
+    const nameNode = fixture.nativeElement.querySelector('.category-name') as HTMLElement;
+
+    for (const card of cards) {
+      host.style.backgroundColor = `var(${card})`;
+      for (const theme of ['light', 'dark'] as const) {
+        withTheme(theme, () => {
+          settleAnimations(document);
+          expect(paintedColor(caret())).withContext(`${theme} caret on ${card}, against the name`).toEqual(paintedColor(nameNode));
+          expect(ratio(paintedColor(caret()), paintedBackground(caret())))
+            .withContext(`${theme} caret on ${card}`)
+            .toBeGreaterThanOrEqual(4.5);
+        });
+      }
+    }
+  });
+
   it('projects the caret after the name', () => {
     const follows = (a: Element, b: Element) =>
       !!(a.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING);
