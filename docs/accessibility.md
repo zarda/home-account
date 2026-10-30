@@ -958,30 +958,29 @@ items into each state it measures.
   selector express selection visually and have not been; the tab strips are
   audited for reachability and keyboard travel only, not for how selection is
   announced.
-- **The automated pass is a phone audit of eight routes.**
-  `app.smoke.spec.ts` runs axe-core (WCAG 2.1 A and AA, `color-contrast`
-  included) inside `expectPage`, so every page the walkthrough opens is
-  swept, once in each scheme, forced through `ThemeService`: a pair that
-  fails in only one theme fails on any host. Nothing it has found is frozen
-  any more. What it cannot see is stated in
+- **The automated pass is a phone audit of eight routes.** `app.smoke.spec.ts`
+  runs axe-core (WCAG 2.0 A and AA, axe's `wcag2a` and `wcag2aa` tags,
+  `color-contrast` included) inside `expectPage`, so every page the
+  walkthrough opens is swept, once in each scheme, forced through
+  `ThemeService`: a pair that fails in only one theme fails on any host.
+  Nothing it has found is frozen any more. What it cannot see is stated in
   [emulator-blind-spots.md](emulator-blind-spots.md): i18n is not served,
-  Karma's window is 756px, eight page-level rules are disabled because the
-  run is scoped to the routed element, and `color-contrast` scores nothing
-  below the fold of Karma's frame but the five nodes the walkthrough
-  scrolls into view (the next gap). `/login` is opened by the redirect case
-  and never audited; `/lock`, `/ai`, `/search-history`, `/import/file` and
+  Karma's window is 756px, eight page-level rules are disabled because the run
+  is scoped to the routed element, and `color-contrast` scores nothing below
+  the fold of Karma's frame but the five nodes the walkthrough scrolls into
+  view (the next gap). `/login` is opened by the redirect case and never
+  audited; `/lock`, `/ai`, `/search-history`, `/import/file` and
   `/import/history` are never opened. The import wizard's upload step with
-  photos picked and a refusal standing, its step headers under the phone
-  rule, and the review card with every kind of row are swept by their
-  component specs instead, in both schemes (*What is tested*); the empty
-  upload step and the review step around the card are swept by nothing. Nor
-  does it open a dialog, a category select or a menu, so the pickers, the
-  import review's category menu and the category dialog are held by their
-  component specs alone.
-  axe's `incomplete` results are not read, so a one-character text, or a
-  label axe finds overlapped by another element, is scored by no pass.
-  Everything outside that is still a hand-written spec, and nothing sweeps
-  for the next instance of a class nobody has met.
+  photos picked and a refusal standing, its step headers under the phone rule,
+  and the review card with every kind of row are swept by their component
+  specs instead, in both schemes (*What is tested*); the empty upload step and
+  the review step around the card are swept by nothing. Nor does it open a
+  dialog, a category select or a menu, so the pickers, the import review's
+  category menu and the category dialog are held by their component specs
+  alone. axe's `incomplete` results are not read, so a one-character text, or
+  a label axe finds overlapped by another element, is scored by no pass.
+  Everything outside that is still a hand-written spec, and nothing sweeps for
+  the next instance of a class nobody has met.
 - **The axe pass scores only what starts in Karma's frame, and five nodes
   below it.** Every page renders inside the shell's fixed scroller,
   `.main-container`, and axe counts a node under a fixed ancestor as
