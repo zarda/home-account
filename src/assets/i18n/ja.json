@@ -1381,6 +1381,8 @@
     "errorQueueWrite": "画像を後で処理するために保存できませんでした。もう一度お試しください。",
     "fileTooLarge": "{{name}} は上限の {{limit}} を超えています",
     "fileTypeUnsupported": "{{name}} は対応していないファイル形式です",
+    "fileEmpty": "{{name}} は空のファイルです",
+    "shareBackup": "{{name}} はバックアップです。ここで選んで取り込んでください",
     "errorQueueWritePartial": "一部の画像を後で処理するために保存できませんでした。保存できた画像は端末に残っており、オンラインに戻ると処理されます。",
     "errorInvalidKey": "AIのAPIキーが無効か期限切れです。設定 → AI処理 で更新してください。",
     "errorAnswerIncomplete": "レシートを読み終える前に出力の上限に達しました。もう一度、または写真の枚数を減らしてお試しください。",

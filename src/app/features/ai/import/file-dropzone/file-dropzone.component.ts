@@ -1,6 +1,7 @@
 import {
   ChangeDetectionStrategy,
   Component,
+  DestroyRef,
   ElementRef,
   EventEmitter,
   Injector,
@@ -19,7 +20,11 @@ import { MatIconModule } from '@angular/material/icon';
 import { MatButtonModule } from '@angular/material/button';
 import { CdkDragDrop, DragDropModule, moveItemInArray } from '@angular/cdk/drag-drop';
 import { TranslatePipe } from '../../../../shared/pipes/translate.pipe';
-import { IMPORT_FILE_MAX_BYTES } from '../../../../core/services/share-intake.service';
+import {
+  IMPORT_FILE_MAX_BYTES,
+  RefusedShare,
+  ShareRefusalReason,
+} from '../../../../core/services/share-intake.service';
 import { TranslationService } from '../../../../core/services/translation.service';
 import { looksLikeImageFile } from '../../../../core/utils/file.utils';
 
@@ -41,6 +46,7 @@ export class FileDropzoneComponent implements OnDestroy {
   private translationService = inject(TranslationService);
   private host = inject<ElementRef<HTMLElement>>(ElementRef);
   private injector = inject(Injector);
+  private destroyRef = inject(DestroyRef);
 
   @Input() acceptedTypes = '.csv,.pdf,.png,.jpg,.jpeg,.webp,.json';
   @Input() maxFileSize = IMPORT_FILE_MAX_BYTES;
@@ -121,29 +127,37 @@ export class FileDropzoneComponent implements OnDestroy {
   }
 
   private processFiles(files: File[]): void {
-    this.hasError.set(false);
-    this.errorMessage.set('');
+    if (this.take(files).length > 0) this.filesSelected.emit(this.selectedFiles());
+  }
+
+  // Checks each file, mints the previews, writes the banner and lists what
+  // passed, then returns what it took. The banner starts empty, unless
+  // `keepStanding` asks to keep a refusal it already shows: the new
+  // sentences, `refusals` first, are then added after that one.
+  private take(files: readonly File[], refusals: readonly string[] = [], keepStanding = false): File[] {
+    const errors: string[] = [];
+    if (keepStanding && this.hasError()) {
+      errors.push(this.errorMessage());
+    } else {
+      this.hasError.set(false);
+      this.errorMessage.set('');
+    }
+    errors.push(...refusals);
 
     const validFiles: File[] = [];
-    const errors: string[] = [];
 
     for (const file of files) {
       // Check file size. Both refusals are read by whoever tried to import,
       // so they come from the catalog like everything else on screen; the
       // file's own name is the one part that stays as the disk spells it.
       if (file.size > this.maxFileSize) {
-        errors.push(
-          this.translationService.t('import.fileTooLarge', {
-            name: file.name,
-            limit: this.formatFileSize(this.maxFileSize),
-          })
-        );
+        errors.push(this.refusal(file, 'tooLarge'));
         continue;
       }
 
       // Check file type
       if (!this.isValidFileType(file)) {
-        errors.push(this.translationService.t('import.fileTypeUnsupported', { name: file.name }));
+        errors.push(this.refusal(file, 'type'));
         continue;
       }
 
@@ -163,19 +177,40 @@ export class FileDropzoneComponent implements OnDestroy {
       this.errorMessage.set(errors.join('. '));
     }
 
-    if (validFiles.length > 0) {
-      if (this.multiple) {
-        this.selectedFiles.update(current => [...current, ...validFiles]);
-      } else {
-        // Single mode replaces the selection, so whatever it displaced has to
-        // be released — nothing else will ever refer to it again.
-        const kept = validFiles.slice(0, 1);
-        this.selectedFiles().forEach(f => {
-          if (!kept.includes(f)) this.revokePreview(f.name);
+    if (validFiles.length === 0) return [];
+    if (this.multiple) {
+      this.selectedFiles.update(current => [...current, ...validFiles]);
+      return validFiles;
+    }
+    // Single mode replaces the selection, so whatever it displaced has to
+    // be released — nothing else will ever refer to it again.
+    const kept = validFiles.slice(0, 1);
+    this.selectedFiles().forEach(f => {
+      if (!kept.includes(f)) this.revokePreview(f.name);
+    });
+    this.selectedFiles.set(kept);
+    return kept;
+  }
+
+  // One sentence per reason, each under a literal key: the catalog check
+  // reads only literal `t(` arguments. The zone's own two refusals come
+  // through here too, so a file refused upstream reads as one refused here.
+  private refusal(file: File, reason: ShareRefusalReason): string {
+    switch (reason) {
+      case 'tooLarge':
+        // The limit named is this zone's: the share gate's ceiling
+        // (IMPORT_FILE_MAX_BYTES) unless a host sets a smaller
+        // [maxFileSize], and the wizard does not.
+        return this.translationService.t('import.fileTooLarge', {
+          name: file.name,
+          limit: this.formatFileSize(this.maxFileSize),
         });
-        this.selectedFiles.set(kept);
-      }
-      this.filesSelected.emit(this.selectedFiles());
+      case 'backup':
+        return this.translationService.t('import.shareBackup', { name: file.name });
+      case 'type':
+        return this.translationService.t('import.fileTypeUnsupported', { name: file.name });
+      case 'empty':
+        return this.translationService.t('import.fileEmpty', { name: file.name });
     }
   }
 
@@ -242,6 +277,23 @@ export class FileDropzoneComponent implements OnDestroy {
       .filter(f => !kept.some(k => k.name === f.name && this.isImageFile(k)))
       .forEach(f => this.revokePreview(f.name));
     this.selectedFiles.set(kept);
+  }
+
+  // For a host that received files elsewhere (a share reaches the wizard,
+  // not this zone): they join this list as a pick's would, so the next add,
+  // remove or reorder emits them with the rest, and the files a gate
+  // upstream refused are named in this banner, after any refusal it still
+  // shows. A file already listed, or repeated in the batch, is taken once.
+  // It emits nothing: the host is the one asking, its selection is written
+  // from this list once the call returns, and an emit would run its handler
+  // over that selection twice. The host asks after an await, so the zone
+  // can be gone by then, and a preview minted once it is has no destroy
+  // left to release it: it takes nothing.
+  adopt(files: readonly File[], refused: readonly RefusedShare[] = []): File[] {
+    if (this.destroyRef.destroyed) return [];
+    const listed = this.selectedFiles();
+    const fresh = files.filter((f, i) => !listed.includes(f) && files.indexOf(f) === i);
+    return this.take(fresh, refused.map(r => this.refusal(r.file, r.reason)), true);
   }
 
   removeFile(file: File, event: Event): void {

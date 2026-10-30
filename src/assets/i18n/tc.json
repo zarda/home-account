@@ -1381,6 +1381,8 @@
     "errorQueueWrite": "無法儲存圖片以稍後處理，請重試。",
     "fileTooLarge": "{{name}} 超過 {{limit}} 的上限",
     "fileTypeUnsupported": "{{name}} 不是支援的檔案格式",
+    "fileEmpty": "{{name}} 是空白檔案",
+    "shareBackup": "{{name}} 是備份檔案，請在這裡選取以匯入",
     "errorQueueWritePartial": "部分圖片無法儲存以稍後處理。已成功儲存的圖片仍在裝置上，恢復連線後將自動處理。",
     "errorInvalidKey": "AI 的 API 金鑰無效或已過期。請在「設定 → AI 處理」中更新。",
     "errorAnswerIncomplete": "在讀完這張收據前就達到輸出上限。請再試一次，或減少一次上傳的相片數量。",
