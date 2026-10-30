@@ -246,6 +246,13 @@ describe('parseReceiptOcrText', () => {
       expect(r.amount).toBe(481);
       expect(r.amountConfidence).toBe(0.6);
     });
+
+    it('says it demoted the reading as cash tendered, and nothing where nothing demoted it', () => {
+      expect(parseReceiptOcrText('Shop\nTotal $481\nCash $500\nChange $19')).toEqual(
+        jasmine.objectContaining({ amountConfidence: 0.6, amountDemotion: 'tender' }),
+      );
+      expect('amountDemotion' in parseReceiptOcrText('Shop\n$100\n$8\n$108')).toBeFalse();
+    });
   });
 
   describe('which way the money moved', () => {

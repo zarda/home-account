@@ -359,4 +359,19 @@ describe('on-device receipt categories over the live catalog (smoke test)', () =
 
     expect(transaction.fieldConfidence?.date).toBe(0);
   });
+
+  it('a model total that differs from the total the text parser read past the cash handed over comes back flagged', async () => {
+    // The tendered sum moved the parser's reading off the cash it read beside
+    // a currency mark, so a model that reads the change instead disputes it
+    // (ADR 0186).
+    visionMock.recognizeText.and.resolveTo({
+      ...ocrResult,
+      text: 'Harbour Supplies\n01/15/2026\nTotal: $379.50\nCash $500.00\nChange $120.50',
+    });
+
+    const transaction = await scanAnswering(CUSTOM_NAME);
+
+    expect(transaction.amount).toBe(120.5);
+    expect(transaction.fieldConfidence).toEqual({ amount: REVIEW_AMOUNT_CONFIDENCE, date: 0.8 });
+  });
 });

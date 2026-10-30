@@ -323,6 +323,37 @@ describe('NativeReceiptService', () => {
         expect(result.transactions[0].fieldConfidence?.amount).toBeLessThan(VERIFY_FIELD_THRESHOLD);
       });
 
+      it('lifts a total the text parser read past cash tendered to the model grade', async () => {
+        // A pin: the tendered sum is arithmetic on the print, so a model that
+        // reads the same total backs it.
+        visionMock.recognizeText.and.resolveTo({ ...ocrResult, text: 'Shop\n$481\n$500\n$19' });
+        appleMock.parseReceiptText.and.resolveTo({
+          merchant: 'Cafe', date: '2026-01-15', amount: 481, currency: 'USD', category: '', details: '',
+        });
+
+        const result = await service.processImage(imageFile());
+
+        expect(result.transactions[0].fieldConfidence?.amount).toBe(0.8);
+      });
+
+      it('flags a model total that differs from a cash-tendered pick', async () => {
+        // The tendered sum moved the parser's reading off the largest figure it
+        // read beside a currency mark, so a model that reads the cash handed
+        // over, or the change, disputes a figure the print backs (ADR 0186).
+        visionMock.recognizeText.and.resolveTo({ ...ocrResult, text: 'Shop\n$481\n$500\n$19' });
+        for (const amount of [500, 19]) {
+          appleMock.parseReceiptText.and.resolveTo({
+            merchant: 'Cafe', date: '2026-01-15', amount, currency: 'USD', category: '', details: '',
+          });
+
+          const result = await service.processImage(imageFile());
+
+          expect(result.transactions[0].fieldConfidence?.amount)
+            .withContext(String(amount))
+            .toBe(REVIEW_AMOUNT_CONFIDENCE);
+        }
+      });
+
       it('grades a read date 0.8', async () => {
         const result = await service.processImage(imageFile());
 
