@@ -131,11 +131,11 @@
  *     would say the same.
  *
  * What it cannot see: a name built in TypeScript and bound as an expression;
- * any other key that names no item (only `common.moreActions` is known to be
- * item-less); a component stamped through `NgComponentOutlet`, a dialog or a
- * router outlet rather than by its selector; a repeat written as
- * `<ng-template ngFor>`; and a trigger with no `aria-label` at all, whose
- * name comes from its text.
+ * any other key that names no item on a trigger only its parent repeats (the
+ * sixth rule below takes any key, in a template's own repeats); a component
+ * stamped through `NgComponentOutlet`, a dialog or a router outlet rather than
+ * by its selector; a repeat written as `<ng-template ngFor>`; and a trigger
+ * with no `aria-label` at all, whose name comes from its text.
  *
  * A fifth rule puts a flag's tooltip within reach of the keyboard. MatTooltip
  * opens for a pointer and for keyboard focus, and a `mat-icon` takes focus
@@ -162,6 +162,44 @@
  * What it cannot see: a tooltip that arrives from a directive's host binding;
  * a `tabindex="-1"`, which is literal and passes although Tab skips it; and
  * whether the icon's ancestors are themselves the tab stop.
+ *
+ * A sixth rule widens the fourth from one key on one kind of control to any.
+ * A control stamped once per item whose `aria-label` is a catalog key with no
+ * parameters gives every copy the same name. The upload area had that shape:
+ * each file's row read "Move up", "Move down" and "Remove", and two photos
+ * from an iPhone are both image.jpg, so neither the buttons nor the rows could
+ * be told apart by ear. The rule: inside a repeat in its own template, a
+ * control does not take its whole name from one key with no parameters,
+ * bound (`[attr.aria-label]="'key' | translate"`) or interpolated
+ * (`aria-label="{{ 'key' | translate }}"`).
+ *
+ *   - **Only a control.** A button, a link, a form field, a Material toggle
+ *     or an element with a control's literal `role`: what a user acts on, so
+ *     what the name has to tell apart. A repeated status — the split
+ *     indicator's icon, a row's spinner — says the same thing of every item
+ *     and may say it in the same words.
+ *   - **Only a key with nothing beside it.** A key given parameters has a
+ *     slot for the item, and a key computed from the item
+ *     (`iconNameKeys[icon] | translate`) names it through the key. Whether a
+ *     slot is filled with something that tells the items apart is a reading
+ *     question: two photos named image.jpg need their place as well.
+ *   - **"Once per item" is read in the template only**: an `@for` block, or an
+ *     element under a repeating structural directive, as the fourth rule reads
+ *     it there. Its cross-template reading errs toward "repeated" — the
+ *     dashboard renders each card once through an `@switch` in its `@for` — and
+ *     here that would freeze controls that are not repeated at all.
+ *   - **A menu trigger the fourth rule reports is reported there**, once.
+ *   - **What it found and could not fix is frozen** in ITEMLESS_FROZEN, by
+ *     file and key with how many controls carry that key there (ADR 0145's
+ *     floor), the way check-i18n.mjs counts its English fallbacks. A hit no
+ *     row names fails, and so does a row whose count is not the tally: one
+ *     more control named by a frozen key, or one fixed and still on the
+ *     books. An edit that only moves a frozen control leaves the list alone.
+ *
+ * What it cannot see: a name built in TypeScript; a ternary between two bare
+ * keys; a control repeated only by its parent's repeat, such as the goal
+ * card's edit and delete buttons, stamped once per goal by the goals page;
+ * and a name that comes from `aria-labelledby` or from the control's text.
  *
  * Reference documentation lives in docs/accessibility.md.
  */
@@ -506,6 +544,255 @@ export function scanMenuTriggers(source, componentRepeated = false) {
   return hits;
 }
 
+/** The elements the sixth rule counts as controls by their tag alone. */
+const CONTROL_TAGS = new Set([
+  'a', 'button', 'input', 'select', 'textarea',
+  'mat-select', 'mat-checkbox', 'mat-slide-toggle', 'mat-radio-button',
+]);
+
+/** A literal `role` that makes any element a control. */
+const CONTROL_ROLE = /(?<![\w.[-])role\s*=\s*"(?:button|link|checkbox|switch|radio|menuitem|tab)"/;
+
+/**
+ * Each `aria-label` in a tag with its value, the first group saying how it is
+ * written: `[attr.aria-label]` or `[aria-label]` bound, `aria-label` literal.
+ */
+const LABEL_ATTR = /(\[(?:attr\.)?aria-label\]|(?<![\w.[-])aria-label)\s*=\s*(?:"([^"]*)"|'([^']*)')/g;
+
+/** A bound label that is one quoted key piped through translate, and nothing else. */
+const BARE_KEY_BOUND = /^\s*(['"])([\w.-]+)\1\s*\|\s*translate\s*$/;
+
+/** A literal label that is one interpolation of the same, and nothing else. */
+const BARE_KEY_INTERPOLATED = /^\s*\{\{\s*(['"])([\w.-]+)\1\s*\|\s*translate\s*\}\}\s*$/;
+
+/**
+ * The key a tag's `aria-label` consists of when it is one catalog key with no
+ * parameters, with the label's offset in `attrs`; null otherwise.
+ */
+function bareKeyLabel(attrs) {
+  for (const label of attrs.matchAll(LABEL_ATTR)) {
+    const shape = label[1].startsWith('[') ? BARE_KEY_BOUND : BARE_KEY_INTERPOLATED;
+    const key = shape.exec(label[2] ?? label[3])?.[2];
+    if (key) return { key, index: label.index };
+  }
+  return null;
+}
+
+/**
+ * Every control stamped once per item in this template whose `aria-label` is
+ * one catalog key with no parameters. `line` is the label's own line, which is
+ * where a finding is reported. A menu trigger the fourth rule reports is left
+ * to it. Returns `{ line, tag, key }` for each.
+ */
+export function scanItemlessLabels(source) {
+  const hits = [];
+  walkTemplate(source, ({ name, attrs, line, repeated }) => {
+    if (!repeated) return;
+    if (!CONTROL_TAGS.has(name) && !CONTROL_ROLE.test(attrs)) return;
+    if (MENU_TRIGGER.test(attrs) && itemlessName(attrs)) return;
+    const label = bareKeyLabel(attrs);
+    if (!label) return;
+    const before = attrs.slice(0, label.index);
+    hits.push({ line: line + before.split('\n').length - 1, tag: name, key: label.key });
+  });
+  return hits;
+}
+
+/**
+ * Per-item controls named by a key with no parameters that the sixth rule
+ * found when it landed, outside what that change fixed. Each row is a file, a
+ * key, how many controls in that file carry it, and what repeats them. Empty
+ * is the goal: a row is a debt with a name, and it goes when its controls name
+ * their item.
+ */
+export const ITEMLESS_FROZEN = [
+  {
+    file: 'src/app/features/about/about.component.html',
+    key: 'about.feedback.deleteLabel',
+    count: 1,
+    why: 'one delete button per sent feedback entry on the About page',
+  },
+  {
+    file: 'src/app/features/ai/import/transaction-preview-table/transaction-preview-table.component.html',
+    key: 'import.notADuplicate',
+    count: 1,
+    why: 'one per review card row marked as a possible duplicate',
+  },
+  {
+    file: 'src/app/features/ai/import/transaction-preview-table/transaction-preview-table.component.html',
+    key: 'common.description',
+    count: 1,
+    why: 'each review card row\'s description field, while it is edited',
+  },
+  {
+    file: 'src/app/features/ai/import/transaction-preview-table/transaction-preview-table.component.html',
+    key: 'common.amount',
+    count: 1,
+    why: 'each review card row\'s amount field, while it is edited',
+  },
+  {
+    file: 'src/app/features/ai/import/transaction-preview-table/transaction-preview-table.component.html',
+    key: 'import.splitAmount',
+    count: 1,
+    why: 'each review card row\'s split amount field, while a split is edited',
+  },
+  {
+    file: 'src/app/features/ai/import/transaction-preview-table/transaction-preview-table.component.html',
+    key: 'import.placeName',
+    count: 1,
+    why: 'each review card row\'s place field, while it is edited',
+  },
+  {
+    file: 'src/app/features/ai/import/transaction-preview-table/transaction-preview-table.component.html',
+    key: 'import.removeLocation',
+    count: 1,
+    why: 'one per review card row that carries a place',
+  },
+  {
+    file: 'src/app/features/ai/import/transaction-preview-table/transaction-preview-table.component.html',
+    key: 'import.dismissCurrencySuggestion',
+    count: 1,
+    why: 'one per review card row that carries a currency suggestion',
+  },
+  {
+    file: 'src/app/features/ai/import/transaction-preview-table/transaction-preview-table.component.html',
+    key: 'import.newTag',
+    count: 1,
+    why: 'each review card row\'s new tag field, while a tag is added',
+  },
+  {
+    file: 'src/app/features/ai/import/transaction-preview-table/transaction-preview-table.component.html',
+    key: 'import.notes',
+    count: 1,
+    why: 'each review card row\'s notes field, where its notes are shown',
+  },
+  {
+    file: 'src/app/features/ai/search-history/search-answer-history.component.html',
+    key: 'common.delete',
+    count: 1,
+    why: 'one delete button per saved answer in the search history',
+  },
+  {
+    file: 'src/app/features/budgets/goals/goal-form/goal-form.component.html',
+    key: 'common.delete',
+    count: 1,
+    why: 'one delete button per item row on the goal form',
+  },
+  {
+    file: 'src/app/features/reports/insights/recurring-list/recurring-list.component.html',
+    key: 'insights.convertToRule',
+    count: 1,
+    why: 'one per recurring group in the insights list',
+  },
+  {
+    file: 'src/app/features/reports/insights/recurring-list/recurring-list.component.html',
+    key: 'insights.showTransactions',
+    count: 1,
+    why: 'one per recurring group in the insights list',
+  },
+  {
+    file: 'src/app/features/transactions/camera-capture/camera-capture.component.html',
+    key: 'common.moveUp',
+    count: 1,
+    why: 'one per captured photo in the camera capture',
+  },
+  {
+    file: 'src/app/features/transactions/camera-capture/camera-capture.component.html',
+    key: 'common.moveDown',
+    count: 1,
+    why: 'one per captured photo in the camera capture',
+  },
+  {
+    file: 'src/app/features/transactions/camera-capture/camera-capture.component.html',
+    key: 'common.remove',
+    count: 1,
+    why: 'one per captured photo in the camera capture',
+  },
+  {
+    file: 'src/app/features/transactions/receipt-images/receipt-image-manager.component.html',
+    key: 'receiptImages.removeAllImages',
+    count: 1,
+    why: 'one per transaction in the receipt image manager',
+  },
+  {
+    file: 'src/app/features/transactions/receipt-images/receipt-image-manager.component.html',
+    key: 'receiptImages.convertToNote',
+    count: 1,
+    why: 'one per image of a transaction in the receipt image manager',
+  },
+  {
+    file: 'src/app/features/transactions/receipt-images/receipt-image-manager.component.html',
+    key: 'receiptImages.removeImage',
+    count: 1,
+    why: 'one remove button per image of a transaction in the receipt image manager',
+  },
+  {
+    file: 'src/app/features/transactions/transaction-filters/transaction-filters.component.html',
+    key: 'transactions.removeSearch',
+    count: 2,
+    why: 'one remove button per saved search, and one per recent search, in the search suggestions',
+  },
+  {
+    file: 'src/app/features/transactions/transaction-form/transaction-form.component.html',
+    key: 'common.remove',
+    count: 1,
+    why: 'one per pending receipt photo on the transaction form',
+  },
+  {
+    file: 'src/app/features/transactions/transaction-form/transaction-form.component.html',
+    key: 'receiptImages.convertToNote',
+    count: 1,
+    why: 'one per stored receipt image on the transaction form',
+  },
+  {
+    file: 'src/app/features/transactions/transaction-form/transaction-form.component.html',
+    key: 'receiptImages.removeImage',
+    count: 1,
+    why: 'one remove button per stored receipt image on the transaction form',
+  },
+  {
+    file: 'src/app/features/transactions/transaction-list/transaction-list.component.html',
+    key: 'transactions.viewNote',
+    count: 1,
+    why: 'one per desktop table row that carries a note',
+  },
+  {
+    file: 'src/app/features/transactions/transaction-list/transaction-list.component.html',
+    key: 'transactions.viewReceipt',
+    count: 1,
+    why: 'one per desktop table row that carries a receipt',
+  },
+  {
+    file: 'src/app/shared/components/ai-search-dialog/ai-search-dialog.component.html',
+    key: 'common.delete',
+    count: 1,
+    why: 'one delete button per answer in the search dialog\'s history',
+  },
+];
+
+/**
+ * Sets one rule's hits (`{ site, tag, key }`, `site` a repo-relative
+ * `file:line`) against its frozen rows. A hit and a row match on the hit's
+ * file and their key, so a frozen control that only moves still matches.
+ * Hits are tallied per row: `fresh` are the hits no row names, and `drift` the
+ * rows whose tally is not their count (a tally of 0 is a row with nothing left
+ * to freeze), each with the sites it matched. Both fail.
+ */
+export function againstFrozen(hits, frozen) {
+  const fileOf = (site) => site.slice(0, site.lastIndexOf(':'));
+  const matched = frozen.map(() => []);
+  const fresh = [];
+  for (const hit of hits) {
+    const index = frozen.findIndex((row) => row.file === fileOf(hit.site) && row.key === hit.key);
+    if (index === -1) fresh.push(hit);
+    else matched[index].push(hit.site);
+  }
+  const drift = frozen
+    .map((row, index) => ({ file: row.file, key: row.key, count: row.count, sites: matched[index] }))
+    .filter((row) => row.sites.length !== row.count);
+  return { fresh, drift };
+}
+
 /**
  * Which templates belong to a component rendered once per item somewhere.
  * `templates` is a list of `{ key, selector, source }`, `selector` being the
@@ -681,6 +968,18 @@ function run() {
     }
   }
 
+  // The per-item rule reads each template's own repeats, and sets what it
+  // finds against the rows frozen when it landed.
+  const itemless = [];
+  for (const template of sources) {
+    for (const hit of scanItemlessLabels(template.source)) {
+      itemless.push({ site: `${template.key}:${hit.line + template.offset}`, tag: hit.tag, key: hit.key });
+    }
+  }
+  const { fresh, drift } = againstFrozen(itemless, ITEMLESS_FROZEN);
+  for (const hit of fresh) findings.push({ rule: 'itemless', site: hit.site, tag: hit.tag, key: hit.key });
+  for (const row of drift) findings.push({ rule: 'itemless-drift', site: row.file, ...row });
+
   const templates = files.filter((file) => file.endsWith('.html')).length;
   console.log(
     `Checked ${icons} mat-icon tag(s) across ${templates} template(s) and ` +
@@ -700,6 +999,11 @@ function run() {
     `Checked ${tooltipFlags} named icon(s) with a tooltip: ${reachableFlags} take focus ` +
       `or are stamped through an ng-template.`
   );
+  console.log(
+    `Checked the controls stamped once per item across ${sources.length} template(s): ` +
+      `${itemless.length} take their name from a key with no parameters, ` +
+      `${ITEMLESS_FROZEN.reduce((sum, row) => sum + row.count, 0)} frozen by name.`
+  );
 
   if (findings.length > 0) {
     findings.sort((a, b) => a.site.localeCompare(b.site));
@@ -708,6 +1012,8 @@ function run() {
     const optionFindings = findings.filter((f) => f.rule === 'option');
     const menuFindings = findings.filter((f) => f.rule === 'menu');
     const tooltipFindings = findings.filter((f) => f.rule === 'tooltip');
+    const itemlessFindings = findings.filter((f) => f.rule === 'itemless');
+    const driftFindings = findings.filter((f) => f.rule === 'itemless-drift');
 
     if (iconFindings.length > 0) {
       console.error(`\n${iconFindings.length} icon(s) carry a name nothing can read:\n`);
@@ -796,6 +1102,45 @@ function run() {
       );
     }
 
+    if (itemlessFindings.length > 0) {
+      console.error(`\n${itemlessFindings.length} repeated control(s) take a name that names no item:\n`);
+      for (const finding of itemlessFindings) {
+        console.error(`  ${finding.site}  <${finding.tag}> '${finding.key}' | translate`);
+        console.error(`    → give the key a slot for the item and fill it, as 'import.removeFileLabel' | translate: { position: i + 1, name: file.name }\n`);
+      }
+      console.error(
+        `A control stamped once per item takes its whole name from its aria-label,\n` +
+          `and a key with no parameters gives every copy the same one: a screen\n` +
+          `reader moving down the list hears the same button again and nothing that\n` +
+          `says which item it acts on. Name the item through the key's parameters,\n` +
+          `as the upload area's remove and move buttons do, with whatever tells two\n` +
+          `items apart (two photos from an iPhone are both image.jpg, so those name\n` +
+          `the file's place too). A site that cannot be fixed in the same change is\n` +
+          `frozen in ITEMLESS_FROZEN with its reason (ADR 0145).\n` +
+          `Reference: ${DOC}.\n`
+      );
+    }
+
+    if (driftFindings.length > 0) {
+      console.error(`\n${driftFindings.length} frozen per-item label row(s) no longer match their count:\n`);
+      for (const finding of driftFindings) {
+        console.error(`  ${finding.file}  '${finding.key}'  frozen ${finding.count}, found ${finding.sites.length}`);
+        for (const site of finding.sites) console.error(`    at ${site}`);
+        console.error(
+          finding.sites.length > finding.count
+            ? `    → name the item in the new control's key instead of freezing it\n`
+            : `    → lower the row's count to what is left, or drop the row if nothing is\n`
+        );
+      }
+      console.error(
+        `ITEMLESS_FROZEN counts the frozen controls per file and key. A tally above\n` +
+          `the count is a new control named by a frozen key; a tally below it is a\n` +
+          `fixed debt still on the books, and the list is edited in the same commit\n` +
+          `as the template. An edit that only moves a frozen control changes nothing.\n` +
+          `Reference: ${DOC}.\n`
+      );
+    }
+
     process.exit(1);
   }
 
@@ -803,7 +1148,8 @@ function run() {
     `Every named mat-icon carries a literal aria-hidden, every progress indicator ` +
       `carries a name or is hidden inside the control that already announces it, ` +
       `every option icon sits beside its option's name, every repeated menu ` +
-      `button names its item, and every tooltip icon takes focus.`
+      `button names its item, every tooltip icon takes focus, and every control ` +
+      `stamped once per item names its item or is frozen by name.`
   );
 }
 
@@ -1263,6 +1609,164 @@ function selfTest() {
     []
   );
   check('a commented-out flag is not a flag', tooltipLines('<!-- ' + FLAG + ' -->'), []);
+
+  // --- the per-item rule: must hit ---
+  const itemlessLines = (source) => scanItemlessLabels(source).map((hit) => hit.line);
+  const REMOVE = '<button mat-icon-button [attr.aria-label]="\'common.remove\' | translate">x</button>';
+
+  check(
+    'a bare key on a button in an @for, the upload area\'s remove button',
+    itemlessLines(`@for (file of files(); track file) {\n  <div class="file-item">\n    ${REMOVE}\n  </div>\n}`),
+    [3]
+  );
+  check(
+    'the line reported is the label\'s, the tag spread over several lines',
+    scanItemlessLabels(
+      '@for (file of files(); track file; let i = $index) {\n  <button\n    mat-icon-button\n' +
+        '    (click)="moveFileUp(i, $event)"\n    [attr.aria-label]="\'common.moveUp\' | translate"\n  >x</button>\n}'
+    ),
+    [{ line: 5, tag: 'button', key: 'common.moveUp' }]
+  );
+  check(
+    'the interpolated literal form',
+    itemlessLines(`@for (s of searches; track s.id) {\n  <button aria-label="{{ 'transactions.removeSearch' | translate }}">x</button>\n}`),
+    [2]
+  );
+  check(
+    'a form field in a repeated row',
+    itemlessLines(`@for (row of rows; track row.id) {\n  <input matInput [attr.aria-label]="'common.amount' | translate">\n}`),
+    [2]
+  );
+  check(
+    'an element with a control\'s role',
+    itemlessLines(`@for (c of chips; track c) {\n  <span role="button" tabindex="0" [attr.aria-label]="'common.remove' | translate"></span>\n}`),
+    [2]
+  );
+  check(
+    'a table cell stamped by *matCellDef',
+    itemlessLines(`<td mat-cell *matCellDef="let t">\n  @if (t.note) {\n    <button [attr.aria-label]="'transactions.viewNote' | translate">x</button>\n  }\n</td>`),
+    [3]
+  );
+  check(
+    'a menu trigger named by another bare key, which the fourth rule does not read',
+    itemlessLines(`@for (b of list; track b.id) {\n  <button [matMenuTriggerFor]="m" [attr.aria-label]="'common.options' | translate">x</button>\n}`),
+    [2]
+  );
+
+  // --- the per-item rule: must not hit (the load-bearing half) ---
+  check(
+    'a parameterised key names its item, the fixed upload area',
+    itemlessLines(
+      `@for (file of files(); track file; let i = $index) {\n  <button [attr.aria-label]="'import.removeFileLabel' | translate: { position: i + 1, name: file.name }">x</button>\n}`
+    ),
+    []
+  );
+  check(
+    'a key computed from the item names it through the key',
+    itemlessLines(`@for (icon of icons; track icon) {\n  <button [attr.aria-label]="iconNameKeys[icon] | translate">x</button>\n}`),
+    []
+  );
+  check('a bare key outside any repeat, a page\'s own button', itemlessLines(`<div class="toolbar">\n  ${REMOVE}\n</div>`), []);
+  check(
+    'a bare key after its @for has closed',
+    itemlessLines(`@for (f of files; track f) {\n  <span>{{ f.name }}</span>\n}\n${REMOVE}`),
+    []
+  );
+  check(
+    'a bare key in the @empty branch, which renders once',
+    itemlessLines(`@for (f of files; track f) {\n  <span>{{ f.name }}</span>\n} @empty {\n  ${REMOVE}\n}`),
+    []
+  );
+  check(
+    'a repeated status that is not a control, the split indicator',
+    itemlessLines(
+      `@for (t of rows; track t.id) {\n  <mat-icon role="img" aria-hidden="false" [attr.aria-label]="'transactions.splitPart' | translate">call_split</mat-icon>\n}`
+    ),
+    []
+  );
+  check(
+    'a repeated spinner is a status too',
+    itemlessLines(`@for (g of groups; track g.id) {\n  <mat-spinner diameter="16" [attr.aria-label]="'receipts.loading' | translate"></mat-spinner>\n}`),
+    []
+  );
+  check(
+    'a literal label holding pipe text is literal text, not a key',
+    itemlessLines(`@for (f of files; track f) {\n  <button aria-label="'common.remove' | translate">x</button>\n}`),
+    []
+  );
+  check(
+    'a repeated "More actions" trigger is the fourth rule\'s, and is reported there once',
+    [
+      itemlessLines(`@for (c of list; track c.id) {\n  ${BARE}</button>\n}`),
+      menuLines(`@for (c of list; track c.id) {\n  ${BARE}</button>\n}`),
+    ],
+    [[], [2]]
+  );
+  check(
+    'a commented-out repeated button is not a button',
+    itemlessLines(`<!-- @for (f of files; track f) { ${REMOVE} } -->`),
+    []
+  );
+
+  // --- the per-item rule: the frozen list ---
+  const row = { file: 'src/app/x.component.html', key: 'common.remove', count: 1, why: 'a fixture row' };
+  const hitAt = (site, key = 'common.remove') => ({ site, tag: 'button', key });
+  const driftOf = (sites, frozen = row) => ({ file: frozen.file, key: frozen.key, count: frozen.count, sites });
+
+  check(
+    'a hit no row names fails',
+    againstFrozen([hitAt('src/app/y.component.html:7')], []),
+    { fresh: [hitAt('src/app/y.component.html:7')], drift: [] }
+  );
+  check('a frozen control passes', againstFrozen([hitAt('src/app/x.component.html:3')], [row]), { fresh: [], drift: [] });
+  check(
+    'a frozen control that an edit above it moved still passes',
+    againstFrozen([hitAt('src/app/x.component.html:41')], [row]),
+    { fresh: [], drift: [] }
+  );
+  check(
+    'a frozen row that matches nothing any more fails',
+    againstFrozen([], [row]),
+    { fresh: [], drift: [driftOf([])] }
+  );
+  check(
+    'one more control named by a frozen key in the same file fails',
+    againstFrozen([hitAt('src/app/x.component.html:3'), hitAt('src/app/x.component.html:9')], [row]),
+    { fresh: [], drift: [driftOf(['src/app/x.component.html:3', 'src/app/x.component.html:9'])] }
+  );
+  check(
+    'a frozen key in another file is not frozen there',
+    againstFrozen([hitAt('src/app/x.component.html:3'), hitAt('src/app/y.component.html:3')], [row]),
+    { fresh: [hitAt('src/app/y.component.html:3')], drift: [] }
+  );
+  check(
+    'a frozen control whose key changed is not the frozen one',
+    againstFrozen([hitAt('src/app/x.component.html:3', 'common.delete')], [row]),
+    { fresh: [hitAt('src/app/x.component.html:3', 'common.delete')], drift: [driftOf([])] }
+  );
+  check(
+    'a row frozen at two controls passes at two and fails at one',
+    [
+      againstFrozen([hitAt('src/app/x.component.html:3'), hitAt('src/app/x.component.html:9')], [{ ...row, count: 2 }]),
+      againstFrozen([hitAt('src/app/x.component.html:9')], [{ ...row, count: 2 }]),
+    ],
+    [
+      { fresh: [], drift: [] },
+      { fresh: [], drift: [driftOf(['src/app/x.component.html:9'], { ...row, count: 2 })] },
+    ]
+  );
+  check(
+    'every frozen row names its file, its key, a count and why it repeats',
+    ITEMLESS_FROZEN.filter(
+      (r) => !/^src\/app\/.+\.(html|ts)$/.test(r.file) || !r.key || !(Number.isInteger(r.count) && r.count > 0) || !r.why
+    ),
+    []
+  );
+  check(
+    'no file and key is frozen twice',
+    ITEMLESS_FROZEN.map((r) => `${r.file} ${r.key}`).filter((pair, i, pairs) => pairs.indexOf(pair) !== i),
+    []
+  );
 
   const failed = cases.filter((c) => !c.ok);
   for (const c of cases) {
