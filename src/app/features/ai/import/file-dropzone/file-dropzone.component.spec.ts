@@ -105,6 +105,25 @@ describe('FileDropzoneComponent', () => {
   });
 
   describe('image preview lifetime', () => {
+    // Two iOS captures are both image.jpg. Each is a row of its own, so each
+    // keeps a preview of its own: the second pick takes nothing from the
+    // first, and the first's blob is still the one its row shows.
+    it('gives each of two same-named photos its own preview, and releases neither', () => {
+      const first = image('receipt.jpg');
+      const second = image('receipt.jpg');
+      select(first);
+      const firstPreview = component.getFilePreview(first);
+      const revoke = spyOn(URL, 'revokeObjectURL');
+
+      select(second);
+
+      expect(firstPreview).withContext('the first photo\'s preview').toMatch(/^blob:/);
+      expect(component.getFilePreview(first)).withContext('the first photo\'s preview, after the second pick').toBe(firstPreview);
+      expect(component.getFilePreview(second)).withContext('the second photo\'s preview').toMatch(/^blob:/);
+      expect(component.getFilePreview(second)).withContext('the second photo\'s preview').not.toBe(firstPreview);
+      expect(revoke).withContext('a blob a row still shows').not.toHaveBeenCalled();
+    });
+
     // PIN: passes before the fix, and has to keep passing after it. Mutation
     // run and seen failing: the single-mode revoke skipped.
     it('releases what it displaces when only one file is allowed', () => {
@@ -118,6 +137,42 @@ describe('FileDropzoneComponent', () => {
 
       expect(revoke).toHaveBeenCalledOnceWith(firstPreview);
       expect(component.selectedFiles().map(f => f.name)).toEqual(['second.jpg']);
+    });
+
+    // Single mode lists one photo of a pick, so it mints one preview: a blob
+    // for a photo it leaves off the list would live until the zone goes.
+    it('mints a preview only for the photo it keeps when only one file is allowed', () => {
+      component.multiple = false;
+      const first = image('first.jpg');
+      const second = image('second.jpg');
+      const mint = spyOn(URL, 'createObjectURL').and.callThrough();
+
+      select(first, second);
+
+      // By identity: two empty Files are equal to toEqual.
+      expect(mint.calls.count()).withContext('the previews minted').toBe(1);
+      expect(mint.calls.argsFor(0)[0]).withContext('the photo previewed').toBe(first);
+      expect(component.getFilePreview(second)).withContext('the photo left off the list').toBe('');
+      expect(component.selectedFiles().length).withContext('the list').toBe(1);
+      expect(component.selectedFiles()[0]).withContext('the file listed').toBe(first);
+    });
+
+    // The same File taken again gets a new preview, and the blob it had is
+    // released: nothing points at it once its entry is overwritten.
+    // A pin. Mutation: the revokePreview before the preview is set removed.
+    it('releases the old preview when the same file is taken again', () => {
+      component.multiple = false;
+      const photo = image('photo.jpg');
+      select(photo);
+      const firstPreview = component.getFilePreview(photo);
+      const revoke = spyOn(URL, 'revokeObjectURL');
+
+      select(photo);
+
+      expect(firstPreview).withContext('the first preview').toMatch(/^blob:/);
+      expect(revoke).withContext('the old blob').toHaveBeenCalledOnceWith(firstPreview);
+      expect(component.getFilePreview(photo)).withContext('the new preview').toMatch(/^blob:/);
+      expect(component.getFilePreview(photo)).withContext('the new preview').not.toBe(firstPreview);
     });
 
     // PIN: passes before the fix, and has to keep passing after it. Mutation
@@ -172,21 +227,26 @@ describe('FileDropzoneComponent', () => {
       expect(emitted.map(names)).toEqual([['ledger.csv', 'next.jpg']]);
     });
 
-    // Only an image owns a preview, so a kept document of the same name
-    // holds no blob of its own and must not keep the photo's alive.
-    it('releases a forgotten photo\'s preview when only a document of its name stays', () => {
-      const photo = new File([''], 'scan', { type: 'image/png' });
-      const document = new File([''], 'scan', { type: 'application/pdf' });
-      select(photo, document);
-      const photoPreview = component.getFilePreview(photo);
+    // Two iOS captures are both image.jpg. Each photo owns its own preview,
+    // so the forgotten one's blob is released and the later one keeps its
+    // own, whatever their names.
+    it('releases the forgotten photo\'s own preview and keeps a later one\'s of the same name', () => {
+      const queued = image('image.jpg');
+      const later = image('image.jpg');
+      select(queued);
+      const queuedPreview = component.getFilePreview(queued);
+      select(later);
+      const laterPreview = component.getFilePreview(later);
       const revoke = spyOn(URL, 'revokeObjectURL');
 
-      component.forget([photo]);
+      component.forget([queued]);
 
+      // By identity: two empty Files of one name are equal to toEqual.
       expect(component.selectedFiles().length).withContext('the list').toBe(1);
-      expect(component.selectedFiles()[0]).withContext('the file kept').toBe(document);
-      expect(photoPreview).withContext('the photo had a preview').not.toBe('');
-      expect(revoke).withContext('the forgotten photo\'s blob').toHaveBeenCalledOnceWith(photoPreview);
+      expect(component.selectedFiles()[0]).withContext('the file kept').toBe(later);
+      expect(laterPreview).withContext('the later photo\'s preview').toMatch(/^blob:/);
+      expect(component.getFilePreview(later)).withContext('the later photo\'s preview').toBe(laterPreview);
+      expect(revoke).withContext('the forgotten photo\'s blob').toHaveBeenCalledOnceWith(queuedPreview);
     });
   });
 
@@ -559,6 +619,28 @@ describe('FileDropzoneComponent, through its own template', () => {
 
     expect(all('.file-name').map(n => n.textContent?.trim())).toEqual(['two.csv']);
     expect(emitted[emitted.length - 1].map(f => f.name)).toEqual(['two.csv']);
+  });
+
+  // Two iOS captures are both image.jpg. Each is a row with a thumbnail of
+  // its own, and removing one leaves the other's where it was.
+  it('gives two photos of one name a row and a thumbnail each, and keeps the first one\'s when the second goes', () => {
+    const thumbnails = () => all('.file-thumbnail img').map(img => img.getAttribute('src'));
+    fixture.detectChanges();
+    dropFiles([imageFile('image.jpg'), imageFile('image.jpg')]);
+
+    const [first, second] = thumbnails();
+    expect(all('.file-item').length).withContext('the rows').toBe(2);
+    expect(thumbnails().length).withContext('the thumbnails').toBe(2);
+    expect(first).withContext('the first thumbnail').toMatch(/^blob:/);
+    expect(second).withContext('the second thumbnail').toMatch(/^blob:/);
+    expect(second).withContext('the second thumbnail').not.toBe(first);
+
+    const remove = all('.file-item')[1]?.querySelector<HTMLButtonElement>('.remove-btn');
+    expect(remove).withContext('the second row\'s remove button').toBeTruthy();
+    remove?.click();
+    fixture.detectChanges();
+
+    expect(thumbnails()).withContext('the thumbnails left').toEqual([first]);
   });
 
   it('keeps the reorder controls out of a single-image pick', () => {

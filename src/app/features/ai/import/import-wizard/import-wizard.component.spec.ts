@@ -3870,6 +3870,24 @@ describe('ImportWizardComponent', () => {
         expect(processButton()?.disabled).withContext('Process').toBeFalse();
       }));
 
+      // Two iOS captures are both image.jpg. A share of both is two rows on
+      // the zone and two tiles in the wizard, each showing its own photo.
+      it('gives two shared photos of one name a thumbnail each, on the zone and in the wizard', fakeAsync(() => {
+        arrive({ accepted: [photo('image.jpg'), photo('image.jpg')], refused: [] });
+        const sources = (selector: string) =>
+          Array.from(el().querySelectorAll<HTMLImageElement>(selector)).map(img => img.getAttribute('src') ?? '');
+        const thumbnails = sources('app-file-dropzone .file-thumbnail img');
+        const tiles = sources('.image-previews .preview-item img');
+
+        expect(rowNames()).withContext('the zone\'s rows on screen').toEqual(['image.jpg', 'image.jpg']);
+        expect(thumbnails.length).withContext('the zone\'s thumbnails').toBe(2);
+        expect(thumbnails.filter(src => src.startsWith('blob:')).length).withContext('the zone\'s blob thumbnails').toBe(2);
+        expect(thumbnails[1]).withContext('the zone\'s second thumbnail').not.toBe(thumbnails[0]);
+        expect(tiles.length).withContext('the wizard\'s tiles').toBe(2);
+        expect(tiles.filter(src => src.startsWith('blob:')).length).withContext('the wizard\'s blob tiles').toBe(2);
+        expect(tiles[1]).withContext('the wizard\'s second tile').not.toBe(tiles[0]);
+      }));
+
       it('keeps a shared file through the next pick, and when that pick is removed', fakeAsync(() => {
         arrive({ accepted: [photo('shared.png')], refused: [] });
         const real = realFixture.componentInstance;
