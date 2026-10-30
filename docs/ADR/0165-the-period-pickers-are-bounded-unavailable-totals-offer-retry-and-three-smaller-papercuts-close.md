@@ -317,6 +317,11 @@ the expense tone. The raw `billsDueNet` and `net` are unchanged.
   count can resolve after the wizard has drained the stash and stripped the
   URL. The wizard is reused for a change of query params alone, so nothing
   strips the flag again, and the next reload drains an empty stash.
+  *Closed by
+  [0186](0186-a-date-stops-at-a-currency-sign-and-a-line-break-a-total-read-past-an-aside-or-under-a-count-is-flagged-and-a-shared-file-lands-in-the-upload-area.md):
+  the wizard now listens to its query params, so the late navigation reaches
+  it, and it strips the flag again and drains the emptied stash, one drain at
+  a time. The dropped `error=1` of the next bullet stays open.*
 - **That navigation can drop the lost-share notice.** It passes no
   `queryParamsHandling`, so when it replaces the worker's redirect it drops
   `error=1`. A share lost beside an earlier one still waiting then brings no

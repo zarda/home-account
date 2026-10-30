@@ -2,6 +2,8 @@
 
 **Status:** Accepted, implemented; amended by
 [0185](0185-a-refund-is-asked-about-at-every-door-and-a-category-follows-its-rows-side-there-and-back.md)
+and
+[0186](0186-a-date-stops-at-a-currency-sign-and-a-line-break-a-total-read-past-an-aside-or-under-a-count-is-flagged-and-a-shared-file-lands-in-the-upload-area.md)
 · **Date:** 2026-10-02 · **Issues:** #464
 
 Reference documentation lives in [../receipt-import.md](../receipt-import.md)
@@ -42,6 +44,21 @@ Han or Hangul label, so `合計-1,280`, `(-12.50)` and `=-12.50` read as
 credits. And a purchase the model read over a negative printed on another
 total is flagged at `DISPUTED_TYPE_GRADE`. Each Known gap below says what
 0185 did to it.
+
+**Amended by
+[0186](0186-a-date-stops-at-a-currency-sign-and-a-line-break-a-total-read-past-an-aside-or-under-a-count-is-flagged-and-a-shared-file-lands-in-the-upload-area.md).**
+The rules below stand, and the type's sentence still carries no percentage;
+now a device row's amount and date sentences carry none either. Every amount
+and date grade the device gives is its own policy — the parser's evidence
+tiers, its demotion, the model-read grade and the dispute grade — and no
+model reported any of them, so *The amount and date tooltips report the
+reader's own grade as one* no longer holds on a device row. The converter
+marks a row the device read (`readOnDevice`), and the review card and the
+form name the scan instead: *Double-check this amount — the scan could not
+read it for certain* (`import.verifyAmountOnDevice`, and
+`import.verifyDateOnDevice` for the date in the form). On the card a
+doubted device date keeps the assumed-date wording. A cloud reader's flags
+still quote the percentage its model reported.
 
 ## Context
 

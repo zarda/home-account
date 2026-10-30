@@ -560,7 +560,10 @@ either that no event declares fails. The list was found missing `action`.
   `REFUND / Item 1 $10.00 / Item 2 $5.00 / ($15.00)`, keeps its credit under
   M2 only because a date defect cuts `Item 1 $10.00` out of the amount hunt.
   M3 loses three sign-less refunds to plain purchases, with no type flag;
-  only their amount grades, at 0.5, still ask.
+  only their amount grades, at 0.5, still ask. *Read again by
+  [0186](0186-a-date-stops-at-a-currency-sign-and-a-line-break-a-total-read-past-an-aside-or-under-a-count-is-flagged-and-a-shared-file-lands-in-the-upload-area.md):
+  with the date read right, M2 reads that refund slip as a purchase graded
+  0.3 too.*
 
   The decision rests on which side the errors fall, not on the count. Every
   wrong type the shipped parser keeps on these fixtures is flagged. On joined
@@ -850,4 +853,8 @@ build went otherwise:
   The trailing-year date pattern's separator spans ` $`, so `Item 1 $10.00`
   reads as 10 January 2000, graded 0.3, and drops that line from the amount
   hunt. And `Total $12.50 / (Reg $15.00)` reads 15.00, graded 0.8, with no
-  flag: the one silent row on the battery.
+  flag: the one silent row on the battery. *Closed by
+  [0186](0186-a-date-stops-at-a-currency-sign-and-a-line-break-a-total-read-past-an-aside-or-under-a-count-is-flagged-and-a-shared-file-lands-in-the-upload-area.md):
+  #515 and #516 were filed for them. A priced line whose sign stands before
+  its price now reads as money, and `Total $12.50 / (Reg $15.00)` reads
+  12.50, flagged, within the limits 0186 lists.*
