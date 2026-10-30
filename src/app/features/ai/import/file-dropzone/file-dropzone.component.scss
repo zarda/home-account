@@ -143,6 +143,9 @@
   display: flex;
   flex-direction: column;
   gap: 8px;
+  // The rows answer the list's own width, whatever page or step holds the
+  // zone: a viewport query would read the window instead (Karma's is 756px).
+  container: file-list / inline-size;
 }
 
 .multi-image-hint {
@@ -275,6 +278,58 @@
   }
 }
 
+// A row of a multi-image pick holds four controls beside its name: the
+// preview (48px, 40 at a phone's width), the arrows (28), remove (40) and
+// the handle (26), with four 12px gaps between five items: 190px in all, 182
+// on a phone. At 375px the list is 259px and the row's content 233px, which
+// left the name 51px: it broke over four lines and its size and type ran on
+// under the arrows. Below a 400px list, where one line would leave the name
+// under 176px, the arrows and the remove button take a second line under the
+// name and the handle, and the name keeps the row less the preview, the
+// third column and two gaps: 129px at 375px. Remove goes under the arrows,
+// not beside the name, because Tab reaches it after them: the handle takes
+// no focus, so the buttons read on screen in the order Tab reaches them. The
+// query reads the list, so a spec's narrow host reaches it
+// (docs/ui-overflow.md).
+//
+// A WebView with no container queries (iOS 15's) skips this block whole: its
+// rows keep the one-line layout, and only the size and type's wrap below
+// (outside the query) still holds there.
+@container file-list (max-width: 399.98px) {
+  .file-item.reorderable {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr) auto;
+    grid-template-areas:
+      'preview info handle'
+      'preview reorder remove';
+    align-items: center;
+    row-gap: 4px;
+  }
+
+  .file-item.reorderable .file-thumbnail {
+    grid-area: preview;
+  }
+
+  .file-item.reorderable .file-info {
+    grid-area: info;
+  }
+
+  .file-item.reorderable .remove-btn {
+    grid-area: remove;
+  }
+
+  .file-item.reorderable .reorder-controls {
+    grid-area: reorder;
+    flex-direction: row;
+    justify-self: start;
+  }
+
+  .file-item.reorderable .drag-handle {
+    grid-area: handle;
+    justify-self: center;
+  }
+}
+
 /* CDK Drag-drop animations */
 .cdk-drag-animating {
   transition: transform 200ms cubic-bezier(0, 0, 0.2, 1);
@@ -344,16 +399,22 @@
   color: var(--text-primary);
 }
 
+// The size and the type wrap inside the name's column rather than running on
+// under the controls beside it (G1).
 .file-meta {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
-  gap: 8px;
+  gap: 2px 8px;
+  max-width: 100%;
   margin-top: 2px;
 }
 
 .file-size {
   font-size: var(--text-xs);
   color: var(--text-muted);
+  min-width: 0;
+  overflow-wrap: anywhere;
 }
 
 .file-type-label {

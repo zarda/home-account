@@ -71,7 +71,7 @@
 
         <div class="file-list" cdkDropList (cdkDropListDropped)="onFileDrop($event)">
           @for (file of selectedFiles(); track file; let i = $index) {
-            <div class="file-item" [class.image-file]="isImageFile(file)" cdkDrag>
+            <div class="file-item" [class.image-file]="isImageFile(file)" [class.reorderable]="isImageFile(file) && hasMultipleImages()" cdkDrag>
               <!-- Image number badge for multi-image -->
               @if (isImageFile(file) && hasMultipleImages()) {
                 <div class="image-number">{{ i + 1 }}</div>
