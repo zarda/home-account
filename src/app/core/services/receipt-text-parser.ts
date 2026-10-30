@@ -1,6 +1,7 @@
 /**
  * Last-resort receipt parser, used when neither Apple Intelligence nor a cloud
- * model can structure OCR text.
+ * model can structure OCR text, and the second witness to the total Apple
+ * Intelligence reads on the device.
  *
  * It reads structure rather than vocabulary — digits, positions, ISO 4217 codes
  * and Unicode currency signs. The keyword tables it used to carry (English
@@ -28,11 +29,17 @@ export interface ParsedReceiptText {
   /**
    * 0–1: confidence in `amount` on its own, before date and currency are
    * folded into the combined score below. Lower than the tier it was read at
-   * when the winning figure was demoted as cash tendered, so a caller can
-   * flag the receipt for review even where the combined `confidence` still
-   * looks fine.
+   * when the winning figure was demoted, as `amountDemotion` says, so a caller
+   * can flag the receipt for review even where the combined `confidence`
+   * still looks fine.
    */
   amountConfidence: number;
+  /**
+   * Why `amountConfidence` sits under the tier the figure was read in:
+   * 'tender' when the largest figure was read as the cash handed over and the
+   * total it was change for won instead. Absent when nothing was demoted.
+   */
+  amountDemotion?: 'tender';
   /**
    * Which way the winning total moved, read from typography alone: 'credit'
    * when every copy of that figure carries a negative mark, 'debit'
@@ -172,6 +179,8 @@ interface AmountCandidate {
 interface AmountReading {
   amount: number;
   confidence: number;
+  /** Why `confidence` sits under the tier's, when it does. */
+  demotion?: 'tender';
   direction: 'credit' | 'debit';
   directionConfidence: number;
 }
@@ -188,6 +197,7 @@ export function parseReceiptOcrText(text: string): ParsedReceiptText {
   const {
     amount,
     confidence: amountConfidence,
+    demotion,
     direction,
     directionConfidence,
   } = readAmount(lines, marker);
@@ -208,6 +218,7 @@ export function parseReceiptOcrText(text: string): ParsedReceiptText {
     currency,
     merchant,
     amountConfidence: Math.round(amountConfidence * 100) / 100,
+    ...(demotion ? { amountDemotion: demotion } : {}),
     direction,
     directionConfidence: Math.round(directionConfidence * 100) / 100,
     dateConfidence: Math.round(dateConfidence * 100) / 100,
@@ -394,7 +405,7 @@ function signFor(code: string, display: 'symbol' | 'narrowSymbol'): string {
 }
 
 /** Confidence multiplier when the winning figure was demoted as cash tendered. */
-const TENDER_DEMOTION_FACTOR = 0.75;
+export const DEMOTION_FACTOR = 0.75;
 /** "x + y ≈ M" tolerance: half a cent absorbs float noise, integers must match exactly. */
 const TENDER_SUM_TOLERANCE = 0.005;
 
@@ -470,7 +481,8 @@ function readAmount(lines: string[], marker: string): AmountReading {
       const winner = demoted ?? best;
       return {
         amount: winner.value,
-        confidence: demoted ? tier.confidence * TENDER_DEMOTION_FACTOR : tier.confidence,
+        confidence: demoted ? tier.confidence * DEMOTION_FACTOR : tier.confidence,
+        ...(demoted ? { demotion: 'tender' as const } : {}),
         ...readDirection(winner, candidates),
       };
     }
