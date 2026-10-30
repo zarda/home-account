@@ -62,6 +62,7 @@ import { provideHttpClient } from '@angular/common/http';
 import { provideAppDatepicker } from '../../../../core/config/datepicker.config';
 import { MatSnackBar } from '@angular/material/snack-bar';
 import { Subject, switchMap, take } from 'rxjs';
+import { openDB } from 'idb';
 import { initializeApp, deleteApp, FirebaseApp } from '@angular/fire/app';
 import { getAuth, connectAuthEmulator, signInAnonymously, Auth } from '@angular/fire/auth';
 import {
@@ -101,6 +102,13 @@ import { DuplicateDetectionService } from '../../../../core/services/duplicate-d
 import { ReceiptQuotaService } from '../../../../core/services/receipt-quota.service';
 import { LocaleFormatService } from '../../../../core/services/locale-format.service';
 import { TranslationService } from '../../../../core/services/translation.service';
+import { ShareIntakeService } from '../../../../core/services/share-intake.service';
+import {
+  SHARE_STASH_DB,
+  SHARE_STASH_STORE,
+  ShareStashStore,
+  StashedShare
+} from '../../../../core/services/share-stash.store';
 import { INVALID_AMOUNT_ERROR } from '../../../../core/services/transaction.service';
 import { MultiImageExtractedTransaction, ParsedReceipt } from '../../../../core/services/gemini.service';
 import {
@@ -4348,6 +4356,171 @@ describe('ImportWizardComponent camera handoff (emulator smoke test)', () => {
     30000
   );
 
+  // The web share path as the share-target worker leaves it: rows in the
+  // real IndexedDB stash, stamped for this account, and the wizard opened at
+  // the URL the worker redirects to. Karma is not a native platform, so the
+  // real ShareIntakeService drains the real stash into the real zone. The
+  // stash hands its rows back in id order, and the banner's sentences follow
+  // it.
+  const stashShares = async (
+    ...rows: { id: string; name: string; type: string; blob: Blob }[]
+  ): Promise<void> => {
+    const db = await openDB(SHARE_STASH_DB);
+    try {
+      for (const row of rows) {
+        await db.put(SHARE_STASH_STORE, {
+          ...row,
+          receivedAt: Date.now(),
+          userId: uid
+        } satisfies StashedShare);
+      }
+    } finally {
+      db.close();
+    }
+  };
+
+  const shareRows = (): string[] =>
+    Array.from(
+      document.querySelectorAll('app-file-dropzone .file-name'),
+      row => row.textContent?.trim() ?? ''
+    );
+
+  // Steps until `rowCount` rows show and the share flags are off the URL.
+  // Both halves are needed: the sign-in effect's count() runs before the
+  // wizard's consume(), sees the seeded rows and navigates to ?source=share
+  // again, and the listening wizard strips that too and drains nothing. A
+  // wait on the URL alone would end at the first strip.
+  const settleShare = async (harness: RouterTestingHarness, rowCount: number): Promise<void> => {
+    const router = TestBed.inject(Router);
+    const deadline = Date.now() + 10000;
+    while (shareRows().length < rowCount || router.url !== '/import/file') {
+      if (Date.now() > deadline) {
+        throw new Error(
+          `the share never settled: ${router.url}, rows ${JSON.stringify(shareRows())}`
+        );
+      }
+      await new Promise(resolve => setTimeout(resolve, 50));
+      harness.detectChanges();
+    }
+  };
+
+  // Three shares, one of each kind: a photo the gate lets through, an empty
+  // PDF and a backup it refuses. Then the wizard, opened on them.
+  const openOnShares = async () => {
+    stubReceiptSeams();
+    history.replaceState({}, '');
+
+    TestBed.inject(Router).resetConfig([{ path: 'import/file', component: ImportWizardComponent }]);
+    const stash = TestBed.inject(ShareStashStore);
+    await stash.clearAll(); // opens the stash at v2
+    await stashShares(
+      {
+        id: 'share-smoke-1',
+        name: 'shared-receipt.png',
+        type: 'image/png',
+        blob: new Blob([new Uint8Array([1, 2, 3])], { type: 'image/png' })
+      },
+      { id: 'share-smoke-2', name: 'empty.pdf', type: 'application/pdf', blob: new Blob([]) },
+      {
+        id: 'share-smoke-3',
+        name: 'backup.json',
+        type: 'application/json',
+        blob: new Blob(['{}'], { type: 'application/json' })
+      }
+    );
+
+    const consumeAll = spyOn(TestBed.inject(ShareIntakeService), 'consumeAll').and.callThrough();
+    const harness = await RouterTestingHarness.create();
+    await harness.navigateByUrl('/import/file?source=share');
+    const wizard: ImportWizardComponent = harness.routeDebugElement?.componentInstance;
+    expect(wizard).toEqual(jasmine.any(ImportWizardComponent));
+
+    await settleShare(harness, 1);
+    return { stash, consumeAll, harness, wizard };
+  };
+
+  it(
+    'puts a stashed share on the dropzone and in the selection, and names the ones the gate refused',
+    async () => {
+      // A pin written after the fix: with the zone left out, the drain only
+      // calling `this.onFilesSelected(accepted)`, no row reaches the zone and
+      // the share never settles.
+      const { stash, consumeAll, harness, wizard } = await openOnShares();
+      const translation = TestBed.inject(TranslationService);
+      const host = harness.fixture.nativeElement as HTMLElement;
+
+      expect(shareRows()).toEqual(['shared-receipt.png']);
+      // The selection is written from the zone's list: the same File, not a
+      // second copy of it.
+      expect(wizard.selectedFiles().length).withContext('the selection').toBe(1);
+      expect(wizard.selectedFiles()[0]).toBe(wizard.dropzone()!.selectedFiles()[0]);
+      // Karma loads no catalog: the sentences are the bare keys on both sides.
+      expect(host.querySelector('app-file-dropzone .error-message')?.textContent?.trim()).toBe(
+        translation.t('import.fileEmpty', { name: 'empty.pdf' }) +
+          '. ' +
+          translation.t('import.shareBackup', { name: 'backup.json' })
+      );
+      // So the banner proves the reasons and their order, and the names are
+      // proved here, from the gate's own answer, and in the unit specs.
+      const first = await consumeAll.calls.first().returnValue;
+      expect({
+        accepted: first.accepted.map(f => f.name),
+        refused: first.refused.map(r => [r.file.name, r.reason])
+      }).toEqual({
+        accepted: ['shared-receipt.png'],
+        refused: [['empty.pdf', 'empty'], ['backup.json', 'backup']]
+      });
+      expect(
+        host.querySelector<HTMLButtonElement>('.upload-step .step-actions .action-button')!.disabled
+      )
+        .withContext('Process takes the shared photo')
+        .toBeFalse();
+      expect(TestBed.inject(Router).url).toBe('/import/file');
+      expect(await stash.count()).toBe(0);
+      // The effect's own ?source=share is drained too, and finds the stash
+      // the first drain emptied.
+      expect(consumeAll.calls.count()).toBe(2);
+      expect(await consumeAll.calls.mostRecent().returnValue).toEqual({
+        accepted: [],
+        refused: []
+      });
+
+      harness.fixture.destroy();
+      await new Promise(resolve => setTimeout(resolve, 300));
+    },
+    30000
+  );
+
+  it(
+    'drains a second share into the wizard already open, beside the first',
+    async () => {
+      // A pin written after the fix: with one read of route.snapshot in place
+      // of the queryParamMap stream it fails at the wait it shares with the
+      // case above, and with the drain returning while the selection holds a
+      // file it fails at its second wait.
+      const { harness, wizard } = await openOnShares();
+
+      // A share made while the wizard is open: the router reuses it, as it
+      // does on iOS, so the share reaches it only as new params.
+      await stashShares({
+        id: 'share-smoke-4',
+        name: 'second.png',
+        type: 'image/png',
+        blob: new Blob([new Uint8Array([4, 5, 6])], { type: 'image/png' })
+      });
+      await harness.navigateByUrl('/import/file?source=share');
+      await settleShare(harness, 2);
+
+      expect(shareRows()).toEqual(['shared-receipt.png', 'second.png']);
+      expect(wizard.selectedFiles().map(f => f.name)).toEqual(['shared-receipt.png', 'second.png']);
+      expect(harness.routeDebugElement?.componentInstance).toBe(wizard);
+
+      harness.fixture.destroy();
+      await new Promise(resolve => setTimeout(resolve, 300));
+    },
+    30000
+  );
+
   it(
     "says a lost share and takes the worker's flags off the URL",
     async () => {
@@ -4385,8 +4558,9 @@ describe('ImportWizardComponent camera handoff (emulator smoke test)', () => {
         .withContext('one notice for one lost share')
         .toBe(1);
       expect(router.url).toBe('/import/file');
-      // The strip changes query params only: the same wizard stays, so
-      // nothing runs its share intake a second time.
+      // The strip changes query params only, so the same wizard stays. The
+      // params it leaves carry no `source`, so the listening wizard does not
+      // drain again.
       expect(harness.routeDebugElement?.componentInstance).toBe(wizard);
 
       TestBed.inject(MatSnackBar).dismiss();
