@@ -857,6 +857,64 @@ describe('FileDropzoneComponent, through its own template', () => {
     expect(scroll.calls.mostRecent()?.object).withContext('the element scrolled').toBe(banner as HTMLElement);
   });
 
+  // The zone keeps what it refused and why, and writes the sentences as it
+  // renders: a reader who switches language with a refusal standing reads it
+  // in the new one, as every other line on the page is.
+  it('rewrites a standing refusal in the language the reader switches to', () => {
+    const stub = TestBed.inject(TranslationService) as unknown as TranslationStub;
+    stub.t = (key, params) => `${stub.currentLocale()}|${key}${params ? `:${JSON.stringify(params)}` : ''}`;
+    fixture.detectChanges();
+    dropFiles([new File(['x'], 'notes.txt', { type: 'text/plain' })]);
+    expect(text('.error-message')).withContext('as refused')
+      .toBe('en|import.fileTypeUnsupported:{"name":"notes.txt"}');
+
+    stub.currentLocale.set('ja');
+    fixture.detectChanges();
+
+    expect(text('.error-message')).withContext('after the switch')
+      .toBe('ja|import.fileTypeUnsupported:{"name":"notes.txt"}');
+  });
+
+  // A switch rewrites the words, not what was refused: the page stays where
+  // the reader has it.
+  // A pin. Mutation: the scroll effect reading errorMessage() in place of the refusals.
+  it('brings nothing into view when the language changes under a standing refusal', () => {
+    const stub = TestBed.inject(TranslationService) as unknown as TranslationStub;
+    stub.t = (key, params) => `${stub.currentLocale()}|${key}${params ? `:${JSON.stringify(params)}` : ''}`;
+    fixture.detectChanges();
+    dropFiles([new File(['x'], 'notes.txt', { type: 'text/plain' })]);
+    TestBed.tick();
+    const scroll = spyOn(Element.prototype, 'scrollIntoView');
+
+    stub.currentLocale.set('ja');
+    fixture.detectChanges();
+    TestBed.tick();
+
+    expect(text('.error-message')).withContext('the banner after the switch').toContain('import.fileTypeUnsupported');
+    expect(scroll).not.toHaveBeenCalled();
+  });
+
+  // Dropping the same file again is a second refusal, though its sentence is
+  // the first one's word for word: the banner is brought into view again,
+  // and stays the same alert.
+  // A pin. Mutation: take() no longer clearing the refusals before a fresh pick's.
+  it('brings the banner into view again when the same file is refused a second time', () => {
+    const scroll = spyOn(Element.prototype, 'scrollIntoView');
+    fixture.detectChanges();
+    dropFiles([new File(['x'], 'notes.txt', { type: 'text/plain' })]);
+    TestBed.tick();
+    const banner = el().querySelector('.error-banner') as HTMLElement;
+    expect(scroll).withContext('the first refusal').toHaveBeenCalledTimes(1);
+
+    dropFiles([new File(['x'], 'notes.txt', { type: 'text/plain' })]);
+    TestBed.tick();
+
+    expect(el().querySelector('.error-banner')).withContext('the same alert').toBe(banner);
+    expect(text('.error-message')).toBe('import.fileTypeUnsupported:{"name":"notes.txt"}');
+    expect(scroll).withContext('the second refusal').toHaveBeenCalledTimes(2);
+    expect(scroll.calls.mostRecent().object).withContext('the element scrolled').toBe(banner);
+  });
+
   it('marks the zone while a drag is over it', () => {
     fixture.detectChanges();
     const zone = el().querySelector('.dropzone') as HTMLElement;
