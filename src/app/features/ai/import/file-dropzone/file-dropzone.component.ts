@@ -29,6 +29,21 @@ import { TranslationService } from '../../../../core/services/translation.servic
 import { LocaleFormatService } from '../../../../core/services/locale-format.service';
 import { looksLikeImageFile } from '../../../../core/utils/file.utils';
 
+/**
+ * A file the zone, or a gate upstream, refused: its name as the disk spells
+ * it and why. The banner keeps these rather than its sentences, and never the
+ * File, which for a refused share is a blob nothing else holds.
+ */
+interface Refusal {
+  readonly name: string;
+  readonly reason: ShareRefusalReason;
+}
+
+/** Two lists are one banner when they name the same files for the same reasons, in order. */
+function sameRefusals(a: readonly Refusal[], b: readonly Refusal[]): boolean {
+  return a.length === b.length && a.every((r, i) => r.name === b[i].name && r.reason === b[i].reason);
+}
+
 @Component({
   selector: 'app-file-dropzone',
   standalone: true,
@@ -57,8 +72,16 @@ export class FileDropzoneComponent implements OnDestroy {
 
   isDragOver = signal(false);
   selectedFiles = signal<File[]>([]);
-  hasError = signal(false);
-  errorMessage = signal('');
+  // What the banner refuses, not its words: the sentences are written as it
+  // renders, in the language the page is in then, so a reader who switches
+  // language with a refusal standing reads it in the new one. Writing a list
+  // equal to the standing one is no change and brings nothing into view; a
+  // fresh pick empties it first, so its refusals always do.
+  private readonly refusals = signal<readonly Refusal[]>([], { equal: sameRefusals });
+  readonly hasError = computed(() => this.refusals().length > 0);
+  readonly errorMessage = computed(() =>
+    this.refusals().map(r => this.refusal(r.name, r.reason)).join('. ')
+  );
 
   // Keyed by the File itself: two files can share a name (two iOS captures
   // are both image.jpg), and each row shows its own photo.
@@ -68,11 +91,11 @@ export class FileDropzoneComponent implements OnDestroy {
     // The banner sits below the zone, and the zone fills the first screen
     // of a short window, so a refusal shown only there changed nothing a
     // sighted user could see. It is brought into view after the render that
-    // inserts or rewrites it, without smooth motion and without focus: an
-    // alert is announced where it is.
+    // inserts it or changes what it refuses, without smooth motion and
+    // without focus: an alert is announced where it is. A language switch
+    // rewrites its words in place and moves nothing.
     effect(() => {
-      if (!this.hasError()) return;
-      this.errorMessage();
+      if (this.refusals().length === 0) return;
       untracked(() => afterNextRender(
         () => this.host.nativeElement.querySelector('.error-banner')?.scrollIntoView({ block: 'nearest' }),
         { injector: this.injector },
@@ -134,44 +157,37 @@ export class FileDropzoneComponent implements OnDestroy {
     if (this.take(files).length > 0) this.filesSelected.emit(this.selectedFiles());
   }
 
-  // Checks each file, writes the banner, mints the previews of what passed
-  // and lists it, then returns what it took. The banner starts empty, unless
-  // `keepStanding` asks to keep a refusal it already shows: the new
-  // sentences, `refusals` first, are then added after that one.
-  private take(files: readonly File[], refusals: readonly string[] = [], keepStanding = false): File[] {
-    const errors: string[] = [];
-    if (keepStanding && this.hasError()) {
-      errors.push(this.errorMessage());
-    } else {
-      this.hasError.set(false);
-      this.errorMessage.set('');
-    }
-    errors.push(...refusals);
+  // Checks each file, writes what the banner refuses, mints the previews of
+  // what passed and lists it, then returns what it took. The banner starts
+  // empty, unless `keepStanding` asks to keep the refusals it already shows:
+  // the new ones, `upstream` first, are then added after those. Starting
+  // empty is a change of its own, so a file refused again, whose list equals
+  // the standing one, still brings the banner into view again.
+  private take(files: readonly File[], upstream: readonly Refusal[] = [], keepStanding = false): File[] {
+    if (!keepStanding) this.refusals.set([]);
+    const refused: Refusal[] = [...this.refusals(), ...upstream];
 
     const validFiles: File[] = [];
 
     for (const file of files) {
       // Check file size. Both refusals are read by whoever tried to import,
-      // so they come from the catalog like everything else on screen; the
+      // so their sentences come from the catalog as the banner renders; the
       // file's own name is the one part that stays as the disk spells it.
       if (file.size > this.maxFileSize) {
-        errors.push(this.refusal(file, 'tooLarge'));
+        refused.push({ name: file.name, reason: 'tooLarge' });
         continue;
       }
 
       // Check file type
       if (!this.isValidFileType(file)) {
-        errors.push(this.refusal(file, 'type'));
+        refused.push({ name: file.name, reason: 'type' });
         continue;
       }
 
       validFiles.push(file);
     }
 
-    if (errors.length > 0) {
-      this.hasError.set(true);
-      this.errorMessage.set(errors.join('. '));
-    }
+    this.refusals.set(refused);
 
     if (validFiles.length === 0) return [];
     if (this.multiple) {
@@ -206,22 +222,22 @@ export class FileDropzoneComponent implements OnDestroy {
   // One sentence per reason, each under a literal key: the catalog check
   // reads only literal `t(` arguments. The zone's own two refusals come
   // through here too, so a file refused upstream reads as one refused here.
-  private refusal(file: File, reason: ShareRefusalReason): string {
+  private refusal(name: string, reason: ShareRefusalReason): string {
     switch (reason) {
       case 'tooLarge':
         // The limit named is this zone's: the share gate's ceiling
         // (IMPORT_FILE_MAX_BYTES) unless a host sets a smaller
         // [maxFileSize], and the wizard does not.
         return this.translationService.t('import.fileTooLarge', {
-          name: file.name,
+          name,
           limit: this.formatFileSize(this.maxFileSize),
         });
       case 'backup':
-        return this.translationService.t('import.shareBackup', { name: file.name });
+        return this.translationService.t('import.shareBackup', { name });
       case 'type':
-        return this.translationService.t('import.fileTypeUnsupported', { name: file.name });
+        return this.translationService.t('import.fileTypeUnsupported', { name });
       case 'empty':
-        return this.translationService.t('import.fileEmpty', { name: file.name });
+        return this.translationService.t('import.fileEmpty', { name });
     }
   }
 
@@ -296,7 +312,7 @@ export class FileDropzoneComponent implements OnDestroy {
     if (this.destroyRef.destroyed) return [];
     const listed = this.selectedFiles();
     const fresh = files.filter((f, i) => !listed.includes(f) && files.indexOf(f) === i);
-    return this.take(fresh, refused.map(r => this.refusal(r.file, r.reason)), true);
+    return this.take(fresh, refused.map(r => ({ name: r.file.name, reason: r.reason })), true);
   }
 
   removeFile(file: File, event: Event): void {
