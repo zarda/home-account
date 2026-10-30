@@ -1,7 +1,7 @@
 import { ComponentFixture, TestBed, fakeAsync, flushMicrotasks, tick } from '@angular/core/testing';
-import { of, EMPTY } from 'rxjs';
+import { BehaviorSubject, of, EMPTY } from 'rxjs';
 import { NO_ERRORS_SCHEMA, signal } from '@angular/core';
-import { ActivatedRoute, Router, convertToParamMap } from '@angular/router';
+import { ActivatedRoute, ParamMap, Router, convertToParamMap } from '@angular/router';
 import { MatSnackBar } from '@angular/material/snack-bar';
 import { MatStepper } from '@angular/material/stepper';
 import { provideNativeDateAdapter } from '@angular/material/core';
@@ -57,7 +57,8 @@ describe('ImportWizardComponent', () => {
   let mockShareIntake: jasmine.SpyObj<ShareIntakeService>;
   let attempts: ReturnType<typeof attemptStub>;
   let analytics: jasmine.SpyObj<AnalyticsService>;
-  let routeStub: { snapshot: { queryParamMap: ReturnType<typeof convertToParamMap> } };
+  let params$: BehaviorSubject<ParamMap>;
+  let routeStub: { queryParamMap: BehaviorSubject<ParamMap>; snapshot: { readonly queryParamMap: ParamMap } };
 
   const mockCategories: Category[] = [
     {
@@ -192,7 +193,10 @@ describe('ImportWizardComponent', () => {
     mockShareIntake.consumeAll.and.resolveTo({ accepted: [], refused: [] });
     attempts = attemptStub();
     analytics = jasmine.createSpyObj<AnalyticsService>('AnalyticsService', ['trackReceiptConfirm']);
-    routeStub = { snapshot: { queryParamMap: convertToParamMap({}) } };
+    // The stream and the snapshot read one subject, as the router's own two
+    // do: a case moves the URL with params$.next and never swaps either.
+    params$ = new BehaviorSubject(convertToParamMap({}));
+    routeStub = { queryParamMap: params$, snapshot: { get queryParamMap() { return params$.value; } } };
 
     await TestBed.configureTestingModule({
       imports: [ImportWizardComponent],
@@ -290,12 +294,21 @@ describe('ImportWizardComponent', () => {
   });
 
   describe('share intake', () => {
+    // Arriving from a share is a fresh load: the wizard the outer beforeEach
+    // made on a plain visit goes first, so only the new one hears the params.
+    function arriveWith(params: Record<string, string>): void {
+      fixture.destroy();
+      params$.next(convertToParamMap(params));
+      fixture = TestBed.createComponent(ImportWizardComponent);
+      component = fixture.componentInstance;
+      fixture.detectChanges();
+    }
+
     it('consumes shared files when arriving from a share', fakeAsync(() => {
       const shared = [new File(['x'], 'shared.png', { type: 'image/png' })];
       mockShareIntake.consumeAll.and.resolveTo({ accepted: shared, refused: [] });
-      routeStub.snapshot = { queryParamMap: convertToParamMap({ source: 'share' }) };
 
-      component.ngOnInit();
+      arriveWith({ source: 'share' });
       tick();
 
       expect(mockShareIntake.consumeAll).toHaveBeenCalled();
@@ -318,9 +331,7 @@ describe('ImportWizardComponent', () => {
       });
 
     it('takes the share flag off the URL once it is read', fakeAsync(() => {
-      routeStub.snapshot = { queryParamMap: convertToParamMap({ source: 'share' }) };
-
-      component.ngOnInit();
+      arriveWith({ source: 'share' });
       tick();
 
       expectFlagsStripped();
@@ -329,11 +340,7 @@ describe('ImportWizardComponent', () => {
 
     it('says the share was lost when the worker could not keep it', fakeAsync(() => {
       // The share-target worker's redirect when stashing the POST threw.
-      routeStub.snapshot = {
-        queryParamMap: convertToParamMap({ source: 'share', error: '1' })
-      };
-
-      component.ngOnInit();
+      arriveWith({ source: 'share', error: '1' });
       tick();
 
       expect(notifications.error).toHaveBeenCalledOnceWith('import.shareLost');
@@ -350,9 +357,8 @@ describe('ImportWizardComponent', () => {
 
     it('says the share was lost when the stash cannot be read', fakeAsync(() => {
       mockShareIntake.consumeAll.and.rejectWith(new Error('stash unavailable'));
-      routeStub.snapshot = { queryParamMap: convertToParamMap({ source: 'share' }) };
 
-      component.ngOnInit();
+      arriveWith({ source: 'share' });
       tick();
 
       expect(notifications.error).toHaveBeenCalledOnceWith('import.shareLost');
@@ -362,11 +368,8 @@ describe('ImportWizardComponent', () => {
 
     it('says it once when the worker and the stash both failed', fakeAsync(() => {
       mockShareIntake.consumeAll.and.rejectWith(new Error('stash unavailable'));
-      routeStub.snapshot = {
-        queryParamMap: convertToParamMap({ source: 'share', error: '1' })
-      };
 
-      component.ngOnInit();
+      arriveWith({ source: 'share', error: '1' });
       tick();
 
       expect(notifications.error).toHaveBeenCalledOnceWith('import.shareLost');

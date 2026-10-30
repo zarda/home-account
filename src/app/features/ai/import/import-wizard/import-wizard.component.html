@@ -106,7 +106,7 @@
             mat-flat-button
             color="primary"
             class="action-button"
-            [disabled]="!selectedFiles().length || processingBusy()"
+            [disabled]="!selectedFiles().length || processingBusy() || shareDraining()"
             (click)="processFiles(); stepper.next()"
           >
             <mat-icon>auto_awesome</mat-icon>
@@ -247,7 +247,7 @@
             }
             <div class="error-actions">
               @if (processingErrorRetryable()) {
-                <button mat-flat-button color="primary" (click)="retryProcessing()">
+                <button mat-flat-button color="primary" [disabled]="shareDraining()" (click)="retryProcessing()">
                   <mat-icon>refresh</mat-icon>
                   {{ 'common.tryAgain' | translate }}
                 </button>
