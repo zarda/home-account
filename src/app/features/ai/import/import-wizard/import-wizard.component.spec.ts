@@ -22,17 +22,22 @@ import { ReceiptAttempt, ReceiptAttemptService } from '../../../../core/services
 import { CurrencyService } from '../../../../core/services/currency.service';
 import { AuthService } from '../../../../core/services/auth.service';
 import {
+  AUDIT_SCHEMES,
   MockAuthService,
   channels,
   paintedBackground,
   paintedColor,
   ratio,
+  runAxe,
   settleAnimations,
+  summarizeViolations,
   textLines,
+  withScheme,
   withTheme,
   provideNoMotion,
   createTranslationStub,
 } from '../../../../core/services/testing';
+import { ThemeService } from '../../../../core/services/theme.service';
 import { blankImportRow, joinSentences, splitImportRow } from '../../../../core/utils/import-review.utils';
 import { AI_QUEUE_WRITE_FAILED, AI_QUEUE_WRITE_PARTIAL } from '../../../../core/utils/ai-error.utils';
 
@@ -4267,6 +4272,50 @@ describe('ImportWizardComponent', () => {
           history.replaceState({}, '');
         }
       }));
+    });
+
+    // /import/file is a route the smoke walkthrough never opens, so no axe
+    // pass had looked at the upload step with photos on it: the question that
+    // asks what they are, the zone's rows and previews, and the banner a
+    // refused file leaves. Swept here in both schemes, as the walkthrough
+    // sweeps its routes.
+    describe('the upload step with photos picked, under the axe sweep', () => {
+      const uploadStep = () =>
+        (realFixture.nativeElement as HTMLElement).querySelector<HTMLElement>('.upload-step');
+
+      beforeEach(() => {
+        // Two photos and a file the zone refuses, so the rows, the previews,
+        // the question and the banner all stand.
+        drop(photo('a.png'), photo('b.png'), new File(['x'], 'run.exe', { type: 'application/x-msdownload' }));
+      });
+
+      it('names the receipt-or-statement chips by the question above them', () => {
+        const listbox = uploadStep()?.querySelector('mat-chip-listbox');
+        expect(listbox).withContext('the question shows for photos').not.toBeNull();
+        const id = listbox?.getAttribute('aria-labelledby') ?? '';
+        expect(document.getElementById(id)?.textContent?.trim())
+          .withContext(`what aria-labelledby="${id}" points at`)
+          .toBe('import.imageKindQuestion');
+      });
+
+      for (const scheme of AUDIT_SCHEMES) {
+        it(`finds nothing on the step in the ${scheme} scheme`, async () => {
+          const step = uploadStep();
+          expect(step?.querySelector('mat-chip-listbox')).withContext('the question is on the swept step').not.toBeNull();
+          expect(step?.querySelectorAll('app-file-dropzone .file-item').length).withContext('both photos listed').toBe(2);
+          expect(step?.querySelector('app-file-dropzone .error-banner')).withContext('the refusal stands').not.toBeNull();
+
+          await withScheme(TestBed.inject(ThemeService), scheme, async () => {
+            realFixture.detectChanges();
+            expect(summarizeViolations(await runAxe(step!))).toEqual([]);
+          });
+        });
+      }
+
+      it('scores the step\'s contrast rather than skipping it', async () => {
+        const results = await runAxe(uploadStep()!);
+        expect(results.passes.map(result => result.id)).toContain('color-contrast');
+      });
     });
 
     describe('colours, as painted', () => {
