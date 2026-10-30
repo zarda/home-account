@@ -231,6 +231,11 @@
   box-shadow: var(--shadow-md);
 }
 
+// The move arrows, the drag handle and the remove button rest at full
+// strength in --text-muted, which reads at 4.5:1 or better on the row in both
+// themes, and take --text-primary (the remove button its error red) under the
+// pointer. A fade by opacity would leave the handle at 2.3:1, under even the
+// 3:1 a glyph owes.
 .reorder-controls {
   display: flex;
   flex-direction: column;
@@ -239,13 +244,19 @@
   .reorder-btn {
     width: 28px;
     height: 28px;
-    opacity: 0.6;
-    transition: opacity 0.2s;
+    transition: color 0.2s;
 
-    &:hover:not(:disabled) {
-      opacity: 1;
+    &:not(:disabled) {
+      color: var(--text-muted);
     }
 
+    &:hover:not(:disabled) {
+      color: var(--text-primary);
+    }
+
+    // An arrow with nowhere to move keeps Material's disabled colour, faded
+    // further: a disabled control owes no contrast (WCAG 1.4.3, and axe skips
+    // it), and the fade is what tells it from an arrow that moves.
     &:disabled {
       opacity: 0.3;
     }
@@ -261,20 +272,19 @@
 .drag-handle {
   padding: 4px;
   cursor: grab;
-  opacity: 0.5;
-  transition: opacity 0.2s;
   display: flex;
   align-items: center;
-
-  &:hover {
-    opacity: 1;
-  }
 
   mat-icon {
     font-size: var(--text-lg);
     width: 1em;
     height: 1em;
     color: var(--text-muted);
+    transition: color 0.2s;
+  }
+
+  &:hover mat-icon {
+    color: var(--text-primary);
   }
 }
 
@@ -427,13 +437,13 @@
   font-weight: 500;
 }
 
+// At rest as the arrows and the handle are (above).
 .remove-btn {
-  opacity: 0.6;
-  transition: opacity 0.2s ease;
+  color: var(--text-muted);
+  transition: color 0.2s ease;
 }
 
 .remove-btn:hover {
-  opacity: 1;
   color: var(--color-error);
 }
 
