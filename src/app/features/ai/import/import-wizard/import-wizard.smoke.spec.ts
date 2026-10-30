@@ -33,16 +33,21 @@
 // on-device reader's verdict on which way the money moved is followed from
 // the OCR text to the document. The case after it scans a priced line the
 // same way and stops at the card, so the price read as the amount, with no
-// flag on it, is seen on the real card. The one after that hands the card
-// rows whose type the device doubted, built the same way, so the flag on the
-// type toggle is seen on the real card, and a flip there is followed into the
-// documents it writes. The next folds such a refund into its purchase on the
-// card, so the side the net points, and the doubt it settles, are followed
-// the same way. The two after it read a refund in the cloud instead, through
-// the provider stub's multi-photo answer: once through the wizard's own file
-// picker, once through the strategy the camera calls. Each follows the
-// reader's income verdict, and the doubt it carries, from the extraction to
-// the toggle and into the document.
+// flag on it, is seen on the real card. The next scans a total printed over
+// a regular price in parentheses, so the flag on the amount read past it is
+// seen there too. The one after that hands the card rows whose type the
+// device doubted, built the same way, so the flag on the type toggle is seen
+// on the real card, and a flip there is followed into the documents it
+// writes. The next hands over a row filed before the categories loaded, so
+// its move to its side when the wizard's catalogue arrives, said once, is
+// followed through the camera's hand-off. The one after it folds a refund
+// the device doubted into its purchase on the card, so the side the net
+// points, and the doubt it settles, are followed the same way. The two after
+// it read a refund in the cloud instead, through the provider stub's
+// multi-photo answer: once through the wizard's own file picker, once through
+// the strategy the camera calls. Each follows the reader's income verdict,
+// and the doubt it carries, from the extraction to the toggle and into the
+// document.
 //
 // Import the Firebase SDK through @angular/fire (not the root `firebase/*`
 // packages) — see app.smoke.spec.ts for why the copies must match.
@@ -1600,9 +1605,32 @@ describe('ImportWizardComponent camera handoff (emulator smoke test)', () => {
       expect(rows[0].fieldConfidence).toEqual({ amount: 0.8, date: 0.9 });
 
       const host = fixture.nativeElement as HTMLElement;
+      expect(fixture.componentInstance.stepper.selectedIndex).toBe(2);
       expect(fixture.componentInstance.extractedTransactions()[0].amount).toBe(10);
       expect(host.querySelector('.amount-section .verify-flag'))
         .withContext('the price was read off the print, at the tier grade').toBeNull();
+
+      await leaveReview(fixture);
+    },
+    30000
+  );
+
+  it(
+    'an on-device scan whose total sits over a regular price in parentheses reaches the review card with its amount flagged',
+    async () => {
+      // The total is read past the labelled aside and graded under the bar
+      // (ADR 0186), so the card asks about the figure.
+      const { rows, fixture } = await reviewOnDevice(
+        'Harbour Supplies\n2026-01-15\nTotal: $120.50\n(Reg $150.00)'
+      );
+      expect(rows[0].amount).toBe(120.5);
+      expect(rows[0].fieldConfidence).toEqual({ amount: 0.6, date: 0.9 });
+
+      const host = fixture.nativeElement as HTMLElement;
+      expect(fixture.componentInstance.stepper.selectedIndex).toBe(2);
+      expect(fixture.componentInstance.extractedTransactions()[0].amount).toBe(120.5);
+      expect(host.querySelector('.amount-section .verify-flag'))
+        .withContext('the total was read past a labelled aside, under the bar').not.toBeNull();
 
       await leaveReview(fixture);
     },

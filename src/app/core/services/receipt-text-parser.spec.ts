@@ -603,9 +603,9 @@ describe('parseReceiptOcrText', () => {
 
       it('reads no date OCR wrapped across two lines, and reads a part it leaves as money, the known gap', () => {
         expect(parseReceiptOcrText('Shop\n15/01/\n2026').dateConfidence).toBe(0);
-        // The day and month, written like money, outrank the total, and so
-        // does a year left on a line with a currency code: on a slip that
-        // prints no currency mark the refund reads as a purchase.
+        // The day and month, written like money, outrank the total: on a slip
+        // that prints no currency mark the refund reads as a purchase. A year
+        // left on a line with a currency code outranks the total too.
         const cases: [text: string, amount: number, amountConfidence: number][] = [
           ['REFUND\n13.01.\n24\nItem -4.50\nTotal -4.50', 13.01, 0.5],
           ['Shop\nItem 4.50\nTotal 4.50 EUR 13.01.\n24', 13.01, 0.8],
@@ -999,6 +999,137 @@ describe('parseReceiptOcrText', () => {
         jasmine.objectContaining({ amountConfidence: 0.6, amountDemotion: 'tender' }),
       );
       expect('amountDemotion' in parseReceiptOcrText('Shop\n$100\n$8\n$108')).toBeFalse();
+    });
+
+    it('names the first rule that moved the reading: an aside, then a count, then the cash tendered', () => {
+      // A pin: passing an aside outranks a count that might have been the
+      // total, and both outrank the cash-tendered sum, so a model that agrees
+      // with such a reading keeps the parser's grade on the device lane. Naming
+      // the cash tendered first, or the count before the aside, relabels these.
+      const cases: [text: string, amount: number, amountDemotion: string][] = [
+        ['Shop\nCash $50.00\n(Total $43.10)\nChange $6.90\nStore 72', 43.1, 'aside'],
+        ['Shop\nItem 72 $43.10\nCash $50.00\nChange $6.90', 43.1, 'count'],
+        ['Shop\nRoom 412 $89.00\n(Reg $99.00)', 89, 'aside'],
+      ];
+      for (const [text, amount, amountDemotion] of cases) {
+        expect(parseReceiptOcrText(text))
+          .withContext(text)
+          .toEqual(jasmine.objectContaining({ amount, amountConfidence: 0.6, amountDemotion }));
+      }
+    });
+  });
+
+  describe('a labelled aside in parentheses', () => {
+    // A figure inside parentheses that hold a word as well, (Reg $15.00), is
+    // a regular price, a balance or a saving printed beside the total, never
+    // the total while its tier holds a figure printed on its own (ADR 0186).
+    // Passing it, or keeping it for want of anything else while a weaker tier
+    // holds a figure printed on its own, lands under the bar.
+    const graded = (
+      amount: number,
+      amountConfidence: number,
+      direction: 'credit' | 'debit',
+      directionConfidence: number,
+    ) => jasmine.objectContaining({ amount, amountConfidence, direction, directionConfidence });
+
+    it('reads the total beside a regular price in parentheses, flagged', () => {
+      for (const text of ['Shop\nTotal $12.50\n(Reg $15.00)', 'Shop\nTotal $12.50\n($15.00 reg)']) {
+        expect(parseReceiptOcrText(text))
+          .withContext(text)
+          .toEqual(
+            jasmine.objectContaining({
+              amount: 12.5,
+              amountConfidence: 0.6,
+              amountDemotion: 'aside',
+              direction: 'debit',
+              directionConfidence: 0,
+            }),
+          );
+      }
+    });
+
+    it('reads an aside in fullwidth parentheses, in any script', () => {
+      expect(parseReceiptOcrText('店\n合計 ¥1,280\n（定価 ¥1,580）')).toEqual(
+        graded(1280, 0.6, 'debit', 0),
+      );
+    });
+
+    it("reads a refund's mark off the total the aside outranked", () => {
+      expect(parseReceiptOcrText('REFUND\nTotal -$12.50\n(Reg $15.00)')).toEqual(
+        graded(12.5, 0.6, 'credit', 0.5),
+      );
+    });
+
+    it('reads an aside Vision handed back across two lines', () => {
+      expect(parseReceiptOcrText('Shop\nTotal\n$12.50\n(Reg\n$15.00)')).toEqual(
+        graded(12.5, 0.6, 'debit', 0),
+      );
+    });
+
+    it('grades an aside it reads for want of anything else in its tier, flagged', () => {
+      expect(parseReceiptOcrText('Shop\nTotal 12.50\n(Reg $15.00)')).toEqual(
+        graded(15, 0.6, 'debit', 0),
+      );
+      expect(parseReceiptOcrText('店\n合計 980\n(内税 ¥72)')).toEqual(graded(72, 0.6, 'debit', 0));
+    });
+
+    it('reads past a price with tax, or a total, printed as an aside: flagged on a purchase, and on a refund slip read as a purchase, the known gap', () => {
+      expect(parseReceiptOcrText('店\n合計 ¥1,180\n(税込¥1,298)')).toEqual(
+        graded(1180, 0.6, 'debit', 0),
+      );
+      expect(parseReceiptOcrText('店\n合計 ¥1,000\n（税込 ¥1,100）')).toEqual(
+        graded(1000, 0.6, 'debit', 0),
+      );
+      // The refund slip's credit is printed on no figure read, so it is filed
+      // as a purchase with no flag on its type.
+      expect(parseReceiptOcrText('REFUND\nJacket $59.99\nTax $4.80\n(Total $64.79)')).toEqual(
+        graded(59.99, 0.6, 'debit', 0),
+      );
+    });
+
+    describe('what it leaves alone', () => {
+      it('keeps an aside that is the only figure on the receipt', () => {
+        expect(parseReceiptOcrText('Shop\n(Reg $15.00)')).toEqual(graded(15, 0.8, 'debit', 0));
+      });
+
+      it("reads a sign's capitals and the receipt's currency code as money, not a word", () => {
+        expect(parseReceiptOcrText('Shop\nJacket $5.00\nTotal (US$ 12.50)')).toEqual(
+          graded(12.5, 0.8, 'debit', 0),
+        );
+        expect(parseReceiptOcrText('Shop\nJacket $5.00\nTotal (US$12.50)')).toEqual(
+          graded(12.5, 0.8, 'credit', 0.5),
+        );
+        expect(
+          parseReceiptOcrText('Shop\nJacket 59.99 USD\nTax 4.80 USD\nTotal (USD 64.79)'),
+        ).toEqual(graded(64.79, 0.8, 'debit', 0));
+      });
+
+      it('reads a figure printed negative inside labelled parentheses as the total, never an aside', () => {
+        expect(parseReceiptOcrText('REFUND\nJacket $59.99\nTax $4.80\n(Refund -$64.79)')).toEqual(
+          graded(64.79, 0.8, 'credit', 0.5),
+        );
+        expect(parseReceiptOcrText('返品\nジャケット ¥5,980\n消費税 ¥598\n(返金 -¥6,578)')).toEqual(
+          graded(6578, 0.8, 'credit', 0.5),
+        );
+      });
+
+      it('still counts an aside in the cash the total was change for', () => {
+        expect(parseReceiptOcrText('Shop\nTotal $43.10\nCash $50.00\n(Change $6.90)')).toEqual(
+          graded(43.1, 0.6, 'debit', 0),
+        );
+      });
+
+      it("counts an aside of the total's value as a copy of it", () => {
+        expect(parseReceiptOcrText('Shop\nTotal -$12.50\n(Card $12.50)')).toEqual(
+          graded(12.5, 0.8, 'debit', 0.3),
+        );
+      });
+
+      it("reads a label glued to its sign as the sign's capitals, the known gap", () => {
+        expect(parseReceiptOcrText('Shop\nTotal $12.50\n(REG$15.00)')).toEqual(
+          graded(15, 0.8, 'credit', 0.5),
+        );
+      });
     });
   });
 

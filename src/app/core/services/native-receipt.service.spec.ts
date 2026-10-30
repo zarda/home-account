@@ -232,6 +232,19 @@ describe('NativeReceiptService', () => {
       expect(transaction.fieldConfidence).toEqual({ amount: 0.6, date: 0 });
     });
 
+    it('should flag a total read past a regular price in parentheses below the verify threshold', async () => {
+      visionMock.recognizeText.and.resolveTo({
+        ...ocrResult,
+        text: 'Shop\n2026-01-15\nTotal $120.50\n(Reg $150.00)',
+      });
+
+      const transaction = (await service.processImage(imageFile())).transactions[0];
+
+      expect(transaction.amount).toBe(120.5);
+      expect(transaction.fieldConfidence).toEqual({ amount: 0.6, date: 0.9 });
+      expect(transaction.fieldConfidence!.amount!).toBeLessThan(VERIFY_FIELD_THRESHOLD);
+    });
+
     /**
      * A refund slip prints its total as a negative, and this lane has no
      * model to read the words around it, so the mark on the total is all it
@@ -400,6 +413,26 @@ describe('NativeReceiptService', () => {
         expect(result.transactions[0].fieldConfidence?.amount).toBe(0.6);
       });
 
+      it("keeps the text parser's grade when it read a cash-tendered pick a count or an aside also moved", async () => {
+        // A pin: the reading carries the label of the rule that outranks the
+        // tendered sum's, and a model that agrees with a rule's pick backs
+        // nothing (ADR 0186). Labelling such a pick by the cash tendered
+        // would lift the agreeing model to 0.8.
+        for (const text of [
+          'Shop\nItem 72 $43.10\nCash $50.00\nChange $6.90',
+          'Shop\nCash $50.00\n(Total $43.10)\nChange $6.90\nStore 72',
+        ]) {
+          visionMock.recognizeText.and.resolveTo({ ...ocrResult, text });
+          appleMock.parseReceiptText.and.resolveTo({
+            merchant: 'Cafe', date: '2026-01-15', amount: 43.1, currency: 'USD', category: '', details: '',
+          });
+
+          const result = await service.processImage(imageFile());
+
+          expect(result.transactions[0].fieldConfidence?.amount).withContext(text).toBe(0.6);
+        }
+      });
+
       it('flags a model total that differs from one the text parser picked by a rule', async () => {
         // The parser read its figure beside a currency mark, and only a rule
         // moved it: a different total from the model is disputed, whichever
@@ -484,6 +517,20 @@ describe('NativeReceiptService', () => {
 
           expect(result.transactions[0].fieldConfidence?.amount).withContext(text).toBe(0.8);
         }
+      });
+
+      it("keeps the text parser's grade when it read the same total past an aside", async () => {
+        visionMock.recognizeText.and.resolveTo({
+          ...ocrResult,
+          text: 'Shop\n2026-01-15\nTotal $120.50\n(Reg $150.00)',
+        });
+        appleMock.parseReceiptText.and.resolveTo({
+          merchant: 'Cafe', date: '2026-01-15', amount: 120.5, currency: 'USD', category: '', details: '',
+        });
+
+        const result = await service.processImage(imageFile());
+
+        expect(result.transactions[0].fieldConfidence).toEqual({ amount: 0.6, date: 0.8 });
       });
 
       it('grades a read date 0.8', async () => {
