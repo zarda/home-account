@@ -24,21 +24,25 @@ provider you had configured was not necessarily the one that ran, and with no
 Gemini key the receipt UI did not appear at all — even on iOS, where the
 on-device pipeline needs no key.
 
-The in-form path has no review step, so a value the model was unsure of goes
-straight into a field you are about to submit. Where the model reports low
-confidence in the total or the date, that field is flagged in place, on the
-same 0.7 bar the import wizard's preview table uses. The form also flags a
-scanned date that reads as **any day but today**, however sure the reader was
-of it — the flag clears once you move the date to a different **day**, since
-re-entering the day that was scanned is not an answer to it. Where the reader
-was also unsure, its doubt is the first sentence of the tooltip and the
-not-today note follows. A scan read as a refund — on the device or by the
-cloud — switches the form to Income and flags the type in the checked
-segment, where the flag takes the trend icon's place, until you change the
-type or discard the photo; an expense reading never moves a type you picked
-(see *Where the amount comes from*). A category the new type cannot hold is
-cleared, and the form says which; turning the type back gives it back, and
-says that too (see *Categories*).
+The in-form path has no review step, so a value the reader was unsure of goes
+straight into a field you are about to submit. Where the total or the date is
+graded low — by a cloud model's own confidence, or by the device's policy
+(see *Where the amount comes from*) — that field is flagged in place, on the
+same 0.7 bar the import wizard's preview table uses. The flag quotes a
+percentage only for a cloud reading, mostly the confidence its model
+reported; a device reading's flag says the scan could not read the figure for
+certain. The form
+also flags a scanned date that reads as **any day but today**, however sure
+the reader was of it — the flag clears once you move the date to a different
+**day**, since re-entering the day that was scanned is not an answer to it.
+Where the reader was also unsure, its doubt is the first sentence of the
+tooltip and the not-today note follows. A scan read as a refund — on the
+device or by the cloud — switches the form to Income and flags the type in
+the checked segment, where the flag takes the trend icon's place, until you
+change the type or discard the photo; an expense reading never moves a type
+you picked (see *Where the amount comes from*). A category the new type
+cannot hold is cleared, and the form says which; turning the type back gives
+it back, and says that too (see *Categories*).
 
 The form's date is only ever flagged, never replaced or blocked: the wizard's
 review step re-dates a date it cannot vouch for and **lets you change it
@@ -92,18 +96,73 @@ nothing resolved one, the chip is graded on what was actually attempted
 instead ([ADR 0051](ADR/0051-an-uncategorized-row-is-graded-where-it-is-coerced.md)).
 None of those questions is "was the amount read correctly".
 
-**The regex parser**, the last resort when no model can be reached, has no field
-to ask for. It takes the largest figure in the strongest evidence tier it found,
-which is the total on all but the odd receipt — with one correction. Where the
-receipt was paid in cash, the largest figure is the note handed over rather than
-the bill, so a winning figure that is a whole number divisible by five, with two
-other figures in the same tier that add up to it, is read as cash tendered and
-the larger of that pair becomes the amount. That read lands at 0.75× the tier's
-confidence, which is under the threshold in every tier, so it is flagged too.
-The rule stands down where the total it would pick is itself round: 450 + 50 =
-500 is a total plus change from a note, and a subtotal plus tax, and nothing in
-the arithmetic says which. Reading arithmetic rather than words is what keeps
-this workable on a receipt in any language.
+**The regex parser** — the last resort when no model can read the receipt, and
+the second witness to the total the on-device model reads — has no field to ask
+for. It takes the largest figure in the strongest evidence tier it found, which
+is the total on all but the odd receipt, with four corrections. Three of them
+move or keep the reading on something other than its own print — the
+cash-tendered sum's arithmetic, a labelled aside, a larger count that might have
+been the total — and each lands it at 0.75× the tier's confidence, under the
+threshold in every tier, so it is flagged. The fourth, which figures on a line
+are money, moves it at the tier's own grade, because the figure it then reads is
+printed as money, unless a larger count stands beside it.
+
+Where the receipt was paid in cash, the largest figure is the note handed over
+rather than the bill, so a winning figure that is a whole number divisible by
+five, with two other figures that add up to it, is read as cash tendered and the
+larger of that pair becomes the amount, flagged. A whole number printed bare can
+stand in that pair, as the total or as the change, where it is printed on the
+cash's own line (`合計 538 ¥1,000 ¥462`) or where a total stands
+(`Total 12 Tax $0.96`, or `Tax $0.96 Total 12`, over `Cash $20.00` and
+`Change $8.00`; `Cash $20.00 Change 8`); a count of what a price buys, on another
+line, does not (`Item 3 $2.00` over `Total $5.00` reads 5.00). The rule stands
+down where the total it would pick is itself round: 450 + 50 = 500 is a total
+plus change from a note, and a subtotal plus tax, and nothing in the arithmetic
+says which. Nor does the arithmetic say which of the pair is the total, so where
+the change is the larger, the change is read, flagged. Reading arithmetic rather
+than words is what keeps this workable on a receipt in any language.
+
+Which figures on a line are money is read figure by figure. A figure is money
+where a currency sign or the receipt's code touches it, or where it is written
+with cents or grouping. A sign printed between two figures belongs to the one it
+is printed against, else to the one written like money; where nothing tells the
+two apart (`Summe 12 € 3 Artikel`, `Total 2 $ 8`), both are money. A whole
+number printed bare beside such a figure is a count, a size or a code
+(`Pack of 24 $5.00`, `SKU 1234 $1.45`, `緑茶 500ml ¥151`), not the line's money,
+even where it repeats that money's value (`TOTAL 14 Card -$14`), and it falls to
+the plain numbers. The two halves of a time (`14:32`) are neither money nor a
+count.
+
+A count larger than the figure read might have been the total where the figure
+is printed nowhere else in its tier, or where the count stands where a total
+does: followed by a word of its own, past a space, a run of marks, a percent
+figure or the letters of its currency (`Total 1280 Tax ¥116`,
+`Total 9, Tax $1.00`, `Total 120 8% Tax $9.60`, `合計 980円 内税 ¥72`), or printed
+after its line's money (`内税 ¥72 合計 980`). Then the reading is flagged, and the
+receipt's marks are not read as a refund's where that count shares a line with a
+copy of the total or stands where a total does (`Total 12 Tax -$0.96`;
+`Coupon -$3.00` over `Tax $1.00 Total 12`). A total printed bare before a
+smaller figure with nothing, or only marks or a percent figure, between them
+(`Total 12 $0.96`, `Total 12 = $0.96`) looks exactly like a count before a
+price; where the smaller figure, or the one read, is printed again, or the cash
+and the change follow, it is read with no flag, and the limits below list it.
+
+A figure inside parentheses that hold a word as well — `(Reg $15.00)`,
+`($15.00 reg)`, `（定価 ¥1,580）` — is a labelled aside: a regular price, a balance
+or a saving printed beside the total. It is never the total while its tier holds
+a figure printed on its own, so `Total $12.50 / (Reg $15.00)` reads 12.50,
+flagged; only the cash-tendered sum, which still counts asides, may pick one
+(`Cash $50.00 / (Total $43.10) / Change $6.90` reads 43.10, flagged). Any
+letter makes a word, and no word is read for what it says; the capitals of a
+sign (`US$`) and the code the receipt's currency was read from (`USD`) are the
+figure's money, and a figure printed negative is never an aside
+(`(Refund -$64.79)`). An aside kept only because its tier holds nothing else,
+while a weaker tier holds a figure printed on its own, is flagged as well:
+`Total 12.50 / (Reg $15.00)` reads 15.00. The cost is a total printed inside
+labelled parentheses beside smaller figures (`合計 ¥1,180 / (税込¥1,298)`), which
+reads the largest other figure: flagged on a purchase, and on a refund slip read
+as a purchase with no flag, which the limits below list
+([ADR 0186](ADR/0186-a-date-stops-at-a-currency-sign-and-a-line-break-a-total-read-past-an-aside-or-under-a-count-is-flagged-and-a-shared-file-lands-in-the-upload-area.md)).
 
 Two limits are worth knowing about the parser. Anything it read outside the
 strongest tier is flagged whatever it picked, because a figure not printed
@@ -113,7 +172,25 @@ order or a two-digit year, 0 when nothing matched at all. That puts every
 ambiguous reading and every two-digit year under the 0.7 bar — `03/04` is
 genuinely two dates and the receipt does not say which — so such a row is
 re-dated and marked rather than filed on a guess, and only an unambiguous
-four-digit-year reading is kept.
+four-digit-year reading is kept. A date is read only from figures printed
+together on one line, never through a currency sign, and, with its year last,
+it never starts inside a figure, nor at a figure its sign is glued to: a priced
+line whose sign stands before its price (`Item 1 $10.00`) is money rather than a
+date in 2000, the cents of `$145.01` are not the day of `Total $145.01 01 01 24`
+(145.01 on 1 January 2024), and a total's cents are never read together with
+the date printed under it (`Total $5.15` over `01/15/2026` is 5.15 on 15 January
+2026) or with one printed beside it where its sign is glued to it
+(`Total $5.15 01/15/26` is 5.15 on 15 January 2026). Where the sign stands apart
+from the total, or a code leads it, a date can still start at the total's whole
+part and take its cents, as on 26.10.180: `Total $ 5.15 01/15/26` reads 26, and
+`Total $ 5.15 01/15/2026` reads 2026; the limits below list it. So a date glued
+to the figure before it by a mark (`Bon 4711.13/01/25`), or glued after a
+currency sign (`€15.01.26`), is not read at all, though one printed year first
+(`Bon 4711.2025-01-13`) still is. Any other mark or space may still part a
+date's numbers, so a count and a price with no sign between them
+(`Milk 1 3.25`, `Brot 1 2,10 €`) still read as a date, graded 0.3 or 0.5, and
+drop out of the amount hunt: under a total line the amount is right, and alone
+the receipt reads no amount, flagged.
 
 The parser also says **which way the money moved**, and reads that from
 typography as well. A minus, an East Asian accounting triangle (`▲`, `△`) or
@@ -133,9 +210,14 @@ number. The
 amount stays a positive figure either way. A refund slip can print its total
 again, unmarked, on the card line, so every copy of the total printed as money
 is read (every figure of its value, for a total read from the plain numbers):
-all of them marked is a credit, graded 0.5; marked and unmarked both
-is still a purchase, graded 0.3; nothing marked is a purchase graded 0, which
-the row carries as no grade at all. Neither grade reaches the 0.7 bar, and
+a size or a count on a priced line counts among them (`10m -$10.00`), and so
+does half of a time on the total's own line, or on another line that prints
+money (the 14 of `14:32 TOTAL -$14.00`), though not a time on a line of its
+own. All of them marked is a credit, graded 0.5; marked and unmarked both is
+still a purchase, graded 0.3, and so is a marked total where a larger bare
+figure might have been the total (`Total 12 Tax -$0.96`; `Coupon -$3.00` over
+`Tax $1.00 Total 12`); nothing marked is a purchase graded 0, which the row
+carries as no grade at all. Neither grade reaches the 0.7 bar, and
 neither moves the parser's combined confidence, so routing is untouched
 ([ADR 0162](ADR/0162-a-refund-read-on-the-device-is-filed-as-income-and-the-review-asks-about-it.md)).
 
@@ -148,14 +230,53 @@ currency was read — the model's first, then the parser's.
 | What the two readers say | Amount grade |
 |---|---|
 | The model read nothing, or nothing above zero | 0 |
-| Both read the same total | the parser's grade or 0.8, whichever is higher |
-| They differ, and the parser read its figure beside a currency mark | 0.5 — flagged |
+| Both read the same total | the parser's grade or 0.8, whichever is higher — the parser's own 0.6 where a rule (an aside or a count), not the cash-tendered sum, picked that total from the figures it read beside a currency mark, or holds of the cash-tendered sum's pick as well |
+| They differ, and the parser read its figure beside a currency mark, graded 0.7 or more, or moved there by a rule or by the cash-tendered sum | 0.5 — flagged |
 | They differ, and the parser's own reading is weaker than that | 0.8 |
+
+A total the parser picked by a rule rather than off the print — past a labelled
+aside, or under a count that might have been the total — is a guess a model
+reading the same text can share, so agreeing with it backs nothing, and
+disagreeing with it is a disagreement with a figure the receipt printed as
+money. Agreeing with a cash-tendered pick still lifts it to 0.8, because the
+tendered sum is arithmetic on the print, unless a rule holds of the pick too:
+one that is an aside while a weaker tier holds a figure printed on its own
+(`Cash $50.00 / (Total $43.10) / Change $6.90 / Store 72`), or that stands
+under a larger count, is labelled by that rule and keeps 0.6. Disagreeing with
+a cash-tendered pick is flagged, because a model that reads the cash handed over
+or the change is as wrong as one that reads a count. The costs fall on right
+answers: a receipt whose one priced line holds a count larger than its price
+(`Item 12 $4.99`), where a model that reads the price is flagged at 0.6, and a
+cash receipt whose change is larger than its total, where the parser reads the
+change and a model that reads the total is flagged at 0.5. Two agreements are
+lifted although both readers are wrong: with any figure the parser reads wrongly
+at 0.8 — a subtotal over a total that prints no currency mark, the cash over a
+change that prints none, an item a discount took the total under — and with the
+wrong member of a cash-tendered pair. And a disagreement is lifted, right or
+wrong, where the parser reads the receipt under the bar: on a receipt that
+prints no currency sign, only a code beside its date or time, the parser now
+reads the receipt's own figures there, where it used to read a figure of the
+date or the time at 0.8 and dispute every model total
+([ADR 0186](ADR/0186-a-date-stops-at-a-currency-sign-and-a-line-break-a-total-read-past-an-aside-or-under-a-count-is-flagged-and-a-shared-file-lands-in-the-upload-area.md)).
 
 A date the model could not read is graded 0; one it read is graded 0.8 and
 never lower, because anything under the 0.7 bar would have the read date
 replaced with today
 ([ADR 0147](ADR/0147-a-row-is-graded-by-what-its-door-can-vouch-for.md)).
+
+None of these grades, nor the parser's own on the regex lane, is a confidence
+any model reported: they are the device's policy, set by the evidence tier, a
+demotion and whether the two readers agree. So a device row's doubted amount
+says *Double-check this amount — the scan could not read it for certain*, with
+no percentage, on the review card and in the form, as the type's flag does. The
+form says the same of a doubted date. On the card a doubted device date keeps
+the assumed-date wording instead, because the import dates every grade under
+the bar today (see *Failure surfacing*). A cloud reader's flag quotes a
+percentage: the confidence its model reported, or the app's own where no model
+gave one (50% on an amount consolidation doubted, 0% on a date that will not
+parse). The converter marks a row the device read, `readOnDevice`, from its
+`source`, and the form reads the scan's own `source`
+([ADR 0186](ADR/0186-a-date-stops-at-a-currency-sign-and-a-line-break-a-total-read-past-an-aside-or-under-a-count-is-flagged-and-a-shared-file-lands-in-the-upload-area.md)).
 
 **Whether it was a purchase or a refund** is one verdict for both device
 lanes. The model's schema has a `kind`, *purchase* or *refund*, read from the
@@ -170,10 +291,10 @@ expense, flagged.
 | The model says | The total prints | Type | Type grade |
 |---|---|---|---|
 | refund | marked | income | 0.6 |
-| refund | both ways, or unmarked | income | 0.5 |
+| refund | both ways, or unmarked, or marked where a larger bare figure might have been the total | income | 0.5 |
 | purchase | marked, or both ways | expense | 0.3 |
-| nothing (always, on the regex lane) | marked | income | 0.5 |
-| nothing (always, on the regex lane) | both ways | expense | 0.3 |
+| nothing (always, on the regex lane) | marked, and no larger bare figure might have been the total | income | 0.5 |
+| nothing (always, on the regex lane) | both ways, or marked where a larger bare figure might have been the total (`Total 12 Tax -$0.96`) | expense | 0.3 |
 | purchase, or nothing | a negative on another total than the model's | expense | 0.3 |
 | purchase, or nothing | unmarked | expense | — |
 
@@ -182,7 +303,8 @@ direction, so the grade is policy: a device reading of income is always asked
 about — the review card flags the type toggle, the form flags its checked type
 segment — and so is a purchase the paper argued with, while a plain purchase
 carries no type grade and asks nothing. The flag's sentence names no
-percentage, because there is no reading for one to report
+percentage, because there is no reading for one to report, and neither do the
+amount's and the date's on a device row (above)
 ([ADR 0162](ADR/0162-a-refund-read-on-the-device-is-filed-as-income-and-the-review-asks-about-it.md),
 [ADR 0185](ADR/0185-a-refund-is-asked-about-at-every-door-and-a-category-follows-its-rows-side-there-and-back.md)).
 
@@ -262,11 +384,12 @@ the cloud's — Vision supports no Thai at any revision, for instance — so rou
 takes engine capability into account rather than assuming the on-device engine
 can read anything it is given.
 
-The last-resort regex parser, used only when the model is unavailable and fails,
-is deliberately **not** language-aware. It reads script-neutral signals and
-reports low confidence where it has none, so a receipt it cannot really read is
-visibly uncertain rather than confidently wrong. Adding per-language patterns to
-it is the wrong direction; see the ADR.
+The regex parser — the last resort when no model can read the receipt, and
+the on-device model's second witness to the total — is deliberately **not**
+language-aware. It reads script-neutral signals and reports low confidence
+where it has none, so a receipt it cannot really read is visibly uncertain
+rather than confidently wrong. Adding per-language patterns to it is the wrong
+direction; see the ADR.
 
 ## Country and currency
 
@@ -836,10 +959,11 @@ one place that decides. A value nothing can parse, one the reader graded below
 the bar, or one read clearly that no plausible calendar contains — more than a
 day ahead, or more than ten years back, checked only on a graded row — becomes
 *now* — the actual instant, so the row sorts above every other row dated
-today — and the review card asks about it, in place of the percentage the
-verify tooltip would otherwise quote; an implausible reading gets its own
-wording in that tooltip, distinct from an unreadable one, since the two are
-different doubts
+today — and the review card asks about it, in place of the sentence the
+verify tooltip would otherwise say: a cloud model's percentage, or, on a row
+the device read, that the scan could not read the date for certain. An
+implausible reading gets its own wording in that tooltip, distinct from an
+unreadable one, since the two are different doubts
 ([ADR 0080](ADR/0080-an-impossible-date-lands-on-today-however-well-it-was-read.md)).
 A date nobody graded that can be read at all, a CSV cell or a backup row, is
 kept untouched: absent confidence means "nobody looked", not "the reader was
@@ -1410,17 +1534,76 @@ names the image and the status it dropped, with the drain's warning beside it.
   model has read them, and the specs and the browser runs answer from the
   page. The reviewer flips such a row on the card, or the user in the form or
   the ledger.
-- **The device's reading has its own limits.** A minus Vision did not read;
-  a minus glued to kana, or to a Thai, Arabic, Hebrew or Devanagari label; a
-  restated or labelled figure in parentheses that outranks the total and
-  reads as a credit; a points line on a receipt that prints no currency sign;
-  a size on a priced line that copies the total; and a reference number glued
-  to a Han label (`伝票-1234`), which now reads as a negative and, where it
-  wins the amount, files a flagged credit with the wrong amount. The two
-  misses land as plain purchases, the rest flagged, and
-  [ADR 0162](ADR/0162-a-refund-read-on-the-device-is-filed-as-income-and-the-review-asks-about-it.md)
-  and
+- **The device's reading has its own limits.** Some readings are flagged, wrong
+  or not: a priced line that prints no sign, or prints it after the price
+  (`Milk 1 3.25`, `Brot 1 2,10 €`), which reads as a date and, alone, as no
+  amount; a total printed bare beside a smaller figure with a word between them,
+  or after its line's money (`Total 1280 Tax ¥116`, `内税 ¥72 合計 980`), which
+  reads the smaller figure, or the largest other one; a total printed inside
+  labelled parentheses beside smaller figures on a purchase (`(税込¥1,298)`),
+  which reads the largest other figure; a count or a size on a priced line of a
+  refund's own value (`Pack of 12 -$12.00`), or a time on the total's own line
+  that repeats it (`14:14 TOTAL -$14.00`), which copies the total and leaves the
+  refund a purchase graded 0.3; cash whose change is larger than the total,
+  which reads the change; and a date OCR wrapped across two lines, which reads
+  as none while the amount beside it reads right. Others are read silently — a
+  wrong amount with no flag on it, a refund filed as a plain purchase, or a
+  purchase filed as income with only its type asked about, as every device
+  reading of income is: a minus Vision did not read, and a minus glued to kana
+  or to a Thai, Arabic, Hebrew or Devanagari label, which leave a refund a
+  plain purchase; a restated or labelled figure in parentheses, or one whose
+  label stands outside them (`Was ($79.99)`) or is glued to its sign
+  (`(REG$15.00)`), that outranks the total and reads as a credit, and a saving
+  larger than the total printed negative; any figure printed negative (a
+  discount, coupon, gift card, deposit or points) that takes the total under a
+  priced item, which reads the item; a points line on a receipt that prints no
+  currency sign, read as a credit; a reference number glued to a Han label
+  (`伝票-1234`) where it wins the amount from the plain numbers, read as a credit;
+  an aside whose parentheses OCR dropped or printed as brackets, or a regular
+  price printed with no parentheses (`Reg. Price $15.00`); a refund slip whose
+  total is labelled in parentheses (`(Total $64.79)`), which reads as a
+  purchase; a total printed bare before a smaller figure with nothing, or only
+  marks or a percent figure, between them, where the smaller figure or the one
+  read is printed again or the cash and the change follow (`Total 12 $0.96` or
+  `Total 12 = $0.96` over `Tax $0.96`), which reads the smaller figure, or the
+  cash; any of the bare-total shapes with the total split onto a line of its
+  own; a total line with no sign beside signed lines (`合計 3点 980` over `内税 ¥72`,
+  a bare `Total 11.73` under `Subtotal $10.86`, or `1/13/24 Total 45.00` under
+  `Bagel $4.50 x2`), which reads a signed figure; the cash where no pair of
+  figures beside a currency mark adds up to it, because the total or the change
+  prints no mark; cash whose change is itself round (`お預り ¥1,000` and `お釣り ¥640`
+  under a ¥360 total), which reads the cash; a currency sign spaced from two
+  bare figures, which reads both as money (`Item 24 $ 5` reads 24); a date OCR
+  wrapped across two lines (`13.01.` over `24`), whose day and month, or a year
+  left on a line with a currency code (`2024 14:32 EUR`), read as money; a
+  two-digit-year date printed year first that, read day first, falls in the
+  future (`23.01.27`, before 22 January 2027), which reads as one figure of
+  money; a day-first date printed right after a whole-number price whose sign
+  stands apart from it (`Milch 2 € 13 24.07.24`), which reads as one figure of
+  money, 2407.24, and leaves a refund a plain purchase; a date glued to a figure
+  by a mark (`Bon 4711.13/01/25`), which is not read, so on a refund slip that
+  prints no currency sign that figure wins the amount and the refund is filed as
+  a plain purchase; a date glued after a currency sign (`€15.01.26`), which is
+  not read, and which, day first with dots, reads as one figure of money
+  (1501.26); a run that only looks like a date, where a price's own figure
+  starts it, its sign spaced from it, a code before it or no sign at all
+  (`Total $ 27.01 12/5/24`, `Total USD 27.01 12/5/24`,
+  `Card ****1234 $ 3 1/13/24`, `2 x 5,10 10,20 €`, `Summe (2) 12,10 €`), which
+  reads another figure, and which, where a payment line repeats the total, turns
+  the direction instead: a refund whose card or cash line prints the total
+  unmarked is filed as a plain purchase, and a sale whose card line prints it
+  negative with a code as income; a bare figure on a line whose only money is a
+  labelled aside (`Points 1847` beside `(IVA 5% €9,24)`); and a four-digit code
+  before a price with no sign (`Ref 2025 1.10`), which reads as a date. On the
+  model lane, a model that reads the same wrong figure as the parser is lifted
+  to 0.8 where the parser read it at 0.8, or where the cash-tendered sum picked
+  it; and on a receipt that prints no currency sign, only a code beside its date
+  or time, a model total that differs from the parser's is lifted to 0.8,
+  because the parser reads that receipt under the bar.
+  [ADR 0162](ADR/0162-a-refund-read-on-the-device-is-filed-as-income-and-the-review-asks-about-it.md),
   [ADR 0185](ADR/0185-a-refund-is-asked-about-at-every-door-and-a-category-follows-its-rows-side-there-and-back.md)
+  and
+  [ADR 0186](ADR/0186-a-date-stops-at-a-currency-sign-and-a-line-break-a-total-read-past-an-aside-or-under-a-count-is-flagged-and-a-shared-file-lands-in-the-upload-area.md)
   list them, with the evidence for keeping each reading.
 - **Queueing an image while the queue is closed still fails outright.** The
   status writes a drain makes now report whether they landed, but an image

@@ -661,11 +661,11 @@ Both render in the CDK overlay, so the describe removes
 `test:ci` prints console output from paths that deliberately report a failure.
 The floor is a recorded number, not a gate: it exists so a new line is noticed.
 
-| | Base (`7b693953`) | `26.10.175` | `26.10.177` | `26.10.178` | `26.10.179` | `26.10.180` |
-|---|---|---|---|---|---|---|
-| ERROR | 40 | 53 | 53 | 44 | 44 | 44 |
-| WARN | 38 | 60 | 60 | 60 | 60 | 62 |
-| LOG | 26 | **0** | **0** | **0** | **0** | **0** |
+| | Base (`7b693953`) | `26.10.175` | `26.10.177` | `26.10.178` | `26.10.179` | `26.10.180` | `26.10.181` |
+|---|---|---|---|---|---|---|---|
+| ERROR | 40 | 53 | 53 | 44 | 44 | 44 | 44 |
+| WARN | 38 | 60 | 60 | 60 | 60 | 62 | 63 |
+| LOG | 26 | **0** | **0** | **0** | **0** | **0** | **0** |
 
 **Counting it.** Karma's progress reporter prints each console line twice, once
 behind an ANSI rewrite and once plain, so `grep -c 'ERROR: '` reports exactly
@@ -696,7 +696,11 @@ reads. Those cases flush with `fixture.detectChanges()` now, and the spec
 prints none. The wave that recorded `26.10.179` added none either, and neither
 did the one that recorded `26.10.180`: its 62 is the three *already deleted*
 lines on top of a run whose *Reclaimed 1 item(s)* line printed once fewer, and
-every line, deduplicated, matches `26.10.179`'s base. **Rendering
+every line, deduplicated, matches `26.10.179`'s base. The one that recorded
+`26.10.181` added none either: its 63 is the three *already deleted* lines on
+top of 60, on both of its runs; it adds and removes no `console` call under
+`src/`; and every line printed by the fourteen unit spec files it edits comes
+from a case that predates it. **Rendering
 twenty-four real templates added none of them** — a template that renders
 quietly is the normal case, and a new line here means a real code path started
 reporting something.

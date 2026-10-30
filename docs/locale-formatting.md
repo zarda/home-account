@@ -15,10 +15,10 @@ rendering.
 ## One chokepoint
 
 `LocaleFormatService` (`src/app/core/services/locale-format.service.ts`) is
-the only place a user-facing date or number is formatted. It resolves the
-active language to a BCP 47 tag through `TranslationService.getIntlLocale()`
-(`en` → `en-US`, `ja` → `ja-JP`, `tc` → `zh-Hant-TW`) and owns the `Intl`
-formatters.
+the only place a user-facing date, number or file size is formatted. It
+resolves the active language to a BCP 47 tag through
+`TranslationService.getIntlLocale()` (`en` → `en-US`, `ja` → `ja-JP`,
+`tc` → `zh-Hant-TW`) and owns the `Intl` formatters.
 
 Formatters are memoized per locale **and** option set. They are reached from
 impure pipes that run on every change-detection cycle, and constructing an
@@ -65,6 +65,30 @@ pattern (*{date} at {time}* in `en`), so each language orders and joins them
 its own way. Both used to call `toLocaleTimeString` with a two-digit hour,
 from two different locale sources
 ([ADR 0171](ADR/0171-second-copies-fold-into-one-copy-of-each-helper.md)).
+
+### File sizes take Intl's units, and the catalog's word for a byte
+
+`formatFileSize` writes whole bytes below 1024, then kB, MB and GB to one
+decimal place, each step 1024 of the one before. It steps on the figure as it
+will be written, so 1,048,525 bytes reads `1 MB` rather than `1,024 kB`. From
+a kilobyte up the unit is `Intl`'s own short form: `10 MB` in all three
+languages, `kB` in `en` and `tc`, `KB` in `ja`. Below that the figure goes
+through the catalog's `common.fileSizeBytes` (*{size} B*, *{size} バイト*,
+*{size} 位元組*), because CLDR writes the byte in English for `zh-Hant` at
+every width, and its short `en` form does not agree in number (*281 byte*).
+An absent or non-finite size is the empty string, as with `formatNumber`.
+
+The upload area's rows, the limit its refusal names and Import History's
+size chip all read it. The upload area used to write *281 Bytes* and *KB* in
+every language, and Import History kept a copy of its own that wrote *KB*
+and *B*; both fold onto this one
+([ADR 0171](ADR/0171-second-copies-fold-into-one-copy-of-each-helper.md),
+[ADR 0186](ADR/0186-a-date-stops-at-a-currency-sign-and-a-line-break-a-total-read-past-an-aside-or-under-a-count-is-flagged-and-a-shared-file-lands-in-the-upload-area.md)).
+
+The space between figure and unit is whatever the runtime's ICU writes.
+Today's Node and Chrome write a plain space, so the specs' `10 MB` and
+journey 88's read U+0020; an ICU that wrote U+00A0 there would fail them
+loudly rather than pass a different string.
 
 ## In templates
 

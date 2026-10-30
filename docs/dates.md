@@ -304,6 +304,14 @@ consecutive periods cannot overlap or leave a gap.
   ([ADR 0080](ADR/0080-an-impossible-date-lands-on-today-however-well-it-was-read.md),
   restated by
   [ADR 0123](ADR/0123-the-unit-sweep-is-silent-on-a-normal-path.md)).
+- `receipt-text-parser.battery.spec.ts` is left out **on purpose** too. It
+  records each receipt's amount, grade and direction and never a day, and its
+  readings are the same at both offsets and under either day/month order. It
+  holds the clock at 30 October 2026, because the future-date guard decides
+  some of them: read day first, `23.01.27` is a date to turn down only until
+  22 January 2027. The parser's dates are asserted in
+  `receipt-text-parser.spec.ts`, which is in the list
+  ([ADR 0186](ADR/0186-a-date-stops-at-a-currency-sign-and-a-line-break-a-total-read-past-an-aside-or-under-a-count-is-flagged-and-a-shared-file-lands-in-the-upload-area.md)).
 
 ### The audit greps
 

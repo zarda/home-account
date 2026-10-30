@@ -6557,9 +6557,10 @@ what each removal could have broken, where only a browser shows it.
    **Pass:** both lists and the tiles hold `e2e-87-midrun.png` alone, and
    both previews are `blob:` URLs that load: the queued photo has left both lists, and a photo
    picked while the write ran stays picked, its previews with it. Press
-   **Back**, then **Remove** on that photo's row. **Pass:** both lists
-   empty, and the dropzone shows its empty state. Hand the input
-   `e2e-87-second.png` the same way and read the lists and the queue again.
+   **Back**, then **Remove file 1 (e2e-87-midrun.png)** on that photo's
+   row. **Pass:** both lists empty, and the dropzone shows its empty state.
+   Hand the input `e2e-87-second.png` the same way and read the lists and
+   the queue again.
    **Pass:** each list holds `e2e-87-second.png` alone, and the queue still
    holds one entry: the queued photo cannot come back with the next pick
    (the third check's fix, above). `importService` is private, TypeScript's
