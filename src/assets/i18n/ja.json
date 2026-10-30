@@ -1364,6 +1364,7 @@
     "mergeIntoLabel": "{{description}}を別の行に結合",
     "mergeOption": "{{description}} · {{amount}} · {{date}}",
     "removeRowLabel": "{{description}}を削除",
+    "selectRowLabel": "{{description}}を選択",
     "removeFileLabel": "{{position}}番目のファイル（{{name}}）を削除",
     "moveFileUpLabel": "{{position}}番目のファイル（{{name}}）を上へ移動",
     "moveFileDownLabel": "{{position}}番目のファイル（{{name}}）を下へ移動",

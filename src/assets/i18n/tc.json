@@ -1364,6 +1364,7 @@
     "mergeIntoLabel": "將「{{description}}」合併到其他列",
     "mergeOption": "{{description}} · {{amount}} · {{date}}",
     "removeRowLabel": "移除「{{description}}」",
+    "selectRowLabel": "勾選「{{description}}」",
     "removeFileLabel": "移除第 {{position}} 個檔案（{{name}}）",
     "moveFileUpLabel": "將第 {{position}} 個檔案（{{name}}）上移",
     "moveFileDownLabel": "將第 {{position}} 個檔案（{{name}}）下移",

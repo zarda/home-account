@@ -227,6 +227,38 @@
  * repeat, which leaves the reference ambiguous rather than empty; and whether
  * the element an id names holds any text.
  *
+ * An eighth rule keeps a toggle from rendering a control with no name.
+ * `mat-checkbox`, `mat-slide-toggle` and `mat-radio-button` each render the
+ * control a screen reader lands on (an `<input>`, or a `role="switch"`
+ * button) inside themselves, and name it from the text projected into their
+ * own label or from their `aria-label` and `aria-labelledby` inputs. One with
+ * neither is announced as a checkbox or a switch and nothing more. The import
+ * review card's row checkbox had that shape, one per row, under a Select all
+ * whose text named it. The rule: a toggle projects text, or carries
+ * `aria-label` or `aria-labelledby` as a literal, an interpolation or a bound
+ * input (`[aria-label]`, `[aria-labelledby]`).
+ *
+ *   - **`[attr.aria-label]` is not a name here.** It is written on the host,
+ *     not on the control inside, which stays unnamed (Material's host
+ *     bindings clear the host's own `aria-label` and `aria-labelledby`). The
+ *     input binding is the spelling that reaches the control.
+ *   - **A `mat-icon` is not text.** MatIcon hides itself, so its ligature
+ *     names nothing, and a toggle whose only content is an icon is unnamed.
+ *   - **A slider is read the other way round.** `mat-slider` takes no name
+ *     input and forwards no attribute to its thumbs, so a name on its host
+ *     reaches nothing and the `<input matSliderThumb>` stays unnamed. The
+ *     rule: a slider that carries a name on its host carries one on each
+ *     thumb. A slider named nowhere is not that shape and is not read.
+ *   - **What it found and could not fix is frozen** in UNNAMED_FROZEN, in
+ *     ITEMLESS_FROZEN's rows with the tag as the key, set against the hits by
+ *     the same helper: a hit no row names fails, and so does a row whose
+ *     count is not the tally.
+ *
+ * What it cannot see: a name set in TypeScript or by a directive's host
+ * binding; text the toggle projects inside an element hidden from a screen
+ * reader, which counts here and names nothing; text only one branch of a
+ * block renders; and whether the text or the name says anything.
+ *
  * Reference documentation lives in docs/accessibility.md.
  */
 
@@ -865,6 +897,132 @@ export function scanDanglingIds(source) {
   return references.filter((reference) => !declared.has(reference.id));
 }
 
+/** The Material toggles that render their own control and name it from their label or their inputs. */
+const TOGGLE_TAGS = new Set(['mat-checkbox', 'mat-slide-toggle', 'mat-radio-button']);
+
+/**
+ * The attributes of a tag as ATTRIBUTE reads them, `{ name, value }`, the
+ * value undefined where none is written. A word inside another attribute's
+ * value is never one of them.
+ */
+function attributesOf(attrs) {
+  return Array.from(attrs.matchAll(ATTRIBUTE), (attribute) => ({
+    name: attribute[1],
+    value: attribute[2] ?? attribute[3] ?? attribute[4],
+  }));
+}
+
+/**
+ * The names a toggle hands to the control inside it: `aria-label` or
+ * `aria-labelledby`, literal, interpolated or bound to the input
+ * (`[aria-label]`, `[aria-labelledby]`), each with a value. `[attr.aria-label]`
+ * and `[attr.aria-labelledby]` are not among them, since they land on the
+ * host, and neither is any other spelling that ends in the name, such as
+ * `bind-attr.aria-label`.
+ */
+const TOGGLE_NAMES = new Set(['aria-label', 'aria-labelledby', '[aria-label]', '[aria-labelledby]']);
+
+const toggleNamed = (attrs) =>
+  attributesOf(attrs).some(({ name, value }) => value !== undefined && TOGGLE_NAMES.has(name));
+
+/** MatSlider's thumb input, in each of its three spellings. */
+const SLIDER_THUMBS = new Set(['matSliderThumb', 'matSliderStartThumb', 'matSliderEndThumb']);
+
+const isSliderThumb = (attrs) => attributesOf(attrs).some(({ name }) => SLIDER_THUMBS.has(name));
+
+/**
+ * Any spelling of `aria-label` or `aria-labelledby`, bound to the attribute
+ * or not: on a slider's host and on a plain input each lands where written.
+ */
+const anyAriaName = (attrs) => attributesOf(attrs).some(({ name }) => name.includes('aria-label'));
+
+/**
+ * True when a run of template text between two tags renders text: an
+ * interpolation, or anything left once control-flow syntax is taken out.
+ */
+function projectsText(run) {
+  const plain = run
+    .replace(/\{\{[\s\S]*?\}\}/g, ' x ')
+    .replace(/@let\b[^;]*;/g, ' ')
+    .replace(/@\w+[^{]*\{/g, ' ')
+    .replace(/[{}]/g, ' ');
+  return /\S/.test(plain);
+}
+
+/**
+ * Every toggle that hands the control inside it no name, and every slider
+ * whose name sits on its host while a thumb carries none. A toggle is named
+ * by text projected into it, outside any `mat-icon`, or by one of TOGGLE_NAMES.
+ * Returns `{ line, tag }` for each, `line` being the opening tag's.
+ */
+export function scanUnnamedToggles(source) {
+  const masked = maskComments(source);
+  const hits = [];
+  const judge = (entry) => {
+    if (entry.tag === 'mat-slider') {
+      if (anyAriaName(entry.attrs) && entry.thumbs.some((thumb) => !anyAriaName(thumb))) {
+        hits.push({ line: entry.line, tag: entry.tag });
+      }
+      return;
+    }
+    if (entry.text || toggleNamed(entry.attrs)) return;
+    hits.push({ line: entry.line, tag: entry.tag });
+  };
+  // The toggle or slider being read, and how many icons are open inside it.
+  let open = null;
+  let icons = 0;
+  const tag = new RegExp(ANY_TAG.source, 'g');
+  let last = 0;
+  let match;
+  while ((match = tag.exec(masked)) !== null) {
+    if (open !== null && icons === 0 && projectsText(masked.slice(last, match.index))) open.text = true;
+    last = tag.lastIndex;
+    const [, closing, rawName, attrs] = match;
+    const name = rawName.toLowerCase();
+    const selfClosing = /\/\s*$/.test(attrs) || VOID_ELEMENTS.has(name);
+    if (open === null) {
+      if (closing || !(TOGGLE_TAGS.has(name) || name === 'mat-slider')) continue;
+      const entry = { tag: name, line: lineOf(masked, match.index), attrs, text: false, thumbs: [] };
+      if (selfClosing) judge(entry);
+      else open = entry;
+      continue;
+    }
+    if (closing) {
+      if (name === 'mat-icon' && icons > 0) icons--;
+      if (name === open.tag) {
+        judge(open);
+        open = null;
+        icons = 0;
+      }
+      continue;
+    }
+    if (name === 'mat-icon' && !selfClosing) icons++;
+    if (open.tag === 'mat-slider' && isSliderThumb(attrs)) open.thumbs.push(attrs);
+  }
+  return hits;
+}
+
+/**
+ * Toggles and sliders the eighth rule found unnamed when it landed, outside
+ * what that change fixed. Rows as ITEMLESS_FROZEN's, read by againstFrozen,
+ * the key being the tag; `why` says which control it is and where its name
+ * went instead. Empty is the goal.
+ */
+export const UNNAMED_FROZEN = [
+  {
+    file: 'src/app/features/budgets/budget-form/budget-form.component.html',
+    key: 'mat-slider',
+    count: 1,
+    why: 'the alert threshold slider: its aria-labelledby sits on the mat-slider host, and its thumb is named by nothing',
+  },
+  {
+    file: 'src/app/features/settings/ai-settings-page/ai-settings-page.component.html',
+    key: 'mat-slide-toggle',
+    count: 1,
+    why: 'the Auto sync switch on the AI page: its label is a sibling span the switch never references',
+  },
+];
+
 /**
  * Which templates belong to a component rendered once per item somewhere.
  * `templates` is a list of `{ key, selector, source }`, `selector` being the
@@ -1072,6 +1230,25 @@ function run() {
     }
   }
 
+  // The toggle rule reads what each toggle projects and each slider's
+  // thumbs, and sets what it finds against the rows frozen when it landed.
+  let toggles = 0;
+  let sliders = 0;
+  const unnamed = [];
+  for (const template of sources) {
+    if (!/<mat-(checkbox|slide-toggle|radio-button|slider)\b/.test(template.source)) continue;
+    walkTemplate(template.source, ({ name }) => {
+      if (TOGGLE_TAGS.has(name)) toggles++;
+      else if (name === 'mat-slider') sliders++;
+    });
+    for (const hit of scanUnnamedToggles(template.source)) {
+      unnamed.push({ site: `${template.key}:${hit.line + template.offset}`, tag: hit.tag, key: hit.tag });
+    }
+  }
+  const toggleVerdict = againstFrozen(unnamed, UNNAMED_FROZEN);
+  for (const hit of toggleVerdict.fresh) findings.push({ rule: 'unnamed', site: hit.site, tag: hit.tag });
+  for (const row of toggleVerdict.drift) findings.push({ rule: 'unnamed-drift', site: row.file, ...row });
+
   const templates = files.filter((file) => file.endsWith('.html')).length;
   console.log(
     `Checked ${icons} mat-icon tag(s) across ${templates} template(s) and ` +
@@ -1100,6 +1277,11 @@ function run() {
     `Checked ${idReferences} id(s) named by a literal aria-labelledby, aria-describedby, ` +
       `aria-controls, aria-owns or for across ${sources.length} template(s).`
   );
+  console.log(
+    `Checked ${toggles} checkbox, slide toggle and radio button tag(s) and ${sliders} slider(s) ` +
+      `across ${sources.length} template(s): ${unnamed.length} hand their control no name, ` +
+      `${UNNAMED_FROZEN.reduce((sum, row) => sum + row.count, 0)} frozen by name.`
+  );
 
   if (findings.length > 0) {
     findings.sort((a, b) => a.site.localeCompare(b.site));
@@ -1111,6 +1293,8 @@ function run() {
     const itemlessFindings = findings.filter((f) => f.rule === 'itemless');
     const driftFindings = findings.filter((f) => f.rule === 'itemless-drift');
     const idrefFindings = findings.filter((f) => f.rule === 'idref');
+    const unnamedFindings = findings.filter((f) => f.rule === 'unnamed');
+    const unnamedDriftFindings = findings.filter((f) => f.rule === 'unnamed-drift');
 
     if (iconFindings.length > 0) {
       console.error(`\n${iconFindings.length} icon(s) carry a name nothing can read:\n`);
@@ -1256,6 +1440,52 @@ function run() {
       );
     }
 
+    if (unnamedFindings.length > 0) {
+      console.error(`\n${unnamedFindings.length} toggle(s) or slider(s) leave the control inside them unnamed:\n`);
+      for (const finding of unnamedFindings) {
+        if (finding.tag === 'mat-slider') {
+          console.error(`  ${finding.site}  <mat-slider> named on its host, a thumb named by nothing`);
+          console.error(`    → put the aria-label or aria-labelledby on each <input matSliderThumb>\n`);
+        } else {
+          console.error(`  ${finding.site}  <${finding.tag}> with no text and no aria-label or aria-labelledby`);
+          console.error(`    → project its label as text, or bind the [aria-label] input, as the review card's row checkbox does\n`);
+        }
+      }
+      console.error(
+        `mat-checkbox, mat-slide-toggle and mat-radio-button render the control a\n` +
+          `screen reader lands on inside themselves, and name it from the text\n` +
+          `projected into their own label or from their aria-label and\n` +
+          `aria-labelledby inputs. With neither, it is announced as a checkbox or a\n` +
+          `switch and nothing more. [attr.aria-label] does not reach it: it is\n` +
+          `written on the host, and the control inside stays unnamed. mat-slider has\n` +
+          `no such input and forwards nothing to its thumbs, so a slider's name goes\n` +
+          `on each thumb. A site that cannot be fixed in the same change is frozen\n` +
+          `in UNNAMED_FROZEN with its reason (ADR 0145).\n` +
+          `Reference: ${DOC}.\n`
+      );
+    }
+
+    if (unnamedDriftFindings.length > 0) {
+      console.error(`\n${unnamedDriftFindings.length} frozen unnamed-toggle row(s) no longer match their count:\n`);
+      for (const finding of unnamedDriftFindings) {
+        console.error(`  ${finding.file}  <${finding.key}>  frozen ${finding.count}, found ${finding.sites.length}`);
+        for (const site of finding.sites) console.error(`    at ${site}`);
+        console.error(
+          finding.sites.length > finding.count
+            ? `    → name the new control instead of freezing it\n`
+            : `    → lower the row's count to what is left, or drop the row if nothing is\n`
+        );
+      }
+      console.error(
+        `UNNAMED_FROZEN counts the frozen controls per file and tag. A tally above\n` +
+          `the count is a new unnamed control beside a frozen one; a tally below it\n` +
+          `is a fixed debt still on the books, and the list is edited in the same\n` +
+          `commit as the template. An edit that only moves a frozen control changes\n` +
+          `nothing.\n` +
+          `Reference: ${DOC}.\n`
+      );
+    }
+
     process.exit(1);
   }
 
@@ -1264,8 +1494,10 @@ function run() {
       `carries a name or is hidden inside the control that already announces it, ` +
       `every option icon sits beside its option's name, every repeated menu ` +
       `button names its item, every tooltip icon takes focus, every control ` +
-      `stamped once per item names its item or is frozen by name, and every id ` +
-      `a literal reference names is declared in its own template.`
+      `stamped once per item names its item or is frozen by name, every id ` +
+      `a literal reference names is declared in its own template, and every ` +
+      `checkbox, slide toggle, radio button and host-named slider names the ` +
+      `control inside it or is frozen by name.`
   );
 }
 
@@ -2002,6 +2234,202 @@ function selfTest() {
     []
   );
   check('a component source with no inline template has none', inlineTemplateOf("@Component({ templateUrl: './x.html' })"), null);
+
+  // --- the toggle rule: must hit ---
+  const unnamedTags = (source) => scanUnnamedToggles(source).map((hit) => `${hit.line} ${hit.tag}`);
+
+  check(
+    'a bare checkbox, the review card\'s row checkbox spread over several lines',
+    scanUnnamedToggles(
+      '<div class="card-select">\n  <mat-checkbox\n    [checked]="row.selected"\n' +
+        '    (change)="toggleSelection(row, $event.checked)"\n  ></mat-checkbox>\n</div>'
+    ),
+    [{ line: 2, tag: 'mat-checkbox' }]
+  );
+  check(
+    'a bare slide toggle beside a span that names nothing, the AI page\'s Auto sync switch',
+    unnamedTags(
+      '<span>{{ \'aiPage.autoSync\' | translate }}</span>\n<mat-slide-toggle\n  [checked]="autoSync()"\n' +
+        '  color="primary">\n</mat-slide-toggle>'
+    ),
+    ['2 mat-slide-toggle']
+  );
+  check(
+    'a bare radio button',
+    unnamedTags('<mat-radio-group aria-label="Format">\n  <mat-radio-button [value]="csv"></mat-radio-button>\n</mat-radio-group>'),
+    ['2 mat-radio-button']
+  );
+  check('a self-closing toggle with no name', unnamedTags('<mat-checkbox [checked]="on" />'), ['1 mat-checkbox']);
+  check(
+    'an attribute-bound aria-label is written on the host, not the control',
+    unnamedTags('<mat-checkbox [attr.aria-label]="label()"></mat-checkbox>'),
+    ['1 mat-checkbox']
+  );
+  check(
+    'an attribute-bound aria-labelledby is too',
+    unnamedTags('<span id="t">x</span>\n<mat-slide-toggle [attr.aria-labelledby]="\'t\'"></mat-slide-toggle>'),
+    ['2 mat-slide-toggle']
+  );
+  check(
+    'a name inside another attribute\'s value names nothing',
+    unnamedTags('<mat-checkbox [matTooltip]="\'aria-label=x\'"></mat-checkbox>'),
+    ['1 mat-checkbox']
+  );
+  check(
+    'a thumb whose only aria word sits inside another attribute\'s value is unnamed',
+    unnamedTags('<mat-slider aria-label="Level">\n  <input matSliderThumb [matTooltip]="\'aria-label\'">\n</mat-slider>'),
+    ['1 mat-slider']
+  );
+  check(
+    'a thumb\'s name inside another attribute\'s value makes no thumb',
+    unnamedTags('<mat-slider aria-label="Level">\n  <input matSliderThumb aria-label="Level">\n  <span [title]="\'matSliderThumb\'"></span>\n</mat-slider>'),
+    []
+  );
+  check(
+    'an icon alone is not text',
+    unnamedTags('<mat-checkbox>\n  <mat-icon>star</mat-icon>\n</mat-checkbox>'),
+    ['1 mat-checkbox']
+  );
+  check(
+    'text in one toggle does not name the next',
+    unnamedTags('<mat-checkbox>All</mat-checkbox>\n<mat-checkbox [checked]="one"></mat-checkbox>'),
+    ['2 mat-checkbox']
+  );
+  check(
+    'a slider named on its host and not on its thumb, the budget form\'s threshold',
+    unnamedTags(
+      '<mat-slider min="50" max="100" step="5" aria-labelledby="threshold-label" discrete>\n' +
+        '  <input matSliderThumb formControlName="alertThreshold">\n</mat-slider>'
+    ),
+    ['1 mat-slider']
+  );
+  check(
+    'a range slider named on its host, one thumb named and one not',
+    unnamedTags(
+      '<mat-slider [attr.aria-label]="range">\n  <input matSliderStartThumb aria-label="From">\n' +
+        '  <input matSliderEndThumb>\n</mat-slider>'
+    ),
+    ['1 mat-slider']
+  );
+  const inlineToggle =
+    "@Component({\n  selector: 'app-switch',\n  template: `\n    <p>x</p>\n    <mat-slide-toggle [checked]=\"on\" />\n  `,\n})\n";
+  const inlineSwitch = inlineTemplateOf(inlineToggle);
+  check(
+    'an inline template in a .ts file, reported at the file\'s line',
+    scanUnnamedToggles(inlineSwitch.source).map((hit) => hit.line + inlineSwitch.offset),
+    [5]
+  );
+
+  // --- the toggle rule: must not hit (the load-bearing half) ---
+  check(
+    'projected text, the review card\'s Select all',
+    unnamedTags('<mat-checkbox\n  [checked]="allSelected()"\n>\n  {{ \'import.selectAll\' | translate }}\n</mat-checkbox>'),
+    []
+  );
+  check(
+    'text projected inside an element, the goal card\'s checklist item',
+    unnamedTags('<mat-checkbox [checked]="item.done">\n  <span class="item-label">{{ item.name }}</span>\n</mat-checkbox>'),
+    []
+  );
+  check('literal text', unnamedTags('<mat-radio-button value="csv">CSV</mat-radio-button>'), []);
+  check(
+    'an icon beside text, the review card\'s recurring link',
+    unnamedTags(
+      '<mat-checkbox class="recurring-link">\n  <mat-icon aria-hidden="true">autorenew</mat-icon>\n' +
+        '  {{ \'import.linkRecurring\' | translate: { rule: match.name } }}\n</mat-checkbox>'
+    ),
+    []
+  );
+  check(
+    'text inside a block',
+    unnamedTags('<mat-checkbox>\n  @if (name) {\n    <span>{{ name }}</span>\n  }\n</mat-checkbox>'),
+    []
+  );
+  check('a literal aria-label', unnamedTags('<mat-checkbox aria-label="Choose"></mat-checkbox>'), []);
+  check(
+    'an interpolated aria-label',
+    unnamedTags('<mat-slide-toggle aria-label="{{ \'settings.enable\' | translate }}" />'),
+    []
+  );
+  check(
+    'a bound name, the fixed row checkbox',
+    unnamedTags('<mat-checkbox\n  [checked]="row.selected"\n  [aria-label]="selectLabel(row)"\n></mat-checkbox>'),
+    []
+  );
+  check(
+    'a literal aria-labelledby',
+    unnamedTags('<span id="lock-label">x</span>\n<mat-slide-toggle aria-labelledby="lock-label"></mat-slide-toggle>'),
+    []
+  );
+  check(
+    'an interpolated aria-labelledby, the dashboard layout\'s switches',
+    unnamedTags('<mat-slide-toggle\n  [checked]="shown"\n  aria-labelledby="dashboard-card-{{ id }}-title"\n/>'),
+    []
+  );
+  check('a bound aria-labelledby', unnamedTags('<mat-radio-button [aria-labelledby]="labelId"></mat-radio-button>'), []);
+  check(
+    'a slider whose thumb carries the name',
+    unnamedTags('<mat-slider>\n  <input matSliderThumb [attr.aria-label]="\'budgets.threshold\' | translate">\n</mat-slider>'),
+    []
+  );
+  check(
+    'a slider named on its host and on every thumb',
+    unnamedTags(
+      '<mat-slider aria-labelledby="t">\n  <input matSliderStartThumb aria-labelledby="t">\n' +
+        '  <input matSliderEndThumb aria-label="To">\n</mat-slider>'
+    ),
+    []
+  );
+  check('a slider named nowhere is not this shape', unnamedTags('<mat-slider>\n  <input matSliderThumb>\n</mat-slider>'), []);
+  check('a commented-out toggle is not a toggle', unnamedTags('<!-- <mat-checkbox></mat-checkbox> -->'), []);
+
+  // --- the toggle rule: the frozen list ---
+  const switchRow = { file: 'src/app/x.component.html', key: 'mat-slide-toggle', count: 1, why: 'a fixture row' };
+  const unnamedAt = (site, tag = 'mat-slide-toggle') => ({ site, tag, key: tag });
+  const switchDrift = (sites) => ({ file: switchRow.file, key: switchRow.key, count: switchRow.count, sites });
+
+  check(
+    'a frozen switch passes, wherever an edit above it moved it',
+    [
+      againstFrozen([unnamedAt('src/app/x.component.html:12')], [switchRow]),
+      againstFrozen([unnamedAt('src/app/x.component.html:40')], [switchRow]),
+    ],
+    [
+      { fresh: [], drift: [] },
+      { fresh: [], drift: [] },
+    ]
+  );
+  check(
+    'a second unnamed switch in the frozen file drifts the count',
+    againstFrozen([unnamedAt('src/app/x.component.html:12'), unnamedAt('src/app/x.component.html:30')], [switchRow]),
+    { fresh: [], drift: [switchDrift(['src/app/x.component.html:12', 'src/app/x.component.html:30'])] }
+  );
+  check(
+    'a frozen switch named and its row left behind drifts the count',
+    againstFrozen([], [switchRow]),
+    { fresh: [], drift: [switchDrift([])] }
+  );
+  check(
+    'a checkbox in the file whose switch is frozen is not frozen',
+    againstFrozen([unnamedAt('src/app/x.component.html:12'), unnamedAt('src/app/x.component.html:20', 'mat-checkbox')], [switchRow]),
+    { fresh: [unnamedAt('src/app/x.component.html:20', 'mat-checkbox')], drift: [] }
+  );
+  check(
+    'every frozen toggle row names its file, its tag, a count and why',
+    UNNAMED_FROZEN.filter(
+      (r) =>
+        !/^src\/app\/.+\.(html|ts)$/.test(r.file) ||
+        !(TOGGLE_TAGS.has(r.key) || r.key === 'mat-slider') ||
+        !(Number.isInteger(r.count) && r.count > 0) ||
+        !r.why
+    ),
+    []
+  );
+  check(
+    'no file and tag is frozen twice',
+    UNNAMED_FROZEN.map((r) => `${r.file} ${r.key}`).filter((pair, i, pairs) => pairs.indexOf(pair) !== i),
+    []
+  );
 
   const failed = cases.filter((c) => !c.ok);
   for (const c of cases) {

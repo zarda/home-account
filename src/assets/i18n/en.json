@@ -1499,6 +1499,7 @@
     "mergeIntoLabel": "Merge {{description}} into another row",
     "mergeOption": "{{description}} · {{amount}} · {{date}}",
     "removeRowLabel": "Remove {{description}}",
+    "selectRowLabel": "Select {{description}}",
     "removeFileLabel": "Remove file {{position}} ({{name}})",
     "moveFileUpLabel": "Move file {{position}} ({{name}}) up",
     "moveFileDownLabel": "Move file {{position}} ({{name}}) down",

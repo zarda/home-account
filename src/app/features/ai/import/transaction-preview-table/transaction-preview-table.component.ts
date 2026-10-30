@@ -672,8 +672,8 @@ export class TransactionPreviewTableComponent implements AfterViewInit {
    * "Tag lunch added to Add a description". A hand-added row can be tagged,
    * placed or removed before anything is typed into it, and every announce
    * call needs the same answer rather than each deciding on its own whether
-   * to say nothing instead. Remove's question names the row the same way,
-   * inside a sentence of its own.
+   * to say nothing instead. Remove's question and the row's checkbox name
+   * the row the same way, each inside a sentence of its own.
    */
   private announceDescription(row: CategorizedImportTransaction): string {
     return descriptionIsUnfilled(row)
@@ -1640,6 +1640,17 @@ export class TransactionPreviewTableComponent implements AfterViewInit {
     return descriptionIsUnfilled(row)
       ? this.translationService.t('common.remove')
       : this.translationService.t('import.removeRowLabel', { description: row.description });
+  }
+
+  /**
+   * The row checkbox's name. The box shows no text and every row has one, so
+   * its name says which row it chooses. A blank row takes the stand-in the
+   * card's sentences use ("Select an untitled row"), not removeLabel's
+   * fallback to its button's own visible text: the box has none to fall
+   * back on.
+   */
+  selectLabel(row: CategorizedImportTransaction): string {
+    return this.translationService.t('import.selectRowLabel', { description: this.announceDescription(row) });
   }
 
   /**
