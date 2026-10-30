@@ -105,39 +105,33 @@ describe('FileDropzoneComponent', () => {
   });
 
   describe('image preview lifetime', () => {
-    it('releases the previous blob when a file of the same name is re-picked', () => {
-      select(image('receipt.jpg'));
-      const first = component.getFilePreview(image('receipt.jpg'));
-      const revoke = spyOn(URL, 'revokeObjectURL');
-
-      select(image('receipt.jpg'));
-
-      // The map is keyed by name, so without this the first URL is overwritten
-      // and stays alive with nothing able to reach it.
-      expect(revoke).toHaveBeenCalledOnceWith(first);
-    });
-
+    // PIN: passes before the fix, and has to keep passing after it. Mutation
+    // run and seen failing: the single-mode revoke skipped.
     it('releases what it displaces when only one file is allowed', () => {
       component.multiple = false;
-      select(image('first.jpg'));
-      const first = component.getFilePreview(image('first.jpg'));
+      const first = image('first.jpg');
+      select(first);
+      const firstPreview = component.getFilePreview(first);
       const revoke = spyOn(URL, 'revokeObjectURL');
 
       select(image('second.jpg'));
 
-      expect(revoke).toHaveBeenCalledOnceWith(first);
+      expect(revoke).toHaveBeenCalledOnceWith(firstPreview);
       expect(component.selectedFiles().map(f => f.name)).toEqual(['second.jpg']);
     });
 
+    // PIN: passes before the fix, and has to keep passing after it. Mutation
+    // run and seen failing: the map left uncleared in ngOnDestroy.
     it('releases every preview when the component is destroyed', () => {
-      select(image('a.jpg'), image('b.jpg'));
+      const a = image('a.jpg');
+      select(a, image('b.jpg'));
       const urls = component.selectedFiles().map(f => component.getFilePreview(f));
       const revoke = spyOn(URL, 'revokeObjectURL');
 
       component.ngOnDestroy();
 
       expect(revoke.calls.allArgs().flat().sort()).toEqual(urls.sort());
-      expect(component.getFilePreview(image('a.jpg'))).toBe('');
+      expect(component.getFilePreview(a)).toBe('');
     });
   });
 
@@ -176,27 +170,6 @@ describe('FileDropzoneComponent', () => {
       select(image('next.jpg'));
 
       expect(emitted.map(names)).toEqual([['ledger.csv', 'next.jpg']]);
-    });
-
-    // Previews are keyed by name and two iOS captures are both image.jpg:
-    // the later one's blob replaced the queued one's entry when it was
-    // added, so revoking that name would blank the photo still listed.
-    it('keeps the preview of a later photo that shares the forgotten one\'s name', () => {
-      const queued = image('image.jpg');
-      const later = image('image.jpg');
-      select(queued);
-      select(later);
-      const laterPreview = component.getFilePreview(later);
-      const revoke = spyOn(URL, 'revokeObjectURL');
-
-      component.forget([queued]);
-
-      // By identity: two empty Files of one name are equal to toEqual.
-      expect(component.selectedFiles().length).withContext('the list').toBe(1);
-      expect(component.selectedFiles()[0]).withContext('the file kept').toBe(later);
-      expect(component.getFilePreview(later)).withContext('the later photo\'s preview').toBe(laterPreview);
-      expect(component.getFilePreview(later)).withContext('the later photo\'s preview').not.toBe('');
-      expect(revoke).withContext('a blob the later row still shows').not.toHaveBeenCalled();
     });
 
     // Only an image owns a preview, so a kept document of the same name

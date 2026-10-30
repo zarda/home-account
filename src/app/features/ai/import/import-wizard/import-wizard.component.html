@@ -91,7 +91,7 @@
           <div class="image-previews">
             <h3>{{ 'import.preview' | translate }}</h3>
             <div class="preview-grid">
-              @for (preview of imagePreviewUrls(); track preview.name) {
+              @for (preview of imagePreviewUrls(); track preview.url) {
                 <div class="preview-item">
                   <img [src]="preview.url" [alt]="preview.name" />
                   <span class="preview-name">{{ preview.name }}</span>

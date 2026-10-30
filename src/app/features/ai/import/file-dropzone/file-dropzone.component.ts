@@ -58,7 +58,9 @@ export class FileDropzoneComponent implements OnDestroy {
   hasError = signal(false);
   errorMessage = signal('');
 
-  private filePreviews = new Map<string, string>();
+  // Keyed by the File itself: two files can share a name (two iOS captures
+  // are both image.jpg), and each row shows its own photo.
+  private filePreviews = new Map<File, string>();
 
   constructor() {
     // The banner sits below the zone, and the zone fills the first screen
@@ -130,8 +132,8 @@ export class FileDropzoneComponent implements OnDestroy {
     if (this.take(files).length > 0) this.filesSelected.emit(this.selectedFiles());
   }
 
-  // Checks each file, mints the previews, writes the banner and lists what
-  // passed, then returns what it took. The banner starts empty, unless
+  // Checks each file, writes the banner, mints the previews of what passed
+  // and lists it, then returns what it took. The banner starts empty, unless
   // `keepStanding` asks to keep a refusal it already shows: the new
   // sentences, `refusals` first, are then added after that one.
   private take(files: readonly File[], refusals: readonly string[] = [], keepStanding = false): File[] {
@@ -162,14 +164,6 @@ export class FileDropzoneComponent implements OnDestroy {
       }
 
       validFiles.push(file);
-
-      // Generate preview for images. The map is keyed by name, so re-picking
-      // a file with the same name would otherwise overwrite the entry and
-      // leave the old blob alive with nothing pointing at it.
-      if (this.isImageFile(file)) {
-        this.revokePreview(file.name);
-        this.filePreviews.set(file.name, URL.createObjectURL(file));
-      }
     }
 
     if (errors.length > 0) {
@@ -179,6 +173,7 @@ export class FileDropzoneComponent implements OnDestroy {
 
     if (validFiles.length === 0) return [];
     if (this.multiple) {
+      this.mintPreviews(validFiles);
       this.selectedFiles.update(current => [...current, ...validFiles]);
       return validFiles;
     }
@@ -186,10 +181,24 @@ export class FileDropzoneComponent implements OnDestroy {
     // be released — nothing else will ever refer to it again.
     const kept = validFiles.slice(0, 1);
     this.selectedFiles().forEach(f => {
-      if (!kept.includes(f)) this.revokePreview(f.name);
+      if (!kept.includes(f)) this.revokePreview(f);
     });
+    this.mintPreviews(kept);
     this.selectedFiles.set(kept);
     return kept;
+  }
+
+  // Generates the previews of the images take() lists, and of no other: a
+  // blob for a file left off the list would live until the zone goes. The
+  // same File taken again would otherwise overwrite its entry and leave the
+  // old blob alive with nothing pointing at it.
+  private mintPreviews(files: readonly File[]): void {
+    for (const file of files) {
+      if (this.isImageFile(file)) {
+        this.revokePreview(file);
+        this.filePreviews.set(file, URL.createObjectURL(file));
+      }
+    }
   }
 
   // One sentence per reason, each under a literal key: the catalog check
@@ -251,11 +260,11 @@ export class FileDropzoneComponent implements OnDestroy {
     this.filePreviews.clear();
   }
 
-  private revokePreview(name: string): void {
-    const preview = this.filePreviews.get(name);
+  private revokePreview(file: File): void {
+    const preview = this.filePreviews.get(file);
     if (preview) {
       URL.revokeObjectURL(preview);
-      this.filePreviews.delete(name);
+      this.filePreviews.delete(file);
     }
   }
 
@@ -267,15 +276,7 @@ export class FileDropzoneComponent implements OnDestroy {
   forget(files: readonly File[]): void {
     const gone = this.selectedFiles().filter(f => files.includes(f));
     const kept = this.selectedFiles().filter(f => !gone.includes(f));
-    // A name a kept image still uses is not revoked: previews are keyed by
-    // name, and every image here when the wizard's run began is in the batch
-    // it forgets, so a kept one sharing a name was added later and its own
-    // blob already replaced the entry (processFiles revoked the old one).
-    // Skipping it leaks nothing and keeps that row's image. A kept document
-    // owns no preview, so it never holds a forgotten photo's blob back.
-    gone
-      .filter(f => !kept.some(k => k.name === f.name && this.isImageFile(k)))
-      .forEach(f => this.revokePreview(f.name));
+    gone.forEach(f => this.revokePreview(f));
     this.selectedFiles.set(kept);
   }
 
@@ -299,7 +300,7 @@ export class FileDropzoneComponent implements OnDestroy {
   removeFile(file: File, event: Event): void {
     event.stopPropagation();
 
-    this.revokePreview(file.name);
+    this.revokePreview(file);
 
     this.selectedFiles.update(files => files.filter(f => f !== file));
     this.filesSelected.emit(this.selectedFiles());
@@ -350,7 +351,7 @@ export class FileDropzoneComponent implements OnDestroy {
   }
 
   getFilePreview(file: File): string {
-    return this.filePreviews.get(file.name) || '';
+    return this.filePreviews.get(file) || '';
   }
 
   getFileIcon(file: File): string {
