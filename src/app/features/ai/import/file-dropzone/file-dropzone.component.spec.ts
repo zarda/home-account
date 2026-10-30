@@ -16,6 +16,9 @@ import {
   type TranslationStub,
   withTheme,
 } from '../../../../core/services/testing';
+import en from '../../../../../assets/i18n/en.json';
+import ja from '../../../../../assets/i18n/ja.json';
+import tc from '../../../../../assets/i18n/tc.json';
 
 describe('FileDropzoneComponent', () => {
   let component: FileDropzoneComponent;
@@ -522,6 +525,35 @@ describe('FileDropzoneComponent', () => {
 });
 
 /**
+ * The alert's sentences as the catalogs write them. The zone joins one
+ * sentence a file with the reader's own stop, so the separator is each
+ * catalog's, and none of the sentences may bring a stop of its own.
+ */
+describe('FileDropzoneComponent, the sentences its alert joins', () => {
+  const CATALOGS = [['en', en], ['ja', ja], ['tc', tc]] as const;
+
+  it('joins them with a Latin stop and a space in en, and 。 alone in ja and tc', () => {
+    expect(CATALOGS.map(([, catalog]) => (catalog.common as Record<string, string>)['sentenceSeparator']))
+      .toEqual(['. ', '。', '。']);
+  });
+
+  // A sentence ending in its own stop would be read out with two once the
+  // separator follows it.
+  // A pin. Mutations: 。 added to the end of ja's import.fileEmpty; a key in
+  // KEYS renamed to one no catalog holds, which the first expectation names.
+  it('ends none of the four sentences with a stop of its own, in any catalog', () => {
+    const KEYS = ['fileTooLarge', 'fileTypeUnsupported', 'fileEmpty', 'shareBackup'];
+    const sentences = CATALOGS.flatMap(([code, catalog]) =>
+      KEYS.map(key => [`${code} import.${key}`, (catalog.import as unknown as Record<string, unknown>)[key]] as const));
+    expect(sentences.filter(([, sentence]) => typeof sentence !== 'string').map(([name]) => name))
+      .withContext('a sentence the case reads is missing from its catalog')
+      .toEqual([]);
+    expect(sentences.filter(([, sentence]) => /[.。]\s*$/.test(String(sentence))).map(([name]) => name))
+      .toEqual([]);
+  });
+});
+
+/**
  * Every case above overrides the template to `<div></div>`, so none of them
  * touches the zone a user actually drops on: the empty state's own
  * `role`/`tabindex`/`aria-label` gate, the per-file row, the reorder controls
@@ -788,6 +820,25 @@ describe('FileDropzoneComponent, through its own template', () => {
     dropFiles([new File(['x'], 'tool.exe', { type: 'application/octet-stream' })]);
     expect(el().querySelector('.error-banner')).toBe(banner);
     expect(banner.textContent).toContain('import.fileTypeUnsupported:{"name":"tool.exe"}');
+  });
+
+  // ja and tc end a sentence with 。 and put no space after it, and the alert
+  // joined every language's sentences with the Latin ". ". The separator is
+  // the catalog's.
+  it('joins the files it refuses with the reader\'s own stop', () => {
+    const stub = TestBed.inject(TranslationService) as unknown as TranslationStub;
+    const echo = stub.t;
+    stub.t = (key, params) => (key === 'common.sentenceSeparator' ? '。' : echo(key, params));
+    fixture.detectChanges();
+
+    dropFiles([
+      new File(['x'], 'notes.txt', { type: 'text/plain' }),
+      new File(['x'], 'tool.exe', { type: 'application/octet-stream' }),
+    ]);
+
+    expect(text('.error-message')).toBe(
+      'import.fileTypeUnsupported:{"name":"notes.txt"}。import.fileTypeUnsupported:{"name":"tool.exe"}'
+    );
   });
 
   // Below the zone, the banner sat just under the fold of a 768px window,
