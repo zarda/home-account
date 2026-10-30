@@ -37,12 +37,15 @@ export interface ParsedReceiptText {
   /**
    * Why `amountConfidence` sits under the tier the figure was read in:
    * 'tender' when the largest figure was read as the cash handed over and the
-   * total it was change for won instead; 'count' when a whole number printed
-   * bare beside money, read as a count, a size or a code, is larger than the
+   * total it was change for won instead; 'aside' when the reading passed a
+   * figure printed as a labelled aside, (Reg $15.00), or kept one only
+   * because nothing else in its tier stood beside it while a weaker tier held
+   * a figure printed on its own; 'count' when a whole number printed bare
+   * beside money, read as a count, a size or a code, is larger than the
    * figure read and might have been the total (Total 1280 Tax ¥116). Absent
    * when nothing was demoted.
    */
-  amountDemotion?: 'tender' | 'count';
+  amountDemotion?: 'tender' | 'aside' | 'count';
   /**
    * Which way the winning total moved, read from typography alone: 'credit'
    * when every copy of that figure carries a negative mark and nothing argues
@@ -230,7 +233,8 @@ interface AmountCandidate {
   /**
    * Inside parentheses that hold a word as well as the figure, (Reg $15.00):
    * a regular price, a balance or a saving beside the total. It prices no
-   * line.
+   * line, and is never the total while its tier holds a figure printed on its
+   * own.
    */
   aside: boolean;
   /**
@@ -253,7 +257,7 @@ interface AmountReading {
   amount: number;
   confidence: number;
   /** Why `confidence` sits under the tier's, when it does. */
-  demotion?: 'tender' | 'count';
+  demotion?: 'tender' | 'aside' | 'count';
   direction: 'credit' | 'debit';
   directionConfidence: number;
 }
@@ -479,7 +483,7 @@ function signFor(code: string, display: 'symbol' | 'narrowSymbol'): string {
 
 /**
  * Confidence multiplier when the winning figure was demoted: as cash tendered,
- * or under a larger count.
+ * past a figure printed as a labelled aside, or under a larger count.
  */
 export const DEMOTION_FACTOR = 0.75;
 /** "x + y ≈ M" tolerance: half a cent absorbs float noise, integers must match exactly. */
@@ -491,17 +495,18 @@ function isTenderShaped(value: number): boolean {
 }
 
 /**
- * The candidate the largest figure was change FOR, when it looks like cash
+ * The candidate the tier's pick was change FOR, when the pick looks like cash
  * tendered: M is tender-shaped and two other figures satisfy x + y ≈ M with
  * x ≥ y — the printed total plus the change line. They are the tier's other
- * figures, and a whole number printed bare and read as a count, as either
- * figure, where it stands on the pick's own line (合計 538 お預り ¥1,000 お釣り
- * ¥462; Cash $20.00 Change 8) or where a total stands (Total 12 Tax $0.96, or
- * Tax $0.96 Total 12, over Cash $20.00 and Change $8.00). A count of what a
+ * figures, labelled asides included (the tier's pick is its largest figure
+ * that is not one), and a whole number printed bare and read as a count, as
+ * either figure, where it stands on the pick's own line (合計 538 ¥1,000
+ * ¥462) or where a total stands (Total 12 Tax $0.96, or Tax $0.96 Total 12,
+ * over Cash $20.00 and Change $8.00; Cash $20.00 Change 8). A count of what a
  * price buys, on another line, stays out (Item 3 $2.00 over Total $5.00).
  * Among matching pairs the largest x wins; if that x is itself tender-shaped
  * ({450, 50, 500} — a taxed total is indistinguishable from a tendered note)
- * the demotion stands down and largest-wins holds. Vocabulary-free on purpose:
+ * the demotion stands down and the pick holds. Vocabulary-free on purpose:
  * this reads arithmetic, not words.
  */
 function tenderedDemotion(
@@ -609,18 +614,35 @@ function readAmount(lines: string[], marker: string): AmountReading {
   ];
   const counts = candidates.filter(c => c.count);
 
-  for (const tier of tiers) {
+  for (let index = 0; index < tiers.length; index++) {
+    const tier = tiers[index];
     const largest = largestOf(tier.of);
     if (!largest) {
       continue;
     }
-    const tendered = tenderedDemotion(largest, tier.of, counts);
-    const winner = tendered ?? largest;
+    // A labelled aside (Reg $15.00) is never the total while its tier holds a
+    // figure printed on its own; where it holds nothing else, it is all the
+    // tier gave.
+    const pick = largestOf(tier.of.filter(c => !c.aside)) ?? largest;
+    const tendered = tenderedDemotion(pick, tier.of, counts);
+    const winner = tendered ?? pick;
     const rivals = countsThatMayBeTotal(winner, tier.of, counts);
-    // Reading a figure a larger count might have been the total in place of
-    // (Total 1280 Tax ¥116) moves the reading on a rule rather than on
-    // anything printed, so it lands under the review bar.
-    const demotion = rivals.length > 0 ? 'count' : tendered ? 'tender' : undefined;
+    // Each of these moves the reading on a rule rather than on anything
+    // printed, so each lands under the review bar: passing an aside; keeping
+    // one only because its tier holds nothing else while a weaker tier holds
+    // a figure printed on its own (Total 12.50 / (Reg $15.00)); and reading a
+    // figure a larger count might have been the total in place of (Total 1280
+    // Tax ¥116).
+    const passedAside =
+      pick.value < largest.value ||
+      (winner.aside && tiers.slice(index + 1).some(weaker => weaker.of.some(c => !c.aside)));
+    const demotion = passedAside
+      ? 'aside'
+      : rivals.length > 0
+        ? 'count'
+        : tendered
+          ? 'tender'
+          : undefined;
     return {
       amount: winner.value,
       confidence: demotion ? tier.confidence * DEMOTION_FACTOR : tier.confidence,
