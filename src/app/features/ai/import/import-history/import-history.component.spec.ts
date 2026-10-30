@@ -550,6 +550,16 @@ describe('ImportHistoryComponent transaction shortcut', () => {
     expect(subtitle.textContent?.trim()).toBe('2024-01-01 00:00');
   });
 
+  it('renders each record\'s file size through the locale formatter the upload area reads', () => {
+    render([itemWith(undefined)]);
+
+    // The stub writes a size as its byte count and B, which no size the card
+    // worked out for itself would read: 2048 bytes is the formatter's text.
+    const chips = Array.from(fixture.nativeElement.querySelectorAll('.chips mat-chip'))
+      .map(chip => (chip as HTMLElement).textContent?.trim());
+    expect(chips).toContain('2048 B');
+  });
+
   it('shows no shortcut for a record without transaction ids', () => {
     render([itemWith(undefined)]);
 
