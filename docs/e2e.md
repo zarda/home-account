@@ -33,7 +33,7 @@ deployed rules — and it is the reason for every constraint below. Read the
 whole thing as one rule: **the run is a reader with thirteen permitted writes,
 each named in *What a run may touch*, and it puts back every one it can.**
 
-**The emulators, on port 4300: journeys 68 to 77, and 79 to 108.** A journey that
+**The emulators, on port 4300: journeys 68 to 77, and 79 to 110.** A journey that
 needs several accounts signed in — one sharing rows into a household, another
 reading them there as copies, members counting them toward the household's own
 budgets and goals, and memberships removed, left, dissolved and erased —
@@ -47,7 +47,7 @@ cannot show — the deployed rules and indexes, the callable's public invoker, a
 mail that arrives — is what journey 78 is for, once, on production after the
 merge. Journey 79 needs one account, but it imports into it, and journey 80
 moves one origin's session between accounts under two open tabs, so both run
-there too; neither touches a household or calls a function. Journeys 81 to 108
+there too; neither touches a household or calls a function. Journeys 81 to 110
 need one account as well, and run there for what they write and what they need
 seeded: categories, rules, budgets and a household whose colours the seed
 fixes, a category made and deleted, a rule paused and resumed, rules due in the
@@ -65,12 +65,14 @@ and a rule in a category no catalog holds written past the rules, a scan
 whose drain waits on a key save held in the page, a goal written past
 the rules, an account's language, date format and name written the same way,
 a yen row beside them, receipts read by a provider the page answers for in
-the form, the camera, the wizard and the queue's drain, and rows imported on
-both sides of the ledger with the records they leave. None of them calls a
-function, and only 82, 89, 101 and 103 open a household page: 82 and 101 to
-read a dialog they cancel, 89 to read the copy of a posting journey 90
-shared, and 103 to read how a member with no name is listed, where the
-page's own load rewrites that member's document.
+the form, the camera, the wizard and the queue's drain, rows imported on
+both sides of the ledger with the records they leave, share-stash rows
+written in the page in the worker's shape and drained by the app, and a
+review card reached through journey 79's hand-off without importing. None of
+them calls a function, and only 82, 89, 101 and 103 open a household page:
+82 and 101 to read a dialog they cancel, 89 to read the copy of a posting
+journey 90 shared, and 103 to read how a member with no name is listed,
+where the page's own load rewrites that member's document.
 
 **Journeys 58 to 67 are superseded** by 68 to 78 and are not run. They drove
 the household design of PRs #462 and #463 (ADRs 0152–0156), in which every
@@ -193,7 +195,11 @@ reads *ホーム*, a key `563c3eeb`'s catalog does not have. For the refund at
 every door, the category that follows its side and the type counts it is
 the served catalog as well:
 `(await fetch('/assets/i18n/en.json').then(r => r.json())).import.statTypeFlagged`
-reads *Type flagged* on this branch and `undefined` on `f2b3d2c4`. For
+reads *Type flagged* on this branch and `undefined` on `f2b3d2c4`. For the
+date that stops at a currency sign, the total flagged past an aside and the
+shared file on the upload area it is the served catalog once more:
+`(await fetch('/assets/i18n/en.json').then(r => r.json())).import.fileEmpty`
+is defined on this branch and `undefined` on `c3708366`. For
 another branch it is whatever that branch added. A
 stale `.angular/cache`, or a server started before the checkout switched,
 shows yesterday's app with today's confidence.
@@ -595,7 +601,7 @@ Import never is.
 Everything else is read-only. Every dialog is closed or **cancelled** — the
 edit dialog in journey 5 opens on a real transaction and is left by Cancel,
 never Save — and nothing else is created, edited, deleted or imported.
-Journeys 68 to 77 and 79 to 108 are not in this table: they write freely, but
+Journeys 68 to 77 and 79 to 110 are not in this table: they write freely, but
 only into the local emulators, and the [teardown](#teardown) takes all of it
 with them.
 Journeys 58 to 67 are superseded and write nothing, because they are not run.
@@ -845,7 +851,7 @@ Alex alone, and imports three rows into his account; journey 80 needs Alex
 and Sam, in two tabs of one origin, and moves the session between them
 ([auth.md](auth.md) describes what it drives).
 
-Journeys 81 to 108 use the same seed as Alex alone, and drive the account's own
+Journeys 81 to 110 use the same seed as Alex alone, and drive the account's own
 pages: the theme tokens and a category's colour, measured where they are
 painted in both themes (81 and 82, whose last surface is Chen home's budget
 dialog); the papercuts of
@@ -878,14 +884,19 @@ the save it asks for; the datepickers, Material's words, the reports'
 amounts and the account with no name of
 [ADR 0182](ADR/0182-a-control-reads-in-the-accounts-language-and-date-format-and-nothing-re-provides-materials-adapter-or-words.md)
 (101 to 103), the first of which also reads the bottom bar's dashboard tab;
-and the refund asked about at every door and the category that follows its
+the refund asked about at every door and the category that follows its
 row's side of
 [ADR 0185](ADR/0185-a-refund-is-asked-about-at-every-door-and-a-category-follows-its-rows-side-there-and-back.md)
 (104 to 108), three of them with
-[a provider that answers from the page](#a-provider-that-answers-from-the-page).
+[a provider that answers from the page](#a-provider-that-answers-from-the-page);
+and the date that stops at a currency sign, the shared file on the upload
+area and the total flagged past an aside of
+[ADR 0186](ADR/0186-a-date-stops-at-a-currency-sign-and-a-line-break-a-total-read-past-an-aside-or-under-a-count-is-flagged-and-a-shared-file-lands-in-the-upload-area.md)
+(109 and 110).
 [accessibility.md](accessibility.md), [dashboard.md](dashboard.md),
 [reminders.md](reminders.md), [shortcuts.md](shortcuts.md),
 [pwa.md](pwa.md), [receipt-import.md](receipt-import.md),
+[share-import.md](share-import.md),
 [import-fields.md](import-fields.md), [analytics.md](analytics.md),
 [locale-formatting.md](locale-formatting.md), [dates.md](dates.md),
 [recurring.md](recurring.md),
@@ -895,8 +906,8 @@ row's side of
 [csv-format.md](csv-format.md), [data.md](data.md) and
 [ui-overflow.md](ui-overflow.md) describe what they drive.
 
-Journeys 87 to 96 build on one another's writes, 97 to 108 on the language
-each one leaves, and 107 on the records 105 and 106 write, so 87 to 108 run
+Journeys 87 to 96 build on one another's writes, 97 to 110 on the language
+each one leaves, and 107 on the records 105 and 106 write, so 87 to 110 run
 in one emulator session, in this order:
 
 1. journey 87's steps 4 and 5, which queue a scan and fail its drain;
@@ -944,7 +955,11 @@ in one emulator session, in this order:
 22. journey 108, which arms the provider once more and queues a scan into
     the queue journey 99's cleanup emptied, drains it over an emptied
     category signal, and ends with the queue empty and the arm gone;
-23. journey 103, **last**, which empties Alex's name and types one in, and
+23. journey 109, which writes share-stash rows in the page and drains them
+    onto the upload area, imports nothing, and ends in English;
+24. journey 110, which hands the review card two readings built in the
+    page, imports nothing, and ends in English;
+25. journey 103, **last**, which empties Alex's name and types one in, and
     whose visit to the household page rewrites his member document there,
     and ends with both restored.
 
@@ -991,7 +1006,7 @@ edit, with the shots `95-cold-refresh-unknown-ja`,
 `94-refused-after-rows-ja-r3` and `93-edit-day-unset-r3`. Every step it ran
 passed, and it found no further defect.
 
-Journeys 97 to 108 rest on none of the earlier journeys' writes, though 107
+Journeys 97 to 110 rest on none of the earlier journeys' writes, though 107
 reads the records 105 and 106 write. A run of them alone starts from a fresh
 seed, in English, and journey 99's Sync Now then drains the one scan it
 queued; journey 108 then finds the queue as journey 99's cleanup leaves it,
@@ -1329,6 +1344,59 @@ emptied both lists and the dropzone showed its empty state; a new pick held
 only `e2e-87-second.png`, and the queue still held one entry. Step 5's drain
 failed the entry with `AI_CLOUD_UNAVAILABLE`. It found no new defect.
 
+The first run of journeys 109 and 110, on 2026-10-30, drove the branch for
+#515, #516 and #518 in this venue, served from that branch's own checkout,
+with the emulators started without the functions emulator, since neither
+calls a function. Its pre-flight passed: the server's working directory was
+the branch's, the bundle named `demo-home-account` alone, and the served
+catalog held check 1's probe. Alex was signed in by the local-storage
+write, his welcome skipped; the browser reported `en-US`, and the pane was
+1024×768 and hidden, so every read was flushed first. It ran, as
+regressions, journey 79's steps 1 to 5, journey 83's step 4 — and the
+reused wizard, sent to `?source=share&error=1` too, said the lost share
+once and drained once — journey 87's steps 4 and 5, journey 88's step 6
+and journey 105's step 3, and they held. Journeys 109 and 110 followed and
+held, and a sweep of the upload step and the review card at 1280 and 375px,
+in three languages and both themes, found nothing scrolling sideways,
+clipped, wrapped or off screen. It met nine defects, all older than the
+branch, and the specs written for two of them met two more; each was fixed
+on the branch in a commit whose spec failed first. A re-check on
+2026-10-31, after a fresh pre-flight in the same venue, read each fix,
+Import History's size chip through its formatter alone, took no shots and
+met no new defect
+([ADR 0186](ADR/0186-a-date-stops-at-a-currency-sign-and-a-line-break-a-total-read-past-an-aside-or-under-a-count-is-flagged-and-a-shared-file-lands-in-the-upload-area.md)'s
+*What the browser runs found* records them). It read journey 109's step 7
+and the Japanese and Traditional Chinese passes of 109's steps 5 and 6 and
+of 110's step 1 with evaluations of its own. Neither read the third
+element of 110's steps 2 and 3, the card's amount in 110's step 2, or
+`sameFiles` and Process in 109's steps 3 and 6, which follow from the code;
+the second run was the first to run them as written. The first run took the
+shots the two journeys name, and `109-same-name-after-remove` beside them.
+
+The second run, on 2026-10-31, drove the final tree after a fresh pre-flight
+in the same venue, the pane hidden again. The same regressions held, journey
+87's step 4 removing the mid-run photo by its new name, *Remove file 1
+(e2e-87-midrun.png)*, and Import History's size chip, which the re-check had
+read only through its formatter, read rendered: *112 B*, *112 バイト* and
+*112 位元組*. Journeys 109 and 110 ran as written here, every step of both
+held, the readings no earlier run had taken in that form included, and the
+sweep's re-measures found nothing. It met no defect, and took the shots the
+regressions and the two journeys name. Two of its screenshots showed part
+of the page still dark after a switch to light while the computed colours
+were light; a repaint drew them right, so a screenshot taken straight after
+a theme switch in a hidden pane is read again before it is believed.
+
+Since the second run, journey 110's step 2 prints its date year last, which
+tells the two parsers apart where the day's date printed year first did not,
+and its Pass reads `dateFlag` `true`; and journey 109's step 7 row puts its
+remove button under the name after the arrows, in the order Tab reaches
+them. The third run, on 2026-10-31, drove both on the final tree after a
+fresh pre-flight, and both held as written, with every other step of 110. It
+also drained a share over a run's own card (a header-only CSV, *No
+Transactions Found*): the stepper went back to the upload step with both
+files listed and selected, and the stash read empty. It met no defect, and
+took `110-priced-line-r3` and `109-step7-375-r3`.
+
 Journey 87's other steps stand alone, and each journey's opening paragraph
 names what it reads from the ones before it.
 
@@ -1341,7 +1409,7 @@ its author opens the app, since a fresh origin holds no record of a full pass.
 
 ### Pre-flight
 
-Journeys 79 to 108 call no function, and neither do 72 and 73. A run of only
+Journeys 79 to 110 call no function, and neither do 72 and 73. A run of only
 those skips checks 2 and 3 and starts the emulators without the functions
 emulator, `--only auth,firestore,storage` in check 4 — which is also how they
 start in a checkout without `functions/.secret.local`, whose functions that
@@ -1620,9 +1688,9 @@ its ranges, which no client can write since ADR 0178, 95 a stored answer,
 the same way with any row the rule posted, 100 a goal, 101 the account's
 language and date format and 103 its name, which each puts back the same
 way, 102 a yen row it deletes, and 77 clears the database at its end; the
-superseded 60 and 63 wrote a quota and a name. Journeys 104 to 108 write and
-delete nothing there: they only read back the rows and the import records
-the app itself wrote.
+superseded 60 and 63 wrote a quota and a name. Journeys 104 to 110 write and
+delete nothing there: 104 to 108 only read back the rows and the import
+records the app itself wrote, and 109 and 110 read nothing there.
 The seeded households are `chen-home` and `trip-fund`; one made in a journey
 is listed under its owner's index, `users/<uid>/households`. A copy's id is
 `<author-uid>_<row-id>`, and the seeded rows this month are `tx-hh-1` onwards
@@ -1900,6 +1968,8 @@ log, and run the ports check again: it prints nothing.
 | 106 | A second flip, a same-side merge, and a late catalogue (emulators) | Rows handed over before the catalogue loaded filed on their sides when it arrives, said once; a row flipped twice on a real card landing back on its category at its grade; a merge re-filing a survivor that stays on its side; and the counts the import records | `106-second-flip.png`, `106-merge-refiled.png` |
 | 107 | Import History counts what the review saw (emulators) | Every count a record carries on a tile of its own on a real card, in three languages, and the cards whole at a real 375px with axe finding nothing | `107-history-counts-en.png`, `107-history-counts-ja.png`, `107-history-counts-tc.png`, `107-history-375.png` |
 | 108 | A queued refund drains onto its own side (emulators) | A scan queued offline and drained on a real `online` through the page's provider over an emptied category signal, written as income on the income side's catch-all | `108-drained-refund.png` |
+| 109 | A shared file lands in the upload area (emulators) | Stash rows written as the share-target worker writes them, drained on a real load into the dropzone's row and thumbnail and the wizard's selection alike; kept through a pick and a real Remove named for its file; a second share joining the open wizard; the shares the gate refuses named in one alert, rewritten in a live switch of language; two photos of one name each keeping its own preview; and a photo row's name column at a real 375px | `109-shared-row.png`, `109-after-remove.png`, `109-second-share.png`, `109-refused-share.png`, `109-same-name.png` |
+| 110 | The shipped parser on a rendered review card, diagnostic-grade (emulators) | The device's reading of a total over a regular price in parentheses and of a priced line over its total, built in the page by the shipped parser and carried through the camera's converter onto a real review card, the aside's amount flagged by a sentence that names the scan | `110-aside-flag.png`, `110-priced-line.png` |
 
 Screenshot names are the journey number and what is on screen; a re-run
 overwrites rather than accumulating. A partial re-check after a fix adds
@@ -9512,7 +9582,7 @@ Japanese.
 ### 103. An account with no name
 
 **Emulators**, as Alex, at a desktop width of 1024px or more, **last**, after
-journey 102, in English ([the run order](#emulator-journeys)). A sign-in that
+journey 110, in English ([the run order](#emulator-journeys)). A sign-in that
 names nobody now stores an empty name, and every place that shows one reads a
 word from the catalog in the reader's language: *No name set* for the account
 in the header and Settings, *A member* for a household member, and a plain
@@ -10470,6 +10540,483 @@ the [teardown](#teardown).
 
 One shot: the drained row on `/transactions`.
 
+### 109. A shared file lands in the upload area
+
+**Emulators**, as Alex, at the pane's own width of 1024px, after journey 108,
+in English ([the run order](#emulator-journeys)), with no provider. A file
+shared from another app used to reach the wizard's selection and never the
+dropzone's list: the upload area showed nothing while **Process with AI**
+was enabled, and the next pick or remove dropped the shared file without a
+word. A share the gate refused was dropped unsaid, one made while the wizard
+was open waited for a later load, and two photos both named `image.jpg`
+showed one preview twice. A share now lands on the upload area as a pick
+does, its row, thumbnail and selection together; one made with the wizard
+open joins the same list; the shares the gate refuses are named in the
+dropzone's alert; and each row keeps its own preview, whatever its name
+([ADR 0186](ADR/0186-a-date-stops-at-a-currency-sign-and-a-line-break-a-total-read-past-an-aside-or-under-a-count-is-flagged-and-a-shared-file-lands-in-the-upload-area.md),
+[share-import.md](share-import.md), [accessibility.md](accessibility.md),
+[ui-overflow.md](ui-overflow.md)). Real clicks are made at the pane's own
+width; 375px and 1280px are reads only, by emulation.
+
+**The stash, written from the page.** The pane cannot send the share
+target's POST, so each step writes the stash rows the way the worker's
+`stashFiles` does (`public/share-target-sw.js`): a row per file in the
+`pending` store of the `homeaccount-share-intake` database, version 2, keyed
+by `id`, with the file's `name`, `type` and `blob`, its `receivedAt`, and as
+`userId` the owner the app publishes to the `session` store's `current`
+row. Then a full load of `/import/file?source=share`, the address the
+worker redirects to. From the stash on, every step is the app's own code.
+Ids are `share-e2e-109-<n>`, numbered in the order the steps seed them: the
+stash hands its rows back in key order, which compares the ids as text, so
+the alert names them in that order and an id of 10 sorts before 9. Start
+the write, and read its flag in a **second** evaluation, as
+[Signing in a seeded account](#signing-in-a-seeded-account) does; `SHARES`
+is what each step edits:
+
+```js
+const tile = (colour, type) => new Promise(done => {
+  const c = Object.assign(document.createElement('canvas'), { width: 64, height: 64 });
+  const g = c.getContext('2d'); g.fillStyle = colour; g.fillRect(0, 0, 64, 64);
+  c.toBlob(done, type);
+});
+// [id, name, type, blob], one per row, in the worker's row shape.
+const SHARES = async () => [['share-e2e-109-1', 'e2e-109-shared.png', 'image/png', await tile('#2e7d32', 'image/png')]];
+sessionStorage.setItem('e2e.109', 'writing');
+SHARES().then(shares => {
+  const open = indexedDB.open('homeaccount-share-intake', 2);
+  open.onupgradeneeded = () => {
+    for (const store of ['pending', 'session']) {
+      if (!open.result.objectStoreNames.contains(store)) open.result.createObjectStore(store, { keyPath: 'id' });
+    }
+  };
+  open.onerror = () => sessionStorage.setItem('e2e.109', 'failed to open');
+  open.onsuccess = () => {
+    const db = open.result;
+    const tx = db.transaction(['pending', 'session'], 'readwrite');
+    let owner = null;
+    const session = tx.objectStore('session').get('current');
+    session.onsuccess = () => {
+      owner = session.result?.userId ?? null;
+      for (const [id, name, type, blob] of shares) {
+        const row = { id, name, type, blob, receivedAt: Date.now() };
+        if (owner) row.userId = owner;
+        tx.objectStore('pending').put(row);
+      }
+    };
+    tx.oncomplete = () => { db.close(); sessionStorage.setItem('e2e.109', `written ${shares.length}, ${owner ? 'owned' : 'ownerless'}`); };
+    tx.onerror = () => { db.close(); sessionStorage.setItem('e2e.109', 'failed'); };
+  };
+});
+'started';
+```
+
+Then `sessionStorage.getItem('e2e.109')`. **Pass:** `'written N, owned'`,
+with N the rows the step seeded: the app has published Alex's uid to the
+session store, and every row carries it. An ownerless row would still be
+claimed for 30 minutes (`SHARE_CLAIM_WINDOW_MS`), but that is not this
+journey's case.
+
+**The read**, after each load or action, once flushed
+([In a hidden pane](#in-a-hidden-pane)):
+
+```js
+const w = ng.getComponent(document.querySelector('app-import-wizard'));
+const zone = ng.getComponent(document.querySelector('app-file-dropzone'));
+const banner = document.querySelector('app-file-dropzone .error-banner');
+({
+  rows: [...document.querySelectorAll('app-file-dropzone .file-name')].map(n => n.textContent.trim()),
+  thumbs: [...document.querySelectorAll('app-file-dropzone .file-thumbnail img')].map(i => i.getAttribute('src')),
+  selection: w.selectedFiles().map(f => f.name),
+  sameFiles: zone.selectedFiles().length === w.selectedFiles().length && zone.selectedFiles().every((f, i) => f === w.selectedFiles()[i]),
+  processDisabled: document.querySelector('.upload-step .step-actions button').disabled,
+  alert: banner && [banner.getAttribute('role'), banner.querySelector('.error-message').textContent.trim()],
+  snackbars: document.querySelectorAll('.snackbar-error').length,
+});
+```
+
+`sameFiles` asks whether the zone lists the very files the wizard holds.
+
+**The stash's count**, in two evaluations the same way:
+
+```js
+sessionStorage.setItem('e2e.109.left', 'reading');
+const open = indexedDB.open('homeaccount-share-intake', 2);
+open.onsuccess = () => {
+  const db = open.result;
+  const n = db.transaction('pending').objectStore('pending').count();
+  n.onsuccess = () => { db.close(); sessionStorage.setItem('e2e.109.left', String(n.result)); };
+};
+'started';
+```
+
+then `sessionStorage.getItem('e2e.109.left')`.
+
+1. **One shared photo.** The write as above, then the full load. **Pass:**
+   rows and selection `['e2e-109-shared.png']`, one thumbnail, a `blob:`
+   URL; `sameFiles` `true`, `processDisabled` `false`, `alert` `null` and
+   `snackbars` 0; and the stash's count `'0'`. The zone used to list
+   nothing here, rows and thumbnails `[]` and `sameFiles` `false`, with
+   **Process with AI** enabled over a file it did not show. Shot:
+   `109-shared-row.png`.
+2. **A file picked after it.** A CSV through the input's change handler,
+   as journey 88's step 6 hands its file over:
+
+   ```js
+   const dt = new DataTransfer();
+   dt.items.add(new File(['date,description,amount\n2026-10-01,e2e-109 coffee,-4.50\n'], 'e2e-109-statement.csv', { type: 'text/csv' }));
+   const input = document.querySelector('app-file-dropzone input[type=file]');
+   input.files = dt.files; input.dispatchEvent(new Event('change', { bubbles: true }));
+   'handed';
+   ```
+
+   **Pass:** rows and selection both
+   `['e2e-109-shared.png', 'e2e-109-statement.csv']`, and `sameFiles` `true`.
+   The pick used to emit the zone's list alone, and the selection read
+   `['e2e-109-statement.csv']`.
+3. **That file removed.** A real click on **Remove file 2
+   (e2e-109-statement.csv)**, the CSV's row's remove button. **Pass:**
+   rows and selection `['e2e-109-shared.png']`, `sameFiles` `true` and
+   `processDisabled` `false`. Shot: `109-after-remove.png`.
+4. **A share made while the wizard is open**, diagnostic-grade. Keep the
+   wizard, `window.e2eWizard = ng.getComponent(document.querySelector('app-import-wizard'))`,
+   then write `e2e-109-second.png` as `share-e2e-109-2`, a tile of another
+   colour, and read `'written 1, owned'`. With no load, make the call iOS's
+   `pendingSharesChanged` listener makes:
+
+   ```js
+   await ng.getComponent(document.querySelector('app-import-wizard')).shareIntake.navigateIfPending();
+   'asked';
+   ```
+
+   **Pass:** rows and selection
+   `['e2e-109-shared.png', 'e2e-109-second.png']`, `sameFiles` `true`;
+   `ng.getComponent(document.querySelector('app-import-wizard')) === window.e2eWizard`
+   is `true`, the same wizard; `location.pathname + location.search` reads
+   `'/import/file'`; and the stash's count `'0'`. The router reuses the
+   open wizard, which used to read its query params once and leave the
+   share for a later load; it now drains each share the params bring.
+   `shareIntake` and `navigateIfPending` are private, TypeScript's word,
+   which the running page does not enforce, as journey 14 says. The call is
+   made from the console, so the step is diagnostic-grade: on the web the
+   worker's redirect is a full load, and the open wizard is iOS's path.
+   Shot: `109-second-share.png`.
+5. **Shares the gate refuses.** Write, in id order:
+
+   ```js
+   const SHARES = async () => [
+     ['share-e2e-109-3', 'e2e-109-big.png', 'image/png', new Blob([new Uint8Array(11 * 1024 * 1024)], { type: 'image/png' })],
+     ['share-e2e-109-4', 'e2e-109-empty.pdf', 'application/pdf', new Blob([], { type: 'application/pdf' })],
+     ['share-e2e-109-5', 'e2e-109-backup.json', 'application/json', new Blob(['{"transactions":[]}'], { type: 'application/json' })],
+     ['share-e2e-109-6', 'e2e-109-run.exe', 'application/octet-stream', new Blob(['MZ'], { type: 'application/octet-stream' })],
+   ];
+   ```
+
+   then the full load. **Pass:** `alert`
+   `['alert', 'e2e-109-big.png is larger than the 10 MB limit. e2e-109-empty.pdf is empty. e2e-109-backup.json is a backup: pick it here to import it. e2e-109-run.exe is not a supported file type']`,
+   a sentence per file in the stash's key order, each the share gate's
+   reason (`shareRefusal`), in the dropzone's own words where the dropzone
+   has a refusal of its own (too large, an unsupported type); rows and
+   selection `[]`, and
+   `processDisabled` `true`; `snackbars` 0, since these shares arrived and
+   none was lost (journey 83's step 4 is the lost one);
+   `location.pathname + location.search` `'/import/file'`; and the stash's
+   count `'0'`. The banner has been brought into view:
+
+   ```js
+   const r = document.querySelector('app-file-dropzone .error-banner').getBoundingClientRect();
+   [Math.round(r.top), Math.floor(r.bottom), innerHeight];
+   ```
+
+   **Pass:** the top 0 or more and the bottom no greater than
+   `innerHeight`, the banner inside the window; the first run read it from
+   679 to 768 in a 768px window. These shares used to be dropped with
+   nothing said.
+   Shot: `109-refused-share.png`.
+
+   Then the alert in the reader's language. Switch the language with
+   journey 101's call, `{ language: 'ja' }`, in this tab — a tab's profile
+   does not follow a preference written in another — and read the alert's
+   text again; then `{ language: 'tc' }`. **Pass:** with no load, the alert
+   names the same four files in each catalog's sentences, joined by the
+   catalog's 。 (`common.sentenceSeparator`), with no `. ` anywhere. It used
+   to keep the language it was raised in, and to join its sentences with
+   `. ` in every language. Then `{ language: 'en' }`, and a reload shows
+   English held.
+6. **Two photos of one name.** Write two rows named `image.jpg`, typed
+   `image/jpeg`, from `tile('#c62828', 'image/jpeg')` and
+   `tile('#1565c0', 'image/jpeg')`, as `share-e2e-109-7` and
+   `share-e2e-109-8`; then the full load. Read the wizard's tiles beside
+   the read:
+
+   ```js
+   [...document.querySelectorAll('.upload-step .preview-item img')].map(i => i.getAttribute('src'));
+   ```
+
+   **Pass:** rows `['image.jpg', 'image.jpg']` and `sameFiles` `true`, two
+   distinct `blob:` URLs among the zone's thumbnails and two among the
+   wizard's tiles, and the console holds no new `NG0955`, Angular's warning
+   for two rows under one key. The rows' buttons:
+
+   ```js
+   [...document.querySelectorAll('app-file-dropzone .file-item button')].map(b => b.getAttribute('aria-label'));
+   ```
+
+   **Pass:** `['Move file 1 (image.jpg) up', 'Move file 1 (image.jpg) down', 'Remove file 1 (image.jpg)', 'Move file 2 (image.jpg) up', 'Move file 2 (image.jpg) down', 'Remove file 2 (image.jpg)']`:
+   each names its file by its place, the number its badge shows, and its
+   name, where every row's used to read *Move up*, *Move down* and *Remove*
+   alike. Switched as in step 5, the same read gives the catalog's names,
+   `1番目のファイル（image.jpg）を上へ移動` first in Japanese, and
+   `將第 1 個檔案（image.jpg）上移` first and `移除第 2 個檔案（image.jpg）` last
+   in Traditional Chinese; then back to English. Shot: `109-same-name.png`.
+   Then a real click on **Remove file 2 (image.jpg)**. **Pass:** the
+   thumbnails read exactly `[<the first row's src read before>]`. The two
+   rows used to share one preview, and removing either blanked the other.
+7. **A photo row at a phone's width**, reads only. Set the pane to 375px.
+   Write `e2e-109-shared.png`, `tile('#2e7d32', 'image/png')`, as
+   `share-e2e-109-9` and `image.jpg`, `tile('#c62828', 'image/jpeg')`, as
+   `share-e2e-109-10`, and do the full load at that width, since the
+   `BreakpointObserver` may not hear an emulated resize. Then:
+
+   ```js
+   const rows = [...document.querySelectorAll('app-file-dropzone .file-item')].map(item => {
+     const info = item.querySelector('.file-info');
+     const name = item.querySelector('.file-name');
+     const arrows = item.querySelector('.reorder-controls').getBoundingClientRect();
+     return [getComputedStyle(item).display, Math.round(info.getBoundingClientRect().width),
+       name.scrollWidth <= name.clientWidth, info.scrollWidth <= info.clientWidth,
+       arrows.top >= info.getBoundingClientRect().bottom];
+   });
+   [innerWidth, document.documentElement.scrollWidth, rows];
+   ```
+
+   **Pass:** `[375, 375, [['grid', 129, true, true, true], ['grid', 129, true, true, true]]]`:
+   the page is 375px wide; under a list narrower than 400px each photo row is
+   a grid that puts its arrows and its remove button under the name, in the
+   order Tab reaches them, which keeps a 129px column; the name fits it, its
+   `scrollWidth` its `clientWidth`, and so do its size and type, the column's
+   `scrollWidth` its own `clientWidth`. The column used to be 51px, the name
+   broke over four lines, and its size and type ran past the column's edge,
+   under the arrows. Set 1280px and read again, with no load: the rule is a
+   container query on the list, which is wider than 400px at 1280px whichever
+   layout the observer holds. **Pass:** each row `'flex'`, and `false` last,
+   its arrows beside the name. Clear the width.
+
+   The name's line count depends on the font, and the pass never counts
+   lines: the pane draws the name in PT Sans at 14px, where
+   `e2e-109-shared.png` is 120px and takes one line of its 129px column,
+   and Karma's pinned Verdana breaks the same name in two. The column's
+   width does not depend on the font. The dropzone's spec holds a floor
+   under it at its own host's width, in *gives a multi-image row's name a
+   column it reads in, and keeps the size and type inside it*, and the
+   1280px row in *keeps a multi-image row on one line where the list has
+   room*.
+
+**What stays in the specs, and why.**
+
+- **The drain onto the zone.** `import-wizard.component.spec.ts`, under *a
+  shared file, on the zone*, renders each step's reading: *lists a shared
+  file on the zone, its thumbnail with it, and selects that same file*,
+  *keeps a shared file through the next pick, and when that pick is
+  removed*, *adopts a share made while the wizard is open onto the same
+  zone*, *names a share the gate refused in the zone's alert, and selects
+  nothing for it*, *says a lost share in the snackbar and a refused one in
+  the zone, each once* and *gives two shared photos of one name a thumbnail
+  each, on the zone and in the wizard*. It also holds what no step drives:
+  *keeps a file picked before the stash answered, beside the shared one*,
+  the three cases that leave a share pending while the review holds rows,
+  an import is being written or a run is under way, and *mints no previews
+  for a share that answers after the wizard is gone*.
+  `import-wizard.smoke.spec.ts`, over the real stash: *puts a stashed share
+  on the dropzone and in the selection, and names the ones the gate
+  refused* and *drains a second share into the wizard already open, beside
+  the first*.
+- **The zone's side.** `file-dropzone.component.spec.ts`, under *adopt*:
+  *takes files its host received elsewhere onto the list, previews minted,
+  without emitting*, *hands the next pick the adopted files with it* and
+  *names the files a gate upstream refused in its banner, in its own words
+  and ahead of its own refusals*. Through its own template: *names each
+  row's remove and move buttons by the file's place and name*, *rewrites a
+  standing refusal in the language the reader switches to*, *gives two
+  photos of one name a row and a thumbnail each, and keeps the first one's
+  when the second goes*, and, under *at a phone's width*, *gives a
+  multi-image row's name a column it reads in, and keeps the size and type
+  inside it*. The separator: *joins them with a Latin stop and a space in
+  en, and 。 alone in ja and tc*.
+- **The gate.** `share-intake.service.spec.ts`: *hands back oversized,
+  unsupported, backup and empty files as refused, each with its reason*,
+  *refuses a file for the reason the dropzone would give before calling it
+  empty*, *names no share past the claim window among the refused*, and
+  *navigates to the wizard when a signed-in session finds a stash*.
+
+**What it does not drive.** The share target's POST, which the pane cannot
+send, so neither the worker's own stash write nor its redirect, nor its
+`error=1`, which journey 83's step 4 reads; the iOS Share Extension and its
+plugin, whose `pendingSharesChanged` step 4 stands in for; a share made
+signed out, which reaches the wizard through `ShareIntakeService`'s sign-in
+effect on the next load of any page; a share the busy guard leaves waiting,
+and one past the claim window (ADR 0186's Known gaps); and **Process with
+AI** on a shared photo, which needs a provider.
+
+**Cleanup.** Each load drained the stash, and steps 1, 4 and 5 read it
+empty. The language is back on English (steps 5 and 6), its switches the
+only writes that reached the emulators, and they go at the
+[teardown](#teardown). The width is cleared (step 7). The stash database
+stays in the origin until the next pre-flight's check 8.
+
+Five shots: the shared row, the list after the remove, the second share
+beside the first, the refused shares' alert, and two photos of one name.
+
+### 110. The shipped parser on a rendered review card (diagnostic-grade)
+
+**Emulators**, as Alex, at the pane's own width of 1024px, after journey 109,
+in English ([the run order](#emulator-journeys)), with no provider, on
+`/import/file`. A device reads a receipt's text with the shipped parser
+(`receipt-text-parser.ts`). It used to take a regular price printed in
+parentheses under the total for the total, and to read a priced line's
+count and price as a date. It now reads the total past such an aside and
+grades it under the bar, so the card asks about the amount, and a date
+stops at a currency sign and a line break. A device row's amount and date
+flags now name the scan rather than quoting a percentage nothing measured
+([ADR 0186](ADR/0186-a-date-stops-at-a-currency-sign-and-a-line-break-a-total-read-past-an-aside-or-under-a-count-is-flagged-and-a-shared-file-lands-in-the-upload-area.md),
+[receipt-import.md](receipt-import.md), [dates.md](dates.md)). No browser
+has Vision or Apple's on-device model, so each step stands in for the two
+Capacitor bridges on a child of the app's own `NativeReceiptService`, which
+stays untouched, and hands the reading to the review card through the
+camera's converter, duplicate check and hand-off, as journey 79 does. The
+whole journey is state only, diagnostic-grade, and recorded as such: what
+reaches the parser is the text a step writes, never a photo read.
+
+1. **A total over a regular price in parentheses.** Wait until the wizard
+   holds its catalogue, as journey 79's step 1 does. Then, in one console
+   evaluation:
+
+   ```js
+   const w = ng.getComponent(document.querySelector('app-import-wizard'));
+   const native = w.importService.strategyService.nativeReceipt;
+   const d = new Date();
+   const day = [d.getFullYear(), String(d.getMonth() + 1).padStart(2, '0'), String(d.getDate()).padStart(2, '0')].join('-');
+   const text = `e2e-516 Harbour Supplies\n${day}\nTotal: $120.50\n(Reg $150.00)`;
+   // The two Capacitor bridges, stood in for on a child; the service the app holds is untouched.
+   const device = Object.create(native, {
+     visionOcr: { value: {
+       isAvailable: async () => ({ available: true }),
+       recognizeText: async () => ({ text, blocks: [], confidence: 0.9, blockCount: 4 }),
+     } },
+     appleIntelligence: { value: { isModelAvailable: () => false } },
+   });
+   const read = await device.processImage(new File([new Uint8Array([1])], 'e2e-516.jpg', { type: 'image/jpeg' }));
+   const rows = w.importService.convertStrategyResultToCategories(read);
+   const duplicates = await w.duplicateService.checkDuplicates(rows);
+   history.replaceState({
+     importResult: {
+       source: 'image', fileType: 'receipt_image', fileName: 'e2e-516.jpg', fileSize: 1, confidence: read.confidence,
+       warnings: [], duplicates, transactions: w.duplicateService.markDuplicates(rows, duplicates),
+     },
+     fromCamera: true, door: 'camera', multiImage: false,
+   }, '');
+   [read.transactions[0].amount, JSON.stringify(read.transactions[0].fieldConfidence), rows[0].readOnDevice];
+   ```
+
+   **Pass:** `[120.5, '{"amount":0.6,"date":0.9}', true]`: the total read
+   past the aside and graded under the bar of 0.7, the day's date at 0.9,
+   and the row marked as read on the device. The parser used to read 150
+   at 0.8, with no flag. `importService`, `duplicateService`,
+   `strategyService` and `nativeReceipt` are private — TypeScript's word,
+   which the running page does not enforce, as journey 14 says.
+
+   Reload. **Pass:** the wizard opens on Review with one card; a reload
+   that lands on the dropzone has lost the hand-off, so write it again.
+   Then:
+
+   ```js
+   const card = document.querySelector('.transaction-card');
+   ({
+     amount: card.querySelector('.amount-text')?.textContent.trim(),
+     flag: card.querySelector('.amount-section .verify-flag')?.getAttribute('aria-label') ?? null,
+     dateFlag: !!card.querySelector('.date-chip .verify-flag'),
+     check: card.querySelector('.card-select input')?.getAttribute('aria-label'),
+   });
+   ```
+
+   **Pass:** amount `'-$120.50'`; `flag` *Double-check this amount — the
+   scan could not read it for certain*, where a device row's flag used to
+   say *the AI was only 60% sure*, with no model in the lane; `dateFlag`
+   `false`, the date being today's; and `check` *Select e2e-516 Harbour
+   Supplies*, the row's checkbox named for its row, where it used to have
+   no name. Shot: `110-aside-flag.png`. Switched as journey 109's step 5
+   does, the flag reads *この金額を確認してください。スキャンでは確実に読み取れませんでした*
+   in Japanese and *請再確認此金額，掃描無法確定是否讀取正確* in Traditional Chinese,
+   and the checkbox *e2e-516 Harbour Suppliesを選択* and
+   *勾選「e2e-516 Harbour Supplies」*; then back to English. Leave without
+   importing: `history.replaceState({}, '')` and a reload.
+2. **A priced line over its total.** Step 1's evaluation with `text` set to
+   `` `e2e-515 Harbour Supplies\nRope 1 $10.00\nTotal: $10.00\n01/15/2026` ``,
+   its date printed year last. **Pass:**
+   `[10, '{"amount":0.8,"date":0.9}', true]`: the date printed under the
+   total, 15 January 2026, read at 0.9, and the priced line never read as a
+   date. The amount told the two parsers apart on no form of this text; the
+   date does. The parser used to read a date in 2000 off the priced line
+   (`1 $10`, 10 January 2000, at 0.3), which the import then moved to today,
+   flagged. With a date printed year first, as step 1's is, neither
+   parser's date reader looks at the priced line. Reload, and step 1's card
+   read. **Pass:** amount `'-$10.00'` and `flag` `null`, the amount asked
+   about by nothing; and `dateFlag` `true`, for the day rather than the
+   reading: the camera door files every row as a receipt, and the card asks
+   about a receipt dated another day than today whatever read it, its date
+   chip saying *This receipt is dated …, not today*. Shot:
+   `110-priced-line.png`. Leave the same way.
+3. **The model lane.** Step 1's evaluation, with step 1's text, without
+   the `history.replaceState`, and with `appleIntelligence` answered as a
+   model that agrees on the total:
+
+   ```js
+   appleIntelligence: { value: {
+     isModelAvailable: () => true,
+     parseReceiptText: async () => ({ merchant: 'e2e-516 Harbour Supplies', date: day, amount: 120.5, currency: 'USD', category: '', details: '' }),
+   } },
+   ```
+
+   **Pass:** `[120.5, '{"amount":0.6,"date":0.8}', true]`: the model's
+   agreement keeps the parser's grade for a total read past an aside, so
+   the amount stays under the bar, flagged; the date takes the model's 0.8.
+   On 26.10.180 the parser read the aside, 150, and disputed the model's
+   120.50 at 0.5, flagged. With the aside rule alone, agreement would have
+   lifted 120.50 to 0.8; the lane keeps it at the parser's 0.6.
+
+**What stays in the specs, and why.**
+
+- **The readings.** `receipt-text-parser.spec.ts`, under *a labelled aside
+  in parentheses*: *reads the total beside a regular price in parentheses,
+  flagged*, with the aside's other shapes beside it; and under *date
+  extraction*, *beside a price*: *reads a priced line with its sign before
+  the price as money, never as a date*.
+- **The device lane.** `native-receipt.service.spec.ts`, under *regex
+  fallback parsing*: *should flag a total read past a regular price in
+  parentheses below the verify threshold* and *reads the date printed under
+  a priced line, and the price above it*; and under *Apple Intelligence
+  parsing*, *field confidence*: *keeps the text parser's grade when it read
+  the same total past an aside*.
+- **The card.** `import-wizard.smoke.spec.ts`, through the real converter
+  and hand-off: *an on-device scan whose total sits over a regular price in
+  parentheses reaches the review card with its amount flagged* and *an
+  on-device scan of a priced line with its sign before the price reaches
+  the review card with the price as its amount and no flag on it*.
+  `transaction-preview-table.component.spec.ts`: *names the doubted amount
+  of a device reading by the scan on the flag a screen reader hears*.
+
+**What it does not drive.** A device: Vision and Apple's model answer from
+the page, so no photo is read and no model asked; the camera dialog's own
+capture, whose hand-off the steps build; the form's Scan Receipt over the
+same reader, whose device flags `transaction-form.component.spec.ts` holds;
+and an import, which no step makes.
+
+**Cleanup.** Each card is left without importing, and the duplicate check
+only reads. The language is back on English (step 1), its switches the
+only writes that reached the emulators, and they go at the
+[teardown](#teardown).
+
+Two shots: the aside's flagged card and the priced line's unflagged one.
+
 ## Evidence
 
 Screenshots go to a scratch folder **outside the repo**, named as above, and
@@ -10531,7 +11078,12 @@ and carried by the real transport, reader and converter onto a real form
 and review card, the categoriser's real request offering one side, a card
 flipped twice and merged with the live region heard after each, a record's
 tiles in three languages at a real phone's width, and a real drain over an
-emptied catalogue, written past the rules (journeys 104 to 108).
+emptied catalogue, written past the rules (journeys 104 to 108); and a share
+written where the worker writes it and drained by a real load onto a real
+upload area, a row's buttons named for their file under a real pointer, an
+alert rewritten by a live switch of language, a photo row's column at a real
+phone's width in the font a browser draws, and the shipped parser's reading
+carried onto a real review card (journeys 109 and 110).
 
 A journey that could be a spec should be deleted from here and written as one.
 
@@ -10555,7 +11107,7 @@ review card's type or category, the camera's converter, or the form's scanned
 type, and journey 80 on one that touches the session: the auth listener and
 its reload (`auth.service.ts`, `page-reload.ts`), where the web keeps the
 session (`appAuthFactory` in `app.config.ts`), the route guards
-(`auth.guard.ts`), or this protocol's session writes. Journeys 81 to 108 follow
+(`auth.guard.ts`), or this protocol's session writes. Journeys 81 to 110 follow
 it on a branch that touches what each one drives: 81 a theme token, a
 stylesheet's colours or the chart palette; 82 a category colour's reader —
 the category chip, the `categoryGlyph` and `readableOn` pipes, a category
@@ -10621,8 +11173,16 @@ card's flip or merge (`toggleType`, `categoryOnSide`, `mergeInto`,
 `mergeImportRows`), its catalogue's arrival (`holdRowsToTheirSides`), the
 reader's marks (`countTypeAnswers`), or the duplicate check; 107 what a
 completed import's record counts, Import History's tiles, the rules'
-import record validation, or `receipt_confirm`; and 108 how the drain files
-a reading or the catalogue it resolves against (`categoriesOrDefaults`).
+import record validation, or `receipt_confirm`; 108 how the drain files a
+reading or the catalogue it resolves against (`categoriesOrDefaults`); 109
+a shared file's way onto the upload area — the stash
+(`share-stash.store.ts`, `public/share-target-sw.js`), the share gate or its
+navigation (`shareRefusal`, `consumeAll`, `navigateIfPending`), the wizard's
+drain (`consumeSharedFiles`), or the dropzone's `adopt`, its rows'
+previews and button names, its alert or its phone-width row; and 110 how
+the device reads a receipt's text (`receipt-text-parser.ts`,
+`NativeReceiptService`'s grades) or what a device row's flag says
+(`verificationTooltip`).
 **Journey 78 runs once**, on production, after the merge — when the deploys
 it checks have finished — because what it proves is the deployed rules,
 indexes and callable, which exist only then.
