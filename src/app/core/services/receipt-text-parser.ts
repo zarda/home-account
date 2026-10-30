@@ -37,25 +37,32 @@ export interface ParsedReceiptText {
   /**
    * Why `amountConfidence` sits under the tier the figure was read in:
    * 'tender' when the largest figure was read as the cash handed over and the
-   * total it was change for won instead. Absent when nothing was demoted.
+   * total it was change for won instead; 'count' when a whole number printed
+   * bare beside money, read as a count, a size or a code, is larger than the
+   * figure read and might have been the total (Total 1280 Tax ¥116). Absent
+   * when nothing was demoted.
    */
-  amountDemotion?: 'tender';
+  amountDemotion?: 'tender' | 'count';
   /**
    * Which way the winning total moved, read from typography alone: 'credit'
-   * when every copy of that figure carries a negative mark, 'debit'
-   * otherwise. The copies are the figures of its value the receipt prints as
-   * money when the total was read as money, and every figure of its value
-   * when it was read from the plain numbers. A mark on any other figure — a
-   * discount, a coupon, the change — says nothing about the total.
+   * when every copy of that figure carries a negative mark and nothing argues
+   * with them, 'debit' otherwise. The copies are the figures of its value the
+   * receipt prints as money when the total was read as money, and every
+   * figure of its value when it was read from the plain numbers. A count that
+   * might have been the total carries no mark, and keeps the reading a debit
+   * where it shares a line with a copy (Total 12 Tax -$0.96) or stands where a
+   * total does (Coupon -$3.00 over Tax $1.00 Total 12). A mark on any other
+   * figure — a discount, a coupon, the change — says nothing about the total.
    */
   direction: 'credit' | 'debit';
   /**
    * 0–1, and always under the bar that sends a field for review, because a
    * mark is typography rather than a word saying so: 0.5 for a credit; 0.3
-   * when the same figure is printed both marked and unmarked, where `direction`
-   * stays 'debit'; 0 when nothing marks it, the purchase every receipt is by
-   * default. It is not folded into the combined `confidence`, so it moves no
-   * routing decision.
+   * when the same figure is printed both marked and unmarked, or marked where
+   * a count might have been the total, where `direction` stays 'debit';
+   * 0 when nothing marks it, the purchase every receipt is by default. It is
+   * not folded into the combined `confidence`, so it moves no routing
+   * decision.
    */
   directionConfidence: number;
   /**
@@ -162,6 +169,34 @@ const NEGATIVE_BEFORE = new RegExp(
 );
 const OPENS_BEFORE = new RegExp(`[${OPEN_PARENS}](${SIGN})?$`, 'u');
 const CLOSES_AFTER = new RegExp(`^(\\p{Sc})?[${CLOSE_PARENS}]`, 'u');
+// The parentheses a figure sits inside: the last opening one before it that
+// nothing closes, and the first closing one after it that nothing opens.
+const UNCLOSED_OPEN = new RegExp(`[${OPEN_PARENS}][^${OPEN_PARENS}${CLOSE_PARENS}]*$`, 'u');
+const UNOPENED_CLOSE = new RegExp(`^[^${OPEN_PARENS}${CLOSE_PARENS}]*[${CLOSE_PARENS}]`, 'u');
+const ANY_PARENS = new RegExp(`[${OPEN_PARENS}${CLOSE_PARENS}]`, 'u');
+// A sign with the capitals it may carry: the US of US$ is money, not a word.
+const SIGNS = new RegExp(SIGN, 'gu');
+const ONE_SIGN = new RegExp(`^${SIGN}$`, 'u');
+// A letter of any script, read as a class and never for what it says.
+const LETTER = /\p{L}/u;
+// What may stand between a currency sign and its figure and leave the two
+// touching: a minus, a triangle or an opening parenthesis before the figure,
+// a closing one after it, and one space either way.
+const MARK_BEFORE_FIGURE = new RegExp(`(?:${MINUS}|${TRIANGLE}|[${OPEN_PARENS}])?\\s?$`, 'u');
+const MARK_AFTER_FIGURE = new RegExp(`^[${CLOSE_PARENS}]?\\s?`, 'u');
+const SIGN_LAST = /\p{Sc}$/u;
+const SIGN_FIRST = /^\p{Sc}/u;
+const SPACE = /\s/u;
+// A word of its own after a figure: the Tax of Total 1280 Tax ¥116, past a
+// space, a run of marks or a percent figure, its sign plain or fullwidth
+// (Total 9, Tax $1.00; Total 12 ... Tax $0.96; Total 120 8% Tax $9.60; 合計
+// 1280 10％ 内税 ¥116), or past the letters of a currency printed after the
+// figure (合計 980円 内税 ¥72). A unit glued to the figure with only money
+// after it (500ml ¥151, 10m -$10.00) is no word of its own.
+const WORD_AFTER = /^(?:\p{L}*\s|[^\s\d\p{L}\p{Sc}])(?:[^\d\p{L}\p{Sc}]|\d+(?:[.,]\d+)?\s?[%％])*\p{L}/u;
+// One half of a time: the 14 and the 32 of 14:32.
+const CLOCK_BEFORE = /\d:$/u;
+const CLOCK_AFTER = /^:\d/u;
 
 /** What a credit mark on the total is worth: typography, never a word. */
 const CREDIT_MARK_GRADE = 0.5;
@@ -171,16 +206,45 @@ const TWINNED_MARK_GRADE = 0.3;
 interface AmountCandidate {
   value: number;
   token: string;
+  /**
+   * Read in the strongest tier: on a line that prints a currency mark, and
+   * neither a count beside the money there nor half of a time.
+   */
   besideCurrency: boolean;
+  /**
+   * On a line that prints a currency mark, counts and the halves of a time
+   * included: what makes a figure a copy of a total read as money.
+   */
+  printedBesideCurrency: boolean;
   /** Printed with a negative mark on this figure itself. */
   credit: boolean;
+  /**
+   * Inside parentheses that hold a word as well as the figure, (Reg $15.00):
+   * a regular price, a balance or a saving beside the total. It prices no
+   * line.
+   */
+  aside: boolean;
+  /**
+   * A whole number printed bare beside money on its line: a count, a size or
+   * a code (the 24 of Pack of 24 $5.00).
+   */
+  count: boolean;
+  /**
+   * A count printed where a total stands: followed on its line by a word of
+   * its own (Total 1280 Tax ¥116, Total 9, Tax $1.00, 合計 980円 内税 ¥72),
+   * or printed after the line's money (Tax $1.00 Total 9). A count of what a
+   * price buys stands before the price (Pack of 24 $5.00, 緑茶 500ml ¥151).
+   */
+  mayBeTotal: boolean;
+  /** The line it is printed on, counting from the first. */
+  row: number;
 }
 
 interface AmountReading {
   amount: number;
   confidence: number;
   /** Why `confidence` sits under the tier's, when it does. */
-  demotion?: 'tender';
+  demotion?: 'tender' | 'count';
   direction: 'credit' | 'debit';
   directionConfidence: number;
 }
@@ -404,7 +468,10 @@ function signFor(code: string, display: 'symbol' | 'narrowSymbol'): string {
   }
 }
 
-/** Confidence multiplier when the winning figure was demoted as cash tendered. */
+/**
+ * Confidence multiplier when the winning figure was demoted: as cash tendered,
+ * or under a larger count.
+ */
 export const DEMOTION_FACTOR = 0.75;
 /** "x + y ≈ M" tolerance: half a cent absorbs float noise, integers must match exactly. */
 const TENDER_SUM_TOLERANCE = 0.005;
@@ -415,27 +482,32 @@ function isTenderShaped(value: number): boolean {
 }
 
 /**
- * The candidate the largest figure was change FOR, when the largest figure
- * looks like cash tendered: M is tender-shaped and two other candidates in
- * the same tier satisfy x + y ≈ M with x ≥ y — the printed total plus the
- * change line. Among matching pairs the largest x wins; if that x is itself
- * tender-shaped ({450, 50, 500} — a taxed total is indistinguishable from
- * a tendered note) the demotion stands down and largest-wins holds.
- * Vocabulary-free on purpose: this reads arithmetic, not words.
+ * The candidate the largest figure was change FOR, when it looks like cash
+ * tendered: M is tender-shaped and two other figures satisfy x + y ≈ M with
+ * x ≥ y — the printed total plus the change line. They are the tier's other
+ * figures, and a whole number printed bare and read as a count, as either
+ * figure, where it stands on the pick's own line (合計 538 お預り ¥1,000 お釣り
+ * ¥462; Cash $20.00 Change 8) or where a total stands (Total 12 Tax $0.96, or
+ * Tax $0.96 Total 12, over Cash $20.00 and Change $8.00). A count of what a
+ * price buys, on another line, stays out (Item 3 $2.00 over Total $5.00).
+ * Among matching pairs the largest x wins; if that x is itself tender-shaped
+ * ({450, 50, 500} — a taxed total is indistinguishable from a tendered note)
+ * the demotion stands down and largest-wins holds. Vocabulary-free on purpose:
+ * this reads arithmetic, not words.
  */
 function tenderedDemotion(
-  largest: AmountCandidate,
+  pick: AmountCandidate,
   tier: AmountCandidate[],
+  counts: AmountCandidate[],
 ): AmountCandidate | undefined {
-  if (!isTenderShaped(largest.value)) return undefined;
-  const rest = tier.filter(c => c !== largest);
+  if (!isTenderShaped(pick.value)) return undefined;
+  const rest = tier.filter(c => c !== pick);
+  const pairable = [...rest, ...counts.filter(c => c.row === pick.row || c.mayBeTotal)];
   let bestX: AmountCandidate | undefined;
-  for (let i = 0; i < rest.length; i++) {
-    for (let j = 0; j < rest.length; j++) {
-      if (i === j) continue;
-      const x = rest[i], y = rest[j];
-      if (y.value > x.value) continue;
-      if (Math.abs(x.value + y.value - largest.value) > TENDER_SUM_TOLERANCE) continue;
+  for (const x of pairable) {
+    for (const y of pairable) {
+      if (x === y || y.value > x.value) continue;
+      if (Math.abs(x.value + y.value - pick.value) > TENDER_SUM_TOLERANCE) continue;
       if (!bestX || x.value > bestX.value) bestX = x;
     }
   }
@@ -444,8 +516,12 @@ function tenderedDemotion(
 
 function readAmount(lines: string[], marker: string): AmountReading {
   const candidates: AmountCandidate[] = [];
-  for (const line of lines) {
-    const besideCurrency = CURRENCY_SIGN.test(line) || (marker !== '' && line.includes(marker));
+  // The parenthesis the line before left open, for a figure Vision handed
+  // back on a line of its own: (Reg / $15.00).
+  let opening = '';
+  for (const [row, line] of lines.entries()) {
+    const printed = CURRENCY_SIGN.test(line) || (marker !== '' && line.includes(marker));
+    const figures: { candidate: AmountCandidate; start: number; end: number }[] = [];
     for (const match of line.matchAll(NUMBER_TOKEN)) {
       const value = toAmount(match[0]);
       // A zero is never a candidate, which also keeps a "-0.00" change line
@@ -457,8 +533,60 @@ function readAmount(lines: string[], marker: string): AmountReading {
       const before = line.slice(0, match.index);
       const after = line.slice(match.index + token.length);
       const credit = isCreditMarked(before, token, after);
-      candidates.push({ value, token, besideCurrency, credit });
+      // A figure printed negative is never an aside, whatever else its
+      // parentheses hold: (Refund -$64.79) is a refund's total.
+      const aside = !credit && isAside(before, after, marker, opening);
+      // Half of a time (14:32) is neither money nor a count, though it is a
+      // copy of a total of its value, as any figure on a line with money is.
+      const clock = CLOCK_BEFORE.test(before) || CLOCK_AFTER.test(after);
+      figures.push({
+        candidate: {
+          value,
+          token,
+          besideCurrency: printed && !clock,
+          printedBesideCurrency: printed,
+          credit,
+          aside,
+          count: false,
+          mayBeTotal: WORD_AFTER.test(after),
+          row,
+        },
+        start: match.index,
+        end: match.index + token.length,
+      });
     }
+    // A whole number printed bare, with no sign touching it and no cents,
+    // grouping or mark, on a line that prints another figure as money, is a
+    // count, a size or a code beside a price (Pack of 24 $5.00, SKU 1234
+    // $1.45, 緑茶 500ml ¥151), not the line's money, even where it repeats
+    // that money's value (TOTAL 14 Card -$14), though it is a copy of it
+    // there. It falls to the tier its own shape earns. An aside prices
+    // nothing: 合計 980 (内税 ¥72) keeps its 980.
+    const signed = signedFigures(line, figures, marker);
+    const money = figures.filter(
+      ({ candidate }, index) =>
+        candidate.besideCurrency &&
+        !candidate.aside &&
+        (signed[index] || isMoneyShaped(candidate.token)),
+    );
+    for (const [index, { candidate, start }] of figures.entries()) {
+      const count =
+        candidate.besideCurrency &&
+        !signed[index] &&
+        !candidate.credit &&
+        !isMoneyShaped(candidate.token) &&
+        money.length > 0;
+      candidates.push({
+        ...candidate,
+        besideCurrency: candidate.besideCurrency && !count,
+        count,
+        // A count of what a price buys stands before the price; one followed
+        // by a word of its own, or printed after the line's money (Tax $1.00
+        // Total 9), stands where a total does.
+        mayBeTotal: count && (candidate.mayBeTotal || money.some(m => m.start < start)),
+      });
+    }
+    opening = UNCLOSED_OPEN.exec(line)?.[0] ?? '';
   }
 
   // Strongest evidence first: a number the receipt itself marked as money, then
@@ -470,22 +598,26 @@ function readAmount(lines: string[], marker: string): AmountReading {
     { of: candidates.filter(c => !c.besideCurrency && isMoneyShaped(c.token)), confidence: 0.5 },
     { of: candidates.filter(c => !c.besideCurrency && isPlainNumber(c.token)), confidence: 0.3 },
   ];
+  const counts = candidates.filter(c => c.count);
 
   for (const tier of tiers) {
-    const best = tier.of.reduce<AmountCandidate | undefined>(
-      (winner, candidate) => (!winner || candidate.value > winner.value ? candidate : winner),
-      undefined,
-    );
-    if (best) {
-      const demoted = tenderedDemotion(best, tier.of);
-      const winner = demoted ?? best;
-      return {
-        amount: winner.value,
-        confidence: demoted ? tier.confidence * DEMOTION_FACTOR : tier.confidence,
-        ...(demoted ? { demotion: 'tender' as const } : {}),
-        ...readDirection(winner, candidates),
-      };
+    const largest = largestOf(tier.of);
+    if (!largest) {
+      continue;
     }
+    const tendered = tenderedDemotion(largest, tier.of, counts);
+    const winner = tendered ?? largest;
+    const rivals = countsThatMayBeTotal(winner, tier.of, counts);
+    // Reading a figure a larger count might have been the total in place of
+    // (Total 1280 Tax ¥116) moves the reading on a rule rather than on
+    // anything printed, so it lands under the review bar.
+    const demotion = rivals.length > 0 ? 'count' : tendered ? 'tender' : undefined;
+    return {
+      amount: winner.value,
+      confidence: demotion ? tier.confidence * DEMOTION_FACTOR : tier.confidence,
+      ...(demotion ? { demotion } : {}),
+      ...readDirection(winner, candidates, rivals),
+    };
   }
 
   return { amount: 0, confidence: 0, direction: 'debit', directionConfidence: 0 };
@@ -507,6 +639,108 @@ function isCreditMarked(before: string, token: string, after: string): boolean {
   return !!opens && !!closes && (!!opens[1] || !!closes[1] || isMoneyShaped(token));
 }
 
+/** The largest figure, the first printed where two tie. */
+function largestOf(candidates: AmountCandidate[]): AmountCandidate | undefined {
+  return candidates.reduce<AmountCandidate | undefined>(
+    (winner, candidate) => (!winner || candidate.value > winner.value ? candidate : winner),
+    undefined,
+  );
+}
+
+/**
+ * Whether this figure is a labelled aside: inside parentheses that hold a word
+ * as well as the figure, (Reg $15.00), ($15.00 reg), （定価 ¥1,580）, rather
+ * than around the figure alone, which mark it negative. A letter of any script
+ * is a word, and no word is read for what it says (ADR 0008). The capitals of
+ * a sign (US$) and the code the receipt's currency was read from (USD) are
+ * the figure's money, not a word. A figure whose own line holds no
+ * parenthesis is read inside the one the line before left open.
+ */
+function isAside(before: string, after: string, marker: string, opening: string): boolean {
+  const opened = UNCLOSED_OPEN.exec(ANY_PARENS.test(before) ? before : `${opening}\n${before}`);
+  const closed = UNOPENED_CLOSE.exec(after);
+  if (!opened || !closed) {
+    return false;
+  }
+  const inside = `${opened[0].slice(1)} ${closed[0].slice(0, -1)}`.replace(SIGNS, ' ');
+  return LETTER.test(marker === '' ? inside : inside.split(marker).join(' '));
+}
+
+/**
+ * Which figures on a line a currency sign, or the code the receipt's currency
+ * was read from, touches: right before the figure, past a minus, a triangle,
+ * an opening parenthesis or one space ($12.50, -$12.50, $-12.50, (US$12.50),
+ * USD 64.79), or right after it, past a closing parenthesis or one space
+ * (2,10 €, 64.79 USD). A sign printed between two figures touches one of
+ * them: the one it is printed against where a space parts it from the other
+ * (the $ of Item 2 $1.00 is the price's), else the one written like money
+ * where the other is bare (2,10 € 3). Where nothing tells the two apart
+ * (Summe 12 € 3 Artikel, Total 2 $ 8), it touches both, and both are money.
+ */
+function signedFigures(
+  line: string,
+  figures: { candidate: AmountCandidate; start: number; end: number }[],
+  marker: string,
+): boolean[] {
+  const isSign = (text: string) => ONE_SIGN.test(text) || (marker !== '' && text === marker);
+  const before = figures.map(({ start }) => {
+    const lead = line.slice(0, start).replace(MARK_BEFORE_FIGURE, '');
+    return SIGN_LAST.test(lead) || (marker !== '' && lead.endsWith(marker));
+  });
+  const after = figures.map(({ end }) => {
+    const trail = line.slice(end).replace(MARK_AFTER_FIGURE, '');
+    return SIGN_FIRST.test(trail) || (marker !== '' && trail.startsWith(marker));
+  });
+  for (let index = 1; index < figures.length; index++) {
+    const first = figures[index - 1];
+    const second = figures[index];
+    const between = line.slice(first.end, second.start);
+    const sign = between.replace(MARK_AFTER_FIGURE, '').replace(MARK_BEFORE_FIGURE, '');
+    if (!after[index - 1] || !before[index] || !isSign(sign)) {
+      continue;
+    }
+    const at = between.indexOf(sign);
+    const gluedToFirst = !SPACE.test(between.slice(0, at));
+    const gluedToSecond = !SPACE.test(between.slice(at + sign.length));
+    const firstShaped = isMoneyShaped(first.candidate.token);
+    const secondShaped = isMoneyShaped(second.candidate.token);
+    const firstOwns =
+      gluedToFirst !== gluedToSecond
+        ? gluedToFirst
+        : firstShaped !== secondShaped
+          ? firstShaped
+          : undefined;
+    if (firstOwns === undefined) {
+      continue;
+    }
+    if (firstOwns) {
+      before[index] = false;
+    } else {
+      after[index - 1] = false;
+    }
+  }
+  return figures.map((_, index) => before[index] || after[index]);
+}
+
+/**
+ * The counts that might have been the total in place of the figure read: those
+ * larger than it, where nothing else in its tier prints that figure, or, where
+ * something does, those printed where a total stands (Total 1280 Tax ¥116;
+ * 内税 ¥72 合計 980). A total printed bare beside a smaller figure looks like a
+ * count beside a price, and a figure printed again proves nothing when the
+ * tax beside the total is printed again too (内消費税等 ¥116); a count of what
+ * the price beside it buys stands right before it (Pack of 24 $5.00).
+ */
+function countsThatMayBeTotal(
+  winner: AmountCandidate,
+  tier: AmountCandidate[],
+  counts: AmountCandidate[],
+): AmountCandidate[] {
+  const printedOnce =
+    tier.filter(c => Math.abs(c.value - winner.value) <= TENDER_SUM_TOLERANCE).length <= 1;
+  return counts.filter(c => c.value > winner.value && (printedOnce || c.mayBeTotal));
+}
+
 /**
  * Which way the winning total moved, from every copy of it the receipt prints
  * as money, within the same half cent the tendered sum allows. A refund slip
@@ -516,16 +750,25 @@ function isCreditMarked(before: string, token: string, after: string): boolean {
  * nothing marked is the plain purchase. An ambiguous total never becomes a
  * credit.
  *
- * A time that shares the total's value (the 14 of 14:32 on a $14.00 refund)
- * is not printed as money, so it is no copy. "As money" means what the first
- * two tiers read, beside a currency or written like money, so a size on a
- * priced line (10m -$10.00) still counts as one. A total read from the plain
- * numbers has no money to compare with, so every figure of its value is a
- * copy.
+ * "As money" means a figure on a line that prints a currency mark, or one
+ * written like money, whatever its line's money made of it: a size on a
+ * priced line (10m -$10.00) counts as one, and so does half of a time on the
+ * total's own line, or on another line that prints money (the 14 of 14:32
+ * TOTAL -$14.00). That leaves such a refund a purchase graded 0.3 rather than
+ * let a sale whose bare total a time repeats read as a refund (Total 32 /
+ * 14:32 Card -$32.00). A time on a line of its own prints no money and is no
+ * copy. A total read from the plain numbers has no money to compare with, so
+ * every figure of its value is a copy.
+ *
+ * A count that might have been the total carries no mark of its own, so the
+ * marks do not agree either where it is printed on a line that prints the
+ * total as well (Total 12 Tax -$0.96), or where it stands where a total does,
+ * on any line (Coupon -$3.00 over Tax $1.00 Total 12).
  */
 function readDirection(
   winner: AmountCandidate,
   candidates: AmountCandidate[],
+  rivals: AmountCandidate[],
 ): Pick<AmountReading, 'direction' | 'directionConfidence'> {
   const winnerIsMoney = isPrintedAsMoney(winner);
   const copies = candidates.filter(
@@ -533,8 +776,11 @@ function readDirection(
       Math.abs(c.value - winner.value) <= TENDER_SUM_TOLERANCE &&
       (!winnerIsMoney || isPrintedAsMoney(c)),
   );
+  const rivalled = rivals.some(
+    rival => rival.mayBeTotal || copies.some(copy => copy.row === rival.row),
+  );
   const marked = copies.filter(c => c.credit).length;
-  if (marked === copies.length) {
+  if (marked === copies.length && !rivalled) {
     return { direction: 'credit', directionConfidence: CREDIT_MARK_GRADE };
   }
   return { direction: 'debit', directionConfidence: marked > 0 ? TWINNED_MARK_GRADE : 0 };
@@ -563,9 +809,12 @@ function isMoneyShaped(token: string): boolean {
   return /[.,]\d{1,2}$/.test(token) || /[.,'’\u00A0\u202F\u2009]\d{3}\b/.test(token);
 }
 
-/** A figure the first two tiers would read: beside a currency, or written like money. */
+/**
+ * A figure the first two tiers would read but for what its line's money made
+ * of it: on a line that prints a currency mark, or written like money.
+ */
 function isPrintedAsMoney(candidate: AmountCandidate): boolean {
-  return candidate.besideCurrency || isMoneyShaped(candidate.token);
+  return candidate.printedBesideCurrency || isMoneyShaped(candidate.token);
 }
 
 /**
