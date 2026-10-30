@@ -13,6 +13,7 @@ import {
   provideNoMotion,
   ratio,
   settleAnimations,
+  textLines,
   type TranslationStub,
   withTheme,
 } from '../../../../core/services/testing';
@@ -1008,6 +1009,121 @@ describe('FileDropzoneComponent, through its own template', () => {
     expect(text('.file-name')).toBe('picked.csv');
     // The handler clears the input so the same file can be picked twice.
     expect(input.value).toBe('');
+  });
+
+  /**
+   * At 375px the wizard leaves the zone 303px beside the browser's 8px
+   * scrollbar (311px on a phone), and a row of a multi-image pick lent its
+   * name 51px beside the preview, the arrows, the remove button and the
+   * handle: the name broke over four lines and its size and type ran on
+   * under the arrows. The rows answer the list's own width, so a host this
+   * narrow is the phone; Karma's 756px window never reaches the viewport
+   * query that trims the row's padding and preview, so the row measured
+   * here is the harder one. The faces are pinned because Karma serves none.
+   */
+  describe('at a phone\'s width', () => {
+    const FACE = "Verdana, 'DejaVu Sans', sans-serif";
+
+    function narrow(widthPx: number): void {
+      const host = el();
+      host.style.display = 'block';
+      host.style.width = `${widthPx}px`;
+      host.style.fontFamily = FACE;
+      for (const token of ['--mat-sys-body-medium-font', '--mat-sys-label-large-font']) {
+        host.style.setProperty(token, FACE);
+      }
+    }
+
+    const box = (row: HTMLElement, selector: string) =>
+      (row.querySelector(selector) as HTMLElement).getBoundingClientRect();
+
+    it('gives a multi-image row\'s name a column it reads in, and keeps the size and type inside it', () => {
+      narrow(303);
+      fixture.detectChanges();
+      dropFiles([imageFile('e2e-109-shared.png'), imageFile('image.jpg')]);
+
+      const rows = all('.file-item');
+      expect(rows.length).withContext('the rows').toBe(2);
+      for (const row of rows) {
+        const name = row.querySelector('.file-name') as HTMLElement;
+        const label = name.textContent?.trim();
+        const info = box(row, '.file-info');
+        const edges = row.getBoundingClientRect();
+
+        expect(info.width).withContext(`${label}: the name's column`).toBeGreaterThanOrEqual(100);
+        expect(textLines(name)).withContext(`${label}: the name's lines`).toBeLessThanOrEqual(2);
+        for (const part of ['.file-size', '.file-type-label']) {
+          expect(box(row, part).right)
+            .withContext(`${label}: ${part} right edge vs the name's column`)
+            .toBeLessThanOrEqual(info.right + 1);
+        }
+        for (const [selector, what] of [
+          ['.reorder-controls', 'the arrows'],
+          ['.remove-btn', 'remove'],
+          ['.drag-handle', 'the handle'],
+        ] as const) {
+          const control = box(row, selector);
+          const overlaps = control.left < info.right - 1 && control.right > info.left + 1
+            && control.top < info.bottom - 1 && control.bottom > info.top + 1;
+          expect(overlaps).withContext(`${label}: ${what} over the name's column`).toBeFalse();
+          expect(control.left).withContext(`${label}: ${what} left edge vs the row`)
+            .toBeGreaterThanOrEqual(edges.left - 1);
+          expect(control.right).withContext(`${label}: ${what} right edge vs the row`)
+            .toBeLessThanOrEqual(edges.right + 1);
+        }
+      }
+    });
+
+    // Tab reaches a row's buttons in their template order, the arrows and
+    // then remove, so on screen they read in that order too: no button
+    // stands before, or on a line above, the one Tab reaches before it.
+    it('lays a multi-image row\'s buttons out in the order Tab reaches them', () => {
+      narrow(303);
+      fixture.detectChanges();
+      dropFiles([imageFile('e2e-109-shared.png'), imageFile('image.jpg'), imageFile('third.png')]);
+
+      for (const row of all('.file-item')) {
+        const label = row.querySelector('.file-name')?.textContent?.trim();
+        const buttons = Array.from(row.querySelectorAll<HTMLElement>('button'));
+        expect(buttons.length).withContext(`${label}: the buttons`).toBe(3);
+        for (let i = 1; i < buttons.length; i++) {
+          const before = buttons[i - 1].getBoundingClientRect();
+          const after = buttons[i].getBoundingClientRect();
+          const sameLine = after.top < before.bottom - 1 && after.bottom > before.top + 1;
+          const inOrder = sameLine ? after.left >= before.right - 1 : after.top >= before.bottom - 1;
+          const key = (button: HTMLElement) => button.getAttribute('aria-label')?.split(':')[0];
+          expect(inOrder)
+            .withContext(`${label}: ${key(buttons[i])} after ${key(buttons[i - 1])}`)
+            .toBeTrue();
+        }
+      }
+    });
+
+    // A pin. Mutation: the grid rule written outside the @container, so a
+    // wide list takes it too.
+    it('keeps a multi-image row on one line where the list has room', () => {
+      narrow(600);
+      fixture.detectChanges();
+      dropFiles([imageFile('first.png'), imageFile('second.png')]);
+
+      const row = all('.file-item')[0];
+      const info = box(row, '.file-info');
+      const arrows = box(row, '.reorder-controls');
+      expect(getComputedStyle(row).display).withContext('the row').toBe('flex');
+      expect(arrows.top < info.bottom && arrows.bottom > info.top)
+        .withContext('the arrows beside the name').toBeTrue();
+    });
+
+    // A pin. Mutation: the rule keyed on .file-item rather than .file-item.reorderable.
+    it('leaves a lone photo\'s row on one line at a phone\'s width', () => {
+      narrow(303);
+      fixture.detectChanges();
+      dropFiles([imageFile('e2e-109-shared.png')]);
+
+      const row = all('.file-item')[0];
+      expect(getComputedStyle(row).display).withContext('the row').toBe('flex');
+      expect(box(row, '.file-info').width).withContext('the name\'s column').toBeGreaterThanOrEqual(100);
+    });
   });
 
   describe('colours, as painted', () => {
