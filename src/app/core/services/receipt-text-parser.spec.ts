@@ -136,6 +136,38 @@ describe('parseReceiptOcrText', () => {
         }
       });
 
+      it('grades a total under a tax or tip rate printed as a percent, the rate a count that might have been the total, the known gap', () => {
+        // A pin, and a flagged cost. The rate's figure is a bare whole number
+        // beside money, larger than the total and on another line, so the total
+        // read right is flagged; excusing a rate from might-be-total would lift
+        // these to 0.8, and the next case's wrong readings with them.
+        const cases: [text: string, amount: number][] = [
+          ['Diner\nFood $12.00\nTip 18% $2.16\nTotal $14.16', 14.16],
+          ['Tesco\nMilk £1.20\nBread £1.10\nVAT 20% £0.38\nTotal £2.30', 2.3],
+          ['Shop\nTax 8% $0.40\nTotal $5.40', 5.4],
+        ];
+        for (const [text, amount] of cases) {
+          expect(parseReceiptOcrText(text))
+            .withContext(text)
+            .toEqual(jasmine.objectContaining({ amount, amountConfidence: 0.6, amountDemotion: 'count' }));
+        }
+      });
+
+      it('reads a total printed bare under a tax or tip rate as another figure, flagged only by the rate, the known gap', () => {
+        // A pin: the rate is the only rival such a reading has, so a rule that
+        // excused a rate from might-be-total would read these at 0.8.
+        const cases: [text: string, amount: number][] = [
+          ['Shop\nTax 8% $0.96\nTotal 12', 0.96],
+          ['Shop\nTax 8% $0.40\nTotal 5.40', 0.4],
+          ['Diner\nFood $12.00\nTip 18% $2.16\nTotal 14.16', 12],
+        ];
+        for (const [text, amount] of cases) {
+          expect(parseReceiptOcrText(text))
+            .withContext(text)
+            .toEqual(jasmine.objectContaining({ amount, amountConfidence: 0.6, amountDemotion: 'count' }));
+        }
+      });
+
       it('keeps a price printed again in its tier at the tier grade when its count stands right before it', () => {
         // A pin: grading every pick a count outranks would flag this one.
         expect(parseReceiptOcrText('Shop\nPack of 24 $5.00\nTotal $5.00')).toEqual(read(5, 0.8));
@@ -221,6 +253,24 @@ describe('parseReceiptOcrText', () => {
         }
       });
 
+      it('reads the total its sign is glued to, and the date printed after it on its line', () => {
+        // A date never starts at a figure its sign is glued to, so the total's
+        // own figure starts no run and the date after it is read whole.
+        const cases: [text: string, amount: number, dated: number[], dateConfidence: number][] = [
+          ['Shop\nTOTAL $12.50 01/15/2026', 12.5, [2026, 1, 15], 0.9],
+          ['Shop\n$15.00 01/15/26', 15, [2026, 1, 15], 0.5],
+        ];
+        for (const [text, amount, dated, dateConfidence] of cases) {
+          const result = parseReceiptOcrText(text);
+          expect(result)
+            .withContext(text)
+            .toEqual(jasmine.objectContaining({ amount, amountConfidence: 0.8, dateConfidence }));
+          expect([result.date.getFullYear(), result.date.getMonth() + 1, result.date.getDate()])
+            .withContext(text)
+            .toEqual(dated);
+        }
+      });
+
       it('grades the total under a later count where its sign stands apart and the date printed after it on its line is lost, the known gap', () => {
         // With a space or a code between the sign and the total, the total's
         // own figure starts a run that cannot be a date (12.50 01), which takes
@@ -264,6 +314,22 @@ describe('parseReceiptOcrText', () => {
             directionConfidence: 0.3,
           }),
         );
+      });
+
+      it('reads the item any figure printed negative (a discount, coupon, gift card, deposit or points) takes the total under, the known gap', () => {
+        // Largest-wins (ADR 0013) reads the item, as 26.10.180 does wherever
+        // the item's line prints no count, and a saving printed unmarked reads
+        // the same. Where the line prints a count, 26.10.180 read the count and
+        // the price as a date and the total was what was left.
+        const cases: [text: string, amount: number][] = [
+          ['Shop\nItem 1 $3.00\nCoupon -$1.00\nTotal $2.00', 3],
+          ['Shop\nItem 1 $3.00\nYou saved $1.00\nTotal $2.00', 3],
+          ['Shop\nItem 1 $3.00\nDiscount ($1.00)\nTotal $2.00', 3],
+          ['Shop\nItem 1 $25.00\nGift card -$10.00\nTotal $15.00', 25],
+        ];
+        for (const [text, amount] of cases) {
+          expect(parseReceiptOcrText(text)).withContext(text).toEqual(read(amount, 0.8));
+        }
       });
     });
   });
@@ -361,6 +427,484 @@ describe('parseReceiptOcrText', () => {
       const result = parseReceiptOcrText('Shop\nJanuary 15, 2026\nTotal: $5');
       expect(result.date.getFullYear()).toBe(new Date().getFullYear());
       expect(result.confidence).toBeLessThan(0.7);
+    });
+
+    describe('beside a price', () => {
+      // A date is read from figures printed together on one line, and never
+      // through a currency sign (ADR 0186).
+      const dated = (text: string) => {
+        const { date } = parseReceiptOcrText(text);
+        return [date.getFullYear(), date.getMonth() + 1, date.getDate()];
+      };
+
+      it('reads a priced line with its sign before the price as money, never as a date', () => {
+        const cases: [text: string, amount: number][] = [
+          ['Shop\nItem 1 $10.00', 10],
+          ['Shop\nItem 1 $10.00\nItem 2 $5.00\nTotal $15.00', 15],
+          ['Shop\nTickets 2 $5 $10', 10],
+        ];
+        for (const [text, amount] of cases) {
+          expect(parseReceiptOcrText(text))
+            .withContext(text)
+            .toEqual(jasmine.objectContaining({ amount, amountConfidence: 0.8, dateConfidence: 0 }));
+        }
+      });
+
+      it('reads a date from its own line, never through the price above it', () => {
+        const cases: [text: string, amount: number][] = [
+          ['Shop\nTotal $5.15\n01/15/2026', 5.15],
+          ['Shop\nTotal $5.00\n01/15/2026', 5],
+          ['Shop\nItem 1 $10.00\nTotal $10.00\n01/15/2026', 10],
+        ];
+        for (const [text, amount] of cases) {
+          expect(parseReceiptOcrText(text))
+            .withContext(text)
+            .toEqual(jasmine.objectContaining({ amount, amountConfidence: 0.8, dateConfidence: 0.9 }));
+          expect(dated(text)).withContext(text).toEqual([2026, 1, 15]);
+        }
+        // The issue's third reading, a pin: a printed date is read first.
+        expect(parseReceiptOcrText('Shop\n2026-10-20\nItem 1 $10.00')).toEqual(
+          jasmine.objectContaining({ amount: 10, amountConfidence: 0.8, dateConfidence: 0.9 }),
+        );
+        expect(dated('Shop\n2026-10-20\nItem 1 $10.00')).toEqual([2026, 10, 20]);
+        expect(parseReceiptOcrText('Shop\nRef 2025\n3.10\nTotal 3.10').dateConfidence).toBe(0);
+        expect(parseReceiptOcrText('Shop\nTotal $5.15\n12:30')).toEqual(
+          jasmine.objectContaining({ amount: 5.15, amountConfidence: 0.8, dateConfidence: 0 }),
+        );
+      });
+
+      it('reads no date from a code beside a price, nor the code as the amount', () => {
+        expect(parseReceiptOcrText('Shop\nSKU 2025 $1.10\nTotal $1.10')).toEqual(
+          jasmine.objectContaining({ amount: 1.1, amountConfidence: 0.8, dateConfidence: 0 }),
+        );
+        // Alone, the code is a count larger than the price, so the price is
+        // read under the bar.
+        expect(parseReceiptOcrText('Shop\nSKU 2025 $1.10')).toEqual(
+          jasmine.objectContaining({
+            amount: 1.1,
+            amountConfidence: 0.6,
+            amountDemotion: 'count',
+            dateConfidence: 0,
+          }),
+        );
+      });
+
+      it('reads every count, code and price of a priced line as the money it is, and none of it as a date, where a sign leads the price or a line break parts them', () => {
+        // The gate (ADR 0145): 72 prices, each under six counts in three
+        // layouts, three codes in two, and a dated total: 1,800 readings.
+        const wrong: string[] = [];
+        const expectReading = (text: string, expected: Record<string, number | string>) => {
+          const result = parseReceiptOcrText(text);
+          const actual: Record<string, unknown> = { ...result, day: result.date.getDate() };
+          const off = Object.keys(expected).filter(key => actual[key] !== expected[key]);
+          if (off.length > 0) {
+            wrong.push(`${JSON.stringify(text)} read ${off.map(key => `${key} ${actual[key]}`).join(', ')}`);
+          }
+        };
+        for (let units = 1; units <= 12; units++) {
+          for (const cents of ['00', '10', '12', '13', '26', '31']) {
+            const price = `${units}.${cents}`;
+            const amount = Number(price);
+            const money = { amount, amountConfidence: 0.8, dateConfidence: 0 };
+            for (const count of [1, 9, 12, 13, 24, 31]) {
+              expectReading(`Shop\nItem ${count} $${price}\nTotal $${price}`, money);
+              expectReading(`Shop\nItem ${count}\n$${price}\nTotal\n$${price}`, money);
+              // A count of the refund's own value copies its total: the
+              // known gap below.
+              expectReading(
+                `Shop\nItem ${count} -$${price}\nTotal -$${price}`,
+                count === amount
+                  ? { ...money, direction: 'debit', directionConfidence: 0.3 }
+                  : { ...money, direction: 'credit', directionConfidence: 0.5 },
+              );
+            }
+            for (const code of [1234, 2016, 2025]) {
+              expectReading(`Shop\nSKU ${code} $${price}\nTotal $${price}`, money);
+              expectReading(`Shop\nSKU ${code}\n${price}`, { ...money, amountConfidence: 0.5 });
+            }
+            expectReading(`Shop\nTotal $${price}\n01/15/2026`, {
+              amount,
+              amountConfidence: 0.8,
+              dateConfidence: 0.9,
+              day: 15,
+            });
+          }
+        }
+        expect(wrong).toEqual([]);
+      });
+
+      it('reads a priced line printed with no sign, or with its sign after the figure, as a date, flagged, the known gap', () => {
+        // A currency sign parts two figures only where it stands between them.
+        // With no sign, or one after the price, the count and the price read as
+        // a date in the year of the price's cents, graded under the bar, and
+        // drop out of the amount hunt, as on 26.10.180.
+        const cases: [text: string, amount: number, amountConfidence: number, year: number][] = [
+          ['Shop\nMilk 1 3.25', 0, 0, 2025],
+          ['Bäckerei\nBrot 1 2,10 €', 0, 0, 2010],
+          ['Shop\nMilk 1 3.25\nTotal 3.25', 3.25, 0.5, 2025],
+          ['Laden\nBrot 1 2,10 €\nSumme 2,10 €', 2.1, 0.8, 2010],
+        ];
+        for (const [text, amount, amountConfidence, year] of cases) {
+          expect(parseReceiptOcrText(text))
+            .withContext(text)
+            .toEqual(jasmine.objectContaining({ amount, amountConfidence, dateConfidence: 0.3 }));
+          expect(dated(text)[0]).withContext(text).toBe(year);
+        }
+      });
+
+      it('reads a two-digit year after one to three marks or spaces, as 26.10.180 does', () => {
+        // A pin, OCR's spacing included: a space either side of a mark, a mark
+        // other than the one between the day and the month, and an apostrophe
+        // before the year.
+        for (const text of [
+          'Shop\n15.01.26',
+          'Shop\n1/15/26',
+          'Shop\n15-01-26',
+          'Shop\n15.01. 26\nTotal 5.00',
+          "Shop\n15/01/'26\nTotal $12.50",
+          'Shop\n15.01 .26\nTotal $12.50',
+          'Shop\n15 /01/26\nTotal $12.50',
+          'Shop\n15/ 01/26\nTotal $12.50',
+          'Shop\n15/01 /26\nTotal $12.50',
+          'Shop\n15/01-26\nTotal $12.50',
+          'Shop\n15.01/26\nTotal $12.50',
+          'Shop\n15/01 26\nTotal $12.50',
+        ]) {
+          expect(parseReceiptOcrText(text).dateConfidence).withContext(text).toBe(0.5);
+          expect(dated(text)).withContext(text).toEqual([2026, 1, 15]);
+        }
+        expect(parseReceiptOcrText('Shop\n15.01. 26\nTotal 5.00').amount).toBe(5);
+        expect(parseReceiptOcrText('Shop\nDate: 15.01 .26 Total: $12.50')).toEqual(
+          jasmine.objectContaining({ amount: 12.5, amountConfidence: 0.8 }),
+        );
+      });
+
+      it('reads a date after a mark that joins no figure', () => {
+        // A pin: a date may follow such a mark where no digit stands before it.
+        const text = 'Shop\nNo.15/01/26\nTotal $3.00';
+        expect(parseReceiptOcrText(text)).toEqual(
+          jasmine.objectContaining({ amount: 3, amountConfidence: 0.8, dateConfidence: 0.5 }),
+        );
+        expect(dated(text)).toEqual([2026, 1, 15]);
+      });
+
+      it('reads a four-digit year after whatever mark leads to it', () => {
+        for (const text of ['Shop\n15/ 01/2026', 'Shop\n01/15.2026', 'Shop\n15/01/ 2026']) {
+          expect(parseReceiptOcrText(text).dateConfidence).withContext(text).toBe(0.9);
+          expect(dated(text)).withContext(text).toEqual([2026, 1, 15]);
+        }
+      });
+
+      it('reads a four-digit code before a price with no sign as a date, the known gap', () => {
+        const result = parseReceiptOcrText('Shop\nRef 2025 1.10\nTotal 1.10');
+        expect(result.dateConfidence).toBe(0.9);
+        expect(result.date.getFullYear()).toBe(2025);
+      });
+
+      it('reads no date OCR wrapped across two lines, and reads a part it leaves as money, the known gap', () => {
+        expect(parseReceiptOcrText('Shop\n15/01/\n2026').dateConfidence).toBe(0);
+        // The day and month, written like money, outrank the total, and so
+        // does a year left on a line with a currency code: on a slip that
+        // prints no currency mark the refund reads as a purchase.
+        const cases: [text: string, amount: number, amountConfidence: number][] = [
+          ['REFUND\n13.01.\n24\nItem -4.50\nTotal -4.50', 13.01, 0.5],
+          ['Shop\nItem 4.50\nTotal 4.50 EUR 13.01.\n24', 13.01, 0.8],
+          ['Shop\n13.01.\n2024 14:32 EUR\nItem $45.00\nTotal $45.00', 2024, 0.8],
+        ];
+        for (const [text, amount, amountConfidence] of cases) {
+          expect(parseReceiptOcrText(text))
+            .withContext(text)
+            .toEqual(
+              jasmine.objectContaining({
+                amount,
+                amountConfidence,
+                direction: 'debit',
+                directionConfidence: 0,
+                dateConfidence: 0,
+              }),
+            );
+        }
+      });
+
+      it('reads a date wherever one to three marks or spaces part three short numbers, the known gap', () => {
+        expect(parseReceiptOcrText('Shop\nItem 2 5 10\nTotal 10').dateConfidence).toBe(0.3);
+        const time = parseReceiptOcrText('Shop\n10:15:26 01/15/2026\nTotal $5');
+        expect(time.dateConfidence).toBe(0.5);
+        expect([time.date.getFullYear(), time.date.getMonth() + 1, time.date.getDate()]).toEqual([
+          2026, 10, 15,
+        ]);
+      });
+
+      it("starts no date inside a price's cents, nor at a price its sign is glued to", () => {
+        // The 01 that ends $145.01 is cents, not a day: the date is 01 01 24.
+        const text = 'Shop\nTotal $145.01 01 01 24';
+        expect(parseReceiptOcrText(text)).toEqual(
+          jasmine.objectContaining({ amount: 145.01, amountConfidence: 0.8, dateConfidence: 0.3 }),
+        );
+        expect(dated(text)).toEqual([2024, 1, 1]);
+        // Nor at a figure its sign is glued to: 38.01 01 is no run.
+        const glued = 'Shop\nTotal $38.01 01 01 24';
+        expect(parseReceiptOcrText(glued)).toEqual(
+          jasmine.objectContaining({ amount: 38.01, amountConfidence: 0.8, dateConfidence: 0.3 }),
+        );
+        expect(dated(glued)).toEqual([2024, 1, 1]);
+        // Where the sign stands apart, the price's own figure starts a run
+        // that cannot be a date, the date printed after it is lost, and the
+        // price still reads whole.
+        expect(parseReceiptOcrText('Shop\nTotal $ 38.01 01 01 24')).toEqual(
+          jasmine.objectContaining({ amount: 38.01, amountConfidence: 0.8, dateConfidence: 0 }),
+        );
+      });
+
+      it('reads a price its sign is glued to as money, and the date printed after it as that date', () => {
+        const cases: [text: string, amount: number, dated: number[]][] = [
+          ['Shop\nItem 1 $10.00\nTotal $27.01 12/5/24', 27.01, [2024, 12, 5]],
+          ['Shop\nItem $3\nTotal $3\nCard ****1234 $3 1/13/24', 3, [2024, 1, 13]],
+        ];
+        for (const [text, amount, date] of cases) {
+          expect(parseReceiptOcrText(text))
+            .withContext(text)
+            .toEqual(jasmine.objectContaining({ amount, amountConfidence: 0.8 }));
+          expect(dated(text)).withContext(text).toEqual(date);
+        }
+      });
+
+      it('reads the date printed after a price whose sign follows it, on its line or the next', () => {
+        // A pin: only a sign glued to the figure after it bars a date from
+        // starting there. One printed after the price, with a space or a line
+        // break before the date, does not, and barring a sign a space follows
+        // as well would lose these dates.
+        const cases: [text: string, amount: number, date: number[], dateConfidence: number][] = [
+          ['Shop\nTotal 5,00 € 15.01.26', 5, [2026, 1, 15], 0.5],
+          ['Shop\nSumme 12,50 €\n15.01.2026', 12.5, [2026, 1, 15], 0.9],
+          ['Shop\nTotal 5.00$ 01/15/2026', 5, [2026, 1, 15], 0.9],
+        ];
+        for (const [text, amount, date, dateConfidence] of cases) {
+          expect(parseReceiptOcrText(text))
+            .withContext(text)
+            .toEqual(jasmine.objectContaining({ amount, amountConfidence: 0.8, dateConfidence }));
+          expect(dated(text)).withContext(text).toEqual(date);
+        }
+      });
+
+      it("reads a run that only looks like a date where a price's own figure starts it, and loses that price, the known gap", () => {
+        // 26.10.180 read a date through a currency sign above these lines (the
+        // 1 $10.00 of Item 1 $10.00) and stopped there. With the sign parting
+        // the figures, the reader goes on, and a run that starts at a price's
+        // figure takes the price, or its cents, into the date. A sign glued to
+        // the price stops the run from starting there; a sign spaced from it,
+        // a code before it, or no sign at all does not.
+        const cases: [text: string, amount: number][] = [
+          // The total's whole part, its cents and the date's first number.
+          ['Shop\nItem 1 $10.00\nTotal $ 27.01 12/5/24', 24],
+          ['Shop\nItem 1 $10.00\nTotal USD 27.01 12/5/24', 24],
+          ['Shop\nTotal $ 5.15 01/15/26', 26],
+          // A card line's whole-number amount and the date after it.
+          ['Shop\nItem $3\nTotal $3\nCard ****1234 $ 3 1/13/24', 1234],
+          // A unit price's cents and the line total's whole part.
+          ['Laden\nBrot 1 €2,10\nKaffee 2 x 5,10 10,20 €\nSumme 10,20 €', 20],
+          // A count printed before the total, and the total.
+          ['Shop\nItem 1 $10.00\nKaffee €2,10\nSumme (2) 12,10 €', 10],
+        ];
+        for (const [text, amount] of cases) {
+          expect(parseReceiptOcrText(text))
+            .withContext(text)
+            .toEqual(jasmine.objectContaining({ amount, amountConfidence: 0.8 }));
+        }
+      });
+
+      it("twins the direction off a payment line where the total's sign is glued to it, as 26.10.180 does", () => {
+        // No run starts at the total's own figure, so the total and the
+        // payment line's copy of it disagree, and both are twinned at 0.3.
+        const cases: string[] = [
+          'REFUND\nItem 1 -$10.00\nTotal -$27.01 01/13/25\nVISA $27.01',
+          'Shop\nItem 1 $10.00\nTotal $27.01 01/13/25\nCard -27.01 USD',
+        ];
+        for (const text of cases) {
+          expect(parseReceiptOcrText(text))
+            .withContext(text)
+            .toEqual(
+              jasmine.objectContaining({
+                amount: 27.01,
+                amountConfidence: 0.8,
+                direction: 'debit',
+                directionConfidence: 0.3,
+                dateConfidence: 0.5,
+              }),
+            );
+          expect(dated(text)).withContext(text).toEqual([2025, 1, 13]);
+        }
+      });
+
+      it("reads the direction off a payment line where a run that only looks like a date took the total's own figure, the known gap", () => {
+        // With the sign spaced from the total, the run 27.01 01 takes the
+        // total's own figure into a date, graded under the bar, and the amount
+        // still reads right, off the payment line that repeats it. But that
+        // copy then decides the direction alone: a refund whose card line
+        // prints the total unmarked is filed as a purchase graded 0, and a
+        // sale whose card line prints it negative as a refund. 26.10.180
+        // twinned both at 0.3.
+        const cases: [text: string, direction: 'credit' | 'debit', directionConfidence: number][] = [
+          ['REFUND\nItem 1 -$10.00\nTotal -$ 27.01 01/13/25\nVISA $27.01', 'debit', 0],
+          ['Shop\nItem 1 $10.00\nTotal $ 27.01 01/13/25\nCard -27.01 USD', 'credit', 0.5],
+        ];
+        for (const [text, direction, directionConfidence] of cases) {
+          expect(parseReceiptOcrText(text))
+            .withContext(text)
+            .toEqual(
+              jasmine.objectContaining({
+                amount: 27.01,
+                amountConfidence: 0.8,
+                direction,
+                directionConfidence,
+                dateConfidence: 0.5,
+              }),
+            );
+        }
+      });
+
+      it('reads a day-first date printed right after a whole-number price its sign is glued to', () => {
+        const cases: [text: string, amount: number, extra: Record<string, unknown>, date: number[]][] = [
+          ['Laden\nMilch 2 €13 24.07.24\nSumme €26,00', 26, { dateConfidence: 0.5 }, [2024, 7, 24]],
+          [
+            'REFUND\nItem 2 -$15 24.07.23\nTotal -$30',
+            30,
+            { direction: 'credit', directionConfidence: 0.5, dateConfidence: 0.5 },
+            [2023, 7, 24],
+          ],
+        ];
+        for (const [text, amount, extra, date] of cases) {
+          expect(parseReceiptOcrText(text))
+            .withContext(text)
+            .toEqual(jasmine.objectContaining({ amount, amountConfidence: 0.8, ...extra }));
+          expect(dated(text)).withContext(text).toEqual(date);
+        }
+      });
+
+      it('reads a day-first date printed right after a whole-number price as one figure of money, the known gap', () => {
+        // With the sign spaced from the price, the run 13 24.07 is rejected
+        // as a date and consumed: the reader goes on from where the run ends,
+        // so 24.07.24, which starts inside it, is never tried, and it stands
+        // as one figure written like money, larger than the total. 26.10.180
+        // read the first one's date through the sign (2 € 13 24), which split
+        // it.
+        const cases: [text: string, amount: number, extra: Record<string, unknown>][] = [
+          ['Laden\nMilch 2 € 13 24.07.24\nSumme €26,00', 2407.24, { dateConfidence: 0 }],
+          [
+            'REFUND\nItem 2 -$ 15 24.07.23\nTotal -$30',
+            2407.23,
+            { direction: 'debit', directionConfidence: 0, dateConfidence: 0 },
+          ],
+        ];
+        for (const [text, amount, extra] of cases) {
+          expect(parseReceiptOcrText(text))
+            .withContext(text)
+            .toEqual(jasmine.objectContaining({ amount, amountConfidence: 0.8, ...extra }));
+        }
+      });
+
+      it('reads no date glued to a figure by a mark, the known gap', () => {
+        // A date never starts inside a figure, so one glued to a code by a mark
+        // that joins digits (4711.13/01/25) is not read, and the code with the
+        // day for its cents outranks the total. On a slip that prints no
+        // currency mark the refund then reads as a purchase. 26.10.180 read
+        // the date, and the refund's total.
+        expect(parseReceiptOcrText('Storno\nBon 4711.13/01/25\nBrot -2,50\nSumme -12,50')).toEqual(
+          jasmine.objectContaining({
+            amount: 4711.13,
+            amountConfidence: 0.5,
+            direction: 'debit',
+            directionConfidence: 0,
+            dateConfidence: 0,
+          }),
+        );
+      });
+
+      it('reads no date glued after a currency sign, and reads a day-first one as one figure of money, the known gap', () => {
+        // A date never starts at a figure its sign is glued to, so a date
+        // printed glued after a sign is not read. Day first with dots, its
+        // groups read as one figure written like money, at 0.8; with slashes,
+        // as counts beside the money, under the bar. 26.10.180 read both
+        // dates, and the total.
+        expect(parseReceiptOcrText('Shop\n€15.01.26\nSumme €5,00')).toEqual(
+          jasmine.objectContaining({ amount: 1501.26, amountConfidence: 0.8, dateConfidence: 0 }),
+        );
+        expect(parseReceiptOcrText('Shop\nDate:$01/15/2026 Total $5.00')).toEqual(
+          jasmine.objectContaining({
+            amount: 5,
+            amountConfidence: 0.6,
+            amountDemotion: 'count',
+            dateConfidence: 0,
+          }),
+        );
+      });
+
+      describe('on 30 October 2026', () => {
+        // The future-date guard decides this reading, so the clock is held on
+        // the day it was taken: from 22 January 2027, 23.01.27 read day first
+        // is no longer a date to turn down.
+        beforeEach(() => {
+          jasmine.clock().install();
+          jasmine.clock().mockDate(new Date(2026, 9, 30));
+        });
+
+        afterEach(() => {
+          jasmine.clock().uninstall();
+        });
+
+        it('reads a two-digit-year date printed year first as one figure of money, the known gap', () => {
+          // Read day first, 23.01.27 is a date in 2027, so the reader turns it
+          // down and the three groups are left as one figure written like money.
+          // 26.10.180 read a date across the line break above it (7 / 23.01).
+          expect(parseReceiptOcrText('Market 7\n23.01.27 JPY\nお茶 ¥150\n弁当 ¥480\n合計 ¥630')).toEqual(
+            jasmine.objectContaining({ amount: 2301.27, amountConfidence: 0.8, dateConfidence: 0 }),
+          );
+          expect(parseReceiptOcrText('Market 7\n23.01.27\nREFUND\nItem -12.50\nTotal -12.50')).toEqual(
+            jasmine.objectContaining({
+              amount: 2301.27,
+              amountConfidence: 0.5,
+              direction: 'debit',
+              directionConfidence: 0,
+            }),
+          );
+        });
+      });
+
+      it('reads a signed figure over a total line led by its date that prints no currency mark, the known gap', () => {
+        // 26.10.180 read a date across the line break (the 2 of x2 and the
+        // 1/13 below it), which joined the total to the signed line above.
+        // Read on its own line, the date leaves the total bare, in a weaker
+        // tier than the signed item.
+        expect(parseReceiptOcrText('Shop\nTea $2.00\nBagel $4.50 x2\n1/13/24 Total 45.00')).toEqual(
+          jasmine.objectContaining({ amount: 4.5, amountConfidence: 0.8, direction: 'debit' }),
+        );
+        expect(
+          parseReceiptOcrText('REFUND\nTea -$2.00\nBagel -$4.50 x2\n1/13/24 Total -45.00'),
+        ).toEqual(jasmine.objectContaining({ amount: 4.5, amountConfidence: 0.8, direction: 'credit' }));
+      });
+
+      it('reads a signed figure over a total that prints no currency mark, the known gap', () => {
+        // 26.10.180 read the signed figure's count and price as a date, which
+        // left the bare total the largest figure written like money.
+        const cases: [text: string, amount: number][] = [
+          ['Laden\nBrot 1 €2,10\nKaffee 2 x 5,10 10,20\nSumme 10,20', 2.1],
+          ['Market 7\nCrisps 87.78 6\nScone Qty 3 £13.20\nTotal 100.98', 13.2],
+        ];
+        for (const [text, amount] of cases) {
+          expect(parseReceiptOcrText(text))
+            .withContext(text)
+            .toEqual(jasmine.objectContaining({ amount, amountConfidence: 0.8 }));
+        }
+      });
+
+      it('reads a bare figure on a line whose only money is a labelled aside as money, the known gap', () => {
+        // An aside prices nothing, so a whole number beside it is the line's
+        // money (ADR 0186): here a points balance. 26.10.180 read the tax rate
+        // and the aside's figure as a date through the euro sign.
+        expect(parseReceiptOcrText('Shop\nSumme 184,73 EUR\n(IVA 5% €9,24) Points 1847')).toEqual(
+          jasmine.objectContaining({ amount: 1847, amountConfidence: 0.8 }),
+        );
+      });
     });
   });
 
@@ -831,6 +1375,14 @@ describe('parseReceiptOcrText', () => {
         );
         expect(parseReceiptOcrText('REFUND\n2026-09-28 14:14 TOTAL -$14.00')).toEqual(
           reading(14, 'debit', 0.3),
+        );
+      });
+
+      it("reads a count of a refund's own value on a priced line as a copy of its total, the known gap", () => {
+        // The 12 is a count on a line that prints money, which makes it a copy
+        // of the total, unmarked, as the size above is (ADR 0186).
+        expect(parseReceiptOcrText('Shop\nPack of 12 -$12.00\nTotal -$12.00')).toEqual(
+          reading(12, 'debit', 0.3),
         );
       });
 

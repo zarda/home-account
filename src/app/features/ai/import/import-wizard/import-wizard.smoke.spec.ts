@@ -31,13 +31,15 @@
 // processMultipleImages is stepped over to the device reader it routes to on
 // iOS, and the rows are handed over as the capture dialog hands them, so the
 // on-device reader's verdict on which way the money moved is followed from
-// the OCR text to the document. The case after it hands the card rows whose
-// type the device doubted, built the same way, so the flag on the type toggle
-// is seen on the real card, and a flip there is followed into the documents
-// it writes. The next folds such a refund into its purchase on the card, so
-// the side the net points, and the doubt it settles, are followed the same
-// way. The two after it read a refund in the cloud instead, through the
-// provider stub's multi-photo answer: once through the wizard's own file
+// the OCR text to the document. The case after it scans a priced line the
+// same way and stops at the card, so the price read as the amount, with no
+// flag on it, is seen on the real card. The one after that hands the card
+// rows whose type the device doubted, built the same way, so the flag on the
+// type toggle is seen on the real card, and a flip there is followed into the
+// documents it writes. The next folds such a refund into its purchase on the
+// card, so the side the net points, and the doubt it settles, are followed
+// the same way. The two after it read a refund in the cloud instead, through
+// the provider stub's multi-photo answer: once through the wizard's own file
 // picker, once through the strategy the camera calls. Each follows the
 // reader's income verdict, and the doubt it carries, from the extraction to
 // the toggle and into the document.
@@ -1463,48 +1465,11 @@ describe('ImportWizardComponent camera handoff (emulator smoke test)', () => {
       // names only the door. The rest is real: the minus read on the total,
       // the type grade carried to the card, the category held to the income
       // side, and the document the rules accept.
-      stubReceiptSeams();
-      const vision = jasmine.createSpyObj<VisionOcrService>('VisionOcrService', [
-        'detectEnvironment',
-        'isAvailable',
-        'recognizeText',
-        'isMacEnvironment'
-      ]);
-      vision.isAvailable.and.resolveTo({ available: true });
-      vision.recognizeText.and.resolveTo({
-        text: 'Harbour Supplies\n2026-01-15\nTotal: -$120.50',
-        blocks: [],
-        confidence: 0.9,
-        blockCount: 3
-      });
-      const apple = jasmine.createSpyObj<AppleIntelligenceService>('AppleIntelligenceService', [
-        'detectAvailability',
-        'isModelAvailable',
-        'parseReceiptText'
-      ]);
-      apple.isModelAvailable.and.returnValue(false);
-      TestBed.configureTestingModule({
-        providers: [
-          { provide: VisionOcrService, useValue: vision },
-          { provide: AppleIntelligenceService, useValue: apple }
-        ],
-        teardown: { destroyAfterEach: false }
-      });
-
-      const native = TestBed.inject(NativeReceiptService);
-      const strategy = TestBed.inject(AIStrategyService);
-      spyOn(strategy, 'processMultipleImages').and.callFake(files => native.processImages(files));
-      const importService = TestBed.inject(AIImportService);
-      const duplicateService = TestBed.inject(DuplicateDetectionService);
-      spyOn(TestBed.inject(Router), 'navigate').and.resolveTo(true);
-
       const before = new Set(
         (await getDocs(collection(firestore, `users/${uid}/transactions`))).docs.map(d => d.id)
       );
 
-      const photo = new File([new Uint8Array([1])], 'refund.jpg', { type: 'image/jpeg' });
-      const read = await strategy.processMultipleImages([photo]);
-      const rows = importService.convertStrategyResultToCategories(read);
+      const { rows, fixture } = await reviewOnDevice('Harbour Supplies\n2026-01-15\nTotal: -$120.50', 'refund.jpg');
 
       expect(rows.length).toBe(1);
       const [row] = rows;
@@ -1519,25 +1484,6 @@ describe('ImportWizardComponent camera handoff (emulator smoke test)', () => {
         suggestedCategoryId: fallbackCategoryFor('income'),
         categoryConfidence: UNCATEGORIZED_CATEGORY_CONFIDENCE
       });
-
-      const duplicates = await duplicateService.checkDuplicates(rows);
-      const importResult: ImportResult = {
-        source: 'image',
-        fileType: 'receipt_image',
-        fileName: photo.name,
-        fileSize: photo.size,
-        confidence: read.confidence,
-        warnings: [],
-        duplicates,
-        transactions: duplicateService.markDuplicates(rows, duplicates)
-      };
-
-      history.replaceState({ importResult, fromCamera: true, door: 'camera', multiImage: false }, '');
-      const fixture = TestBed.createComponent(ImportWizardComponent);
-      fixture.detectChanges();
-
-      await new Promise(resolve => setTimeout(resolve, 100));
-      fixture.detectChanges();
 
       const host = fixture.nativeElement as HTMLElement;
       const component = fixture.componentInstance;
@@ -1563,9 +1509,102 @@ describe('ImportWizardComponent camera handoff (emulator smoke test)', () => {
       expect(stored['currency']).toBe('USD');
       expect('fieldConfidence' in stored).toBeFalse();
 
-      history.replaceState({}, '');
-      fixture.destroy();
-      await new Promise(resolve => setTimeout(resolve, 300));
+      await leaveReview(fixture);
+    },
+    30000
+  );
+
+  /**
+   * An on-device scan of `text`, in a photo named `name`, through the
+   * camera's door on an iPhone with no Apple Intelligence, handed to the
+   * review card as the capture dialog hands it: its converter, its duplicate
+   * check against the real ledger, its router state. It imports nothing; a
+   * case that imports does so on the card it returns.
+   */
+  const reviewOnDevice = async (text: string, name = 'receipt.jpg') => {
+    stubReceiptSeams();
+    const vision = jasmine.createSpyObj<VisionOcrService>('VisionOcrService', [
+      'detectEnvironment',
+      'isAvailable',
+      'recognizeText',
+      'isMacEnvironment'
+    ]);
+    vision.isAvailable.and.resolveTo({ available: true });
+    vision.recognizeText.and.resolveTo({
+      text,
+      blocks: [],
+      confidence: 0.9,
+      blockCount: text.split('\n').length
+    });
+    const apple = jasmine.createSpyObj<AppleIntelligenceService>('AppleIntelligenceService', [
+      'detectAvailability',
+      'isModelAvailable',
+      'parseReceiptText'
+    ]);
+    apple.isModelAvailable.and.returnValue(false);
+    TestBed.configureTestingModule({
+      providers: [
+        { provide: VisionOcrService, useValue: vision },
+        { provide: AppleIntelligenceService, useValue: apple }
+      ],
+      teardown: { destroyAfterEach: false }
+    });
+
+    const native = TestBed.inject(NativeReceiptService);
+    const strategy = TestBed.inject(AIStrategyService);
+    spyOn(strategy, 'processMultipleImages').and.callFake(files => native.processImages(files));
+    const importService = TestBed.inject(AIImportService);
+    const duplicateService = TestBed.inject(DuplicateDetectionService);
+    spyOn(TestBed.inject(Router), 'navigate').and.resolveTo(true);
+
+    const photo = new File([new Uint8Array([1])], name, { type: 'image/jpeg' });
+    const read = await strategy.processMultipleImages([photo]);
+    const rows = importService.convertStrategyResultToCategories(read);
+    const duplicates = await duplicateService.checkDuplicates(rows);
+    const importResult: ImportResult = {
+      source: 'image',
+      fileType: 'receipt_image',
+      fileName: photo.name,
+      fileSize: photo.size,
+      confidence: read.confidence,
+      warnings: [],
+      duplicates,
+      transactions: duplicateService.markDuplicates(rows, duplicates)
+    };
+
+    history.replaceState({ importResult, fromCamera: true, door: 'camera', multiImage: false }, '');
+    const fixture = TestBed.createComponent(ImportWizardComponent);
+    fixture.detectChanges();
+    await new Promise(resolve => setTimeout(resolve, 100));
+    fixture.detectChanges();
+    return { rows, fixture };
+  };
+
+  /** Leave the review card without importing anything. */
+  const leaveReview = async (fixture: ComponentFixture<ImportWizardComponent>) => {
+    history.replaceState({}, '');
+    fixture.destroy();
+    await new Promise(resolve => setTimeout(resolve, 300));
+  };
+
+  it(
+    'an on-device scan of a priced line with its sign before the price reaches the review card with the price as its amount and no flag on it',
+    async () => {
+      // A priced line whose sign stands before its price is money, never a
+      // date: the price is read at the tier's grade and the date printed
+      // under it is kept (ADR 0186).
+      const { rows, fixture } = await reviewOnDevice(
+        'Harbour Supplies\nRope 1 $10.00\nTotal: $10.00\n01/15/2026'
+      );
+      expect(rows[0].amount).toBe(10);
+      expect(rows[0].fieldConfidence).toEqual({ amount: 0.8, date: 0.9 });
+
+      const host = fixture.nativeElement as HTMLElement;
+      expect(fixture.componentInstance.extractedTransactions()[0].amount).toBe(10);
+      expect(host.querySelector('.amount-section .verify-flag'))
+        .withContext('the price was read off the print, at the tier grade').toBeNull();
+
+      await leaveReview(fixture);
     },
     30000
   );

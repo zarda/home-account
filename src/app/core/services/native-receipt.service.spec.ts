@@ -199,6 +199,30 @@ describe('NativeReceiptService', () => {
       expect(result.transactions[0].fieldConfidence!.amount).toBeLessThan(VERIFY_FIELD_THRESHOLD);
     });
 
+    it("reads a priced line's price as the amount and grades no date", async () => {
+      // A priced line whose sign stands before its price is money, so the
+      // price is the amount and no date is graded (ADR 0186).
+      visionMock.recognizeText.and.resolveTo({ ...ocrResult, text: 'Shop\nRope 1 $10.00' });
+
+      const transaction = (await service.processImage(imageFile())).transactions[0];
+
+      expect(transaction.amount).toBe(10);
+      expect(transaction.fieldConfidence).toEqual({ amount: 0.8, date: 0 });
+    });
+
+    it('reads the date printed under a priced line, and the price above it', async () => {
+      visionMock.recognizeText.and.resolveTo({
+        ...ocrResult,
+        text: 'Harbour Supplies\nRope 1 $10.00\nTotal: $10.00\n01/15/2026',
+      });
+
+      const transaction = (await service.processImage(imageFile())).transactions[0];
+
+      expect(transaction.amount).toBe(10);
+      expect(transaction.fieldConfidence).toEqual({ amount: 0.8, date: 0.9 });
+      expect(transaction.date.getTime()).toBe(new Date(2026, 0, 15).getTime());
+    });
+
     it('should flag a figure read under a larger count below the verify threshold', async () => {
       visionMock.recognizeText.and.resolveTo({ ...ocrResult, text: 'Shop\nRoom 412 $89.00' });
 
@@ -438,6 +462,28 @@ describe('NativeReceiptService', () => {
         const result = await service.processImage(imageFile());
 
         expect(result.transactions[0].fieldConfidence?.amount).toBe(0.8);
+      });
+
+      it('lifts a model total that differs from a text parser reading under the bar on a receipt that prints no currency sign, the known gap', async () => {
+        // Only a code beside the date marks these receipts as money. 26.10.180
+        // read a figure of the time or the date there at 0.8 and disputed every
+        // other total; now the parser reads the receipt's own figures under the
+        // bar, and a model total it does not back is graded on its own (ADR
+        // 0147), right or wrong.
+        const cases: [text: string, amount: number, currency: string][] = [
+          ['Shop\n15.01.2026 14:32 EUR\nBrot 2,50\nKaffee 3,20\nSumme 5,70\nBar 10,00\nRückgeld 4,30', 10, 'EUR'],
+          ['STORE #72\n13 .01/ 25 JPY\n弁当 480\n合計 2,499\nお預り 3,000\nお釣り 501', 480, 'JPY'],
+        ];
+        for (const [text, amount, currency] of cases) {
+          visionMock.recognizeText.and.resolveTo({ ...ocrResult, text });
+          appleMock.parseReceiptText.and.resolveTo({
+            merchant: 'Cafe', date: '2026-01-15', amount, currency, category: '', details: '',
+          });
+
+          const result = await service.processImage(imageFile());
+
+          expect(result.transactions[0].fieldConfidence?.amount).withContext(text).toBe(0.8);
+        }
       });
 
       it('grades a read date 0.8', async () => {
