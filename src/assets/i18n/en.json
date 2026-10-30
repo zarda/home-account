@@ -81,7 +81,8 @@
     "loading": "Loading...",
     "retry": "Retry",
     "atTodaysRate": "At today's rate",
-    "unknownCategory": "Unknown"
+    "unknownCategory": "Unknown",
+    "fileSizeBytes": "{{size}} B"
   },
   "nav": {
     "dashboard": "Dashboard",

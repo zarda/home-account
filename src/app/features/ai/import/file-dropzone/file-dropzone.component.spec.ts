@@ -469,16 +469,16 @@ describe('FileDropzoneComponent', () => {
 
   describe('file size formatting', () => {
     it('should format 0 bytes', () => {
-      expect(component.formatFileSize(0)).toBe('0 Bytes');
+      expect(component.formatFileSize(0)).toBe('common.fileSizeBytes:{"size":"0"}');
     });
 
     it('should format bytes', () => {
-      expect(component.formatFileSize(500)).toBe('500 Bytes');
+      expect(component.formatFileSize(500)).toBe('common.fileSizeBytes:{"size":"500"}');
     });
 
     it('should format kilobytes', () => {
-      expect(component.formatFileSize(1024)).toBe('1 KB');
-      expect(component.formatFileSize(2048)).toBe('2 KB');
+      expect(component.formatFileSize(1024)).toBe('1 kB');
+      expect(component.formatFileSize(2048)).toBe('2 kB');
     });
 
     it('should format megabytes', () => {
@@ -592,7 +592,7 @@ describe('FileDropzoneComponent, through its own template', () => {
 
     expect(all('.file-item').length).toBe(1);
     expect(text('.file-name')).toBe('statement.csv');
-    expect(text('.file-size')).toBe('3 Bytes');
+    expect(text('.file-size')).toBe('common.fileSizeBytes:{"size":"3"}');
     expect(text('.file-type-label')).toBe('CSV');
     expect(text('.file-icon-wrapper mat-icon')).toBe('table_chart');
   });

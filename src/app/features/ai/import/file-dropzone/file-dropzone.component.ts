@@ -26,6 +26,7 @@ import {
   ShareRefusalReason,
 } from '../../../../core/services/share-intake.service';
 import { TranslationService } from '../../../../core/services/translation.service';
+import { LocaleFormatService } from '../../../../core/services/locale-format.service';
 import { looksLikeImageFile } from '../../../../core/utils/file.utils';
 
 @Component({
@@ -44,6 +45,7 @@ import { looksLikeImageFile } from '../../../../core/utils/file.utils';
 })
 export class FileDropzoneComponent implements OnDestroy {
   private translationService = inject(TranslationService);
+  private localeFormat = inject(LocaleFormatService);
   private host = inject<ElementRef<HTMLElement>>(ElementRef);
   private injector = inject(Injector);
   private destroyRef = inject(DestroyRef);
@@ -397,13 +399,9 @@ export class FileDropzoneComponent implements OnDestroy {
     return extension || 'FILE';
   }
 
+  // A file's size, and the limit a refusal names, in the reader's language,
+  // through the app's one locale formatter.
   formatFileSize(bytes: number): string {
-    if (bytes === 0) return '0 Bytes';
-
-    const k = 1024;
-    const sizes = ['Bytes', 'KB', 'MB', 'GB'];
-    const i = Math.floor(Math.log(bytes) / Math.log(k));
-
-    return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+    return this.localeFormat.formatFileSize(bytes);
   }
 }

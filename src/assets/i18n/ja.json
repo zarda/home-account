@@ -81,7 +81,8 @@
     "loading": "読み込み中...",
     "retry": "再試行",
     "atTodaysRate": "本日のレートで",
-    "unknownCategory": "不明"
+    "unknownCategory": "不明",
+    "fileSizeBytes": "{{size}} バイト"
   },
   "nav": {
     "dashboard": "ダッシュボード",
