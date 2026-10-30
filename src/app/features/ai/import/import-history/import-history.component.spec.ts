@@ -116,7 +116,7 @@ describe('ImportHistoryComponent', () => {
     mockRouter = jasmine.createSpyObj('Router', ['navigate'], { events: EMPTY });
     // Markers no Intl formatter would produce, so the joined text can only
     // come from the two calls.
-    mockLocaleFormat = jasmine.createSpyObj('LocaleFormatService', ['formatDate', 'formatTime']);
+    mockLocaleFormat = jasmine.createSpyObj('LocaleFormatService', ['formatDate', 'formatTime', 'formatFileSize']);
     mockLocaleFormat.formatDate.and.returnValue('DAY-FROM-FORMATTER');
     mockLocaleFormat.formatTime.and.returnValue('TIME-FROM-FORMATTER');
 
@@ -285,20 +285,10 @@ describe('ImportHistoryComponent', () => {
       fixture.detectChanges();
     });
 
-    it('should return 0 B for 0 bytes', () => {
-      expect(component.formatFileSize(0)).toBe('0 B');
-    });
-
-    it('should format bytes', () => {
-      expect(component.formatFileSize(500)).toBe('500 B');
-    });
-
-    it('should format kilobytes', () => {
-      expect(component.formatFileSize(2048)).toBe('2 KB');
-    });
-
-    it('should format megabytes', () => {
-      expect(component.formatFileSize(512000)).toBe('500 KB');
+    it('hands the size to the locale formatter', () => {
+      mockLocaleFormat.formatFileSize.and.returnValue('SIZE-FROM-FORMATTER');
+      expect(component.formatFileSize(2048)).toBe('SIZE-FROM-FORMATTER');
+      expect(mockLocaleFormat.formatFileSize).toHaveBeenCalledOnceWith(2048);
     });
   });
 
