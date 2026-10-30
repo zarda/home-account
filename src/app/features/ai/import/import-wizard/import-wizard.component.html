@@ -63,7 +63,7 @@
              transaction, a statement stays one row per line. -->
         @if (hasImageFiles()) {
           <div class="image-kind">
-            <span class="image-kind-label">{{ 'import.imageKindQuestion' | translate }}</span>
+            <span class="image-kind-label" id="image-kind-label">{{ 'import.imageKindQuestion' | translate }}</span>
             <mat-chip-listbox
               [value]="imageKind()"
               (change)="imageKind.set($event.value ?? 'receipt')"

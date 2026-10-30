@@ -201,6 +201,32 @@
  * card's edit and delete buttons, stamped once per goal by the goals page;
  * and a name that comes from `aria-labelledby` or from the control's text.
  *
+ * A seventh rule keeps a reference from pointing at nothing. `aria-labelledby`,
+ * `aria-describedby`, `aria-controls`, `aria-owns` and a label's `for` name
+ * another element by its id, and an id no element carries resolves to nothing
+ * without a word: the browser drops it, axe lists it for review and not as a
+ * violation, and the control keeps whatever else names it, often nothing. The
+ * import wizard's receipt-or-statement chips had that shape: the listbox's
+ * `aria-labelledby` said `image-kind-label`, the question above it carried
+ * that word as a class and not as an id, and the listbox had no name. The
+ * rule: each id a literal one of those attributes lists is declared by a
+ * literal `id` in the same template.
+ *
+ *   - **The whole template is read before any reference is judged.** A
+ *     reference may come before the element it names, as a field's hint does.
+ *   - **Only literal values, on both sides.** A bound or interpolated
+ *     reference is an expression this gate cannot evaluate, so it is not
+ *     read; a bound or interpolated `id` declares nothing for the same reason.
+ *   - **The same template only.** Which templates share a page is decided at
+ *     run time, so an id in a child component's template, a dialog or the
+ *     shell does not count. Every literal reference in the tree names an id in
+ *     its own template.
+ *
+ * What it cannot see: a reference or an id set in TypeScript or by a
+ * directive's host binding; an id declared twice, or once per item in a
+ * repeat, which leaves the reference ambiguous rather than empty; and whether
+ * the element an id names holds any text.
+ *
  * Reference documentation lives in docs/accessibility.md.
  */
 
@@ -793,6 +819,52 @@ export function againstFrozen(hits, frozen) {
   return { fresh, drift };
 }
 
+/** The attributes that name other elements by id, each a list of one or more. */
+const IDREF_ATTRS = new Set(['aria-labelledby', 'aria-describedby', 'aria-controls', 'aria-owns', 'for']);
+
+/**
+ * Each attribute in a tag, with its value when it has one, quoted or not. A
+ * quoted value is stepped over whole, so a word inside an expression is never
+ * read as an attribute. A bound attribute keeps its brackets in its name, so
+ * `[attr.aria-labelledby]` and `[for]` are not the literal ones.
+ */
+const ATTRIBUTE = /([^\s"'=<>/]+)(?:\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s"'>]+)))?/g;
+
+/**
+ * The literal ids a template declares, and each id its literal references
+ * name, `{ line, tag, attr, id }` with the attribute's own line. A value
+ * holding an interpolation is neither.
+ */
+export function readIds(source) {
+  const declared = new Set();
+  const references = [];
+  walkTemplate(source, ({ name, attrs, line }) => {
+    for (const attribute of attrs.matchAll(ATTRIBUTE)) {
+      const attr = attribute[1].toLowerCase();
+      const value = attribute[2] ?? attribute[3] ?? attribute[4];
+      if (value === undefined || value.includes('{{')) continue;
+      if (attr === 'id') {
+        declared.add(value);
+        continue;
+      }
+      if (!IDREF_ATTRS.has(attr)) continue;
+      const at = line + attrs.slice(0, attribute.index).split('\n').length - 1;
+      for (const id of value.split(/\s+/).filter(Boolean)) references.push({ line: at, tag: name, attr, id });
+    }
+  });
+  return { declared, references };
+}
+
+/**
+ * Every id a literal reference names that no literal `id` in the same
+ * template declares, before or after it. Returns `{ line, tag, attr, id }`
+ * for each.
+ */
+export function scanDanglingIds(source) {
+  const { declared, references } = readIds(source);
+  return references.filter((reference) => !declared.has(reference.id));
+}
+
 /**
  * Which templates belong to a component rendered once per item somewhere.
  * `templates` is a list of `{ key, selector, source }`, `selector` being the
@@ -835,6 +907,18 @@ export function repeatedTemplates(templates) {
 }
 
 /**
+ * The inline `template:` literal in a component's `.ts` source, with the
+ * number of lines before it, so a line found in the template plus `offset` is
+ * the line in the file; null when the source has none.
+ */
+export function inlineTemplateOf(source) {
+  const inline = /\btemplate:\s*`([\s\S]*?)`/.exec(source)?.[1];
+  if (inline === undefined) return null;
+  // A hit's line counts from the template's first line, the backtick's.
+  return { source: inline, offset: lineOf(source, source.indexOf(inline)) - 1 };
+}
+
+/**
  * The templates under `files`, each with its owning component's element
  * selector: an `.html` file through the `templateUrl` that names it, an
  * inline `template:` literal through its own file. A `.ts` file with no
@@ -853,11 +937,9 @@ function templatesOf(files) {
       selectorOfHtml.set(posix(join(dirname(file), url)), selector);
       continue;
     }
-    const inline = /\btemplate:\s*`([\s\S]*?)`/.exec(source)?.[1];
-    if (inline === undefined) continue;
-    // A hit's line counts from the template's first line, the backtick's.
-    const offset = lineOf(source, source.indexOf(inline)) - 1;
-    templates.push({ key: posix(file), selector, source: inline, offset });
+    const inline = inlineTemplateOf(source);
+    if (inline === null) continue;
+    templates.push({ key: posix(file), selector, source: inline.source, offset: inline.offset });
   }
   for (const file of files) {
     if (!file.endsWith('.html')) continue;
@@ -980,6 +1062,16 @@ function run() {
   for (const hit of fresh) findings.push({ rule: 'itemless', site: hit.site, tag: hit.tag, key: hit.key });
   for (const row of drift) findings.push({ rule: 'itemless-drift', site: row.file, ...row });
 
+  // The id rule reads each template whole, since a reference may come before
+  // the element it names.
+  let idReferences = 0;
+  for (const template of sources) {
+    idReferences += readIds(template.source).references.length;
+    for (const hit of scanDanglingIds(template.source)) {
+      findings.push({ rule: 'idref', site: `${template.key}:${hit.line + template.offset}`, tag: hit.tag, attr: hit.attr, id: hit.id });
+    }
+  }
+
   const templates = files.filter((file) => file.endsWith('.html')).length;
   console.log(
     `Checked ${icons} mat-icon tag(s) across ${templates} template(s) and ` +
@@ -1004,6 +1096,10 @@ function run() {
       `${itemless.length} take their name from a key with no parameters, ` +
       `${ITEMLESS_FROZEN.reduce((sum, row) => sum + row.count, 0)} frozen by name.`
   );
+  console.log(
+    `Checked ${idReferences} id(s) named by a literal aria-labelledby, aria-describedby, ` +
+      `aria-controls, aria-owns or for across ${sources.length} template(s).`
+  );
 
   if (findings.length > 0) {
     findings.sort((a, b) => a.site.localeCompare(b.site));
@@ -1014,6 +1110,7 @@ function run() {
     const tooltipFindings = findings.filter((f) => f.rule === 'tooltip');
     const itemlessFindings = findings.filter((f) => f.rule === 'itemless');
     const driftFindings = findings.filter((f) => f.rule === 'itemless-drift');
+    const idrefFindings = findings.filter((f) => f.rule === 'idref');
 
     if (iconFindings.length > 0) {
       console.error(`\n${iconFindings.length} icon(s) carry a name nothing can read:\n`);
@@ -1141,6 +1238,24 @@ function run() {
       );
     }
 
+    if (idrefFindings.length > 0) {
+      console.error(`\n${idrefFindings.length} id reference(s) name an id their template never declares:\n`);
+      for (const finding of idrefFindings) {
+        console.error(`  ${finding.site}  <${finding.tag}> ${finding.attr} names '${finding.id}'`);
+        console.error(`    → give the element it means a literal id="${finding.id}", in this template\n`);
+      }
+      console.error(
+        `aria-labelledby, aria-describedby, aria-controls, aria-owns and a label's\n` +
+          `for name another element by its id. An id no element carries resolves to\n` +
+          `nothing and says so nowhere: the control loses the name or the hint the\n` +
+          `attribute was written to give it, and axe lists the reference for review,\n` +
+          `not as a violation. Put a literal id on the element meant, beside its\n` +
+          `class, as the import wizard's question above its receipt-or-statement\n` +
+          `chips carries id="image-kind-label".\n` +
+          `Reference: ${DOC}.\n`
+      );
+    }
+
     process.exit(1);
   }
 
@@ -1148,8 +1263,9 @@ function run() {
     `Every named mat-icon carries a literal aria-hidden, every progress indicator ` +
       `carries a name or is hidden inside the control that already announces it, ` +
       `every option icon sits beside its option's name, every repeated menu ` +
-      `button names its item, every tooltip icon takes focus, and every control ` +
-      `stamped once per item names its item or is frozen by name.`
+      `button names its item, every tooltip icon takes focus, every control ` +
+      `stamped once per item names its item or is frozen by name, and every id ` +
+      `a literal reference names is declared in its own template.`
   );
 }
 
@@ -1767,6 +1883,125 @@ function selfTest() {
     ITEMLESS_FROZEN.map((r) => `${r.file} ${r.key}`).filter((pair, i, pairs) => pairs.indexOf(pair) !== i),
     []
   );
+
+  // --- the id rule: must hit ---
+  const danglingIds = (source) => scanDanglingIds(source).map((hit) => `${hit.line} ${hit.attr} ${hit.id}`);
+  const QUESTION = '<span class="image-kind-label">{{ \'import.imageKindQuestion\' | translate }}</span>';
+
+  check(
+    'aria-labelledby naming a class and not an id, the wizard\'s receipt-or-statement chips',
+    scanDanglingIds(
+      `<div class="image-kind">\n  ${QUESTION}\n  <mat-chip-listbox\n    [value]="imageKind()"\n` +
+        '    aria-labelledby="image-kind-label"\n  >\n  </mat-chip-listbox>\n</div>'
+    ),
+    [{ line: 5, tag: 'mat-chip-listbox', attr: 'aria-labelledby', id: 'image-kind-label' }]
+  );
+  check(
+    'aria-describedby naming nothing',
+    danglingIds('<mat-slide-toggle aria-describedby="lock-hint"></mat-slide-toggle>'),
+    ['1 aria-describedby lock-hint']
+  );
+  check(
+    'aria-controls naming nothing',
+    danglingIds('<button aria-controls="filters-panel">x</button>'),
+    ['1 aria-controls filters-panel']
+  );
+  check(
+    'aria-owns naming nothing',
+    danglingIds('<div role="combobox" aria-owns="results"></div>'),
+    ['1 aria-owns results']
+  );
+  check('a label\'s for naming nothing', danglingIds('<label for="amount">x</label>\n<input name="amount">'), ['1 for amount']);
+  check(
+    'one dangling id in a list of two, and only that one',
+    danglingIds('<span id="hint">a</span>\n<input aria-describedby="hint error">'),
+    ['2 aria-describedby error']
+  );
+  check(
+    'an id declared only inside a comment does not count',
+    danglingIds('<!-- <span id="theme-label">x</span> -->\n<mat-button-toggle-group aria-labelledby="theme-label">'),
+    ['2 aria-labelledby theme-label']
+  );
+  check(
+    'a bound or interpolated id declares nothing',
+    danglingIds('<span [id]="\'q\'">a</span>\n<span id="{{ \'r\' }}">b</span>\n<div aria-labelledby="q r"></div>'),
+    ['3 aria-labelledby q', '3 aria-labelledby r']
+  );
+  check(
+    'an id another template declares is not declared in this one',
+    [
+      danglingIds('<app-question></app-question>\n<mat-radio-group aria-labelledby="format-label">'),
+      danglingIds('<span id="format-label">x</span>'),
+    ],
+    [['2 aria-labelledby format-label'], []]
+  );
+  const inlineComponent =
+    "import { Component } from '@angular/core';\n\n@Component({\n  selector: 'app-question',\n" +
+    '  template: `\n    <p class="question">x</p>\n    <ul aria-labelledby="question"></ul>\n  `,\n})\n' +
+    'export class QuestionComponent {}\n';
+  const inline = inlineTemplateOf(inlineComponent);
+  check(
+    'an inline template in a .ts file, reported at the file\'s line',
+    scanDanglingIds(inline.source).map((hit) => hit.line + inline.offset),
+    [7]
+  );
+
+  // --- the id rule: must not hit (the load-bearing half) ---
+  check(
+    'the fixed wizard, the question carrying its id beside its class',
+    danglingIds(
+      '<span class="image-kind-label" id="image-kind-label">x</span>\n' +
+        '<mat-chip-listbox aria-labelledby="image-kind-label"></mat-chip-listbox>'
+    ),
+    []
+  );
+  check(
+    'an id declared before the reference',
+    danglingIds('<span id="theme-label">x</span>\n<mat-button-toggle-group aria-labelledby="theme-label">'),
+    []
+  );
+  check(
+    'an id declared after the reference',
+    danglingIds('<ul aria-labelledby="history-label">\n</ul>\n<h3 id="history-label">x</h3>'),
+    []
+  );
+  check(
+    'every attribute and both ids of a list, all declared',
+    danglingIds(
+      '<span id="a">x</span><span id="b">y</span><div id="c"></div><label for="d">z</label><input id="d">\n' +
+        '<div aria-labelledby="a b" aria-describedby="b" aria-controls="c" aria-owns="c"></div>'
+    ),
+    []
+  );
+  check(
+    'a bound reference is not read',
+    danglingIds(
+      '<div [attr.aria-labelledby]="\'nowhere\'" [attr.aria-describedby]="hintId()" [aria-controls]="panel"></div>\n' +
+        '<mat-datepicker-toggle matIconSuffix [for]="picker"></mat-datepicker-toggle>'
+    ),
+    []
+  );
+  check(
+    'an interpolated reference is not read, the dashboard layout\'s card titles',
+    danglingIds('<mat-slide-toggle aria-labelledby="dashboard-card-{{ id }}-title"></mat-slide-toggle>'),
+    []
+  );
+  check(
+    'a repeat\'s *ngFor and @for are not a for',
+    danglingIds('<li *ngFor="let x of xs">a</li>\n@for (x of xs; track x) {\n  <span>{{ x }}</span>\n}'),
+    []
+  );
+  check(
+    'a word inside a bound value is not an attribute',
+    danglingIds('<div [title]="\'aria-labelledby=nowhere for=nothing\'"></div>'),
+    []
+  );
+  check(
+    'an inline template whose reference is declared',
+    scanDanglingIds(inlineTemplateOf(inlineComponent.replace('class="question"', 'class="question" id="question"')).source),
+    []
+  );
+  check('a component source with no inline template has none', inlineTemplateOf("@Component({ templateUrl: './x.html' })"), null);
 
   const failed = cases.filter((c) => !c.ok);
   for (const c of cases) {
