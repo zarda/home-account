@@ -2,7 +2,7 @@ import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { NO_ERRORS_SCHEMA } from '@angular/core';
 
 import { FileDropzoneComponent } from './file-dropzone.component';
-import { IMPORT_FILE_MAX_BYTES } from '../../../../core/services/share-intake.service';
+import { IMPORT_FILE_MAX_BYTES, RefusedShare } from '../../../../core/services/share-intake.service';
 import { TranslationService } from '../../../../core/services/translation.service';
 import {
   channels,
@@ -19,6 +19,15 @@ import {
 describe('FileDropzoneComponent', () => {
   let component: FileDropzoneComponent;
   let fixture: ComponentFixture<FileDropzoneComponent>;
+
+  const image = (name: string) => new File([''], name, { type: 'image/jpeg' });
+  const csv = (name: string) => new File([''], name, { type: 'text/csv' });
+  const names = (files: readonly File[]) => files.map(f => f.name);
+
+  /** Drives the private processFiles the way the file input does. */
+  function select(...files: File[]): void {
+    component.onFileSelect({ target: { files, value: 'x' } } as unknown as Event);
+  }
 
   beforeEach(async () => {
     await TestBed.configureTestingModule({
@@ -96,13 +105,6 @@ describe('FileDropzoneComponent', () => {
   });
 
   describe('image preview lifetime', () => {
-    const image = (name: string) => new File([''], name, { type: 'image/jpeg' });
-
-    /** Drives the private processFiles the way the file input does. */
-    function select(...files: File[]): void {
-      component.onFileSelect({ target: { files, value: 'x' } } as unknown as Event);
-    }
-
     it('releases the previous blob when a file of the same name is re-picked', () => {
       select(image('receipt.jpg'));
       const first = component.getFilePreview(image('receipt.jpg'));
@@ -143,15 +145,6 @@ describe('FileDropzoneComponent', () => {
   // selection, and this list has to drop them too: every change here emits
   // the whole list, so a photo left on it returns with the next one.
   describe('forget', () => {
-    const image = (name: string) => new File([''], name, { type: 'image/jpeg' });
-    const csv = (name: string) => new File([''], name, { type: 'text/csv' });
-    const names = (files: readonly File[]) => files.map(f => f.name);
-
-    /** Drives the private processFiles the way the file input does. */
-    function select(...files: File[]): void {
-      component.onFileSelect({ target: { files, value: 'x' } } as unknown as Event);
-    }
-
     it('takes out exactly the named files, releasing their previews, without emitting', () => {
       const first = image('first.jpg');
       const kept = image('kept.jpg');
@@ -221,6 +214,124 @@ describe('FileDropzoneComponent', () => {
       expect(component.selectedFiles()[0]).withContext('the file kept').toBe(document);
       expect(photoPreview).withContext('the photo had a preview').not.toBe('');
       expect(revoke).withContext('the forgotten photo\'s blob').toHaveBeenCalledOnceWith(photoPreview);
+    });
+  });
+
+  // A file shared into the app reaches the wizard, not this zone, so the
+  // wizard hands it here: it joins the list a pick would have joined, and
+  // a file the share gate refused is named in this zone's own banner.
+  describe('adopt', () => {
+    it('takes files its host received elsewhere onto the list, previews minted, without emitting', () => {
+      select(csv('ledger.csv'));
+      const emit = spyOn(component.filesSelected, 'emit');
+      const shared = image('shared.jpg');
+
+      const taken = component.adopt([shared]);
+
+      expect(taken.length).withContext('the files taken').toBe(1);
+      expect(taken[0]).withContext('the file taken').toBe(shared);
+      expect(names(component.selectedFiles())).toEqual(['ledger.csv', 'shared.jpg']);
+      expect(component.getFilePreview(shared)).toMatch(/^blob:/);
+      // The host is the one asking, and writes its selection from this list
+      // once the call returns; an emit would run its handler a second time.
+      expect(emit).not.toHaveBeenCalled();
+    });
+
+    it('hands the next pick the adopted files with it', () => {
+      component.adopt([image('shared.jpg')]);
+      const emitted: File[][] = [];
+      component.filesSelected.subscribe(files => emitted.push(files));
+
+      select(csv('ledger.csv'));
+
+      expect(emitted.map(names)).toEqual([['shared.jpg', 'ledger.csv']]);
+    });
+
+    it('names the files a gate upstream refused in its banner, in its own words and ahead of its own refusals', () => {
+      const big = new File(['x'], 'big.png', { type: 'image/png' });
+      Object.defineProperty(big, 'size', { value: component.maxFileSize + 1 });
+      const refused: RefusedShare[] = [
+        { file: big, reason: 'tooLarge' },
+        { file: new File([], 'empty.pdf', { type: 'application/pdf' }), reason: 'empty' },
+        { file: new File(['{}'], 'backup.json', { type: 'application/json' }), reason: 'backup' },
+      ];
+
+      const taken = component.adopt([image('ok.jpg'), new File(['x'], 'notes.txt')], refused);
+
+      expect(names(taken)).toEqual(['ok.jpg']);
+      expect(component.hasError()).toBeTrue();
+      expect(component.errorMessage()).toBe(
+        'import.fileTooLarge:{"name":"big.png","limit":"10 MB"}. import.fileEmpty:{"name":"empty.pdf"}. ' +
+        'import.shareBackup:{"name":"backup.json"}. import.fileTypeUnsupported:{"name":"notes.txt"}'
+      );
+    });
+
+    // A share can land while the banner still names a file the user picked:
+    // that refusal is still true, so the share's is added to it, not put in
+    // its place.
+    it('keeps a refusal the user\'s own pick put in the banner, and adds the share\'s after it', () => {
+      select(new File(['hi'], 'notes.txt', { type: 'text/plain' }));
+
+      component.adopt([], [{ file: new File([], 'empty.pdf', { type: 'application/pdf' }), reason: 'empty' }]);
+
+      expect(component.hasError()).toBeTrue();
+      expect(component.errorMessage()).toBe(
+        'import.fileTypeUnsupported:{"name":"notes.txt"}. import.fileEmpty:{"name":"empty.pdf"}'
+      );
+    });
+
+    it('takes the first file only when one is allowed, and releases what it displaces', () => {
+      component.multiple = false;
+      const first = image('first.jpg');
+      select(first);
+      const firstPreview = component.getFilePreview(first);
+      const revoke = spyOn(URL, 'revokeObjectURL');
+      const a = image('a.jpg');
+      const b = image('b.jpg');
+
+      const taken = component.adopt([a, b]);
+
+      // By identity: two empty Files are equal to toEqual.
+      expect(taken.length).withContext('the files taken').toBe(1);
+      expect(taken[0]).withContext('the file taken').toBe(a);
+      expect(component.selectedFiles().length).withContext('the list').toBe(1);
+      expect(component.selectedFiles()[0]).withContext('the file listed').toBe(a);
+      expect(revoke).withContext('the displaced file\'s blob').toHaveBeenCalledOnceWith(firstPreview);
+    });
+
+    // The host reaches the zone after an await, so the zone can be gone by
+    // the time it is asked; a preview minted then has no destroy left to
+    // release it.
+    // A pin. Mutation: `if (this.destroyRef.destroyed) return [];` removed from adopt.
+    it('takes nothing once it is destroyed, so it mints no preview no destroy is left to release', () => {
+      fixture.destroy();
+      const mint = spyOn(URL, 'createObjectURL');
+
+      const taken = component.adopt([image('late.jpg')]);
+
+      expect(taken).toEqual([]);
+      expect(component.selectedFiles()).toEqual([]);
+      expect(mint).not.toHaveBeenCalled();
+    });
+
+    it('takes a file it already lists, or one repeated in the batch, once', () => {
+      const mint = spyOn(URL, 'createObjectURL').and.callThrough();
+      const s = image('s.jpg');
+      const t = image('t.jpg');
+
+      component.adopt([s]);
+      const again = component.adopt([s]);
+      const repeated = component.adopt([t, t]);
+
+      expect(again).withContext('a file already listed').toEqual([]);
+      expect(repeated.length).withContext('a file repeated in the batch').toBe(1);
+      expect(repeated[0]).withContext('the repeated file').toBe(t);
+      expect(component.selectedFiles().length).withContext('the list').toBe(2);
+      expect(component.selectedFiles()[0]).withContext('the first file listed').toBe(s);
+      expect(component.selectedFiles()[1]).withContext('the second file listed').toBe(t);
+      expect(mint.calls.count()).withContext('the previews minted').toBe(2);
+      expect(mint.calls.argsFor(0)[0]).withContext('the first preview').toBe(s);
+      expect(mint.calls.argsFor(1)[0]).withContext('the second preview').toBe(t);
     });
   });
 
@@ -296,6 +407,18 @@ describe('FileDropzoneComponent', () => {
       // The refusal is read from the catalog, keyed and parameterised — the
       // stub echoes key and params, so this is the whole rendered sentence.
       expect(component.errorMessage()).toBe('import.fileTypeUnsupported:{"name":"notes.txt"}');
+    });
+
+    // A pick that adds nothing leaves the list as it was, so the host has
+    // nothing new to hear.
+    // A pin. Mutation: processFiles emitting after take() whatever it took.
+    it('emits nothing for a pick it refuses whole', () => {
+      const emit = spyOn(component.filesSelected, 'emit');
+
+      select(new File(['hi'], 'notes.txt', { type: 'text/plain' }));
+
+      expect(component.hasError()).toBeTrue();
+      expect(emit).not.toHaveBeenCalled();
     });
 
     it('refuses an oversized file from the catalog too', () => {
@@ -597,6 +720,37 @@ describe('FileDropzoneComponent, through its own template', () => {
 
     expect(text('.file-name')).toBe('statement.csv');
     expect(scroll).not.toHaveBeenCalled();
+  });
+
+  it('renders an adopted file as a row with its thumbnail', () => {
+    fixture.detectChanges();
+
+    component.adopt([imageFile('shared.png')]);
+    fixture.detectChanges();
+
+    expect(all('.file-name').map(n => n.textContent?.trim())).toEqual(['shared.png']);
+    const thumb = el().querySelector('.file-thumbnail img') as HTMLImageElement | null;
+    expect(thumb).withContext('the thumbnail').not.toBeNull();
+    expect(thumb?.getAttribute('src') ?? '').toMatch(/^blob:/);
+    expect(el().querySelector('.dropzone')?.getAttribute('role')).toBeNull();
+  });
+
+  // A share the gate refused is said where a refused pick is said: the
+  // same alert, scrolled into view the same way.
+  it('announces a share the gate refused in the same alert, brought into view', () => {
+    const scroll = spyOn(Element.prototype, 'scrollIntoView');
+    fixture.detectChanges();
+
+    component.adopt([], [{ file: new File([], 'empty.pdf', { type: 'application/pdf' }), reason: 'empty' }]);
+    fixture.detectChanges();
+    TestBed.tick();
+
+    const banner = el().querySelector('.error-banner') as HTMLElement | null;
+    expect(banner).withContext('the banner').not.toBeNull();
+    expect(banner?.getAttribute('role')).toBe('alert');
+    expect(text('.error-message')).toBe('import.fileEmpty:{"name":"empty.pdf"}');
+    expect(scroll).toHaveBeenCalledOnceWith({ block: 'nearest' });
+    expect(scroll.calls.mostRecent()?.object).withContext('the element scrolled').toBe(banner as HTMLElement);
   });
 
   it('marks the zone while a drag is over it', () => {
