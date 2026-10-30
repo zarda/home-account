@@ -374,4 +374,31 @@ describe('on-device receipt categories over the live catalog (smoke test)', () =
     expect(transaction.amount).toBe(120.5);
     expect(transaction.fieldConfidence).toEqual({ amount: REVIEW_AMOUNT_CONFIDENCE, date: 0.8 });
   });
+
+  it('a receipt whose priced line prints a count larger than its price comes back with that price flagged', async () => {
+    // Same no-model regex path. The 412 is a count beside the price and might
+    // have been the total, so the price is read under the bar (ADR 0186).
+    appleMock.isModelAvailable.and.returnValue(false);
+    visionMock.recognizeText.and.resolveTo({ ...ocrResult, text: 'Shop\nRoom 412 $89.00' });
+
+    const transaction = (await service.processImage(imageFile())).transactions[0];
+
+    expect(transaction.amount).toBe(89);
+    expect(transaction.fieldConfidence).toEqual({ amount: 0.6, date: 0 });
+    expect(transaction.fieldConfidence!.amount!).toBeLessThan(VERIFY_FIELD_THRESHOLD);
+  });
+
+  it('a model total that agrees with a price the text parser read under a larger count keeps the parser grade', async () => {
+    // A rule, not the print, picked the parser's 120.50 over the 412 beside
+    // it, so a model sharing that guess backs nothing (ADR 0186).
+    visionMock.recognizeText.and.resolveTo({
+      ...ocrResult,
+      text: 'Harbour Supplies\n01/15/2026\nRoom 412 $120.50',
+    });
+
+    const transaction = await scanAnswering(CUSTOM_NAME);
+
+    expect(transaction.amount).toBe(120.5);
+    expect(transaction.fieldConfidence).toEqual({ amount: 0.6, date: 0.8 });
+  });
 });

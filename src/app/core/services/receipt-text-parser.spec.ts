@@ -63,6 +63,209 @@ describe('parseReceiptOcrText', () => {
       const result = parseReceiptOcrText('Shop\nThanks for visiting');
       expect(result.amount).toBe(0);
     });
+
+    describe('beside a price', () => {
+      // A whole number printed bare beside a figure printed as money is a
+      // count, a size or a code, not the line's money (ADR 0186). Where one
+      // is larger than the figure read, it might have been the total, so the
+      // reading lands under the bar.
+      const read = (amount: number, amountConfidence: number) =>
+        jasmine.objectContaining({ amount, amountConfidence });
+
+      it('reads a count, a size or a code beside a price as no part of the money', () => {
+        const cases: [text: string, amount: number][] = [
+          ['Shop\nSKU 1234 $1.45\nTotal $1.45', 1.45],
+          ['Shop\nPack of 24 $5\nTotal $5', 5],
+          ['店\n緑茶 500ml ¥151\n合計 ¥151', 151],
+          ['Shop\nTotal $25.00\nVISA 1234 $25.00', 25],
+        ];
+        for (const [text, amount] of cases) {
+          expect(parseReceiptOcrText(text)).withContext(text).toEqual(read(amount, 0.8));
+        }
+      });
+
+      it('reads a whole number as money where a sign touches it, where nothing else on its line is money, or where it repeats that money', () => {
+        // A pin. A sign spaced alike from two bare figures touches both
+        // (Summe 12 € 3 Artikel, Total 2 $ 8), and an aside prices nothing.
+        const cases: [text: string, amount: number][] = [
+          ['Shop\nTotal ¥1,280', 1280],
+          ['가게\n합계 ₩5,900', 5900],
+          ['Shop\nTotal ¥  480', 480],
+          ['店\n¥ 合計 480', 480],
+          ['Shop\nTotal 15 USD', 15],
+          ['Shop\nTOTAL 100 CASH $100.00', 100],
+          ['店\n合計 980 (内税 ¥72)', 980],
+          ['Laden\nSumme 12 € 3 Artikel', 12],
+          ['Shop\nCoffee $ 4\nMuffin $ 4\nTotal 2 $ 8', 8],
+          ['店\nおにぎり ¥ 150\nお茶 ¥ 150\n合計 2 ¥ 300', 300],
+          ['Shop\nTOTAL 2 $ 15', 15],
+          ['Shop\nCoffee 2 $ 5', 5],
+        ];
+        for (const [text, amount] of cases) {
+          expect(parseReceiptOcrText(text)).withContext(text).toEqual(read(amount, 0.8));
+        }
+      });
+
+      it("reads the figure a sign or the receipt's code touches as the money, and the bare one beside it as a count", () => {
+        // A pin. A sign spaced alike from two figures touches the one written
+        // like money (2,10 € 3), and the receipt's code touches the figure it
+        // is printed against, after it or before it.
+        const cases: [text: string, amount: number][] = [
+          ['Laden\nBrot 2,10 € 3', 2.1],
+          ['Shop\nPack 24 15 USD', 15],
+          ['Shop\nUSD 15 Pack 24', 15],
+        ];
+        for (const [text, amount] of cases) {
+          expect(parseReceiptOcrText(text))
+            .withContext(text)
+            .toEqual(jasmine.objectContaining({ amount, amountConfidence: 0.6, amountDemotion: 'count' }));
+        }
+      });
+
+      it('grades a figure read under a larger count where nothing else in its tier prints it', () => {
+        const cases: [text: string, amount: number][] = [
+          ['Shop\nRoom 412 $89.00', 89],
+          ['Shop\nRoom 412 $89.00\nTax $8.90\nTotal $97.90', 97.9],
+          ['Shop\nEggs 12 $4.99\nMilk 1 $3.49\nTotal $8.48', 8.48],
+          ['Shop\nWater 500ml $288\nTea $100\nTotal 388 Card $388', 388],
+        ];
+        for (const [text, amount] of cases) {
+          expect(parseReceiptOcrText(text))
+            .withContext(text)
+            .toEqual(jasmine.objectContaining({ amount, amountConfidence: 0.6, amountDemotion: 'count' }));
+        }
+      });
+
+      it('keeps a price printed again in its tier at the tier grade when its count stands right before it', () => {
+        // A pin: grading every pick a count outranks would flag this one.
+        expect(parseReceiptOcrText('Shop\nPack of 24 $5.00\nTotal $5.00')).toEqual(read(5, 0.8));
+      });
+
+      it('reads a total printed bare beside a smaller figure as that figure, graded under the bar, the known gap', () => {
+        // The larger figure stands where a total does: a word of its own
+        // follows it, past a space, a run of marks, a percent figure or the
+        // letters of its currency, or it is printed after the line's money. So
+        // it might be the total even where the smaller is printed again.
+        const cases: [text: string, amount: number][] = [
+          ['Shop\nTotal 1280 Tax ¥116', 116],
+          ['Shop\nTotal 12 Tax $0.96', 0.96],
+          ['Shop\nBurger $8.00\nFries $3.04\nTotal 12 Tax $0.96', 8],
+          ['店\n合計 1280 内税 ¥116\n内消費税等 ¥116', 116],
+          ['Shop\nItem $8.00\nSubtotal $8.00\nTotal 9 Tax $1.00', 8],
+          ['Shop\nItem $8.00\nSubtotal $8.00\nTotal 9, Tax $1.00', 8],
+          ['Shop\nTotal 12 / Tax $0.96\nTax $0.96', 0.96],
+          ['店\n合計 980円 内税 ¥72\n内消費税等 ¥72', 72],
+          ['가게\n합계 900원 부가세 ₩82\n부가세 ₩82', 82],
+          ['Shop\nTotal 12 ... Tax $0.96\nTax $0.96', 0.96],
+          ['Shop\nTotal 120 8% Tax $9.60\nTax $9.60', 9.6],
+          ['Shop\nTotal 120 8％ Tax $9.60\nTax $9.60', 9.6],
+          ['店\n合計 1280 10％ 内税 ¥116\n内消費税等 ¥116', 116],
+          ['Shop\nItem $8.00\nSubtotal $8.00\nTax $1.00 Total 9', 8],
+          ['店\n内税 ¥72 合計 980\n内消費税等 ¥72', 72],
+          ['가게\n부가세 ₩82 합계 900\n부가세 ₩82', 82],
+        ];
+        for (const [text, amount] of cases) {
+          expect(parseReceiptOcrText(text)).withContext(text).toEqual(read(amount, 0.6));
+        }
+      });
+
+      it('reads a total printed bare beside a smaller figure with no word between them as that figure or the cash, unflagged where the smaller or the read one is printed again or the cash and change follow, the known gap', () => {
+        // Typography cannot tell Total 12 $0.96 from Pack 12 $0.96, and only
+        // marks or a percent figure between the figures count as nothing
+        // (Total 12 = $0.96). Where the smaller figure, or the
+        // one read, is printed again, the count rule stands down, as it must
+        // for Pack of 24 $5.00 over Total $5.00.
+        const cases: [text: string, amount: number][] = [
+          ['Shop\nTotal 12 $0.96\nTax $0.96', 0.96],
+          ['Shop\nTotal 12 = $0.96\nTax $0.96', 0.96],
+          ['Shop\nItem $11.04\nSubtotal $11.04\nTotal 12 $0.96', 11.04],
+          ['Shop\nTotal 12 $0.96\nCash $20.00\nChange $8.00', 20],
+        ];
+        for (const [text, amount] of cases) {
+          expect(parseReceiptOcrText(text)).withContext(text).toEqual(read(amount, 0.8));
+        }
+      });
+
+      it('pairs a total or a change printed bare with the cash it was change for', () => {
+        // A pin: a count on the pick's own line, or one standing where a total
+        // does (a word of its own after it, or the line's money before it),
+        // stands in the tendered pair as either figure. A count of what a
+        // price buys, on another line, never does.
+        const cases: [text: string, amount: number, amountConfidence: number][] = [
+          ['店\n合計 538 お預り ¥1,000 お釣り ¥462', 538, 0.6],
+          // On the pick's own line with no word after it.
+          ['店\n合計 538 ¥1,000 ¥462', 538, 0.6],
+          ['Shop\nTotal 12 Tax $0.96\nCash $20.00\nChange $8.00', 12, 0.6],
+          ['Shop\nTax $0.96 Total 12\nCash $20.00\nChange $8.00', 12, 0.6],
+          ['店\n合計 538 内税 ¥39\nお預り ¥1,000\nお釣り ¥462', 538, 0.6],
+          ['Shop\nTotal $12.00\nCash $20.00 Change 8', 12, 0.6],
+          ['Shop\nItem 2 $3.00\nTotal $5.00', 5, 0.8],
+          ['Shop\nItem 3 $2.00\nTotal $5.00', 5, 0.8],
+        ];
+        for (const [text, amount, amountConfidence] of cases) {
+          expect(parseReceiptOcrText(text)).withContext(text).toEqual(read(amount, amountConfidence));
+        }
+      });
+
+      it('reads the cash where no pair of figures beside a currency mark adds up to it, the known gap', () => {
+        // The total or the change prints no currency mark, so no pair beside a
+        // sign adds up to the cash. Before ADR 0186 a count, half of a time or
+        // part of a date could complete such a pair by chance (8 + 2 over
+        // $10), and the reading was flagged.
+        const cases: [text: string, amount: number][] = [
+          ['Shop\nLatte 2 $8\nTotal 9\nTax $1\nCash $10\nChange $1', 10],
+          ['店\n21/07 24\n라떼 (12) ₩60\n케이크 Qty 4 ₩20\n케이크 ₩8\n소계 ₩88\n결제금액 ₩88\n받은돈 ₩100\n거스름돈 12', 100],
+        ];
+        for (const [text, amount] of cases) {
+          expect(parseReceiptOcrText(text)).withContext(text).toEqual(read(amount, 0.8));
+        }
+      });
+
+      it('grades the total under a later count where its sign stands apart and the date printed after it on its line is lost, the known gap', () => {
+        // With a space or a code between the sign and the total, the total's
+        // own figure starts a run that cannot be a date (12.50 01), which takes
+        // the date's first number with it, so the rest of the date stands bare
+        // beside the money as counts, one larger than the total.
+        const cases: [text: string, amount: number][] = [
+          ['Shop\nTOTAL $ 12.50 01/15/2026', 12.5],
+          ['Shop\nTOTAL USD 12.50 01/15/2026', 12.5],
+          ['Shop\n$ 15.00 01/15/26', 15],
+        ];
+        for (const [text, amount] of cases) {
+          expect(parseReceiptOcrText(text))
+            .withContext(text)
+            .toEqual(
+              jasmine.objectContaining({
+                amount,
+                amountConfidence: 0.6,
+                amountDemotion: 'count',
+                dateConfidence: 0,
+              }),
+            );
+        }
+      });
+
+      it('reads the figures of a time as neither money nor a count', () => {
+        expect(parseReceiptOcrText('Shop\n14:32 Total $10.00')).toEqual(read(10, 0.8));
+        expect(parseReceiptOcrText('REFUND\n14:32 TOTAL -$10.00')).toEqual(
+          jasmine.objectContaining({
+            amount: 10,
+            amountConfidence: 0.8,
+            direction: 'credit',
+            directionConfidence: 0.5,
+          }),
+        );
+        // A time's figure of the total's value is still a copy of it, unmarked.
+        expect(parseReceiptOcrText('REFUND\n2026-09-28 14:32 TOTAL -$14.00')).toEqual(
+          jasmine.objectContaining({
+            amount: 14,
+            amountConfidence: 0.8,
+            direction: 'debit',
+            directionConfidence: 0.3,
+          }),
+        );
+      });
+    });
   });
 
   describe('currency detection', () => {
@@ -303,6 +506,18 @@ describe('parseReceiptOcrText', () => {
       }
     });
 
+    it('reads a whole number printed negative beside money as the total, never a count', () => {
+      // A pin: a marked figure is no count of what a price buys.
+      expect(parseReceiptOcrText('Shop\nTotal -20 Tax $1.00')).toEqual(
+        jasmine.objectContaining({
+          amount: 20,
+          amountConfidence: 0.8,
+          direction: 'credit',
+          directionConfidence: 0.5,
+        }),
+      );
+    });
+
     it('reads an East Asian accounting triangle as a credit, glued or spaced', () => {
       expect(parseReceiptOcrText('店舗\n合計▲1,280')).toEqual(reading(1280, 'credit', 0.5));
       expect(parseReceiptOcrText('店舗\n合計 ▲¥1,280')).toEqual(reading(1280, 'credit', 0.5));
@@ -536,11 +751,12 @@ describe('parseReceiptOcrText', () => {
       });
 
       it("reads a size on a priced line as a copy of a refund's total, the known gap", () => {
-        // The bare 10 of 10m shares its line's currency sign, so it is read as
-        // money, wins the tie as the first figure printed, and twins the total
-        // unmarked. A pin: counting only the copies that carry their own sign
-        // or are written like money reads this refund as a credit, and costs
-        // the purchases of the next case their twin.
+        // The bare 10 of 10m is a count beside the price on its line (ADR
+        // 0186), and a figure on a line that prints money is a copy of a total
+        // of its value, so it twins the total unmarked. A pin: counting only
+        // the copies that carry their own sign or are written like money reads
+        // this refund as a credit, and costs the purchases of the next case
+        // their twin.
         expect(parseReceiptOcrText('Shop\nMooring rope 10m -$10.00\nTOTAL -$10.00')).toEqual(
           reading(10, 'debit', 0.3),
         );
@@ -556,6 +772,66 @@ describe('parseReceiptOcrText', () => {
           reading(480, 'debit', 0.3),
         );
         expect(parseReceiptOcrText('Shop\nTOTAL 14 Card -$14')).toEqual(reading(14, 'debit', 0.3));
+      });
+
+      it("keeps a purchase twinned when a count of its total's value shares a line with money", () => {
+        // A pin: the bare 14 is a count on its line, but a copy is read off the
+        // line, not the tier. Reading the copies off the tier files this sale
+        // as a refund.
+        expect(parseReceiptOcrText('Shop\nCard -$14\nTOTAL 14 Tax $1.04')).toEqual(
+          reading(14, 'debit', 0.3),
+        );
+      });
+
+      it('reads no credit off a figure a larger count might have been the total in place of, the known gap', () => {
+        // The larger bare figure might be the total, and it carries no mark,
+        // whether it shares the marked figure's line or stands where a total
+        // does on another. The amount read is a smaller figure, graded under
+        // the bar, the known gap.
+        const cases: [text: string, amount: number][] = [
+          ['Shop\nTotal 12 Tax -$0.96', 0.96],
+          ['店\n合計 1280 内税 ▲¥116\n内消費税等 ▲¥116', 116],
+          ['Shop\nTotal 12, Coupon -$3.00\nYou saved -$3.00', 3],
+          ['店\n合計 980円 値引 ▲¥100\n値引合計 ▲¥100', 100],
+          ['店\n値引 ▲¥100 合計 980\n値引合計 ▲¥100', 100],
+          ['Shop\nCoupon -$3.00\nTotal 12 Tax $0.96', 3],
+          ['Shop\nTax $0.96 Total 12\nYou saved -$3.00', 3],
+        ];
+        for (const [text, amount] of cases) {
+          expect(parseReceiptOcrText(text))
+            .withContext(text)
+            .toEqual(
+              jasmine.objectContaining({
+                amount,
+                amountConfidence: 0.6,
+                direction: 'debit',
+                directionConfidence: 0.3,
+              }),
+            );
+        }
+      });
+
+      it("reads a refund's credit off its total where the larger count stands before a price on another line", () => {
+        // A pin: a count of what a price buys argues with the item, not the
+        // total, and a count before a price printed again argues with neither.
+        expect(parseReceiptOcrText('REFUND\nItem 12 -$5.00\nTax -$0.40\nTotal -$5.40')).toEqual(
+          reading(5.4, 'credit', 0.5),
+        );
+        expect(parseReceiptOcrText('REFUND\nPack of 12 -$10.00\nTotal -$10.00')).toEqual(
+          reading(10, 'credit', 0.5),
+        );
+      });
+
+      it("reads half of a time of the total's value as an unmarked copy of it", () => {
+        // A pin: a time is never the total, but where it repeats the total's
+        // value it twins the mark, so a sale whose bare total line prints no
+        // currency mark is not filed as a refund off its card line alone.
+        expect(parseReceiptOcrText('Shop\nTotal 32\n14:32 Card -$32.00')).toEqual(
+          reading(32, 'debit', 0.3),
+        );
+        expect(parseReceiptOcrText('REFUND\n2026-09-28 14:14 TOTAL -$14.00')).toEqual(
+          reading(14, 'debit', 0.3),
+        );
       });
 
       it('reads a lone parenthesised figure as a credit, the known gap', () => {

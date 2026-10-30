@@ -199,6 +199,15 @@ describe('NativeReceiptService', () => {
       expect(result.transactions[0].fieldConfidence!.amount).toBeLessThan(VERIFY_FIELD_THRESHOLD);
     });
 
+    it('should flag a figure read under a larger count below the verify threshold', async () => {
+      visionMock.recognizeText.and.resolveTo({ ...ocrResult, text: 'Shop\nRoom 412 $89.00' });
+
+      const transaction = (await service.processImage(imageFile())).transactions[0];
+
+      expect(transaction.amount).toBe(89);
+      expect(transaction.fieldConfidence).toEqual({ amount: 0.6, date: 0 });
+    });
+
     /**
      * A refund slip prints its total as a negative, and this lane has no
      * model to read the words around it, so the mark on the total is all it
@@ -352,6 +361,83 @@ describe('NativeReceiptService', () => {
             .withContext(String(amount))
             .toBe(REVIEW_AMOUNT_CONFIDENCE);
         }
+      });
+
+      it("keeps the text parser's grade when it read the same figure under a larger count", async () => {
+        // A total a rule picked is a guess the model can share, so agreeing
+        // with it backs nothing (ADR 0186).
+        visionMock.recognizeText.and.resolveTo({ ...ocrResult, text: 'Shop\nTotal 1280 Tax ¥116' });
+        appleMock.parseReceiptText.and.resolveTo({
+          merchant: 'Cafe', date: '2026-01-15', amount: 116, currency: 'JPY', category: '', details: '',
+        });
+
+        const result = await service.processImage(imageFile());
+
+        expect(result.transactions[0].fieldConfidence?.amount).toBe(0.6);
+      });
+
+      it('flags a model total that differs from one the text parser picked by a rule', async () => {
+        // The parser read its figure beside a currency mark, and only a rule
+        // moved it: a different total from the model is disputed, whichever
+        // of the two is right.
+        visionMock.recognizeText.and.resolveTo({
+          ...ocrResult,
+          text: 'Shop\nItem ¥200\nTotal 1280 Tax ¥116',
+        });
+        for (const amount of [116, 1280]) {
+          appleMock.parseReceiptText.and.resolveTo({
+            merchant: 'Cafe', date: '2026-01-15', amount, currency: 'JPY', category: '', details: '',
+          });
+
+          const result = await service.processImage(imageFile());
+
+          expect(result.transactions[0].fieldConfidence?.amount)
+            .withContext(String(amount))
+            .toBe(REVIEW_AMOUNT_CONFIDENCE);
+        }
+      });
+
+      it('lifts a model total that agrees with a figure the text parser reads wrongly at 0.8, the known gap', async () => {
+        // Where the parser reads a wrong figure at its tier's grade, a model
+        // that reads the same figure agrees with it: a subtotal over a total
+        // that prints no currency mark, or the cash over a change that prints
+        // none. Before ADR 0186 the parser read another wrong figure in these,
+        // a size or half of a time, and disputed the model by accident.
+        const cases: [text: string, amount: number][] = [
+          ['Shop\nEggs 500ml $10.86\nSubtotal $10.86\nTotal 11.73\nTax $0.87', 10.86],
+          [
+            'Shop\nMilk $17.76\nDate: 08/16/25 06:54 Amount Due: $19.18\nTax 8% $1.42\nCASH $20.00\nCHANGE DUE 0.82',
+            20,
+          ],
+        ];
+        for (const [text, amount] of cases) {
+          visionMock.recognizeText.and.resolveTo({ ...ocrResult, text });
+          appleMock.parseReceiptText.and.resolveTo({
+            merchant: 'Cafe', date: '2026-01-15', amount, currency: 'USD', category: '', details: '',
+          });
+
+          const result = await service.processImage(imageFile());
+
+          expect(result.transactions[0].fieldConfidence?.amount).withContext(text).toBe(0.8);
+        }
+      });
+
+      it('lifts a model total that agrees with a cash-tendered pick, the known gap', async () => {
+        // 168 and 17 add up to the round 185 the way a total and its change
+        // add up to the cash, so the tendered sum picks the 168, and agreeing
+        // with that sum still lifts it. Before ADR 0186 the parser read the
+        // size instead and disputed the model by accident.
+        visionMock.recognizeText.and.resolveTo({
+          ...ocrResult,
+          text: 'Shop\nCoffee 350g $168\nSubtotal $168\nTotal 185 USD\nTax $17',
+        });
+        appleMock.parseReceiptText.and.resolveTo({
+          merchant: 'Cafe', date: '2026-01-15', amount: 168, currency: 'USD', category: '', details: '',
+        });
+
+        const result = await service.processImage(imageFile());
+
+        expect(result.transactions[0].fieldConfidence?.amount).toBe(0.8);
       });
 
       it('grades a read date 0.8', async () => {
