@@ -672,6 +672,41 @@ describe('FileDropzoneComponent, through its own template', () => {
     expect(all('.file-name').map(n => n.textContent?.trim())).toEqual(['second.png', 'first.png']);
   });
 
+  // Two iOS captures are both image.jpg. Each row's buttons name the file
+  // they act on by its place in the list and its name, the way the badge and
+  // the thumbnail tell the rows apart by sight: "Remove", "Move up" and
+  // "Move down" alone gave every row the same three names.
+  it('names each row\'s remove and move buttons by the file\'s place and name', () => {
+    fixture.detectChanges();
+    dropFiles([imageFile('image.jpg'), imageFile('image.jpg'), csvFile('rows.csv')]);
+    const labels = (selector: string) => all(selector).map(b => b.getAttribute('aria-label'));
+
+    expect(labels('.remove-btn')).withContext('the remove buttons').toEqual([
+      'import.removeFileLabel:{"position":1,"name":"image.jpg"}',
+      'import.removeFileLabel:{"position":2,"name":"image.jpg"}',
+      'import.removeFileLabel:{"position":3,"name":"rows.csv"}',
+    ]);
+    expect(labels('.reorder-btn')).withContext('the move buttons').toEqual([
+      'import.moveFileUpLabel:{"position":1,"name":"image.jpg"}',
+      'import.moveFileDownLabel:{"position":1,"name":"image.jpg"}',
+      'import.moveFileUpLabel:{"position":2,"name":"image.jpg"}',
+      'import.moveFileDownLabel:{"position":2,"name":"image.jpg"}',
+    ]);
+  });
+
+  it('renames a row\'s buttons when its file moves', () => {
+    fixture.detectChanges();
+    dropFiles([imageFile('first.png'), imageFile('second.png')]);
+
+    (all('.file-item')[0].querySelectorAll('.reorder-btn')[1] as HTMLButtonElement).click();
+    fixture.detectChanges();
+
+    expect(all('.remove-btn').map(b => b.getAttribute('aria-label'))).toEqual([
+      'import.removeFileLabel:{"position":1,"name":"second.png"}',
+      'import.removeFileLabel:{"position":2,"name":"first.png"}',
+    ]);
+  });
+
   it('shows the error banner when a dropped file is refused', () => {
     fixture.detectChanges();
     dropFiles([new File(['x'], 'notes.txt', { type: 'text/plain' })]);
