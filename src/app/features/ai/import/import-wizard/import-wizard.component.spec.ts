@@ -30,6 +30,7 @@ import {
   ratio,
   runAxe,
   settleAnimations,
+  styleRules,
   summarizeViolations,
   textLines,
   withScheme,
@@ -3509,6 +3510,95 @@ describe('ImportWizardComponent', () => {
         expect(firstStepHidden('edit')).withContext('the edit state, gone').toBeUndefined();
         expect(firstStepHidden('done')).toBe('stepper.completed');
       });
+    });
+
+    // Below 600px the four step labels give way to their numbered circles.
+    // That rule is a viewport query and Karma's window is 756px, so these
+    // cases read its declarations from the stylesheet and lay them on the
+    // rendered labels, then measure and sweep what they leave. Laid inline,
+    // the declarations skip the cascade: a Material rule that outranked the
+    // wizard's selector would pass here and still show the labels on a phone.
+    // So these cases prove what the rule declares, and a 375px window in a
+    // browser is what proves the cascade. Each header is a tab its label
+    // names, and the circle's digit is hidden from the name.
+    describe('the step headers under the phone rule', () => {
+      const el = () => realFixture.nativeElement as HTMLElement;
+      const headers = () => Array.from(el().querySelectorAll<HTMLElement>('.modern-stepper .mat-step-header'));
+      const labels = () => Array.from(el().querySelectorAll<HTMLElement>('.modern-stepper .mat-step-label'));
+      const widths = (nodes: HTMLElement[]) => nodes.map(node => node.getBoundingClientRect().width);
+
+      /** The rules under the 599.98px query that style the step labels. */
+      const phoneLabelRules = (): CSSStyleRule[] =>
+        styleRules()
+          .filter(
+            ({ media, rule }) =>
+              media !== null &&
+              media.includes('max-width: 599.98px') &&
+              rule.selectorText.includes('.modern-stepper') &&
+              /\.mat-step-label(?![\w-])/.test(rule.selectorText)
+          )
+          .map(({ rule }) => rule);
+
+      /** Runs `fn` with `cssText` as every step label's inline style, then puts the labels back. */
+      async function withLabelStyle(cssText: string, fn: () => unknown): Promise<void> {
+        const all = labels();
+        const before = all.map(label => label.style.cssText);
+        all.forEach(label => (label.style.cssText = cssText));
+        try {
+          await fn();
+        } finally {
+          all.forEach((label, i) => (label.style.cssText = before[i]));
+        }
+      }
+
+      /** Runs `fn` with the phone rule's declarations on every step label. */
+      async function underPhoneRule(fn: () => unknown): Promise<void> {
+        const [rule] = phoneLabelRules();
+        expect(rule).withContext('the phone rule for the step labels').toBeDefined();
+        if (!rule) return;
+        await withLabelStyle(rule.style.cssText, fn);
+      }
+
+      it('finds the phone rule for the step labels, so the cases below read something', () => {
+        const rules = phoneLabelRules();
+        expect(rules.length).withContext('at least one').toBeGreaterThan(0);
+        expect(new Set(rules.map(rule => rule.cssText)).size).withContext('one rule, however many copies').toBe(1);
+        expect(labels().length).withContext('a label per step').toBe(4);
+      });
+
+      it("shows the labels at Karma's own width", () => {
+        expect(matchMedia('(max-width: 599.98px)').matches).withContext('the window is wider than a phone').toBeFalse();
+        for (const [i, label] of labels().entries()) {
+          expect(label.getBoundingClientRect().width).withContext(`step ${i + 1}'s label, px`).toBeGreaterThan(1);
+        }
+      });
+
+      it("takes the labels out of the headers' room under it, leaving the numbered circles", async () => {
+        let bare: number[] = [];
+        await withLabelStyle('display: none', () => (bare = widths(headers())));
+        expect(bare.length).withContext('a header per step').toBe(4);
+
+        await underPhoneRule(() => {
+          expect(widths(headers())).withContext('each header, px, against the same header with no label').toEqual(bare);
+          for (const [i, label] of labels().entries()) {
+            expect(label.getBoundingClientRect().width).withContext(`step ${i + 1}'s label, px`).toBeLessThanOrEqual(1);
+          }
+        });
+      });
+
+      for (const scheme of AUDIT_SCHEMES) {
+        it(`keeps every step header named under it, in the ${scheme} scheme`, async () => {
+          const tabs = el().querySelector<HTMLElement>('.mat-horizontal-stepper-header-container');
+          expect(tabs).withContext('the tab list').not.toBeNull();
+
+          await underPhoneRule(() =>
+            withScheme(TestBed.inject(ThemeService), scheme, async () => {
+              realFixture.detectChanges();
+              expect(summarizeViolations(await runAxe(tabs!))).toEqual([]);
+            })
+          );
+        });
+      }
     });
 
     it('puts a same-batch failure on the error card, with the stored photos named in it', fakeAsync(() => {
