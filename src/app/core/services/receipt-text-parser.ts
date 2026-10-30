@@ -91,16 +91,25 @@ const CURRENCY_WEIGHT = 0.15;
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
-// Anything that is neither a digit nor a cased letter separates date parts, so
-// 2026-01-15, 2026/01/15, 2026年1月15日 and 2026년 1월 15일 all read on one
-// pattern. Cased letters are excluded so that "3 x 4 of 5" is not a date.
-const DATE_SEPARATOR = '[^\\d\\p{Lu}\\p{Ll}]{1,3}';
+// Anything that is neither a digit, a cased letter, a currency sign nor a line
+// break separates date parts, so 2026-01-15, 2026/01/15, 2026年1月15日 and
+// 2026년 1월 15일 all read on one pattern. Cased letters are excluded so that
+// "3 x 4 of 5" is not a date, a currency sign so that the 1 $10.00 of a priced
+// line is not one, and a line break because a date is printed on one line: the
+// cents that end one line and the figures that start the next are not a date.
+const DATE_SEPARATOR = '[^\\d\\p{Lu}\\p{Ll}\\p{Sc}\\n]{1,3}';
 const YEAR_FIRST_DATE = new RegExp(
   `(?:^|\\D)((\\d{4})${DATE_SEPARATOR}(\\d{1,2})${DATE_SEPARATOR}(\\d{1,2}))(?!\\d)`,
   'gu',
 );
+// What a date may follow: the start of the text, anything but a digit, a
+// currency sign or a mark that joins digits into one figure, or such a mark
+// with no digit before it (No.15/01/26). So a date never starts inside a
+// figure, nor at a figure its sign is glued to: the cents of $145.01 are not
+// the day of $145.01 01 01 24, and the 27.01 of $27.01 12/5/24 is no date.
+const BEFORE_DATE = `(?:^|[^\\d.,'’\\u00A0\\u202F\\u2009\\p{Sc}]|(?:^|\\D)[.,'’\\u00A0\\u202F\\u2009])`;
 const YEAR_LAST_DATE = new RegExp(
-  `(?:^|\\D)((\\d{1,2})${DATE_SEPARATOR}(\\d{1,2})${DATE_SEPARATOR}(\\d{4}|\\d{2}))(?!\\d)`,
+  `${BEFORE_DATE}((\\d{1,2})${DATE_SEPARATOR}(\\d{1,2})${DATE_SEPARATOR}(\\d{4}|\\d{2}))(?!\\d)`,
   'gu',
 );
 
