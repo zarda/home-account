@@ -587,6 +587,31 @@ describe('TransactionPreviewTableComponent', () => {
       const t = row({ fieldConfidence: { amount: 0.8, date: 0.9, type: 0.5 } });
       expect(component.verificationTooltip(t, 'type')).toBe('import.verifyType');
     });
+
+    it('names the doubted amount and date of a device reading by the scan, with no percentage, since their grades are the reader\'s policy', () => {
+      // The device grades an amount and a date by policy: the text parser's
+      // evidence tiers and demotions, the cross-check's agreement and dispute
+      // grades. No model reported them, and on the regex lane no model ran at
+      // all. A percentage would report a reading nothing took, the type's
+      // reason (ADR 0162). The resolver assumes every doubted date, so the
+      // date's line guards a row that reached the card some other way.
+      const t = row({ readOnDevice: true, fieldConfidence: { amount: 0.6, date: 0.3 } });
+      expect(component.verificationTooltip(t, 'amount')).toBe('import.verifyAmountOnDevice');
+      expect(component.verificationTooltip(t, 'date')).toBe('import.verifyDateOnDevice');
+    });
+
+    it('keeps the type sentence on a row the device read', () => {
+      // A pin. Mutation: test readOnDevice ahead of the type's branch.
+      const t = row({ readOnDevice: true, fieldConfidence: { amount: 0.6, date: 0.9, type: 0.5 } });
+      expect(component.verificationTooltip(t, 'type')).toBe('import.verifyType');
+    });
+
+    it('keeps the assumed wording on a device row whose date was replaced with today', () => {
+      // A pin. Mutation: test readOnDevice ahead of the assumed date's branch.
+      // The date shown is now, not a reading of any kind.
+      const t = row({ readOnDevice: true, dateAssumed: true, fieldConfidence: { date: 0 } });
+      expect(component.verificationTooltip(t, 'date')).toBe('import.dateAssumedTooltip');
+    });
   });
 
   describe('the date button\'s name', () => {
@@ -1488,6 +1513,19 @@ describe('TransactionPreviewTableComponent, the offer chip through its own templ
 
     expect(tip._isTooltipVisible()).withContext('keyboard focus opens the sentence').toBeTrue();
     expect(tip.message).toBe(component.verificationTooltip(row, 'amount'));
+  });
+
+  it('names the doubted amount of a device reading by the scan on the flag a screen reader hears', () => {
+    // The flag's label is all a screen reader hears of it. A device row's
+    // amount grade is the reader's policy, so the label names the scan and
+    // quotes no percentage.
+    component.transactions = [makeRow({ readOnDevice: true, fieldConfidence: { amount: 0.6, date: 0.9 } })];
+    component.categories = [];
+    fixture.detectChanges();
+
+    const flag = fixture.nativeElement.querySelector('.amount-section .verify-flag') as HTMLElement | null;
+    expect(flag).withContext('the flag renders for a doubted amount').not.toBeNull();
+    expect(flag!.getAttribute('aria-label')).toBe('import.verifyAmountOnDevice');
   });
 
   it('marks a doubted type on its toggle, the mark leading the toggle\'s name and the icon decorative', () => {

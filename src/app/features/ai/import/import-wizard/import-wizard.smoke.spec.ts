@@ -1639,6 +1639,11 @@ describe('ImportWizardComponent camera handoff (emulator smoke test)', () => {
       expect(fixture.componentInstance.extractedTransactions()[0].amount).toBe(120.5);
       expect(host.querySelector('.amount-section .verify-flag'))
         .withContext('the total was read past a labelled aside, under the bar').not.toBeNull();
+      // The grade is the parser's policy for a total read past an aside, and
+      // no model read this receipt: the flag names the scan, with no
+      // percentage.
+      expect(host.querySelector('.amount-section .verify-flag')?.getAttribute('aria-label'))
+        .toBe(TestBed.inject(TranslationService).t('import.verifyAmountOnDevice'));
 
       await leaveReview(fixture);
     },
@@ -1777,6 +1782,12 @@ describe('ImportWizardComponent camera handoff (emulator smoke test)', () => {
       // A type change re-runs the duplicate check. Import waits on it; so does
       // this, because confirmImport() called directly would not.
       await until(fixture, () => component.rechecksInFlight() === 0);
+      // The precondition the pin below needs: without the mark on both rows,
+      // "never written" would hold on any tree. Red before the converter
+      // marked a device row.
+      expect(card().transactions.map(row => row.readOnDevice))
+        .withContext('both rows reach the confirm marked as read on the device')
+        .toEqual([true, true]);
       await component.confirmImport();
 
       const after = await getDocs(collection(firestore, `users/${uid}/transactions`));
@@ -1801,6 +1812,12 @@ describe('ImportWizardComponent camera handoff (emulator smoke test)', () => {
       // document.
       expect(landedDocs.map(d => 'typeFlaggedAs' in d.data()))
         .withContext('the reader\'s verdict is not written onto either transaction')
+        .toEqual([false, false]);
+      // So is the mark that the device read both rows, which names the scan
+      // on their flags. A pin. Mutation: forward the mark through
+      // toCreateTransactionDTO and TransactionService.composeRow.
+      expect(landedDocs.map(d => 'readOnDevice' in d.data()))
+        .withContext('the device mark is not written onto either transaction')
         .toEqual([false, false]);
       const record = await recordOf(landedDocs.map(d => d.id));
       expect(record).withContext('the import wrote a record naming the rows it landed').not.toBeUndefined();

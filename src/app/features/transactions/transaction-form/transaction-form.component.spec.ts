@@ -2244,6 +2244,56 @@ describe('TransactionFormComponent', () => {
       expect(translation.t.calls.mostRecent().args).toEqual(['import.verifyType']);
     });
 
+    it('scanReceipt names the doubted amount and date of a device reading by the scan, with no percentage', async () => {
+      // The device grades an amount and a date by policy, not with a figure a
+      // model reported (on the regex lane no model ran at all), so the flags
+      // name the scan, as the type's always has. Dated today, so the date's
+      // flag is the grade's alone.
+      strategy.processReceipt.and.resolveTo(scanResult(
+        { source: 'native', fieldConfidence: { amount: 0.6, date: 0.45 }, date: new Date() },
+        { source: 'native' },
+      ));
+      const component = build().componentInstance;
+      await (component as unknown as { scanReceipt: (f: File) => Promise<void> }).scanReceipt(receiptFile());
+      translation.t.calls.reset();
+
+      expect(component.verifyFieldTooltip('amount')).toBe('import.verifyAmountOnDevice');
+      expect(translation.t.calls.mostRecent().args).toEqual(['import.verifyAmountOnDevice']);
+      expect(component.verifyFieldTooltip('date')).toBe('import.verifyDateOnDevice');
+    });
+
+    it('scanReceipt keeps the percentage a cloud reader reported for its doubt', async () => {
+      // A pin. Mutation: name the scan whoever read it. The cloud readers
+      // report amountConfidence and dateConfidence themselves.
+      strategy.processReceipt.and.resolveTo(
+        scanResult({ fieldConfidence: { amount: 0.4 }, date: new Date() }),
+      );
+      const component = build().componentInstance;
+      await (component as unknown as { scanReceipt: (f: File) => Promise<void> }).scanReceipt(receiptFile());
+      translation.t.calls.reset();
+
+      expect(component.verifyFieldTooltip('amount')).toBe('import.verifyAmount');
+      expect(translation.t.calls.mostRecent().args).toEqual(['import.verifyAmount', { percent: 40 }]);
+    });
+
+    it('scanReceipt takes the reader of each scan afresh, so a cloud scan after a device one quotes its percentage', async () => {
+      // A pin. Mutation: set the device mark on a device scan and never reset
+      // it on the next one.
+      strategy.processReceipt.and.resolveTo(scanResult(
+        { source: 'native', fieldConfidence: { amount: 0.6 }, date: new Date() },
+        { source: 'native' },
+      ));
+      const component = build().componentInstance;
+      const scan = (file: File) =>
+        (component as unknown as { scanReceipt: (f: File) => Promise<void> }).scanReceipt(file);
+      await scan(receiptFile());
+
+      strategy.processReceipt.and.resolveTo(scanResult({ fieldConfidence: { amount: 0.4 }, date: new Date() }));
+      await scan(receiptFile());
+
+      expect(component.verifyFieldTooltip('amount')).toBe('import.verifyAmount');
+    });
+
     it('scanReceipt leaves a date read as today unflagged', async () => {
       strategy.processReceipt.and.resolveTo(
         scanResult({ date: new Date(), fieldConfidence: { date: 0.9 } }),
