@@ -4454,10 +4454,10 @@ describe('ImportWizardComponent camera handoff (emulator smoke test)', () => {
       // second copy of it.
       expect(wizard.selectedFiles().length).withContext('the selection').toBe(1);
       expect(wizard.selectedFiles()[0]).toBe(wizard.dropzone()!.selectedFiles()[0]);
-      // Karma loads no catalog: the sentences are the bare keys on both sides.
+      // Karma loads no catalog: the sentences and the separator are the bare keys on both sides.
       expect(host.querySelector('app-file-dropzone .error-message')?.textContent?.trim()).toBe(
         translation.t('import.fileEmpty', { name: 'empty.pdf' }) +
-          '. ' +
+          translation.t('common.sentenceSeparator') +
           translation.t('import.shareBackup', { name: 'backup.json' })
       );
       // So the banner proves the reasons and their order, and the names are

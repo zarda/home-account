@@ -82,7 +82,8 @@
     "retry": "重試",
     "atTodaysRate": "以今日匯率",
     "unknownCategory": "未知",
-    "fileSizeBytes": "{{size}} 位元組"
+    "fileSizeBytes": "{{size}} 位元組",
+    "sentenceSeparator": "。"
   },
   "nav": {
     "dashboard": "儀表板",

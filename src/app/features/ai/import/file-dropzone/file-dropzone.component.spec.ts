@@ -294,10 +294,12 @@ describe('FileDropzoneComponent', () => {
 
       expect(names(taken)).toEqual(['ok.jpg']);
       expect(component.hasError()).toBeTrue();
-      expect(component.errorMessage()).toBe(
-        'import.fileTooLarge:{"name":"big.png","limit":"10 MB"}. import.fileEmpty:{"name":"empty.pdf"}. ' +
-        'import.shareBackup:{"name":"backup.json"}. import.fileTypeUnsupported:{"name":"notes.txt"}'
-      );
+      expect(component.errorMessage()).toBe([
+        'import.fileTooLarge:{"name":"big.png","limit":"10 MB"}',
+        'import.fileEmpty:{"name":"empty.pdf"}',
+        'import.shareBackup:{"name":"backup.json"}',
+        'import.fileTypeUnsupported:{"name":"notes.txt"}',
+      ].join('common.sentenceSeparator'));
     });
 
     // A share can land while the banner still names a file the user picked:
@@ -310,7 +312,8 @@ describe('FileDropzoneComponent', () => {
 
       expect(component.hasError()).toBeTrue();
       expect(component.errorMessage()).toBe(
-        'import.fileTypeUnsupported:{"name":"notes.txt"}. import.fileEmpty:{"name":"empty.pdf"}'
+        ['import.fileTypeUnsupported:{"name":"notes.txt"}', 'import.fileEmpty:{"name":"empty.pdf"}']
+          .join('common.sentenceSeparator')
       );
     });
 

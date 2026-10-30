@@ -82,7 +82,8 @@
     "retry": "再試行",
     "atTodaysRate": "本日のレートで",
     "unknownCategory": "不明",
-    "fileSizeBytes": "{{size}} バイト"
+    "fileSizeBytes": "{{size}} バイト",
+    "sentenceSeparator": "。"
   },
   "nav": {
     "dashboard": "ダッシュボード",

@@ -82,7 +82,8 @@
     "retry": "Retry",
     "atTodaysRate": "At today's rate",
     "unknownCategory": "Unknown",
-    "fileSizeBytes": "{{size}} B"
+    "fileSizeBytes": "{{size}} B",
+    "sentenceSeparator": ". "
   },
   "nav": {
     "dashboard": "Dashboard",
