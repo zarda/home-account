@@ -26,6 +26,7 @@ import {
   paintedBackground,
   paintedColor,
   ratio,
+  styleRules,
   textLines,
   withTheme,
 } from '../../../core/services/testing';
@@ -806,25 +807,8 @@ describe('CameraCaptureComponent processing overlay', () => {
     }
 
     /** Every rule of every stylesheet naming the container, with the media condition it sits under. */
-    function containerRules(): { media: string | null; rule: CSSStyleRule }[] {
-      const found: { media: string | null; rule: CSSStyleRule }[] = [];
-      const walk = (rules: CSSRuleList, media: string | null): void => {
-        for (const rule of Array.from(rules)) {
-          if (rule instanceof CSSStyleRule && rule.selectorText.includes('.camera-capture-container')) {
-            found.push({ media, rule });
-          }
-          if (rule instanceof CSSMediaRule) walk(rule.cssRules, rule.media.mediaText);
-        }
-      };
-      for (const sheet of Array.from(document.styleSheets)) {
-        try {
-          walk(sheet.cssRules, null);
-        } catch {
-          // A cross-origin sheet refuses cssRules; the component's is ours.
-        }
-      }
-      return found;
-    }
+    const containerRules = () =>
+      styleRules().filter(({ rule }) => rule.selectorText.includes('.camera-capture-container'));
 
     it("finds the container's rule in the stylesheet, so the next case reads something", () => {
       // A pin, and the partner of the next case: a selector that matched

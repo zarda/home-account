@@ -6,8 +6,9 @@ export interface SheetStyleRule {
 }
 
 /**
- * Every top-level or grouped style rule in the document's stylesheets, in
- * sheet order, with the condition of the innermost media query around it.
+ * Every top-level or grouped style rule in a document's stylesheets (the
+ * test page's, unless a caller names its element's), in sheet order, with
+ * the condition of the innermost media query around it.
  *
  * Karma's window is 756px (docs/ui-overflow.md), so a rule keyed to another
  * viewport width never applies there as layout. Its declarations can still
@@ -26,7 +27,7 @@ export interface SheetStyleRule {
  * whose selector is relative to its parent's) and a sheet pulled in by
  * `@import`. Compiled SCSS emits neither.
  */
-export function styleRules(): SheetStyleRule[] {
+export function styleRules(doc: Document = document): SheetStyleRule[] {
   const found: SheetStyleRule[] = [];
   const walk = (rules: CSSRuleList, media: string | null): void => {
     for (const rule of Array.from(rules)) {
@@ -37,7 +38,7 @@ export function styleRules(): SheetStyleRule[] {
       }
     }
   };
-  for (const sheet of Array.from(document.styleSheets)) {
+  for (const sheet of Array.from(doc.styleSheets)) {
     let rules: CSSRuleList;
     try {
       rules = sheet.cssRules;

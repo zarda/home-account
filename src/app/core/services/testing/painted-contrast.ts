@@ -1,5 +1,6 @@
 import type { Rgb } from '../../utils/color-contrast.utils';
 import { settleAnimations } from './axe';
+import { styleRules } from './style-rules';
 
 /**
  * Contrast measured on what Chrome paints, for specs that hold a colour pair
@@ -257,34 +258,18 @@ export function hoverValue(
   const found = new Map<string, string>();
   const elsewhere = new Set<string>();
 
-  const visit = (rules: CSSRuleList) => {
-    for (const rule of Array.from(rules)) {
-      if (rule instanceof CSSStyleRule) {
-        const value = rule.style.getPropertyValue(prop).trim();
-        for (const selector of selectorsOf(rule.selectorText)) {
-          const applies =
-            value !== '' &&
-            selector.includes(':hover') &&
-            selector.includes(selectorPart) &&
-            appliesWhenHovered(el, selector);
-          if (!applies) continue;
-          if (pseudoElementOf(selector) === pseudoElement) found.set(rule.selectorText, value);
-          else elsewhere.add(selector);
-        }
-      }
-      if ('cssRules' in rule) visit((rule as CSSGroupingRule).cssRules);
+  for (const { rule } of styleRules(el.ownerDocument)) {
+    const value = rule.style.getPropertyValue(prop).trim();
+    for (const selector of selectorsOf(rule.selectorText)) {
+      const applies =
+        value !== '' &&
+        selector.includes(':hover') &&
+        selector.includes(selectorPart) &&
+        appliesWhenHovered(el, selector);
+      if (!applies) continue;
+      if (pseudoElementOf(selector) === pseudoElement) found.set(rule.selectorText, value);
+      else elsewhere.add(selector);
     }
-  };
-
-  for (const sheet of Array.from(el.ownerDocument.styleSheets)) {
-    let rules: CSSRuleList;
-    try {
-      rules = sheet.cssRules;
-    } catch {
-      // A cross-origin sheet refuses to be read; nothing in it can be checked.
-      continue;
-    }
-    visit(rules);
   }
 
   const values = [...new Set(found.values())];

@@ -24,6 +24,7 @@ import {
   provideNoMotion,
   ratio,
   settleAnimations,
+  styleRules,
   withTheme,
 } from '../../../core/services/testing';
 
@@ -1668,28 +1669,13 @@ describe('TransactionFiltersComponent', () => {
     it('sets the tracks in one rule that no media query overrides', () => {
       const unconditional: string[] = [];
       const underMedia: string[] = [];
-      const visit = (rules: CSSRuleList, media: string | null): void => {
-        for (const rule of Array.from(rules)) {
-          if (rule instanceof CSSStyleRule && /\.filter-grid(?![\w-])/.test(rule.selectorText) && rule.style.gridTemplateColumns) {
-            if (media === null) {
-              unconditional.push(rule.style.gridTemplateColumns);
-            } else {
-              underMedia.push(`@media ${media} { ${rule.style.gridTemplateColumns} }`);
-            }
-          }
-          if (rule instanceof CSSGroupingRule) {
-            visit(rule.cssRules, rule instanceof CSSMediaRule ? rule.conditionText : media);
-          }
+      for (const { media, rule } of styleRules()) {
+        if (!/\.filter-grid(?![\w-])/.test(rule.selectorText) || !rule.style.gridTemplateColumns) continue;
+        if (media === null) {
+          unconditional.push(rule.style.gridTemplateColumns);
+        } else {
+          underMedia.push(`@media ${media} { ${rule.style.gridTemplateColumns} }`);
         }
-      };
-      for (const sheet of Array.from(document.styleSheets)) {
-        let rules: CSSRuleList;
-        try {
-          rules = sheet.cssRules;
-        } catch {
-          continue; // a cross-origin sheet; nothing this app injects is one
-        }
-        visit(rules, null);
       }
 
       expect(underMedia)

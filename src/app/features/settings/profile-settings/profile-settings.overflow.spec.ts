@@ -17,7 +17,7 @@ import { WeeklyRecapService } from '../../../core/services/weekly-recap.service'
 import { AnalyticsService } from '../../../core/services/analytics.service';
 import { CurrencyService } from '../../../core/services/currency.service';
 import { RateSource } from '../../../models';
-import { provideNoMotion } from '../../../core/services/testing';
+import { provideNoMotion, styleRules } from '../../../core/services/testing';
 
 /**
  * The theme toggle at the Extra large font scale on a phone.
@@ -404,25 +404,10 @@ describe('overflow guard: profile-settings grid tracks (#450)', () => {
    * as its exact resolved value.
    */
   function settingsGridRuleUnderMinWidth768(): string | null {
-    for (const sheet of Array.from(document.styleSheets)) {
-      let rules: CSSRuleList;
-      try {
-        rules = sheet.cssRules;
-      } catch {
-        continue; // cross-origin sheet; nothing this app injects is one
-      }
-      for (const rule of Array.from(rules)) {
-        if (!(rule instanceof CSSMediaRule) || !rule.conditionText.includes('min-width: 768px')) {
-          continue;
-        }
-        for (const inner of Array.from(rule.cssRules)) {
-          if (inner instanceof CSSStyleRule && inner.selectorText.includes('.settings-grid')) {
-            return inner.style.gridTemplateColumns;
-          }
-        }
-      }
-    }
-    return null;
+    const found = styleRules().find(
+      ({ media, rule }) => !!media?.includes('min-width: 768px') && rule.selectorText.includes('.settings-grid'),
+    );
+    return found ? found.rule.style.gridTemplateColumns : null;
   }
 
   it('parses the two-column rule under >=768px (unobservable as layout at the Karma window)', () => {
