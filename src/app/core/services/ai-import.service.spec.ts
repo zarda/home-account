@@ -735,6 +735,25 @@ describe('AIImportService', () => {
       expect([row.suggestedCategoryId, row.categoryConfidence])
         .toEqual(['other_income', UNCATEGORIZED_CATEGORY_CONFIDENCE]);
     });
+
+    it('marks a row the device read, whose grades are the reader\'s policy', () => {
+      // The card and the form name the scan for such a row's doubted amount
+      // and date, rather than quote a percentage no model reported.
+      const [row] = service.convertStrategyResultToCategories(processed([
+        { source: 'native', fieldConfidence: { amount: 0.6, date: 0.9 } },
+      ]));
+
+      expect(row.readOnDevice).toBeTrue();
+    });
+
+    it('leaves a row the cloud read unmarked, its grades the ones its model reported', () => {
+      // A pin. Mutation: mark every strategy row. Absent, not undefined.
+      const [row] = service.convertStrategyResultToCategories(processed([
+        { source: 'cloud', fieldConfidence: { amount: 0.6, date: 0.9 } },
+      ]));
+
+      expect('readOnDevice' in row).toBeFalse();
+    });
   });
 
   describe('remembered categories', () => {

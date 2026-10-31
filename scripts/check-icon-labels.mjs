@@ -131,11 +131,11 @@
  *     would say the same.
  *
  * What it cannot see: a name built in TypeScript and bound as an expression;
- * any other key that names no item (only `common.moreActions` is known to be
- * item-less); a component stamped through `NgComponentOutlet`, a dialog or a
- * router outlet rather than by its selector; a repeat written as
- * `<ng-template ngFor>`; and a trigger with no `aria-label` at all, whose
- * name comes from its text.
+ * any other key that names no item on a trigger only its parent repeats (the
+ * sixth rule below takes any key, in a template's own repeats); a component
+ * stamped through `NgComponentOutlet`, a dialog or a router outlet rather than
+ * by its selector; a repeat written as `<ng-template ngFor>`; and a trigger
+ * with no `aria-label` at all, whose name comes from its text.
  *
  * A fifth rule puts a flag's tooltip within reach of the keyboard. MatTooltip
  * opens for a pointer and for keyboard focus, and a `mat-icon` takes focus
@@ -162,6 +162,102 @@
  * What it cannot see: a tooltip that arrives from a directive's host binding;
  * a `tabindex="-1"`, which is literal and passes although Tab skips it; and
  * whether the icon's ancestors are themselves the tab stop.
+ *
+ * A sixth rule widens the fourth from one key on one kind of control to any.
+ * A control stamped once per item whose `aria-label` is a catalog key with no
+ * parameters gives every copy the same name. The upload area had that shape:
+ * each file's row read "Move up", "Move down" and "Remove", and two photos
+ * from an iPhone are both image.jpg, so neither the buttons nor the rows could
+ * be told apart by ear. The rule: inside a repeat in its own template, a
+ * control does not take its whole name from one key with no parameters,
+ * bound (`[attr.aria-label]="'key' | translate"`) or interpolated
+ * (`aria-label="{{ 'key' | translate }}"`).
+ *
+ *   - **Only a control.** A button, a link, a form field, a Material toggle
+ *     or an element with a control's literal `role`: what a user acts on, so
+ *     what the name has to tell apart. A repeated status — the split
+ *     indicator's icon, a row's spinner — says the same thing of every item
+ *     and may say it in the same words.
+ *   - **Only a key with nothing beside it.** A key given parameters has a
+ *     slot for the item, and a key computed from the item
+ *     (`iconNameKeys[icon] | translate`) names it through the key. Whether a
+ *     slot is filled with something that tells the items apart is a reading
+ *     question: two photos named image.jpg need their place as well.
+ *   - **"Once per item" is read in the template only**: an `@for` block, or an
+ *     element under a repeating structural directive, as the fourth rule reads
+ *     it there. Its cross-template reading errs toward "repeated" — the
+ *     dashboard renders each card once through an `@switch` in its `@for` — and
+ *     here that would freeze controls that are not repeated at all.
+ *   - **A menu trigger the fourth rule reports is reported there**, once.
+ *   - **What it found and could not fix is frozen** in ITEMLESS_FROZEN, by
+ *     file and key with how many controls carry that key there (ADR 0145's
+ *     floor), the way check-i18n.mjs counts its English fallbacks. A hit no
+ *     row names fails, and so does a row whose count is not the tally: one
+ *     more control named by a frozen key, or one fixed and still on the
+ *     books. An edit that only moves a frozen control leaves the list alone.
+ *
+ * What it cannot see: a name built in TypeScript; a ternary between two bare
+ * keys; a control repeated only by its parent's repeat, such as the goal
+ * card's edit and delete buttons, stamped once per goal by the goals page;
+ * and a name that comes from `aria-labelledby` or from the control's text.
+ *
+ * A seventh rule keeps a reference from pointing at nothing. `aria-labelledby`,
+ * `aria-describedby`, `aria-controls`, `aria-owns` and a label's `for` name
+ * another element by its id, and an id no element carries resolves to nothing
+ * without a word: the browser drops it, axe lists it for review and not as a
+ * violation, and the control keeps whatever else names it, often nothing. The
+ * import wizard's receipt-or-statement chips had that shape: the listbox's
+ * `aria-labelledby` said `image-kind-label`, the question above it carried
+ * that word as a class and not as an id, and the listbox had no name. The
+ * rule: each id a literal one of those attributes lists is declared by a
+ * literal `id` in the same template.
+ *
+ *   - **The whole template is read before any reference is judged.** A
+ *     reference may come before the element it names, as a field's hint does.
+ *   - **Only literal values, on both sides.** A bound or interpolated
+ *     reference is an expression this gate cannot evaluate, so it is not
+ *     read; a bound or interpolated `id` declares nothing for the same reason.
+ *   - **The same template only.** Which templates share a page is decided at
+ *     run time, so an id in a child component's template, a dialog or the
+ *     shell does not count. Every literal reference in the tree names an id in
+ *     its own template.
+ *
+ * What it cannot see: a reference or an id set in TypeScript or by a
+ * directive's host binding; an id declared twice, or once per item in a
+ * repeat, which leaves the reference ambiguous rather than empty; and whether
+ * the element an id names holds any text.
+ *
+ * An eighth rule keeps a toggle from rendering a control with no name.
+ * `mat-checkbox`, `mat-slide-toggle` and `mat-radio-button` each render the
+ * control a screen reader lands on (an `<input>`, or a `role="switch"`
+ * button) inside themselves, and name it from the text projected into their
+ * own label or from their `aria-label` and `aria-labelledby` inputs. One with
+ * neither is announced as a checkbox or a switch and nothing more. The import
+ * review card's row checkbox had that shape, one per row, under a Select all
+ * whose text named it. The rule: a toggle projects text, or carries
+ * `aria-label` or `aria-labelledby` as a literal, an interpolation or a bound
+ * input (`[aria-label]`, `[aria-labelledby]`).
+ *
+ *   - **`[attr.aria-label]` is not a name here.** It is written on the host,
+ *     not on the control inside, which stays unnamed (Material's host
+ *     bindings clear the host's own `aria-label` and `aria-labelledby`). The
+ *     input binding is the spelling that reaches the control.
+ *   - **A `mat-icon` is not text.** MatIcon hides itself, so its ligature
+ *     names nothing, and a toggle whose only content is an icon is unnamed.
+ *   - **A slider is read the other way round.** `mat-slider` takes no name
+ *     input and forwards no attribute to its thumbs, so a name on its host
+ *     reaches nothing and the `<input matSliderThumb>` stays unnamed. The
+ *     rule: a slider that carries a name on its host carries one on each
+ *     thumb. A slider named nowhere is not that shape and is not read.
+ *   - **What it found and could not fix is frozen** in UNNAMED_FROZEN, in
+ *     ITEMLESS_FROZEN's rows with the tag as the key, set against the hits by
+ *     the same helper: a hit no row names fails, and so does a row whose
+ *     count is not the tally.
+ *
+ * What it cannot see: a name set in TypeScript or by a directive's host
+ * binding; text the toggle projects inside an element hidden from a screen
+ * reader, which counts here and names nothing; text only one branch of a
+ * block renders; and whether the text or the name says anything.
  *
  * Reference documentation lives in docs/accessibility.md.
  */
@@ -506,6 +602,427 @@ export function scanMenuTriggers(source, componentRepeated = false) {
   return hits;
 }
 
+/** The elements the sixth rule counts as controls by their tag alone. */
+const CONTROL_TAGS = new Set([
+  'a', 'button', 'input', 'select', 'textarea',
+  'mat-select', 'mat-checkbox', 'mat-slide-toggle', 'mat-radio-button',
+]);
+
+/** A literal `role` that makes any element a control. */
+const CONTROL_ROLE = /(?<![\w.[-])role\s*=\s*"(?:button|link|checkbox|switch|radio|menuitem|tab)"/;
+
+/**
+ * Each `aria-label` in a tag with its value, the first group saying how it is
+ * written: `[attr.aria-label]` or `[aria-label]` bound, `aria-label` literal.
+ */
+const LABEL_ATTR = /(\[(?:attr\.)?aria-label\]|(?<![\w.[-])aria-label)\s*=\s*(?:"([^"]*)"|'([^']*)')/g;
+
+/** A bound label that is one quoted key piped through translate, and nothing else. */
+const BARE_KEY_BOUND = /^\s*(['"])([\w.-]+)\1\s*\|\s*translate\s*$/;
+
+/** A literal label that is one interpolation of the same, and nothing else. */
+const BARE_KEY_INTERPOLATED = /^\s*\{\{\s*(['"])([\w.-]+)\1\s*\|\s*translate\s*\}\}\s*$/;
+
+/**
+ * The key a tag's `aria-label` consists of when it is one catalog key with no
+ * parameters, with the label's offset in `attrs`; null otherwise.
+ */
+function bareKeyLabel(attrs) {
+  for (const label of attrs.matchAll(LABEL_ATTR)) {
+    const shape = label[1].startsWith('[') ? BARE_KEY_BOUND : BARE_KEY_INTERPOLATED;
+    const key = shape.exec(label[2] ?? label[3])?.[2];
+    if (key) return { key, index: label.index };
+  }
+  return null;
+}
+
+/**
+ * Every control stamped once per item in this template whose `aria-label` is
+ * one catalog key with no parameters. `line` is the label's own line, which is
+ * where a finding is reported. A menu trigger the fourth rule reports is left
+ * to it. Returns `{ line, tag, key }` for each.
+ */
+export function scanItemlessLabels(source) {
+  const hits = [];
+  walkTemplate(source, ({ name, attrs, line, repeated }) => {
+    if (!repeated) return;
+    if (!CONTROL_TAGS.has(name) && !CONTROL_ROLE.test(attrs)) return;
+    if (MENU_TRIGGER.test(attrs) && itemlessName(attrs)) return;
+    const label = bareKeyLabel(attrs);
+    if (!label) return;
+    const before = attrs.slice(0, label.index);
+    hits.push({ line: line + before.split('\n').length - 1, tag: name, key: label.key });
+  });
+  return hits;
+}
+
+/**
+ * Per-item controls named by a key with no parameters that the sixth rule
+ * found when it landed, outside what that change fixed. Each row is a file, a
+ * key, how many controls in that file carry it, and what repeats them. Empty
+ * is the goal: a row is a debt with a name, and it goes when its controls name
+ * their item.
+ */
+export const ITEMLESS_FROZEN = [
+  {
+    file: 'src/app/features/about/about.component.html',
+    key: 'about.feedback.deleteLabel',
+    count: 1,
+    why: 'one delete button per sent feedback entry on the About page',
+  },
+  {
+    file: 'src/app/features/ai/import/transaction-preview-table/transaction-preview-table.component.html',
+    key: 'import.notADuplicate',
+    count: 1,
+    why: 'one per review card row marked as a possible duplicate',
+  },
+  {
+    file: 'src/app/features/ai/import/transaction-preview-table/transaction-preview-table.component.html',
+    key: 'common.description',
+    count: 1,
+    why: 'each review card row\'s description field, while it is edited',
+  },
+  {
+    file: 'src/app/features/ai/import/transaction-preview-table/transaction-preview-table.component.html',
+    key: 'common.amount',
+    count: 1,
+    why: 'each review card row\'s amount field, while it is edited',
+  },
+  {
+    file: 'src/app/features/ai/import/transaction-preview-table/transaction-preview-table.component.html',
+    key: 'import.splitAmount',
+    count: 1,
+    why: 'each review card row\'s split amount field, while a split is edited',
+  },
+  {
+    file: 'src/app/features/ai/import/transaction-preview-table/transaction-preview-table.component.html',
+    key: 'import.placeName',
+    count: 1,
+    why: 'each review card row\'s place field, while it is edited',
+  },
+  {
+    file: 'src/app/features/ai/import/transaction-preview-table/transaction-preview-table.component.html',
+    key: 'import.removeLocation',
+    count: 1,
+    why: 'one per review card row that carries a place',
+  },
+  {
+    file: 'src/app/features/ai/import/transaction-preview-table/transaction-preview-table.component.html',
+    key: 'import.dismissCurrencySuggestion',
+    count: 1,
+    why: 'one per review card row that carries a currency suggestion',
+  },
+  {
+    file: 'src/app/features/ai/import/transaction-preview-table/transaction-preview-table.component.html',
+    key: 'import.newTag',
+    count: 1,
+    why: 'each review card row\'s new tag field, while a tag is added',
+  },
+  {
+    file: 'src/app/features/ai/import/transaction-preview-table/transaction-preview-table.component.html',
+    key: 'import.notes',
+    count: 1,
+    why: 'each review card row\'s notes field, where its notes are shown',
+  },
+  {
+    file: 'src/app/features/ai/search-history/search-answer-history.component.html',
+    key: 'common.delete',
+    count: 1,
+    why: 'one delete button per saved answer in the search history',
+  },
+  {
+    file: 'src/app/features/budgets/goals/goal-form/goal-form.component.html',
+    key: 'common.delete',
+    count: 1,
+    why: 'one delete button per item row on the goal form',
+  },
+  {
+    file: 'src/app/features/reports/insights/recurring-list/recurring-list.component.html',
+    key: 'insights.convertToRule',
+    count: 1,
+    why: 'one per recurring group in the insights list',
+  },
+  {
+    file: 'src/app/features/reports/insights/recurring-list/recurring-list.component.html',
+    key: 'insights.showTransactions',
+    count: 1,
+    why: 'one per recurring group in the insights list',
+  },
+  {
+    file: 'src/app/features/transactions/camera-capture/camera-capture.component.html',
+    key: 'common.moveUp',
+    count: 1,
+    why: 'one per captured photo in the camera capture',
+  },
+  {
+    file: 'src/app/features/transactions/camera-capture/camera-capture.component.html',
+    key: 'common.moveDown',
+    count: 1,
+    why: 'one per captured photo in the camera capture',
+  },
+  {
+    file: 'src/app/features/transactions/camera-capture/camera-capture.component.html',
+    key: 'common.remove',
+    count: 1,
+    why: 'one per captured photo in the camera capture',
+  },
+  {
+    file: 'src/app/features/transactions/receipt-images/receipt-image-manager.component.html',
+    key: 'receiptImages.removeAllImages',
+    count: 1,
+    why: 'one per transaction in the receipt image manager',
+  },
+  {
+    file: 'src/app/features/transactions/receipt-images/receipt-image-manager.component.html',
+    key: 'receiptImages.convertToNote',
+    count: 1,
+    why: 'one per image of a transaction in the receipt image manager',
+  },
+  {
+    file: 'src/app/features/transactions/receipt-images/receipt-image-manager.component.html',
+    key: 'receiptImages.removeImage',
+    count: 1,
+    why: 'one remove button per image of a transaction in the receipt image manager',
+  },
+  {
+    file: 'src/app/features/transactions/transaction-filters/transaction-filters.component.html',
+    key: 'transactions.removeSearch',
+    count: 2,
+    why: 'one remove button per saved search, and one per recent search, in the search suggestions',
+  },
+  {
+    file: 'src/app/features/transactions/transaction-form/transaction-form.component.html',
+    key: 'common.remove',
+    count: 1,
+    why: 'one per pending receipt photo on the transaction form',
+  },
+  {
+    file: 'src/app/features/transactions/transaction-form/transaction-form.component.html',
+    key: 'receiptImages.convertToNote',
+    count: 1,
+    why: 'one per stored receipt image on the transaction form',
+  },
+  {
+    file: 'src/app/features/transactions/transaction-form/transaction-form.component.html',
+    key: 'receiptImages.removeImage',
+    count: 1,
+    why: 'one remove button per stored receipt image on the transaction form',
+  },
+  {
+    file: 'src/app/features/transactions/transaction-list/transaction-list.component.html',
+    key: 'transactions.viewNote',
+    count: 1,
+    why: 'one per desktop table row that carries a note',
+  },
+  {
+    file: 'src/app/features/transactions/transaction-list/transaction-list.component.html',
+    key: 'transactions.viewReceipt',
+    count: 1,
+    why: 'one per desktop table row that carries a receipt',
+  },
+  {
+    file: 'src/app/shared/components/ai-search-dialog/ai-search-dialog.component.html',
+    key: 'common.delete',
+    count: 1,
+    why: 'one delete button per answer in the search dialog\'s history',
+  },
+];
+
+/**
+ * Sets one rule's hits (`{ site, tag, key }`, `site` a repo-relative
+ * `file:line`) against its frozen rows. A hit and a row match on the hit's
+ * file and their key, so a frozen control that only moves still matches.
+ * Hits are tallied per row: `fresh` are the hits no row names, and `drift` the
+ * rows whose tally is not their count (a tally of 0 is a row with nothing left
+ * to freeze), each with the sites it matched. Both fail.
+ */
+export function againstFrozen(hits, frozen) {
+  const fileOf = (site) => site.slice(0, site.lastIndexOf(':'));
+  const matched = frozen.map(() => []);
+  const fresh = [];
+  for (const hit of hits) {
+    const index = frozen.findIndex((row) => row.file === fileOf(hit.site) && row.key === hit.key);
+    if (index === -1) fresh.push(hit);
+    else matched[index].push(hit.site);
+  }
+  const drift = frozen
+    .map((row, index) => ({ file: row.file, key: row.key, count: row.count, sites: matched[index] }))
+    .filter((row) => row.sites.length !== row.count);
+  return { fresh, drift };
+}
+
+/** The attributes that name other elements by id, each a list of one or more. */
+const IDREF_ATTRS = new Set(['aria-labelledby', 'aria-describedby', 'aria-controls', 'aria-owns', 'for']);
+
+/**
+ * Each attribute in a tag, with its value when it has one, quoted or not. A
+ * quoted value is stepped over whole, so a word inside an expression is never
+ * read as an attribute. A bound attribute keeps its brackets in its name, so
+ * `[attr.aria-labelledby]` and `[for]` are not the literal ones.
+ */
+const ATTRIBUTE = /([^\s"'=<>/]+)(?:\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s"'>]+)))?/g;
+
+/**
+ * The literal ids a template declares, and each id its literal references
+ * name, `{ line, tag, attr, id }` with the attribute's own line. A value
+ * holding an interpolation is neither.
+ */
+export function readIds(source) {
+  const declared = new Set();
+  const references = [];
+  walkTemplate(source, ({ name, attrs, line }) => {
+    for (const attribute of attrs.matchAll(ATTRIBUTE)) {
+      const attr = attribute[1].toLowerCase();
+      const value = attribute[2] ?? attribute[3] ?? attribute[4];
+      if (value === undefined || value.includes('{{')) continue;
+      if (attr === 'id') {
+        declared.add(value);
+        continue;
+      }
+      if (!IDREF_ATTRS.has(attr)) continue;
+      const at = line + attrs.slice(0, attribute.index).split('\n').length - 1;
+      for (const id of value.split(/\s+/).filter(Boolean)) references.push({ line: at, tag: name, attr, id });
+    }
+  });
+  return { declared, references };
+}
+
+/**
+ * Every id a literal reference names that no literal `id` in the same
+ * template declares, before or after it. Returns `{ line, tag, attr, id }`
+ * for each.
+ */
+export function scanDanglingIds(source) {
+  const { declared, references } = readIds(source);
+  return references.filter((reference) => !declared.has(reference.id));
+}
+
+/** The Material toggles that render their own control and name it from their label or their inputs. */
+const TOGGLE_TAGS = new Set(['mat-checkbox', 'mat-slide-toggle', 'mat-radio-button']);
+
+/**
+ * The attributes of a tag as ATTRIBUTE reads them, `{ name, value }`, the
+ * value undefined where none is written. A word inside another attribute's
+ * value is never one of them.
+ */
+function attributesOf(attrs) {
+  return Array.from(attrs.matchAll(ATTRIBUTE), (attribute) => ({
+    name: attribute[1],
+    value: attribute[2] ?? attribute[3] ?? attribute[4],
+  }));
+}
+
+/**
+ * The names a toggle hands to the control inside it: `aria-label` or
+ * `aria-labelledby`, literal, interpolated or bound to the input
+ * (`[aria-label]`, `[aria-labelledby]`), each with a value. `[attr.aria-label]`
+ * and `[attr.aria-labelledby]` are not among them, since they land on the
+ * host, and neither is any other spelling that ends in the name, such as
+ * `bind-attr.aria-label`.
+ */
+const TOGGLE_NAMES = new Set(['aria-label', 'aria-labelledby', '[aria-label]', '[aria-labelledby]']);
+
+const toggleNamed = (attrs) =>
+  attributesOf(attrs).some(({ name, value }) => value !== undefined && TOGGLE_NAMES.has(name));
+
+/** MatSlider's thumb input, in each of its three spellings. */
+const SLIDER_THUMBS = new Set(['matSliderThumb', 'matSliderStartThumb', 'matSliderEndThumb']);
+
+const isSliderThumb = (attrs) => attributesOf(attrs).some(({ name }) => SLIDER_THUMBS.has(name));
+
+/**
+ * Any spelling of `aria-label` or `aria-labelledby`, bound to the attribute
+ * or not: on a slider's host and on a plain input each lands where written.
+ */
+const anyAriaName = (attrs) => attributesOf(attrs).some(({ name }) => name.includes('aria-label'));
+
+/**
+ * True when a run of template text between two tags renders text: an
+ * interpolation, or anything left once control-flow syntax is taken out.
+ */
+function projectsText(run) {
+  const plain = run
+    .replace(/\{\{[\s\S]*?\}\}/g, ' x ')
+    .replace(/@let\b[^;]*;/g, ' ')
+    .replace(/@\w+[^{]*\{/g, ' ')
+    .replace(/[{}]/g, ' ');
+  return /\S/.test(plain);
+}
+
+/**
+ * Every toggle that hands the control inside it no name, and every slider
+ * whose name sits on its host while a thumb carries none. A toggle is named
+ * by text projected into it, outside any `mat-icon`, or by one of TOGGLE_NAMES.
+ * Returns `{ line, tag }` for each, `line` being the opening tag's.
+ */
+export function scanUnnamedToggles(source) {
+  const masked = maskComments(source);
+  const hits = [];
+  const judge = (entry) => {
+    if (entry.tag === 'mat-slider') {
+      if (anyAriaName(entry.attrs) && entry.thumbs.some((thumb) => !anyAriaName(thumb))) {
+        hits.push({ line: entry.line, tag: entry.tag });
+      }
+      return;
+    }
+    if (entry.text || toggleNamed(entry.attrs)) return;
+    hits.push({ line: entry.line, tag: entry.tag });
+  };
+  // The toggle or slider being read, and how many icons are open inside it.
+  let open = null;
+  let icons = 0;
+  const tag = new RegExp(ANY_TAG.source, 'g');
+  let last = 0;
+  let match;
+  while ((match = tag.exec(masked)) !== null) {
+    if (open !== null && icons === 0 && projectsText(masked.slice(last, match.index))) open.text = true;
+    last = tag.lastIndex;
+    const [, closing, rawName, attrs] = match;
+    const name = rawName.toLowerCase();
+    const selfClosing = /\/\s*$/.test(attrs) || VOID_ELEMENTS.has(name);
+    if (open === null) {
+      if (closing || !(TOGGLE_TAGS.has(name) || name === 'mat-slider')) continue;
+      const entry = { tag: name, line: lineOf(masked, match.index), attrs, text: false, thumbs: [] };
+      if (selfClosing) judge(entry);
+      else open = entry;
+      continue;
+    }
+    if (closing) {
+      if (name === 'mat-icon' && icons > 0) icons--;
+      if (name === open.tag) {
+        judge(open);
+        open = null;
+        icons = 0;
+      }
+      continue;
+    }
+    if (name === 'mat-icon' && !selfClosing) icons++;
+    if (open.tag === 'mat-slider' && isSliderThumb(attrs)) open.thumbs.push(attrs);
+  }
+  return hits;
+}
+
+/**
+ * Toggles and sliders the eighth rule found unnamed when it landed, outside
+ * what that change fixed. Rows as ITEMLESS_FROZEN's, read by againstFrozen,
+ * the key being the tag; `why` says which control it is and where its name
+ * went instead. Empty is the goal.
+ */
+export const UNNAMED_FROZEN = [
+  {
+    file: 'src/app/features/budgets/budget-form/budget-form.component.html',
+    key: 'mat-slider',
+    count: 1,
+    why: 'the alert threshold slider: its aria-labelledby sits on the mat-slider host, and its thumb is named by nothing',
+  },
+  {
+    file: 'src/app/features/settings/ai-settings-page/ai-settings-page.component.html',
+    key: 'mat-slide-toggle',
+    count: 1,
+    why: 'the Auto sync switch on the AI page: its label is a sibling span the switch never references',
+  },
+];
+
 /**
  * Which templates belong to a component rendered once per item somewhere.
  * `templates` is a list of `{ key, selector, source }`, `selector` being the
@@ -548,6 +1065,18 @@ export function repeatedTemplates(templates) {
 }
 
 /**
+ * The inline `template:` literal in a component's `.ts` source, with the
+ * number of lines before it, so a line found in the template plus `offset` is
+ * the line in the file; null when the source has none.
+ */
+export function inlineTemplateOf(source) {
+  const inline = /\btemplate:\s*`([\s\S]*?)`/.exec(source)?.[1];
+  if (inline === undefined) return null;
+  // A hit's line counts from the template's first line, the backtick's.
+  return { source: inline, offset: lineOf(source, source.indexOf(inline)) - 1 };
+}
+
+/**
  * The templates under `files`, each with its owning component's element
  * selector: an `.html` file through the `templateUrl` that names it, an
  * inline `template:` literal through its own file. A `.ts` file with no
@@ -566,11 +1095,9 @@ function templatesOf(files) {
       selectorOfHtml.set(posix(join(dirname(file), url)), selector);
       continue;
     }
-    const inline = /\btemplate:\s*`([\s\S]*?)`/.exec(source)?.[1];
-    if (inline === undefined) continue;
-    // A hit's line counts from the template's first line, the backtick's.
-    const offset = lineOf(source, source.indexOf(inline)) - 1;
-    templates.push({ key: posix(file), selector, source: inline, offset });
+    const inline = inlineTemplateOf(source);
+    if (inline === null) continue;
+    templates.push({ key: posix(file), selector, source: inline.source, offset: inline.offset });
   }
   for (const file of files) {
     if (!file.endsWith('.html')) continue;
@@ -681,6 +1208,47 @@ function run() {
     }
   }
 
+  // The per-item rule reads each template's own repeats, and sets what it
+  // finds against the rows frozen when it landed.
+  const itemless = [];
+  for (const template of sources) {
+    for (const hit of scanItemlessLabels(template.source)) {
+      itemless.push({ site: `${template.key}:${hit.line + template.offset}`, tag: hit.tag, key: hit.key });
+    }
+  }
+  const { fresh, drift } = againstFrozen(itemless, ITEMLESS_FROZEN);
+  for (const hit of fresh) findings.push({ rule: 'itemless', site: hit.site, tag: hit.tag, key: hit.key });
+  for (const row of drift) findings.push({ rule: 'itemless-drift', site: row.file, ...row });
+
+  // The id rule reads each template whole, since a reference may come before
+  // the element it names.
+  let idReferences = 0;
+  for (const template of sources) {
+    idReferences += readIds(template.source).references.length;
+    for (const hit of scanDanglingIds(template.source)) {
+      findings.push({ rule: 'idref', site: `${template.key}:${hit.line + template.offset}`, tag: hit.tag, attr: hit.attr, id: hit.id });
+    }
+  }
+
+  // The toggle rule reads what each toggle projects and each slider's
+  // thumbs, and sets what it finds against the rows frozen when it landed.
+  let toggles = 0;
+  let sliders = 0;
+  const unnamed = [];
+  for (const template of sources) {
+    if (!/<mat-(checkbox|slide-toggle|radio-button|slider)\b/.test(template.source)) continue;
+    walkTemplate(template.source, ({ name }) => {
+      if (TOGGLE_TAGS.has(name)) toggles++;
+      else if (name === 'mat-slider') sliders++;
+    });
+    for (const hit of scanUnnamedToggles(template.source)) {
+      unnamed.push({ site: `${template.key}:${hit.line + template.offset}`, tag: hit.tag, key: hit.tag });
+    }
+  }
+  const toggleVerdict = againstFrozen(unnamed, UNNAMED_FROZEN);
+  for (const hit of toggleVerdict.fresh) findings.push({ rule: 'unnamed', site: hit.site, tag: hit.tag });
+  for (const row of toggleVerdict.drift) findings.push({ rule: 'unnamed-drift', site: row.file, ...row });
+
   const templates = files.filter((file) => file.endsWith('.html')).length;
   console.log(
     `Checked ${icons} mat-icon tag(s) across ${templates} template(s) and ` +
@@ -700,6 +1268,20 @@ function run() {
     `Checked ${tooltipFlags} named icon(s) with a tooltip: ${reachableFlags} take focus ` +
       `or are stamped through an ng-template.`
   );
+  console.log(
+    `Checked the controls stamped once per item across ${sources.length} template(s): ` +
+      `${itemless.length} take their name from a key with no parameters, ` +
+      `${ITEMLESS_FROZEN.reduce((sum, row) => sum + row.count, 0)} frozen by name.`
+  );
+  console.log(
+    `Checked ${idReferences} id(s) named by a literal aria-labelledby, aria-describedby, ` +
+      `aria-controls, aria-owns or for across ${sources.length} template(s).`
+  );
+  console.log(
+    `Checked ${toggles} checkbox, slide toggle and radio button tag(s) and ${sliders} slider(s) ` +
+      `across ${sources.length} template(s): ${unnamed.length} hand their control no name, ` +
+      `${UNNAMED_FROZEN.reduce((sum, row) => sum + row.count, 0)} frozen by name.`
+  );
 
   if (findings.length > 0) {
     findings.sort((a, b) => a.site.localeCompare(b.site));
@@ -708,6 +1290,11 @@ function run() {
     const optionFindings = findings.filter((f) => f.rule === 'option');
     const menuFindings = findings.filter((f) => f.rule === 'menu');
     const tooltipFindings = findings.filter((f) => f.rule === 'tooltip');
+    const itemlessFindings = findings.filter((f) => f.rule === 'itemless');
+    const driftFindings = findings.filter((f) => f.rule === 'itemless-drift');
+    const idrefFindings = findings.filter((f) => f.rule === 'idref');
+    const unnamedFindings = findings.filter((f) => f.rule === 'unnamed');
+    const unnamedDriftFindings = findings.filter((f) => f.rule === 'unnamed-drift');
 
     if (iconFindings.length > 0) {
       console.error(`\n${iconFindings.length} icon(s) carry a name nothing can read:\n`);
@@ -796,6 +1383,109 @@ function run() {
       );
     }
 
+    if (itemlessFindings.length > 0) {
+      console.error(`\n${itemlessFindings.length} repeated control(s) take a name that names no item:\n`);
+      for (const finding of itemlessFindings) {
+        console.error(`  ${finding.site}  <${finding.tag}> '${finding.key}' | translate`);
+        console.error(`    → give the key a slot for the item and fill it, as 'import.removeFileLabel' | translate: { position: i + 1, name: file.name }\n`);
+      }
+      console.error(
+        `A control stamped once per item takes its whole name from its aria-label,\n` +
+          `and a key with no parameters gives every copy the same one: a screen\n` +
+          `reader moving down the list hears the same button again and nothing that\n` +
+          `says which item it acts on. Name the item through the key's parameters,\n` +
+          `as the upload area's remove and move buttons do, with whatever tells two\n` +
+          `items apart (two photos from an iPhone are both image.jpg, so those name\n` +
+          `the file's place too). A site that cannot be fixed in the same change is\n` +
+          `frozen in ITEMLESS_FROZEN with its reason (ADR 0145).\n` +
+          `Reference: ${DOC}.\n`
+      );
+    }
+
+    if (driftFindings.length > 0) {
+      console.error(`\n${driftFindings.length} frozen per-item label row(s) no longer match their count:\n`);
+      for (const finding of driftFindings) {
+        console.error(`  ${finding.file}  '${finding.key}'  frozen ${finding.count}, found ${finding.sites.length}`);
+        for (const site of finding.sites) console.error(`    at ${site}`);
+        console.error(
+          finding.sites.length > finding.count
+            ? `    → name the item in the new control's key instead of freezing it\n`
+            : `    → lower the row's count to what is left, or drop the row if nothing is\n`
+        );
+      }
+      console.error(
+        `ITEMLESS_FROZEN counts the frozen controls per file and key. A tally above\n` +
+          `the count is a new control named by a frozen key; a tally below it is a\n` +
+          `fixed debt still on the books, and the list is edited in the same commit\n` +
+          `as the template. An edit that only moves a frozen control changes nothing.\n` +
+          `Reference: ${DOC}.\n`
+      );
+    }
+
+    if (idrefFindings.length > 0) {
+      console.error(`\n${idrefFindings.length} id reference(s) name an id their template never declares:\n`);
+      for (const finding of idrefFindings) {
+        console.error(`  ${finding.site}  <${finding.tag}> ${finding.attr} names '${finding.id}'`);
+        console.error(`    → give the element it means a literal id="${finding.id}", in this template\n`);
+      }
+      console.error(
+        `aria-labelledby, aria-describedby, aria-controls, aria-owns and a label's\n` +
+          `for name another element by its id. An id no element carries resolves to\n` +
+          `nothing and says so nowhere: the control loses the name or the hint the\n` +
+          `attribute was written to give it, and axe lists the reference for review,\n` +
+          `not as a violation. Put a literal id on the element meant, beside its\n` +
+          `class, as the import wizard's question above its receipt-or-statement\n` +
+          `chips carries id="image-kind-label".\n` +
+          `Reference: ${DOC}.\n`
+      );
+    }
+
+    if (unnamedFindings.length > 0) {
+      console.error(`\n${unnamedFindings.length} toggle(s) or slider(s) leave the control inside them unnamed:\n`);
+      for (const finding of unnamedFindings) {
+        if (finding.tag === 'mat-slider') {
+          console.error(`  ${finding.site}  <mat-slider> named on its host, a thumb named by nothing`);
+          console.error(`    → put the aria-label or aria-labelledby on each <input matSliderThumb>\n`);
+        } else {
+          console.error(`  ${finding.site}  <${finding.tag}> with no text and no aria-label or aria-labelledby`);
+          console.error(`    → project its label as text, or bind the [aria-label] input, as the review card's row checkbox does\n`);
+        }
+      }
+      console.error(
+        `mat-checkbox, mat-slide-toggle and mat-radio-button render the control a\n` +
+          `screen reader lands on inside themselves, and name it from the text\n` +
+          `projected into their own label or from their aria-label and\n` +
+          `aria-labelledby inputs. With neither, it is announced as a checkbox or a\n` +
+          `switch and nothing more. [attr.aria-label] does not reach it: it is\n` +
+          `written on the host, and the control inside stays unnamed. mat-slider has\n` +
+          `no such input and forwards nothing to its thumbs, so a slider's name goes\n` +
+          `on each thumb. A site that cannot be fixed in the same change is frozen\n` +
+          `in UNNAMED_FROZEN with its reason (ADR 0145).\n` +
+          `Reference: ${DOC}.\n`
+      );
+    }
+
+    if (unnamedDriftFindings.length > 0) {
+      console.error(`\n${unnamedDriftFindings.length} frozen unnamed-toggle row(s) no longer match their count:\n`);
+      for (const finding of unnamedDriftFindings) {
+        console.error(`  ${finding.file}  <${finding.key}>  frozen ${finding.count}, found ${finding.sites.length}`);
+        for (const site of finding.sites) console.error(`    at ${site}`);
+        console.error(
+          finding.sites.length > finding.count
+            ? `    → name the new control instead of freezing it\n`
+            : `    → lower the row's count to what is left, or drop the row if nothing is\n`
+        );
+      }
+      console.error(
+        `UNNAMED_FROZEN counts the frozen controls per file and tag. A tally above\n` +
+          `the count is a new unnamed control beside a frozen one; a tally below it\n` +
+          `is a fixed debt still on the books, and the list is edited in the same\n` +
+          `commit as the template. An edit that only moves a frozen control changes\n` +
+          `nothing.\n` +
+          `Reference: ${DOC}.\n`
+      );
+    }
+
     process.exit(1);
   }
 
@@ -803,7 +1493,11 @@ function run() {
     `Every named mat-icon carries a literal aria-hidden, every progress indicator ` +
       `carries a name or is hidden inside the control that already announces it, ` +
       `every option icon sits beside its option's name, every repeated menu ` +
-      `button names its item, and every tooltip icon takes focus.`
+      `button names its item, every tooltip icon takes focus, every control ` +
+      `stamped once per item names its item or is frozen by name, every id ` +
+      `a literal reference names is declared in its own template, and every ` +
+      `checkbox, slide toggle, radio button and host-named slider names the ` +
+      `control inside it or is frozen by name.`
   );
 }
 
@@ -1263,6 +1957,479 @@ function selfTest() {
     []
   );
   check('a commented-out flag is not a flag', tooltipLines('<!-- ' + FLAG + ' -->'), []);
+
+  // --- the per-item rule: must hit ---
+  const itemlessLines = (source) => scanItemlessLabels(source).map((hit) => hit.line);
+  const REMOVE = '<button mat-icon-button [attr.aria-label]="\'common.remove\' | translate">x</button>';
+
+  check(
+    'a bare key on a button in an @for, the upload area\'s remove button',
+    itemlessLines(`@for (file of files(); track file) {\n  <div class="file-item">\n    ${REMOVE}\n  </div>\n}`),
+    [3]
+  );
+  check(
+    'the line reported is the label\'s, the tag spread over several lines',
+    scanItemlessLabels(
+      '@for (file of files(); track file; let i = $index) {\n  <button\n    mat-icon-button\n' +
+        '    (click)="moveFileUp(i, $event)"\n    [attr.aria-label]="\'common.moveUp\' | translate"\n  >x</button>\n}'
+    ),
+    [{ line: 5, tag: 'button', key: 'common.moveUp' }]
+  );
+  check(
+    'the interpolated literal form',
+    itemlessLines(`@for (s of searches; track s.id) {\n  <button aria-label="{{ 'transactions.removeSearch' | translate }}">x</button>\n}`),
+    [2]
+  );
+  check(
+    'a form field in a repeated row',
+    itemlessLines(`@for (row of rows; track row.id) {\n  <input matInput [attr.aria-label]="'common.amount' | translate">\n}`),
+    [2]
+  );
+  check(
+    'an element with a control\'s role',
+    itemlessLines(`@for (c of chips; track c) {\n  <span role="button" tabindex="0" [attr.aria-label]="'common.remove' | translate"></span>\n}`),
+    [2]
+  );
+  check(
+    'a table cell stamped by *matCellDef',
+    itemlessLines(`<td mat-cell *matCellDef="let t">\n  @if (t.note) {\n    <button [attr.aria-label]="'transactions.viewNote' | translate">x</button>\n  }\n</td>`),
+    [3]
+  );
+  check(
+    'a menu trigger named by another bare key, which the fourth rule does not read',
+    itemlessLines(`@for (b of list; track b.id) {\n  <button [matMenuTriggerFor]="m" [attr.aria-label]="'common.options' | translate">x</button>\n}`),
+    [2]
+  );
+
+  // --- the per-item rule: must not hit (the load-bearing half) ---
+  check(
+    'a parameterised key names its item, the fixed upload area',
+    itemlessLines(
+      `@for (file of files(); track file; let i = $index) {\n  <button [attr.aria-label]="'import.removeFileLabel' | translate: { position: i + 1, name: file.name }">x</button>\n}`
+    ),
+    []
+  );
+  check(
+    'a key computed from the item names it through the key',
+    itemlessLines(`@for (icon of icons; track icon) {\n  <button [attr.aria-label]="iconNameKeys[icon] | translate">x</button>\n}`),
+    []
+  );
+  check('a bare key outside any repeat, a page\'s own button', itemlessLines(`<div class="toolbar">\n  ${REMOVE}\n</div>`), []);
+  check(
+    'a bare key after its @for has closed',
+    itemlessLines(`@for (f of files; track f) {\n  <span>{{ f.name }}</span>\n}\n${REMOVE}`),
+    []
+  );
+  check(
+    'a bare key in the @empty branch, which renders once',
+    itemlessLines(`@for (f of files; track f) {\n  <span>{{ f.name }}</span>\n} @empty {\n  ${REMOVE}\n}`),
+    []
+  );
+  check(
+    'a repeated status that is not a control, the split indicator',
+    itemlessLines(
+      `@for (t of rows; track t.id) {\n  <mat-icon role="img" aria-hidden="false" [attr.aria-label]="'transactions.splitPart' | translate">call_split</mat-icon>\n}`
+    ),
+    []
+  );
+  check(
+    'a repeated spinner is a status too',
+    itemlessLines(`@for (g of groups; track g.id) {\n  <mat-spinner diameter="16" [attr.aria-label]="'receipts.loading' | translate"></mat-spinner>\n}`),
+    []
+  );
+  check(
+    'a literal label holding pipe text is literal text, not a key',
+    itemlessLines(`@for (f of files; track f) {\n  <button aria-label="'common.remove' | translate">x</button>\n}`),
+    []
+  );
+  check(
+    'a repeated "More actions" trigger is the fourth rule\'s, and is reported there once',
+    [
+      itemlessLines(`@for (c of list; track c.id) {\n  ${BARE}</button>\n}`),
+      menuLines(`@for (c of list; track c.id) {\n  ${BARE}</button>\n}`),
+    ],
+    [[], [2]]
+  );
+  check(
+    'a commented-out repeated button is not a button',
+    itemlessLines(`<!-- @for (f of files; track f) { ${REMOVE} } -->`),
+    []
+  );
+
+  // --- the per-item rule: the frozen list ---
+  const row = { file: 'src/app/x.component.html', key: 'common.remove', count: 1, why: 'a fixture row' };
+  const hitAt = (site, key = 'common.remove') => ({ site, tag: 'button', key });
+  const driftOf = (sites, frozen = row) => ({ file: frozen.file, key: frozen.key, count: frozen.count, sites });
+
+  check(
+    'a hit no row names fails',
+    againstFrozen([hitAt('src/app/y.component.html:7')], []),
+    { fresh: [hitAt('src/app/y.component.html:7')], drift: [] }
+  );
+  check('a frozen control passes', againstFrozen([hitAt('src/app/x.component.html:3')], [row]), { fresh: [], drift: [] });
+  check(
+    'a frozen control that an edit above it moved still passes',
+    againstFrozen([hitAt('src/app/x.component.html:41')], [row]),
+    { fresh: [], drift: [] }
+  );
+  check(
+    'a frozen row that matches nothing any more fails',
+    againstFrozen([], [row]),
+    { fresh: [], drift: [driftOf([])] }
+  );
+  check(
+    'one more control named by a frozen key in the same file fails',
+    againstFrozen([hitAt('src/app/x.component.html:3'), hitAt('src/app/x.component.html:9')], [row]),
+    { fresh: [], drift: [driftOf(['src/app/x.component.html:3', 'src/app/x.component.html:9'])] }
+  );
+  check(
+    'a frozen key in another file is not frozen there',
+    againstFrozen([hitAt('src/app/x.component.html:3'), hitAt('src/app/y.component.html:3')], [row]),
+    { fresh: [hitAt('src/app/y.component.html:3')], drift: [] }
+  );
+  check(
+    'a frozen control whose key changed is not the frozen one',
+    againstFrozen([hitAt('src/app/x.component.html:3', 'common.delete')], [row]),
+    { fresh: [hitAt('src/app/x.component.html:3', 'common.delete')], drift: [driftOf([])] }
+  );
+  check(
+    'a row frozen at two controls passes at two and fails at one',
+    [
+      againstFrozen([hitAt('src/app/x.component.html:3'), hitAt('src/app/x.component.html:9')], [{ ...row, count: 2 }]),
+      againstFrozen([hitAt('src/app/x.component.html:9')], [{ ...row, count: 2 }]),
+    ],
+    [
+      { fresh: [], drift: [] },
+      { fresh: [], drift: [driftOf(['src/app/x.component.html:9'], { ...row, count: 2 })] },
+    ]
+  );
+  check(
+    'every frozen row names its file, its key, a count and why it repeats',
+    ITEMLESS_FROZEN.filter(
+      (r) => !/^src\/app\/.+\.(html|ts)$/.test(r.file) || !r.key || !(Number.isInteger(r.count) && r.count > 0) || !r.why
+    ),
+    []
+  );
+  check(
+    'no file and key is frozen twice',
+    ITEMLESS_FROZEN.map((r) => `${r.file} ${r.key}`).filter((pair, i, pairs) => pairs.indexOf(pair) !== i),
+    []
+  );
+
+  // --- the id rule: must hit ---
+  const danglingIds = (source) => scanDanglingIds(source).map((hit) => `${hit.line} ${hit.attr} ${hit.id}`);
+  const QUESTION = '<span class="image-kind-label">{{ \'import.imageKindQuestion\' | translate }}</span>';
+
+  check(
+    'aria-labelledby naming a class and not an id, the wizard\'s receipt-or-statement chips',
+    scanDanglingIds(
+      `<div class="image-kind">\n  ${QUESTION}\n  <mat-chip-listbox\n    [value]="imageKind()"\n` +
+        '    aria-labelledby="image-kind-label"\n  >\n  </mat-chip-listbox>\n</div>'
+    ),
+    [{ line: 5, tag: 'mat-chip-listbox', attr: 'aria-labelledby', id: 'image-kind-label' }]
+  );
+  check(
+    'aria-describedby naming nothing',
+    danglingIds('<mat-slide-toggle aria-describedby="lock-hint"></mat-slide-toggle>'),
+    ['1 aria-describedby lock-hint']
+  );
+  check(
+    'aria-controls naming nothing',
+    danglingIds('<button aria-controls="filters-panel">x</button>'),
+    ['1 aria-controls filters-panel']
+  );
+  check(
+    'aria-owns naming nothing',
+    danglingIds('<div role="combobox" aria-owns="results"></div>'),
+    ['1 aria-owns results']
+  );
+  check('a label\'s for naming nothing', danglingIds('<label for="amount">x</label>\n<input name="amount">'), ['1 for amount']);
+  check(
+    'one dangling id in a list of two, and only that one',
+    danglingIds('<span id="hint">a</span>\n<input aria-describedby="hint error">'),
+    ['2 aria-describedby error']
+  );
+  check(
+    'an id declared only inside a comment does not count',
+    danglingIds('<!-- <span id="theme-label">x</span> -->\n<mat-button-toggle-group aria-labelledby="theme-label">'),
+    ['2 aria-labelledby theme-label']
+  );
+  check(
+    'a bound or interpolated id declares nothing',
+    danglingIds('<span [id]="\'q\'">a</span>\n<span id="{{ \'r\' }}">b</span>\n<div aria-labelledby="q r"></div>'),
+    ['3 aria-labelledby q', '3 aria-labelledby r']
+  );
+  check(
+    'an id another template declares is not declared in this one',
+    [
+      danglingIds('<app-question></app-question>\n<mat-radio-group aria-labelledby="format-label">'),
+      danglingIds('<span id="format-label">x</span>'),
+    ],
+    [['2 aria-labelledby format-label'], []]
+  );
+  const inlineComponent =
+    "import { Component } from '@angular/core';\n\n@Component({\n  selector: 'app-question',\n" +
+    '  template: `\n    <p class="question">x</p>\n    <ul aria-labelledby="question"></ul>\n  `,\n})\n' +
+    'export class QuestionComponent {}\n';
+  const inline = inlineTemplateOf(inlineComponent);
+  check(
+    'an inline template in a .ts file, reported at the file\'s line',
+    scanDanglingIds(inline.source).map((hit) => hit.line + inline.offset),
+    [7]
+  );
+
+  // --- the id rule: must not hit (the load-bearing half) ---
+  check(
+    'the fixed wizard, the question carrying its id beside its class',
+    danglingIds(
+      '<span class="image-kind-label" id="image-kind-label">x</span>\n' +
+        '<mat-chip-listbox aria-labelledby="image-kind-label"></mat-chip-listbox>'
+    ),
+    []
+  );
+  check(
+    'an id declared before the reference',
+    danglingIds('<span id="theme-label">x</span>\n<mat-button-toggle-group aria-labelledby="theme-label">'),
+    []
+  );
+  check(
+    'an id declared after the reference',
+    danglingIds('<ul aria-labelledby="history-label">\n</ul>\n<h3 id="history-label">x</h3>'),
+    []
+  );
+  check(
+    'every attribute and both ids of a list, all declared',
+    danglingIds(
+      '<span id="a">x</span><span id="b">y</span><div id="c"></div><label for="d">z</label><input id="d">\n' +
+        '<div aria-labelledby="a b" aria-describedby="b" aria-controls="c" aria-owns="c"></div>'
+    ),
+    []
+  );
+  check(
+    'a bound reference is not read',
+    danglingIds(
+      '<div [attr.aria-labelledby]="\'nowhere\'" [attr.aria-describedby]="hintId()" [aria-controls]="panel"></div>\n' +
+        '<mat-datepicker-toggle matIconSuffix [for]="picker"></mat-datepicker-toggle>'
+    ),
+    []
+  );
+  check(
+    'an interpolated reference is not read, the dashboard layout\'s card titles',
+    danglingIds('<mat-slide-toggle aria-labelledby="dashboard-card-{{ id }}-title"></mat-slide-toggle>'),
+    []
+  );
+  check(
+    'a repeat\'s *ngFor and @for are not a for',
+    danglingIds('<li *ngFor="let x of xs">a</li>\n@for (x of xs; track x) {\n  <span>{{ x }}</span>\n}'),
+    []
+  );
+  check(
+    'a word inside a bound value is not an attribute',
+    danglingIds('<div [title]="\'aria-labelledby=nowhere for=nothing\'"></div>'),
+    []
+  );
+  check(
+    'an inline template whose reference is declared',
+    scanDanglingIds(inlineTemplateOf(inlineComponent.replace('class="question"', 'class="question" id="question"')).source),
+    []
+  );
+  check('a component source with no inline template has none', inlineTemplateOf("@Component({ templateUrl: './x.html' })"), null);
+
+  // --- the toggle rule: must hit ---
+  const unnamedTags = (source) => scanUnnamedToggles(source).map((hit) => `${hit.line} ${hit.tag}`);
+
+  check(
+    'a bare checkbox, the review card\'s row checkbox spread over several lines',
+    scanUnnamedToggles(
+      '<div class="card-select">\n  <mat-checkbox\n    [checked]="row.selected"\n' +
+        '    (change)="toggleSelection(row, $event.checked)"\n  ></mat-checkbox>\n</div>'
+    ),
+    [{ line: 2, tag: 'mat-checkbox' }]
+  );
+  check(
+    'a bare slide toggle beside a span that names nothing, the AI page\'s Auto sync switch',
+    unnamedTags(
+      '<span>{{ \'aiPage.autoSync\' | translate }}</span>\n<mat-slide-toggle\n  [checked]="autoSync()"\n' +
+        '  color="primary">\n</mat-slide-toggle>'
+    ),
+    ['2 mat-slide-toggle']
+  );
+  check(
+    'a bare radio button',
+    unnamedTags('<mat-radio-group aria-label="Format">\n  <mat-radio-button [value]="csv"></mat-radio-button>\n</mat-radio-group>'),
+    ['2 mat-radio-button']
+  );
+  check('a self-closing toggle with no name', unnamedTags('<mat-checkbox [checked]="on" />'), ['1 mat-checkbox']);
+  check(
+    'an attribute-bound aria-label is written on the host, not the control',
+    unnamedTags('<mat-checkbox [attr.aria-label]="label()"></mat-checkbox>'),
+    ['1 mat-checkbox']
+  );
+  check(
+    'an attribute-bound aria-labelledby is too',
+    unnamedTags('<span id="t">x</span>\n<mat-slide-toggle [attr.aria-labelledby]="\'t\'"></mat-slide-toggle>'),
+    ['2 mat-slide-toggle']
+  );
+  check(
+    'a name inside another attribute\'s value names nothing',
+    unnamedTags('<mat-checkbox [matTooltip]="\'aria-label=x\'"></mat-checkbox>'),
+    ['1 mat-checkbox']
+  );
+  check(
+    'a thumb whose only aria word sits inside another attribute\'s value is unnamed',
+    unnamedTags('<mat-slider aria-label="Level">\n  <input matSliderThumb [matTooltip]="\'aria-label\'">\n</mat-slider>'),
+    ['1 mat-slider']
+  );
+  check(
+    'a thumb\'s name inside another attribute\'s value makes no thumb',
+    unnamedTags('<mat-slider aria-label="Level">\n  <input matSliderThumb aria-label="Level">\n  <span [title]="\'matSliderThumb\'"></span>\n</mat-slider>'),
+    []
+  );
+  check(
+    'an icon alone is not text',
+    unnamedTags('<mat-checkbox>\n  <mat-icon>star</mat-icon>\n</mat-checkbox>'),
+    ['1 mat-checkbox']
+  );
+  check(
+    'text in one toggle does not name the next',
+    unnamedTags('<mat-checkbox>All</mat-checkbox>\n<mat-checkbox [checked]="one"></mat-checkbox>'),
+    ['2 mat-checkbox']
+  );
+  check(
+    'a slider named on its host and not on its thumb, the budget form\'s threshold',
+    unnamedTags(
+      '<mat-slider min="50" max="100" step="5" aria-labelledby="threshold-label" discrete>\n' +
+        '  <input matSliderThumb formControlName="alertThreshold">\n</mat-slider>'
+    ),
+    ['1 mat-slider']
+  );
+  check(
+    'a range slider named on its host, one thumb named and one not',
+    unnamedTags(
+      '<mat-slider [attr.aria-label]="range">\n  <input matSliderStartThumb aria-label="From">\n' +
+        '  <input matSliderEndThumb>\n</mat-slider>'
+    ),
+    ['1 mat-slider']
+  );
+  const inlineToggle =
+    "@Component({\n  selector: 'app-switch',\n  template: `\n    <p>x</p>\n    <mat-slide-toggle [checked]=\"on\" />\n  `,\n})\n";
+  const inlineSwitch = inlineTemplateOf(inlineToggle);
+  check(
+    'an inline template in a .ts file, reported at the file\'s line',
+    scanUnnamedToggles(inlineSwitch.source).map((hit) => hit.line + inlineSwitch.offset),
+    [5]
+  );
+
+  // --- the toggle rule: must not hit (the load-bearing half) ---
+  check(
+    'projected text, the review card\'s Select all',
+    unnamedTags('<mat-checkbox\n  [checked]="allSelected()"\n>\n  {{ \'import.selectAll\' | translate }}\n</mat-checkbox>'),
+    []
+  );
+  check(
+    'text projected inside an element, the goal card\'s checklist item',
+    unnamedTags('<mat-checkbox [checked]="item.done">\n  <span class="item-label">{{ item.name }}</span>\n</mat-checkbox>'),
+    []
+  );
+  check('literal text', unnamedTags('<mat-radio-button value="csv">CSV</mat-radio-button>'), []);
+  check(
+    'an icon beside text, the review card\'s recurring link',
+    unnamedTags(
+      '<mat-checkbox class="recurring-link">\n  <mat-icon aria-hidden="true">autorenew</mat-icon>\n' +
+        '  {{ \'import.linkRecurring\' | translate: { rule: match.name } }}\n</mat-checkbox>'
+    ),
+    []
+  );
+  check(
+    'text inside a block',
+    unnamedTags('<mat-checkbox>\n  @if (name) {\n    <span>{{ name }}</span>\n  }\n</mat-checkbox>'),
+    []
+  );
+  check('a literal aria-label', unnamedTags('<mat-checkbox aria-label="Choose"></mat-checkbox>'), []);
+  check(
+    'an interpolated aria-label',
+    unnamedTags('<mat-slide-toggle aria-label="{{ \'settings.enable\' | translate }}" />'),
+    []
+  );
+  check(
+    'a bound name, the fixed row checkbox',
+    unnamedTags('<mat-checkbox\n  [checked]="row.selected"\n  [aria-label]="selectLabel(row)"\n></mat-checkbox>'),
+    []
+  );
+  check(
+    'a literal aria-labelledby',
+    unnamedTags('<span id="lock-label">x</span>\n<mat-slide-toggle aria-labelledby="lock-label"></mat-slide-toggle>'),
+    []
+  );
+  check(
+    'an interpolated aria-labelledby, the dashboard layout\'s switches',
+    unnamedTags('<mat-slide-toggle\n  [checked]="shown"\n  aria-labelledby="dashboard-card-{{ id }}-title"\n/>'),
+    []
+  );
+  check('a bound aria-labelledby', unnamedTags('<mat-radio-button [aria-labelledby]="labelId"></mat-radio-button>'), []);
+  check(
+    'a slider whose thumb carries the name',
+    unnamedTags('<mat-slider>\n  <input matSliderThumb [attr.aria-label]="\'budgets.threshold\' | translate">\n</mat-slider>'),
+    []
+  );
+  check(
+    'a slider named on its host and on every thumb',
+    unnamedTags(
+      '<mat-slider aria-labelledby="t">\n  <input matSliderStartThumb aria-labelledby="t">\n' +
+        '  <input matSliderEndThumb aria-label="To">\n</mat-slider>'
+    ),
+    []
+  );
+  check('a slider named nowhere is not this shape', unnamedTags('<mat-slider>\n  <input matSliderThumb>\n</mat-slider>'), []);
+  check('a commented-out toggle is not a toggle', unnamedTags('<!-- <mat-checkbox></mat-checkbox> -->'), []);
+
+  // --- the toggle rule: the frozen list ---
+  const switchRow = { file: 'src/app/x.component.html', key: 'mat-slide-toggle', count: 1, why: 'a fixture row' };
+  const unnamedAt = (site, tag = 'mat-slide-toggle') => ({ site, tag, key: tag });
+  const switchDrift = (sites) => ({ file: switchRow.file, key: switchRow.key, count: switchRow.count, sites });
+
+  check(
+    'a frozen switch passes, wherever an edit above it moved it',
+    [
+      againstFrozen([unnamedAt('src/app/x.component.html:12')], [switchRow]),
+      againstFrozen([unnamedAt('src/app/x.component.html:40')], [switchRow]),
+    ],
+    [
+      { fresh: [], drift: [] },
+      { fresh: [], drift: [] },
+    ]
+  );
+  check(
+    'a second unnamed switch in the frozen file drifts the count',
+    againstFrozen([unnamedAt('src/app/x.component.html:12'), unnamedAt('src/app/x.component.html:30')], [switchRow]),
+    { fresh: [], drift: [switchDrift(['src/app/x.component.html:12', 'src/app/x.component.html:30'])] }
+  );
+  check(
+    'a frozen switch named and its row left behind drifts the count',
+    againstFrozen([], [switchRow]),
+    { fresh: [], drift: [switchDrift([])] }
+  );
+  check(
+    'a checkbox in the file whose switch is frozen is not frozen',
+    againstFrozen([unnamedAt('src/app/x.component.html:12'), unnamedAt('src/app/x.component.html:20', 'mat-checkbox')], [switchRow]),
+    { fresh: [unnamedAt('src/app/x.component.html:20', 'mat-checkbox')], drift: [] }
+  );
+  check(
+    'every frozen toggle row names its file, its tag, a count and why',
+    UNNAMED_FROZEN.filter(
+      (r) =>
+        !/^src\/app\/.+\.(html|ts)$/.test(r.file) ||
+        !(TOGGLE_TAGS.has(r.key) || r.key === 'mat-slider') ||
+        !(Number.isInteger(r.count) && r.count > 0) ||
+        !r.why
+    ),
+    []
+  );
+  check(
+    'no file and tag is frozen twice',
+    UNNAMED_FROZEN.map((r) => `${r.file} ${r.key}`).filter((pair, i, pairs) => pairs.indexOf(pair) !== i),
+    []
+  );
 
   const failed = cases.filter((c) => !c.ok);
   for (const c of cases) {

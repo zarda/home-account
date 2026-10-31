@@ -63,7 +63,7 @@
              transaction, a statement stays one row per line. -->
         @if (hasImageFiles()) {
           <div class="image-kind">
-            <span class="image-kind-label">{{ 'import.imageKindQuestion' | translate }}</span>
+            <span class="image-kind-label" id="image-kind-label">{{ 'import.imageKindQuestion' | translate }}</span>
             <mat-chip-listbox
               [value]="imageKind()"
               (change)="imageKind.set($event.value ?? 'receipt')"
@@ -91,7 +91,7 @@
           <div class="image-previews">
             <h3>{{ 'import.preview' | translate }}</h3>
             <div class="preview-grid">
-              @for (preview of imagePreviewUrls(); track preview.name) {
+              @for (preview of imagePreviewUrls(); track preview.url) {
                 <div class="preview-item">
                   <img [src]="preview.url" [alt]="preview.name" />
                   <span class="preview-name">{{ preview.name }}</span>
@@ -106,7 +106,7 @@
             mat-flat-button
             color="primary"
             class="action-button"
-            [disabled]="!selectedFiles().length || processingBusy()"
+            [disabled]="!selectedFiles().length || processingBusy() || shareDraining()"
             (click)="processFiles(); stepper.next()"
           >
             <mat-icon>auto_awesome</mat-icon>
@@ -247,7 +247,7 @@
             }
             <div class="error-actions">
               @if (processingErrorRetryable()) {
-                <button mat-flat-button color="primary" (click)="retryProcessing()">
+                <button mat-flat-button color="primary" [disabled]="shareDraining()" (click)="retryProcessing()">
                   <mat-icon>refresh</mat-icon>
                   {{ 'common.tryAgain' | translate }}
                 </button>

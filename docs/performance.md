@@ -213,11 +213,95 @@ toggle on real routed UI instead.
 
 | | Warning | Error |
 |---|---|---|
-| Initial bundle | 2.411 MB | 2.7 MB |
+| Initial bundle | 2.415 MB | 2.7 MB |
 
-Against 2,410,644 bytes (JavaScript 2,379,448, stylesheet 31,196, in 62
+Against 2,414,488 bytes (JavaScript 2,383,292, stylesheet 31,196, in 62
 initial files), measured by `npm run build:analyze` from a clean production
-build on 2026-10-27.
+build of `26.10.181` on 2026-10-31, after the whole-branch review's fixes.
+Before them the same version read 2,414,407, and that tree at `26.10.180`
+2,414,409: the version is the same length, but at `26.10.181` the builder
+names two lazy chunks one character shorter than at `26.10.180` (jsPDF's,
+which the export service loads, and the Anthropic SDK's, which the Claude
+provider loads), and each initial chunk whose `import()` names one is a byte
+shorter. No code moved. The fixes gave both chunks their `26.10.180` names
+back, so no figure below moved for the version.
+
+The warning went up, to 2.415 MB, when the work of #515, #516 and #518
+([ADR 0186](ADR/0186-a-date-stops-at-a-currency-sign-and-a-line-break-a-total-read-past-an-aside-or-under-a-count-is-flagged-and-a-shared-file-lands-in-the-upload-area.md):
+a date that stops at a currency sign and a line break, a total read past an
+aside or under a count flagged, a shared file that lands in the upload area or
+is told there with the reason the share gate refused it, a file's size in the
+reader's language, and the device's flags on an amount or a date naming the
+scan) put the initial bundle 3,488 bytes over the 2.411 MB it stood at; it
+moved to the whole kilobyte above the figure and no more, which leaves 512
+bytes of headroom (2,415,000 less 2,414,488). That work grew the initial
+JavaScript by 3,844 bytes and left the stylesheet alone. No chunk was cut or
+added, and no input moved from one chunk to another: each of the 62 initial
+files holds the same inputs as one of the base's 62. The base is the figure
+this page recorded: a clean build of `c3708366`, the merge of #519, reads
+2,410,644 to the byte.
+
+This work's growth, measured the same way against the stats of that base
+(summed over the initial outputs and matched by input path):
+`receipt-text-parser.ts` took 3,073 bytes (6,266 to 9,339). A date's
+separator stops at a currency sign and a line break, and a date whose year
+comes last never starts inside a figure, nor at a figure its sign is glued
+to (`BEFORE_DATE`); a figure is money
+where a sign or the receipt's code touches it, or where it has cents or
+grouping, and a bare whole number beside money is a count, a size or a code,
+the two halves of a time neither; a larger count beside money that might have
+been the total, a word after it past marks or a percent figure (`%` or `％`),
+grades the reading 0.6, `'count'`; and a figure in parentheses
+that also hold a letter is an aside, passed for the total at 0.75× its tier,
+`'aside'`, fullwidth parentheses and one the next line closes included.
+`native-receipt.service.ts` took 287 (3,696 to 3,983): the model lane's
+grades for a total a rule picked or moved, which an agreement leaves at the
+parser's grade and a disagreement disputes at 0.5 where the parser read its
+figure beside a currency mark. The two share an initial chunk with
+`ai-strategy.service.ts`, and that chunk took 2,693 bytes on disk (19,850 to
+22,543). `locale-format.service.ts` took 747 (2,720 to 3,467):
+`formatFileSize` and the Intl unit formatters it keeps, a file's size in the
+reader's language, in Intl's own short units from kB up and in the catalog's
+byte step below. Only the dropzone and Import History call it, and both are
+lazy, but the service is eager, so the method ships in the service's own
+initial chunk, which took 593 (2,208 to 2,801).
+`transaction-form.component.ts` took 108 (68,723 to 68,831) and its
+stylesheet nothing: `scanReadOnDevice`, set from the scan's `source`, so a
+doubted amount or date the device read names the scan
+(`import.verifyAmountOnDevice`, `import.verifyDateOnDevice`) where it quoted
+a percentage no model reported. The choice between the two sentences is
+`fieldDoubtSentence`, which the review card reads too:
+`import-review.utils.ts` took 228 for it (5,795 to 6,023), and that module's
+own initial chunk 208 (5,062 to 5,270). `ai-import.service.ts` took 52
+(28,407 to 28,459), the `readOnDevice` mark the converter sets, which the
+review card's amount flag reads the same way; its chunk took 39. `share-intake.service.ts`
+took 258 (2,677 to 2,935): `shareRefusal`, which replaces `isAcceptedShare`
+and says why it turns a file away (too large, a backup, a type the import
+does not take, or empty), and `consumeAll()`, which hands back the refused
+files with their reasons beside the accepted ones. The form and the share
+gate are in `main`, which took 321 on disk. Thirty-five other inputs moved
+by 1 to 18 bytes, 43 more between them (66 more and 23 less), and none was
+edited past a comment: the largest, `ai-strategy.service.ts` (18) and
+`share-stash.store.ts` (10), are the minifier renaming around the changed
+modules. On disk, seventeen other initial files moved by 1 to 15 bytes, 10
+less between them, against 3,854 for the five chunks named here.
+The rest of this work is in lazy chunks: the dropzone, which takes a shared
+file in or says why one was refused, the import wizard, which hands it over,
+the preview table and Import History. The translation catalogs, which carry
+the new sentences, are fetched at runtime and are in no chunk. Summed over
+the 62 initial outputs the inputs come to 2,884,980 bytes (2,880,184 at the
+base), 4,796 more, against 2,414,488 (2,410,644) on disk and 3,844 more, a
+difference of 952 bytes between the two measures that is not attributed.
+
+The `anyComponentStyle` budget stays at 12 kB for the warning and 16 kB for the
+error. The two largest component stylesheets are the import wizard's (10,892
+bytes) and the preview table's (10,736), so they sit 1,108 and 1,264 bytes
+under the warning. The wizard's took 94 (from 10,798): below 600px it clips
+the step labels in place, where `display: none` left four tabs with no name.
+The preview table's scss was not edited. The dropzone's took 739 (6,258 to
+6,997), its rows laid out for a narrow list and its controls at full strength
+at rest, and sits well under. The category chip's gave back 11 (1,315 to
+1,304), its caret no longer faded at rest.
 
 The warning went up, to 2.411 MB, when the work of #464
 ([ADR 0185](ADR/0185-a-refund-is-asked-about-at-every-door-and-a-category-follows-its-rows-side-there-and-back.md):
@@ -225,28 +309,28 @@ the cloud readers asked whether the money came back, a category that follows
 its row's side in the form and on the review card, the parser's misses, and the
 type grade reaching the import's record and the analytics) put the initial
 bundle 3,644 bytes over the 2.407 MB it stood at; it moved to the whole
-kilobyte above the figure and no more, which leaves 356 bytes of headroom
-(2,411,000 less 2,410,644). That work grew the initial JavaScript by 3,729
-bytes and left the stylesheet alone. No chunk was cut or added: the 62 initial
-files are the base's 62. All of it lands in initial chunks, but not all of it is
-code the first screen runs.
+kilobyte above the figure and no more, which left 356 bytes of headroom
+(2,411,000 less 2,410,644, measured on 2026-10-27). That work grew the initial
+JavaScript by 3,729 bytes and left the stylesheet alone. No chunk was cut or
+added: the 62 initial files were the base's 62. All of it landed in initial
+chunks, but not all of it was code the first screen runs.
 
-The base was not the figure this page recorded. `f2b3d2c4`, the merge of #509,
-built at 2,406,915 bytes where this page said 2,406,497, so 418 bytes had gone
-in unrecorded. They are #509's
+That work's base was not the figure this page had recorded. `f2b3d2c4`, the
+merge of #509, built at 2,406,915 bytes where this page had said 2,406,497, so
+418 bytes had gone in unrecorded. They were #509's
 ([ADR 0184](ADR/0184-the-lock-fails-closed-while-the-profile-is-unknown.md)),
-which moved the figure without a re-measure: a build of the merge before it,
-`4da72b6c`, reads 2,406,497 to the byte. Measured per input from the
+which had moved the figure without a re-measure: a build of the merge before
+it, `4da72b6c`, read 2,406,497 to the byte. Measured per input from the
 build's own stats, `app-lock.service.ts` took 506 bytes (4,163 to 4,669), the
 lock a profile that could not be read keeps and the stand-down that waits for
 the profile to settle. Six inputs around it came to 24 less between them
 (`app-lock.utils.ts` 9, `biometric-auth.service.ts` 8, `pin-hash.utils.ts` 6 and
-three moves of one byte), which is the minifier renaming around the changed
+three moves of one byte), which was the minifier renaming around the changed
 module. The inputs came to 482 more and the output total to 418, a difference of
-64 bytes between the two measures that is not attributed. The figure was 85
+64 bytes between the two measures that was not attributed. The figure was 85
 bytes under the 2.407 MB warning there, so the warning did not move for it.
 
-This work's growth, measured the same way against the stats of that base
+That work's growth, measured the same way against the stats of that base
 (summed over the initial outputs and matched by input path, since the output
 names and their hashes change between builds):
 `transaction-form.component.ts` took 2,185 bytes, initial because
@@ -298,21 +382,15 @@ a purchase and its refund on one day are two transactions. One input gave some
 back with no code of its own: `camera-capture.component.ts` came to 118 less
 (24,026 to 23,908) because its stylesheet lost the `min-width` the dialog's
 content kept from 768px up, wider than the content box the dialog gives it;
-the stylesheet's own output is 67 bytes smaller (4,433 to 4,366). Fifty-four
-other inputs moved by 1 to 35 bytes, 6 more between them, and none was edited:
-the largest, in the Firebase Analytics SDK's file, is the minifier renaming
-around the changed modules. The edits to the import wizard, the preview table
-(its marks, its merges, the category re-filed when the account's categories
-arrive) and Import History's tiles are in lazy chunks. The translation catalogs
-are fetched at runtime and are in no chunk. Summed over the 62 initial outputs
-the inputs come to 2,880,184 bytes (2,876,010 at the base), 4,174 more, against
-2,410,644 (2,406,915) on disk and 3,729 more, a difference of 445 bytes between
-the two measures that is not attributed.
-
-The `anyComponentStyle` budget stays at 12 kB for the warning and 16 kB for the
-error. The two largest component stylesheets are the import wizard's (10,798
-bytes) and the preview table's (10,736), and neither one's scss was edited, so
-they sit 1,202 and 1,264 bytes under the warning.
+the stylesheet's own output came to 67 bytes smaller (4,433 to 4,366).
+Fifty-four other inputs moved by 1 to 35 bytes, 6 more between them, and none
+was edited: the largest, in the Firebase Analytics SDK's file, was the minifier
+renaming around the changed modules. The edits to the import wizard, the
+preview table (its marks, its merges, the category re-filed when the account's
+categories arrive) and Import History's tiles were in lazy chunks. Summed over
+the 62 initial outputs the inputs came to 2,880,184 bytes (2,876,010 at the
+base), 4,174 more, against 2,410,644 (2,406,915) on disk and 3,729 more, a
+difference of 445 bytes between the two measures that was not attributed.
 
 The warning came down to 2.407 MB after the work of #500 and #441 (a date picker,
 an amount and a name that read in the account's language and date format, and
@@ -601,7 +679,7 @@ effect on the account, a `catch` for the recount's read and the release of
 its handle on destroy: +192 bytes (2,406,419 to 2,406,611), 100 of them the
 effect and 92 the `catch` and the release.
 
-The warning stands at 2.407 MB, the whole kilobyte above the final build's
+The warning then stood at 2.407 MB, the whole kilobyte above the final build's
 2,406,497 bytes: 503 bytes of headroom (2,407,000 less 2,406,497), about the
 501 bytes the main branch had under the 2.472 MB warning at `8a6e2c9a`
 (2,471,499 bytes). `about.component.ts` and

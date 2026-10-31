@@ -51,6 +51,7 @@ import {
   blankImportRow,
   datedToday,
   descriptionIsUnfilled,
+  fieldDoubtSentence,
   joinSentences,
   mergeImportRows,
   mergeableRow,
@@ -671,8 +672,8 @@ export class TransactionPreviewTableComponent implements AfterViewInit {
    * "Tag lunch added to Add a description". A hand-added row can be tagged,
    * placed or removed before anything is typed into it, and every announce
    * call needs the same answer rather than each deciding on its own whether
-   * to say nothing instead. Remove's question names the row the same way,
-   * inside a sentence of its own.
+   * to say nothing instead. Remove's question and the row's checkbox name
+   * the row the same way, each inside a sentence of its own.
    */
   private announceDescription(row: CategorizedImportTransaction): string {
     return descriptionIsUnfilled(row)
@@ -925,15 +926,21 @@ export class TransactionPreviewTableComponent implements AfterViewInit {
   }
 
   /**
-   * Tooltip for a flagged field, carrying the percentage the model reported —
-   * except a date whose row already carries `dateAssumed`: the shown value
-   * is "now", not a reading, so a confidence percentage would describe a
-   * date that isn't there anymore. The assumed wording takes over instead.
+   * Tooltip for a flagged field, carrying the percentage a cloud model
+   * reported — except a date whose row already carries `dateAssumed`: the
+   * shown value is "now", not a reading, so a confidence percentage would
+   * describe a date that isn't there anymore. The assumed wording takes over
+   * instead.
    *
    * The type has a sentence of its own and no percentage. Its grade is the
    * device reader's policy rather than a measurement — every income verdict
    * it reaches is graded under the bar so that the reviewer is asked (ADR
-   * 0162) — and a percentage would report a reading nothing took.
+   * 0162) — and a percentage would report a reading nothing took. A row the
+   * device read (`readOnDevice`) grades its amount and date by policy too
+   * (the parser's tiers and demotions, the cross-check's 0.5 and 0.8), so
+   * their sentences name the scan, for the same reason. The order is the
+   * point: the type, then an assumed date, then the device, then the
+   * percentage.
    */
   verificationTooltip(
     transaction: CategorizedImportTransaction,
@@ -945,10 +952,11 @@ export class TransactionPreviewTableComponent implements AfterViewInit {
     if (field === 'date' && transaction.dateAssumed) {
       return this.dateAssumedTooltip(transaction);
     }
-    const percent = Math.round((transaction.fieldConfidence?.[field] ?? 0) * 100);
-    return this.translationService.t(
-      field === 'amount' ? 'import.verifyAmount' : 'import.verifyDate',
-      { percent }
+    return fieldDoubtSentence(
+      this.translationService.t.bind(this.translationService),
+      field,
+      !!transaction.readOnDevice,
+      transaction.fieldConfidence?.[field],
     );
   }
 
@@ -1632,6 +1640,17 @@ export class TransactionPreviewTableComponent implements AfterViewInit {
     return descriptionIsUnfilled(row)
       ? this.translationService.t('common.remove')
       : this.translationService.t('import.removeRowLabel', { description: row.description });
+  }
+
+  /**
+   * The row checkbox's name. The box shows no text and every row has one, so
+   * its name says which row it chooses. A blank row takes the stand-in the
+   * card's sentences use ("Select an untitled row"), not removeLabel's
+   * fallback to its button's own visible text: the box has none to fall
+   * back on.
+   */
+  selectLabel(row: CategorizedImportTransaction): string {
+    return this.translationService.t('import.selectRowLabel', { description: this.announceDescription(row) });
   }
 
   /**

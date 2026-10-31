@@ -1,9 +1,10 @@
 # 147. A row is graded by what its door can vouch for
 
 **Status:** Accepted, implemented; amended by
-[0162](0162-a-refund-read-on-the-device-is-filed-as-income-and-the-review-asks-about-it.md)
-and
+[0162](0162-a-refund-read-on-the-device-is-filed-as-income-and-the-review-asks-about-it.md),
 [0185](0185-a-refund-is-asked-about-at-every-door-and-a-category-follows-its-rows-side-there-and-back.md)
+and
+[0186](0186-a-date-stops-at-a-currency-sign-and-a-line-break-a-total-read-past-an-aside-or-under-a-count-is-flagged-and-a-shared-file-lands-in-the-upload-area.md)
 · **Date:** 2026-09-24 · **Issues:** #428, #429
 
 Reference documentation lives in [../import-fields.md](../import-fields.md) and
@@ -40,6 +41,20 @@ backup's type none at all. A model's answer, a statement's and a backup's
 type are read strictly — exactly `income`, or an expense — never as whatever
 word arrived; the CSV door keeps its own Type-column rule (a cell naming
 income or credit is income), and the sign where the file has no Type column.
+
+**Amended by
+[0186](0186-a-date-stops-at-a-currency-sign-and-a-line-break-a-total-read-past-an-aside-or-under-a-count-is-flagged-and-a-shared-file-lands-in-the-upload-area.md).**
+The device's model lane no longer lifts every agreement to 0.8, nor every
+disagreement with a parser that doubts itself. Where the text parser picked its
+total from the figures it read beside a currency mark by a rule rather than off
+the print — past a labelled aside, or under a count that might have been the
+total — a model that reads the same figure keeps the parser's own grade, 0.6,
+under the bar. A model that reads another figure than a total the parser read
+beside a currency mark is disputed at 0.5, wherever a rule or the cash-tendered
+sum moved that total there or kept it. A total the cash-tendered sum picked,
+where neither rule also applies to it, still lifts to 0.8 on agreement: that
+sum is arithmetic on the print. A disagreement with a parser whose own reading
+is weaker than that still lifts the model's total to 0.8.
 
 ## Context
 
@@ -485,7 +500,11 @@ purchase was actually read from.
 - **0013's demotion still has no say over the model's figure.** The amount
   flag exists on the on-device path now, but the parser's cash-tendered
   demotion lowers only the parser's own grade, and a disagreement with a
-  parser that doubts itself keeps the model's 0.8.
+  parser that doubts itself keeps the model's 0.8. *Narrowed by
+  [0186](0186-a-date-stops-at-a-currency-sign-and-a-line-break-a-total-read-past-an-aside-or-under-a-count-is-flagged-and-a-shared-file-lands-in-the-upload-area.md):
+  a model total that differs from a cash-tendered pick the parser read beside
+  a currency mark is flagged now; agreement with one still lifts it, and a
+  disagreement with a weaker tier's pick still keeps 0.8.*
 - **When the two readers disagree about the currency, the model's decides the
   rounding.** A yen total compared at a dollar's two places, or the reverse,
   can call two readings equal or different on the minor unit alone.

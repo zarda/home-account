@@ -1,7 +1,7 @@
 import { ComponentFixture, TestBed, fakeAsync, flushMicrotasks, tick } from '@angular/core/testing';
-import { of, EMPTY } from 'rxjs';
-import { NO_ERRORS_SCHEMA, signal } from '@angular/core';
-import { ActivatedRoute, Router, convertToParamMap } from '@angular/router';
+import { BehaviorSubject, of, EMPTY } from 'rxjs';
+import { ErrorHandler, NO_ERRORS_SCHEMA, signal } from '@angular/core';
+import { ActivatedRoute, ParamMap, Router, convertToParamMap } from '@angular/router';
 import { MatSnackBar } from '@angular/material/snack-bar';
 import { MatStepper } from '@angular/material/stepper';
 import { provideNativeDateAdapter } from '@angular/material/core';
@@ -17,22 +17,28 @@ import { AnnouncerService } from '../../../../core/services/announcer.service';
 import { Category, CategorizedImportTransaction, DuplicateCheck, ImportHistory, ImportResult, ProcessingStep } from '../../../../models';
 import { NotificationService } from '../../../../core/services/notification.service';
 import { AnalyticsService } from '../../../../core/services/analytics.service';
-import { ShareIntakeService } from '../../../../core/services/share-intake.service';
+import { ConsumedShares, ShareIntakeService } from '../../../../core/services/share-intake.service';
 import { ReceiptAttempt, ReceiptAttemptService } from '../../../../core/services/receipt-attempt.service';
 import { CurrencyService } from '../../../../core/services/currency.service';
 import { AuthService } from '../../../../core/services/auth.service';
 import {
+  AUDIT_SCHEMES,
   MockAuthService,
   channels,
   paintedBackground,
   paintedColor,
   ratio,
+  runAxe,
   settleAnimations,
+  styleRules,
+  summarizeViolations,
   textLines,
+  withScheme,
   withTheme,
   provideNoMotion,
   createTranslationStub,
 } from '../../../../core/services/testing';
+import { ThemeService } from '../../../../core/services/theme.service';
 import { blankImportRow, joinSentences, splitImportRow } from '../../../../core/utils/import-review.utils';
 import { AI_QUEUE_WRITE_FAILED, AI_QUEUE_WRITE_PARTIAL } from '../../../../core/utils/ai-error.utils';
 
@@ -57,7 +63,8 @@ describe('ImportWizardComponent', () => {
   let mockShareIntake: jasmine.SpyObj<ShareIntakeService>;
   let attempts: ReturnType<typeof attemptStub>;
   let analytics: jasmine.SpyObj<AnalyticsService>;
-  let routeStub: { snapshot: { queryParamMap: ReturnType<typeof convertToParamMap> } };
+  let params$: BehaviorSubject<ParamMap>;
+  let routeStub: { queryParamMap: BehaviorSubject<ParamMap>; snapshot: { readonly queryParamMap: ParamMap } };
 
   const mockCategories: Category[] = [
     {
@@ -110,6 +117,15 @@ describe('ImportWizardComponent', () => {
     warnings: [],
     duplicates: []
   };
+
+  /** The share stash holds its answer until the case gives it; returns the answer. */
+  function holdConsumeAll(): (consumed: ConsumedShares) => void {
+    let answer!: (consumed: ConsumedShares) => void;
+    mockShareIntake.consumeAll.and.returnValue(new Promise<ConsumedShares>(resolve => { answer = resolve; }));
+    return answer;
+  }
+
+  const photo = (name: string) => new File(['x'], name, { type: 'image/png' });
 
   beforeEach(async () => {
     mockImportService = jasmine.createSpyObj('AIImportService', ['importFromFile', 'importFromMultipleImages', 'importFromStatementImages', 'confirmImport', 'parseAIError', 'tagVocabulary', 'baseCurrency'], {
@@ -189,10 +205,13 @@ describe('ImportWizardComponent', () => {
     mockDuplicateService.checkDuplicates.and.resolveTo([]);
 
     mockShareIntake = jasmine.createSpyObj('ShareIntakeService', ['consumeAll']);
-    mockShareIntake.consumeAll.and.resolveTo([]);
+    mockShareIntake.consumeAll.and.resolveTo({ accepted: [], refused: [] });
     attempts = attemptStub();
     analytics = jasmine.createSpyObj<AnalyticsService>('AnalyticsService', ['trackReceiptConfirm']);
-    routeStub = { snapshot: { queryParamMap: convertToParamMap({}) } };
+    // The stream and the snapshot read one subject, as the router's own two
+    // do: a case moves the URL with params$.next and never swaps either.
+    params$ = new BehaviorSubject(convertToParamMap({}));
+    routeStub = { queryParamMap: params$, snapshot: { get queryParamMap() { return params$.value; } } };
 
     await TestBed.configureTestingModule({
       imports: [ImportWizardComponent],
@@ -290,12 +309,25 @@ describe('ImportWizardComponent', () => {
   });
 
   describe('share intake', () => {
-    it('consumes shared files when arriving from a share', fakeAsync(() => {
-      const shared = [new File(['x'], 'shared.png', { type: 'image/png' })];
-      mockShareIntake.consumeAll.and.resolveTo(shared);
-      routeStub.snapshot = { queryParamMap: convertToParamMap({ source: 'share' }) };
+    // Arriving from a share is a fresh load: the wizard the outer beforeEach
+    // made on a plain visit goes first, so only the new one hears the params.
+    function arriveWith(params: Record<string, string>): void {
+      fixture.destroy();
+      params$.next(convertToParamMap(params));
+      fixture = TestBed.createComponent(ImportWizardComponent);
+      component = fixture.componentInstance;
+      fixture.detectChanges();
+    }
 
-      component.ngOnInit();
+    // PIN: passes before the fix, and has to keep passing after it. The
+    // template here renders no zone, so the shared files are selected
+    // straight. Mutation run and seen failing: that branch returning without
+    // selecting them.
+    it('consumes shared files when arriving from a share', fakeAsync(() => {
+      const shared = [photo('shared.png')];
+      mockShareIntake.consumeAll.and.resolveTo({ accepted: shared, refused: [] });
+
+      arriveWith({ source: 'share' });
       tick();
 
       expect(mockShareIntake.consumeAll).toHaveBeenCalled();
@@ -318,9 +350,7 @@ describe('ImportWizardComponent', () => {
       });
 
     it('takes the share flag off the URL once it is read', fakeAsync(() => {
-      routeStub.snapshot = { queryParamMap: convertToParamMap({ source: 'share' }) };
-
-      component.ngOnInit();
+      arriveWith({ source: 'share' });
       tick();
 
       expectFlagsStripped();
@@ -329,11 +359,7 @@ describe('ImportWizardComponent', () => {
 
     it('says the share was lost when the worker could not keep it', fakeAsync(() => {
       // The share-target worker's redirect when stashing the POST threw.
-      routeStub.snapshot = {
-        queryParamMap: convertToParamMap({ source: 'share', error: '1' })
-      };
-
-      component.ngOnInit();
+      arriveWith({ source: 'share', error: '1' });
       tick();
 
       expect(notifications.error).toHaveBeenCalledOnceWith('import.shareLost');
@@ -350,9 +376,8 @@ describe('ImportWizardComponent', () => {
 
     it('says the share was lost when the stash cannot be read', fakeAsync(() => {
       mockShareIntake.consumeAll.and.rejectWith(new Error('stash unavailable'));
-      routeStub.snapshot = { queryParamMap: convertToParamMap({ source: 'share' }) };
 
-      component.ngOnInit();
+      arriveWith({ source: 'share' });
       tick();
 
       expect(notifications.error).toHaveBeenCalledOnceWith('import.shareLost');
@@ -362,14 +387,74 @@ describe('ImportWizardComponent', () => {
 
     it('says it once when the worker and the stash both failed', fakeAsync(() => {
       mockShareIntake.consumeAll.and.rejectWith(new Error('stash unavailable'));
-      routeStub.snapshot = {
-        queryParamMap: convertToParamMap({ source: 'share', error: '1' })
-      };
 
-      component.ngOnInit();
+      arriveWith({ source: 'share', error: '1' });
       tick();
 
       expect(notifications.error).toHaveBeenCalledOnceWith('import.shareLost');
+    }));
+
+    // The router reuses an open wizard: a share made while it is up reaches
+    // it as new params on the same route, not as a fresh load.
+    it('drains a share made while the wizard is already open', fakeAsync(() => {
+      const shared = photo('shared.png');
+      mockShareIntake.consumeAll.and.resolveTo({ accepted: [shared], refused: [] });
+
+      params$.next(convertToParamMap({ source: 'share' }));
+      tick();
+
+      expect(mockShareIntake.consumeAll).toHaveBeenCalled();
+      expect(component.selectedFiles().length).withContext('the selection').toBe(1);
+      expect(component.selectedFiles()[0]).withContext('the selected file').toBe(shared);
+    }));
+
+    // A second drain started while the first awaits would read the stash
+    // before the first had emptied it.
+    it('drains one share at a time', fakeAsync(() => {
+      const answer = holdConsumeAll();
+
+      arriveWith({ source: 'share' });
+      params$.next(convertToParamMap({}));
+      params$.next(convertToParamMap({ source: 'share' }));
+
+      expect(mockShareIntake.consumeAll).withContext('while the first drain waits').toHaveBeenCalledTimes(1);
+
+      answer({ accepted: [], refused: [] });
+      tick();
+
+      expect(mockShareIntake.consumeAll).withContext('once the first drain answered').toHaveBeenCalledTimes(2);
+    }));
+
+    // One stream hears every share a reused wizard is sent: a drain that
+    // throws is reported, and must not end it for the shares after.
+    it('drains the next share after one whose drain threw', fakeAsync(() => {
+      const reported = spyOn(TestBed.inject(ErrorHandler), 'handleError');
+      const failure = new Error('select failed');
+      const select = spyOn(component, 'onFilesSelected').and.throwError(failure);
+      const shared = photo('shared.png');
+      mockShareIntake.consumeAll.and.resolveTo({ accepted: [shared], refused: [] });
+
+      params$.next(convertToParamMap({ source: 'share' }));
+      flushMicrotasks();
+      select.and.callThrough();
+      params$.next(convertToParamMap({}));
+      params$.next(convertToParamMap({ source: 'share' }));
+      flushMicrotasks();
+
+      expect(reported).withContext('the failure, reported').toHaveBeenCalledOnceWith(failure);
+      expect(mockShareIntake.consumeAll).withContext('the next share, drained').toHaveBeenCalledTimes(2);
+      expect(component.selectedFiles()[0]).withContext('the next share\'s file').toBe(shared);
+    }));
+
+    // PIN: passes before the fix, and has to keep passing after it. Taking
+    // the flags off the URL is a navigation of its own, and the params it
+    // leaves are no share. Mutation run and seen failing: the filter dropped.
+    it('ignores the params the strip leaves behind', fakeAsync(() => {
+      arriveWith({ source: 'share' });
+      params$.next(convertToParamMap({}));
+      tick();
+
+      expect(mockShareIntake.consumeAll).toHaveBeenCalledTimes(1);
     }));
   });
 
@@ -3427,6 +3512,95 @@ describe('ImportWizardComponent', () => {
       });
     });
 
+    // Below 600px the four step labels give way to their numbered circles.
+    // That rule is a viewport query and Karma's window is 756px, so these
+    // cases read its declarations from the stylesheet and lay them on the
+    // rendered labels, then measure and sweep what they leave. Laid inline,
+    // the declarations skip the cascade: a Material rule that outranked the
+    // wizard's selector would pass here and still show the labels on a phone.
+    // So these cases prove what the rule declares, and a 375px window in a
+    // browser is what proves the cascade. Each header is a tab its label
+    // names, and the circle's digit is hidden from the name.
+    describe('the step headers under the phone rule', () => {
+      const el = () => realFixture.nativeElement as HTMLElement;
+      const headers = () => Array.from(el().querySelectorAll<HTMLElement>('.modern-stepper .mat-step-header'));
+      const labels = () => Array.from(el().querySelectorAll<HTMLElement>('.modern-stepper .mat-step-label'));
+      const widths = (nodes: HTMLElement[]) => nodes.map(node => node.getBoundingClientRect().width);
+
+      /** The rules under the 599.98px query that style the step labels. */
+      const phoneLabelRules = (): CSSStyleRule[] =>
+        styleRules()
+          .filter(
+            ({ media, rule }) =>
+              media !== null &&
+              media.includes('max-width: 599.98px') &&
+              rule.selectorText.includes('.modern-stepper') &&
+              /\.mat-step-label(?![\w-])/.test(rule.selectorText)
+          )
+          .map(({ rule }) => rule);
+
+      /** Runs `fn` with `cssText` as every step label's inline style, then puts the labels back. */
+      async function withLabelStyle(cssText: string, fn: () => unknown): Promise<void> {
+        const all = labels();
+        const before = all.map(label => label.style.cssText);
+        all.forEach(label => (label.style.cssText = cssText));
+        try {
+          await fn();
+        } finally {
+          all.forEach((label, i) => (label.style.cssText = before[i]));
+        }
+      }
+
+      /** Runs `fn` with the phone rule's declarations on every step label. */
+      async function underPhoneRule(fn: () => unknown): Promise<void> {
+        const [rule] = phoneLabelRules();
+        expect(rule).withContext('the phone rule for the step labels').toBeDefined();
+        if (!rule) return;
+        await withLabelStyle(rule.style.cssText, fn);
+      }
+
+      it('finds the phone rule for the step labels, so the cases below read something', () => {
+        const rules = phoneLabelRules();
+        expect(rules.length).withContext('at least one').toBeGreaterThan(0);
+        expect(new Set(rules.map(rule => rule.cssText)).size).withContext('one rule, however many copies').toBe(1);
+        expect(labels().length).withContext('a label per step').toBe(4);
+      });
+
+      it("shows the labels at Karma's own width", () => {
+        expect(matchMedia('(max-width: 599.98px)').matches).withContext('the window is wider than a phone').toBeFalse();
+        for (const [i, label] of labels().entries()) {
+          expect(label.getBoundingClientRect().width).withContext(`step ${i + 1}'s label, px`).toBeGreaterThan(1);
+        }
+      });
+
+      it("takes the labels out of the headers' room under it, leaving the numbered circles", async () => {
+        let bare: number[] = [];
+        await withLabelStyle('display: none', () => (bare = widths(headers())));
+        expect(bare.length).withContext('a header per step').toBe(4);
+
+        await underPhoneRule(() => {
+          expect(widths(headers())).withContext('each header, px, against the same header with no label').toEqual(bare);
+          for (const [i, label] of labels().entries()) {
+            expect(label.getBoundingClientRect().width).withContext(`step ${i + 1}'s label, px`).toBeLessThanOrEqual(1);
+          }
+        });
+      });
+
+      for (const scheme of AUDIT_SCHEMES) {
+        it(`keeps every step header named under it, in the ${scheme} scheme`, async () => {
+          const tabs = el().querySelector<HTMLElement>('.mat-horizontal-stepper-header-container');
+          expect(tabs).withContext('the tab list').not.toBeNull();
+
+          await underPhoneRule(() =>
+            withScheme(TestBed.inject(ThemeService), scheme, async () => {
+              realFixture.detectChanges();
+              expect(summarizeViolations(await runAxe(tabs!))).toEqual([]);
+            })
+          );
+        });
+      }
+    });
+
     it('puts a same-batch failure on the error card, with the stored photos named in it', fakeAsync(() => {
       mockImportService.importFromMultipleImages.and.returnValue(
         Promise.reject(new Error(AI_QUEUED_OFFLINE))
@@ -3587,30 +3761,29 @@ describe('ImportWizardComponent', () => {
       }));
     });
 
+    const zone = () =>
+      realFixture.debugElement.query(By.directive(FileDropzoneComponent)).componentInstance as FileDropzoneComponent;
+    const names = (files: readonly File[]) => files.map(f => f.name);
+    const rowNames = () =>
+      Array.from((realFixture.nativeElement as HTMLElement).querySelectorAll('app-file-dropzone .file-name'))
+        .map(n => n.textContent?.trim());
+    const csv = () => new File(['a,b'], 'ledger.csv', { type: 'text/csv' });
+
+    /** A real drop on the zone, the way the browser delivers one. */
+    function drop(...files: File[]): void {
+      const transfer = new DataTransfer();
+      files.forEach(f => transfer.items.add(f));
+      (realFixture.nativeElement as HTMLElement)
+        .querySelector('app-file-dropzone .dropzone')!
+        .dispatchEvent(new DragEvent('drop', { dataTransfer: transfer, bubbles: true }));
+      realFixture.detectChanges();
+    }
+
     // The dropzone keeps a list of its own and emits the whole of it on every
     // change, so a photo the wizard took out of its selection once the queue
     // stored it, but the zone still held, came back with the next file added
     // and was queued a second time on the next Process.
     describe('the dropzone, once the photos are queued for later', () => {
-      const zone = () =>
-        realFixture.debugElement.query(By.directive(FileDropzoneComponent)).componentInstance as FileDropzoneComponent;
-      const names = (files: readonly File[]) => files.map(f => f.name);
-      const rowNames = () =>
-        Array.from((realFixture.nativeElement as HTMLElement).querySelectorAll('app-file-dropzone .file-name'))
-          .map(n => n.textContent?.trim());
-      const photo = (name: string) => new File(['x'], name, { type: 'image/png' });
-      const csv = () => new File(['a,b'], 'ledger.csv', { type: 'text/csv' });
-
-      /** A real drop on the zone, the way the browser delivers one. */
-      function drop(...files: File[]): void {
-        const transfer = new DataTransfer();
-        files.forEach(f => transfer.items.add(f));
-        (realFixture.nativeElement as HTMLElement)
-          .querySelector('app-file-dropzone .dropzone')!
-          .dispatchEvent(new DragEvent('drop', { dataTransfer: transfer, bubbles: true }));
-        realFixture.detectChanges();
-      }
-
       /** Process pressed, the run settled, and Back to the upload step. */
       function processAndGoBack(): void {
         const real = realFixture.componentInstance;
@@ -3735,6 +3908,361 @@ describe('ImportWizardComponent', () => {
       }));
     });
 
+    // A share reached the wizard's selection and never the zone, so the zone
+    // listed nothing, and its next pick or remove emitted a list without the
+    // shared file, which then left the selection with nothing said (#518).
+    describe('a shared file, on the zone', () => {
+      const el = () => realFixture.nativeElement as HTMLElement;
+      const banner = () => el().querySelector('app-file-dropzone .error-banner');
+      const processButton = () => el().querySelector<HTMLButtonElement>('.upload-step .step-actions button');
+
+      /** The wizard made afresh over these params, as a load from a share is. */
+      function openOn(params: Record<string, string>): void {
+        realFixture.destroy();
+        params$.next(convertToParamMap(params));
+        realFixture = TestBed.createComponent(ImportWizardComponent);
+        realFixture.detectChanges();
+        tick();
+        realFixture.detectChanges();
+      }
+
+      /** A load from a share, the stash answering `consumed`. */
+      function arrive(consumed: ConsumedShares, error?: string): void {
+        mockShareIntake.consumeAll.and.resolveTo(consumed);
+        openOn(error ? { source: 'share', error } : { source: 'share' });
+      }
+
+      /**
+       * A share made while the wizard is up. The router emits only on a
+       * change, so the URL first reads what the strip leaves.
+       */
+      function shareWhileOpen(consumed: ConsumedShares): void {
+        mockShareIntake.consumeAll.and.resolveTo(consumed);
+        params$.next(convertToParamMap({}));
+        params$.next(convertToParamMap({ source: 'share' }));
+        tick();
+        realFixture.detectChanges();
+      }
+
+      /** A load from a share whose stash has not answered yet; returns the answer. */
+      function heldShare(): (consumed: ConsumedShares) => void {
+        const answer = holdConsumeAll();
+        openOn({ source: 'share' });
+        return answer;
+      }
+
+      it('lists a shared file on the zone, its thumbnail with it, and selects that same file', fakeAsync(() => {
+        arrive({ accepted: [photo('shared.png')], refused: [] });
+        const real = realFixture.componentInstance;
+
+        expect(rowNames()).withContext('the zone\'s rows on screen').toEqual(['shared.png']);
+        const thumbnail = el().querySelector<HTMLImageElement>('app-file-dropzone .file-thumbnail img');
+        expect(thumbnail).withContext('the row\'s thumbnail').not.toBeNull();
+        expect(thumbnail?.src).withContext('the thumbnail\'s source').toMatch(/^blob:/);
+        // By identity: two Files of one name are equal to toEqual.
+        expect(real.selectedFiles().length).withContext('the wizard\'s selection').toBe(1);
+        expect(real.selectedFiles()[0]).withContext('the wizard\'s file, the zone\'s').toBe(zone().selectedFiles()[0]);
+        expect(processButton()?.disabled).withContext('Process').toBeFalse();
+      }));
+
+      // Two iOS captures are both image.jpg. A share of both is two rows on
+      // the zone and two tiles in the wizard, each showing its own photo.
+      it('gives two shared photos of one name a thumbnail each, on the zone and in the wizard', fakeAsync(() => {
+        arrive({ accepted: [photo('image.jpg'), photo('image.jpg')], refused: [] });
+        const sources = (selector: string) =>
+          Array.from(el().querySelectorAll<HTMLImageElement>(selector)).map(img => img.getAttribute('src') ?? '');
+        const thumbnails = sources('app-file-dropzone .file-thumbnail img');
+        const tiles = sources('.image-previews .preview-item img');
+
+        expect(rowNames()).withContext('the zone\'s rows on screen').toEqual(['image.jpg', 'image.jpg']);
+        expect(thumbnails.length).withContext('the zone\'s thumbnails').toBe(2);
+        expect(thumbnails.filter(src => src.startsWith('blob:')).length).withContext('the zone\'s blob thumbnails').toBe(2);
+        expect(thumbnails[1]).withContext('the zone\'s second thumbnail').not.toBe(thumbnails[0]);
+        expect(tiles.length).withContext('the wizard\'s tiles').toBe(2);
+        expect(tiles.filter(src => src.startsWith('blob:')).length).withContext('the wizard\'s blob tiles').toBe(2);
+        expect(tiles[1]).withContext('the wizard\'s second tile').not.toBe(tiles[0]);
+      }));
+
+      it('keeps a shared file through the next pick, and when that pick is removed', fakeAsync(() => {
+        arrive({ accepted: [photo('shared.png')], refused: [] });
+        const real = realFixture.componentInstance;
+
+        drop(csv());
+
+        expect(names(real.selectedFiles())).withContext('the wizard, after the next pick').toEqual(['shared.png', 'ledger.csv']);
+
+        const remove = el().querySelectorAll<HTMLElement>('.file-item .remove-btn')[1];
+        expect(remove).withContext('the second row\'s remove button').toBeDefined();
+        remove?.click();
+        realFixture.detectChanges();
+
+        expect(names(real.selectedFiles())).withContext('the wizard, once that pick is removed').toEqual(['shared.png']);
+        expect(rowNames()).withContext('the zone\'s rows on screen').toEqual(['shared.png']);
+      }));
+
+      // A pick made while the stash is read is on the zone already, so the
+      // shared file joins it rather than taking the selection over.
+      it('keeps a file picked before the stash answered, beside the shared one', fakeAsync(() => {
+        const answer = heldShare();
+        const real = realFixture.componentInstance;
+        drop(csv());
+
+        answer({ accepted: [photo('shared.png')], refused: [] });
+        tick();
+        realFixture.detectChanges();
+
+        expect(names(real.selectedFiles())).withContext('the wizard').toEqual(['ledger.csv', 'shared.png']);
+        expect(rowNames()).withContext('the zone\'s rows on screen').toEqual(['ledger.csv', 'shared.png']);
+      }));
+
+      it('names a share the gate refused in the zone\'s alert, and selects nothing for it', fakeAsync(() => {
+        arrive({ accepted: [], refused: [{ file: new File([], 'empty.pdf', { type: 'application/pdf' }), reason: 'empty' }] });
+        const real = realFixture.componentInstance;
+
+        expect(banner()).withContext('the zone\'s banner').not.toBeNull();
+        expect(banner()?.getAttribute('role')).withContext('the banner\'s role').toBe('alert');
+        expect(banner()?.textContent).withContext('the zone\'s banner').toContain('import.fileEmpty');
+        expect(mockTranslationService.t).toHaveBeenCalledWith('import.fileEmpty', { name: 'empty.pdf' });
+        expect(real.selectedFiles()).withContext('the wizard\'s selection').toEqual([]);
+        expect(processButton()?.disabled).withContext('Process').toBeTrue();
+        expect(notifications.error).not.toHaveBeenCalled();
+      }));
+
+      // ADR 0165: the lost share is said once, in the snackbar. A file the
+      // gate refused is named where the files are, never in a second voice.
+      it('says a lost share in the snackbar and a refused one in the zone, each once', fakeAsync(() => {
+        const large = new File(['x'], 'statement.pdf', { type: 'application/pdf' });
+        arrive({ accepted: [], refused: [{ file: large, reason: 'tooLarge' }] }, '1');
+
+        expect(notifications.error).toHaveBeenCalledOnceWith('import.shareLost');
+        const named = (banner()?.textContent ?? '').split('import.fileTooLarge').length - 1;
+        expect(named).withContext('the refusal, in the zone\'s banner').toBe(1);
+      }));
+
+      it('adopts a share made while the wizard is open onto the same zone', fakeAsync(() => {
+        arrive({ accepted: [photo('shared.png')], refused: [] });
+        const real = realFixture.componentInstance;
+
+        shareWhileOpen({ accepted: [photo('second.png')], refused: [] });
+
+        expect(rowNames()).withContext('the zone\'s rows on screen').toEqual(['shared.png', 'second.png']);
+        expect(names(real.selectedFiles())).withContext('the wizard\'s selection').toEqual(['shared.png', 'second.png']);
+      }));
+
+      // PIN: passes before the fix, and has to keep passing after it, since
+      // the wizard drained no share made while it was open. The rows on
+      // review were read from the files picked: a share taken now would
+      // empty them. It stays in the stash. Mutation run and seen failing:
+      // the extractedTransactions condition dropped.
+      it('leaves a share pending while the review holds rows', fakeAsync(() => {
+        const real = realFixture.componentInstance;
+        drop(csv());
+        real.extractedTransactions.set(mockTransactions);
+        realFixture.detectChanges();
+
+        shareWhileOpen({ accepted: [photo('shared.png')], refused: [] });
+
+        expect(mockShareIntake.consumeAll).not.toHaveBeenCalled();
+        expect(real.extractedTransactions()).withContext('the rows').toEqual(mockTransactions);
+        expect(rowNames()).withContext('the zone\'s rows on screen').toEqual(['ledger.csv']);
+      }));
+
+      // PIN: passes before the fix, and has to keep passing after it, since
+      // the wizard drained no share made while it was open. The import
+      // writes the rows of the files picked. Mutation run and seen failing:
+      // the isImporting condition dropped.
+      it('leaves a share pending while an import is being written', fakeAsync(() => {
+        realFixture.componentInstance.isImporting.set(true);
+        realFixture.detectChanges();
+
+        shareWhileOpen({ accepted: [photo('shared.png')], refused: [] });
+
+        expect(mockShareIntake.consumeAll).not.toHaveBeenCalled();
+      }));
+
+      // PIN: passes before the fix, and has to keep passing after it, since
+      // the wizard drained no share made while it was open. A run reads the
+      // files picked, and a share taken now would change them under it.
+      // Mutation run and seen failing: the processingBusy condition dropped.
+      it('leaves a share pending while a run is under way', fakeAsync(() => {
+        mockImportService.isProcessing.set(true);
+        realFixture.detectChanges();
+
+        shareWhileOpen({ accepted: [photo('shared.png')], refused: [] });
+
+        expect(mockShareIntake.consumeAll).not.toHaveBeenCalled();
+      }));
+
+      // PIN: the run the wizard started stands before any reader does, as
+      // while its photos are written to the offline queue. Mutation run and
+      // seen failing: the guard narrowed to the service's isProcessing.
+      it('leaves a share pending while a run has started and no reader runs yet', fakeAsync(() => {
+        realFixture.componentInstance.runInFlight.set(true);
+        realFixture.detectChanges();
+
+        shareWhileOpen({ accepted: [photo('shared.png')], refused: [] });
+
+        expect(mockImportService.isProcessing()).withContext('the service, still lowered').toBeFalse();
+        expect(mockShareIntake.consumeAll).not.toHaveBeenCalled();
+      }));
+
+      // A run can settle on a card of its own (an error, photos queued for
+      // later, nothing found) with the stepper past the upload step. A share
+      // drained then lands there, so the stepper goes back to it: the file,
+      // or the refusal, is on screen, and no card's way out leaves the
+      // wizard over a share nobody saw.
+      describe('once a run has settled on a card of its own', () => {
+        const current = () => el().querySelector<HTMLElement>('.mat-horizontal-stepper-content:not([inert])');
+
+        /** A CSV picked, Process pressed, and the run settled. */
+        function settle(): void {
+          const real = realFixture.componentInstance;
+          drop(csv());
+          real.processFiles();
+          real.stepper.next();
+          tick();
+          realFixture.detectChanges();
+        }
+
+        it('returns to the upload step for a share made over the error card, its file on screen', fakeAsync(() => {
+          mockImportService.importFromFile.and.returnValue(Promise.reject(new Error('bad csv')));
+          settle();
+          expect(current()?.querySelector('.error-card')).withContext('the error card, before the share').not.toBeNull();
+
+          shareWhileOpen({ accepted: [photo('shared.png')], refused: [] });
+
+          expect(realFixture.componentInstance.stepper.selectedIndex).withContext('the selected step').toBe(0);
+          expect(current()?.querySelector('.upload-step')).withContext('the step on screen').not.toBeNull();
+          expect(rowNames()).withContext('the zone\'s rows').toEqual(['ledger.csv', 'shared.png']);
+          expect(current()?.textContent).not.toContain('import.noTransactionsFound');
+        }));
+
+        it('returns to the upload step for a share made over the queued card, so its Done is not on screen', fakeAsync(() => {
+          mockImportService.importFromMultipleImages.and.returnValue(Promise.reject(new Error(AI_QUEUED_OFFLINE)));
+          const real = realFixture.componentInstance;
+          real.onFilesSelected([new File([''], 'r.png', { type: 'image/png' })]);
+          realFixture.detectChanges();
+          real.processFiles();
+          real.stepper.next();
+          tick();
+          realFixture.detectChanges();
+          expect(current()?.textContent).withContext('the queued card, before the share').toContain('common.done');
+
+          shareWhileOpen({ accepted: [photo('shared.png')], refused: [] });
+
+          expect(real.stepper.selectedIndex).withContext('the selected step').toBe(0);
+          expect(current()?.querySelector('.upload-step')).withContext('the step on screen').not.toBeNull();
+          expect(rowNames()).withContext('the zone\'s rows').toContain('shared.png');
+          expect(current()?.textContent).not.toContain('common.done');
+        }));
+
+        it('returns to the upload step for a share the gate refused, its reason on screen', fakeAsync(() => {
+          mockImportService.importFromFile.and.returnValue(Promise.reject(new Error('bad csv')));
+          settle();
+
+          shareWhileOpen({ accepted: [], refused: [{ file: new File([], 'empty.pdf', { type: 'application/pdf' }), reason: 'empty' }] });
+
+          expect(realFixture.componentInstance.stepper.selectedIndex).withContext('the selected step').toBe(0);
+          expect(current()?.querySelector('app-file-dropzone .error-banner')?.textContent)
+            .withContext('the zone\'s banner, on screen')
+            .toContain('import.fileEmpty');
+        }));
+
+        // Try again clears the error and starts a run, and no run starts
+        // while the stash is read: pressed then, it would leave the card
+        // claiming nothing was found, and a drain that got nothing would
+        // leave it there. It waits on the drain as Process does.
+        it('holds Try again while a share made over the error card is read, and leaves the card standing', fakeAsync(() => {
+          mockImportService.importFromFile.and.returnValue(Promise.reject(new Error('bad csv')));
+          settle();
+          const real = realFixture.componentInstance;
+          const tryAgain = () => current()?.querySelector<HTMLButtonElement>('.error-card .error-actions button');
+          expect(tryAgain()?.disabled).withContext('Try again, before the share').toBeFalse();
+
+          const answer = holdConsumeAll();
+          params$.next(convertToParamMap({}));
+          params$.next(convertToParamMap({ source: 'share' }));
+          tick();
+          realFixture.detectChanges();
+
+          expect(tryAgain()?.disabled).withContext('Try again, while the stash is read').toBeTrue();
+          real.retryProcessing();
+          tick();
+          realFixture.detectChanges();
+          expect(current()?.querySelector('.error-card')).withContext('the error card, after a press then').not.toBeNull();
+          expect(current()?.textContent).not.toContain('import.noTransactionsFound');
+          expect(mockImportService.importFromFile).withContext('reads started').toHaveBeenCalledTimes(1);
+
+          answer({ accepted: [], refused: [] });
+          tick();
+          realFixture.detectChanges();
+
+          expect(current()?.querySelector('.error-card')).withContext('the error card, once an empty stash answered').not.toBeNull();
+          expect(tryAgain()?.disabled).withContext('Try again, once the stash answered').toBeFalse();
+        }));
+      });
+
+      // The busy guard is read before the stash answers, so a run started
+      // while it is read would take the selection the drain then changes,
+      // and the drain would empty the rows the run had appended. Process
+      // waits on the drain as it does on a run.
+      it('holds Process while a share made with the wizard open is read, and starts no run then', fakeAsync(() => {
+        const real = realFixture.componentInstance;
+        drop(csv());
+        expect(processButton()?.disabled).withContext('Process, before the share').toBeFalse();
+        const answer = holdConsumeAll();
+        params$.next(convertToParamMap({}));
+        params$.next(convertToParamMap({ source: 'share' }));
+        tick();
+        realFixture.detectChanges();
+
+        expect(processButton()?.disabled).withContext('Process, while the stash is read').toBeTrue();
+        real.processFiles();
+        tick();
+        expect(mockImportService.importFromFile).withContext('a read started then').not.toHaveBeenCalled();
+        expect(real.runInFlight()).withContext('a run started then').toBeFalse();
+
+        answer({ accepted: [photo('shared.png')], refused: [] });
+        tick();
+        realFixture.detectChanges();
+
+        expect(rowNames()).withContext('the zone\'s rows').toEqual(['ledger.csv', 'shared.png']);
+        expect(processButton()?.disabled).withContext('Process, once the stash answered').toBeFalse();
+      }));
+
+      // PIN: passes before the fix, and has to keep passing after it. A stash
+      // that held nothing has nothing to say, so the refusal the zone shows
+      // stays. Mutation run and seen failing: the early return removed and
+      // adopt taking with keepStanding false, together (either alone leaves
+      // the banner).
+      it('leaves the zone\'s alert alone when the stash held nothing', fakeAsync(() => {
+        const answer = heldShare();
+        drop(new File(['x'], 'notes.txt', { type: 'text/plain' }));
+
+        answer({ accepted: [], refused: [] });
+        tick();
+        realFixture.detectChanges();
+
+        expect(banner()?.textContent).withContext('the zone\'s banner').toContain('import.fileTypeUnsupported');
+      }));
+
+      // PIN: passes before the fix, and has to keep passing after it. A
+      // preview minted once the wizard is gone has no destroy left to release
+      // it. Mutation run and seen failing: adopt's destroyed guard dropped.
+      it('mints no previews for a share that answers after the wizard is gone', fakeAsync(() => {
+        const answer = heldShare();
+        const kept = zone();
+        realFixture.destroy();
+        const mint = spyOn(URL, 'createObjectURL').and.callThrough();
+
+        answer({ accepted: [photo('shared.png')], refused: [] });
+        tick();
+
+        expect(mint).withContext('blob urls minted after the destroy').not.toHaveBeenCalled();
+        expect(kept.selectedFiles()).withContext('the kept zone\'s list').toEqual([]);
+      }));
+    });
+
     // Every step body is eager, so the review step's notices are in the DOM
     // without the stepper reaching it.
     describe('the notices above the review rows', () => {
@@ -3834,6 +4362,50 @@ describe('ImportWizardComponent', () => {
           history.replaceState({}, '');
         }
       }));
+    });
+
+    // /import/file is a route the smoke walkthrough never opens, so no axe
+    // pass had looked at the upload step with photos on it: the question that
+    // asks what they are, the zone's rows and previews, and the banner a
+    // refused file leaves. Swept here in both schemes, as the walkthrough
+    // sweeps its routes.
+    describe('the upload step with photos picked, under the axe sweep', () => {
+      const uploadStep = () =>
+        (realFixture.nativeElement as HTMLElement).querySelector<HTMLElement>('.upload-step');
+
+      beforeEach(() => {
+        // Two photos and a file the zone refuses, so the rows, the previews,
+        // the question and the banner all stand.
+        drop(photo('a.png'), photo('b.png'), new File(['x'], 'run.exe', { type: 'application/x-msdownload' }));
+      });
+
+      it('names the receipt-or-statement chips by the question above them', () => {
+        const listbox = uploadStep()?.querySelector('mat-chip-listbox');
+        expect(listbox).withContext('the question shows for photos').not.toBeNull();
+        const id = listbox?.getAttribute('aria-labelledby') ?? '';
+        expect(document.getElementById(id)?.textContent?.trim())
+          .withContext(`what aria-labelledby="${id}" points at`)
+          .toBe('import.imageKindQuestion');
+      });
+
+      for (const scheme of AUDIT_SCHEMES) {
+        it(`finds nothing on the step in the ${scheme} scheme`, async () => {
+          const step = uploadStep();
+          expect(step?.querySelector('mat-chip-listbox')).withContext('the question is on the swept step').not.toBeNull();
+          expect(step?.querySelectorAll('app-file-dropzone .file-item').length).withContext('both photos listed').toBe(2);
+          expect(step?.querySelector('app-file-dropzone .error-banner')).withContext('the refusal stands').not.toBeNull();
+
+          await withScheme(TestBed.inject(ThemeService), scheme, async () => {
+            realFixture.detectChanges();
+            expect(summarizeViolations(await runAxe(step!))).toEqual([]);
+          });
+        });
+      }
+
+      it('scores the step\'s contrast rather than skipping it', async () => {
+        const results = await runAxe(uploadStep()!);
+        expect(results.passes.map(result => result.id)).toContain('color-contrast');
+      });
     });
 
     describe('colours, as painted', () => {

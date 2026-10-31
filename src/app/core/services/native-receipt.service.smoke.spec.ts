@@ -359,4 +359,73 @@ describe('on-device receipt categories over the live catalog (smoke test)', () =
 
     expect(transaction.fieldConfidence?.date).toBe(0);
   });
+
+  it('a model total that differs from the total the text parser read past the cash handed over comes back flagged', async () => {
+    // The tendered sum moved the parser's reading off the cash it read beside
+    // a currency mark, so a model that reads the change instead disputes it
+    // (ADR 0186).
+    visionMock.recognizeText.and.resolveTo({
+      ...ocrResult,
+      text: 'Harbour Supplies\n01/15/2026\nTotal: $379.50\nCash $500.00\nChange $120.50',
+    });
+
+    const transaction = await scanAnswering(CUSTOM_NAME);
+
+    expect(transaction.amount).toBe(120.5);
+    expect(transaction.fieldConfidence).toEqual({ amount: REVIEW_AMOUNT_CONFIDENCE, date: 0.8 });
+  });
+
+  it('a receipt whose priced line prints a count larger than its price comes back with that price flagged', async () => {
+    // Same no-model regex path. The 412 is a count beside the price and might
+    // have been the total, so the price is read under the bar (ADR 0186).
+    appleMock.isModelAvailable.and.returnValue(false);
+    visionMock.recognizeText.and.resolveTo({ ...ocrResult, text: 'Shop\nRoom 412 $89.00' });
+
+    const transaction = (await service.processImage(imageFile())).transactions[0];
+
+    expect(transaction.amount).toBe(89);
+    expect(transaction.fieldConfidence).toEqual({ amount: 0.6, date: 0 });
+    expect(transaction.fieldConfidence!.amount!).toBeLessThan(VERIFY_FIELD_THRESHOLD);
+  });
+
+  it('a model total that agrees with a price the text parser read under a larger count keeps the parser grade', async () => {
+    // A rule, not the print, picked the parser's 120.50 over the 412 beside
+    // it, so a model sharing that guess backs nothing (ADR 0186).
+    visionMock.recognizeText.and.resolveTo({
+      ...ocrResult,
+      text: 'Harbour Supplies\n01/15/2026\nRoom 412 $120.50',
+    });
+
+    const transaction = await scanAnswering(CUSTOM_NAME);
+
+    expect(transaction.amount).toBe(120.5);
+    expect(transaction.fieldConfidence).toEqual({ amount: 0.6, date: 0.8 });
+  });
+
+  it('a receipt whose only figures are a priced line with its sign before the price comes back with that price as its amount and fieldConfidence.date 0', async () => {
+    // Same no-model regex path. A priced line whose sign stands before its
+    // price is money and never a date, so the price is the amount and no date
+    // is graded (ADR 0186).
+    appleMock.isModelAvailable.and.returnValue(false);
+    visionMock.recognizeText.and.resolveTo({ ...ocrResult, text: 'Harbour Supplies\nRope 1 $10.00' });
+
+    const transaction = (await service.processImage(imageFile())).transactions[0];
+
+    expect(transaction.amount).toBe(10);
+    expect(transaction.fieldConfidence).toEqual({ amount: 0.8, date: 0 });
+  });
+
+  it('a receipt that prints its date under its priced lines comes back with that date at fieldConfidence.date 0.9', async () => {
+    appleMock.isModelAvailable.and.returnValue(false);
+    visionMock.recognizeText.and.resolveTo({
+      ...ocrResult,
+      text: 'Harbour Supplies\nRope 1 $10.00\nTotal: $10.00\n01/15/2026',
+    });
+
+    const transaction = (await service.processImage(imageFile())).transactions[0];
+
+    expect(transaction.amount).toBe(10);
+    expect(transaction.fieldConfidence).toEqual({ amount: 0.8, date: 0.9 });
+    expect(transaction.date.getTime()).toBe(new Date(2026, 0, 15).getTime());
+  });
 });

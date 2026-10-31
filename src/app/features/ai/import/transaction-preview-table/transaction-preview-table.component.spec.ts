@@ -29,7 +29,9 @@ import {
   paintedBackground,
   paintedColor,
   ratio,
+  runAxe,
   settleAnimations,
+  summarizeViolations,
   withScheme,
   withTheme,
   provideNoMotion,
@@ -586,6 +588,31 @@ describe('TransactionPreviewTableComponent', () => {
       // percentage would report a reading nothing took.
       const t = row({ fieldConfidence: { amount: 0.8, date: 0.9, type: 0.5 } });
       expect(component.verificationTooltip(t, 'type')).toBe('import.verifyType');
+    });
+
+    it('names the doubted amount and date of a device reading by the scan, with no percentage, since their grades are the reader\'s policy', () => {
+      // The device grades an amount and a date by policy: the text parser's
+      // evidence tiers and demotions, the cross-check's agreement and dispute
+      // grades. No model reported them, and on the regex lane no model ran at
+      // all. A percentage would report a reading nothing took, the type's
+      // reason (ADR 0162). The resolver assumes every doubted date, so the
+      // date's line guards a row that reached the card some other way.
+      const t = row({ readOnDevice: true, fieldConfidence: { amount: 0.6, date: 0.3 } });
+      expect(component.verificationTooltip(t, 'amount')).toBe('import.verifyAmountOnDevice');
+      expect(component.verificationTooltip(t, 'date')).toBe('import.verifyDateOnDevice');
+    });
+
+    it('keeps the type sentence on a row the device read', () => {
+      // A pin. Mutation: test readOnDevice ahead of the type's branch.
+      const t = row({ readOnDevice: true, fieldConfidence: { amount: 0.6, date: 0.9, type: 0.5 } });
+      expect(component.verificationTooltip(t, 'type')).toBe('import.verifyType');
+    });
+
+    it('keeps the assumed wording on a device row whose date was replaced with today', () => {
+      // A pin. Mutation: test readOnDevice ahead of the assumed date's branch.
+      // The date shown is now, not a reading of any kind.
+      const t = row({ readOnDevice: true, dateAssumed: true, fieldConfidence: { date: 0 } });
+      expect(component.verificationTooltip(t, 'date')).toBe('import.dateAssumedTooltip');
     });
   });
 
@@ -1488,6 +1515,19 @@ describe('TransactionPreviewTableComponent, the offer chip through its own templ
 
     expect(tip._isTooltipVisible()).withContext('keyboard focus opens the sentence').toBeTrue();
     expect(tip.message).toBe(component.verificationTooltip(row, 'amount'));
+  });
+
+  it('names the doubted amount of a device reading by the scan on the flag a screen reader hears', () => {
+    // The flag's label is all a screen reader hears of it. A device row's
+    // amount grade is the reader's policy, so the label names the scan and
+    // quotes no percentage.
+    component.transactions = [makeRow({ readOnDevice: true, fieldConfidence: { amount: 0.6, date: 0.9 } })];
+    component.categories = [];
+    fixture.detectChanges();
+
+    const flag = fixture.nativeElement.querySelector('.amount-section .verify-flag') as HTMLElement | null;
+    expect(flag).withContext('the flag renders for a doubted amount').not.toBeNull();
+    expect(flag!.getAttribute('aria-label')).toBe('import.verifyAmountOnDevice');
   });
 
   it('marks a doubted type on its toggle, the mark leading the toggle\'s name and the icon decorative', () => {
@@ -4491,6 +4531,39 @@ describe('TransactionPreviewTableComponent, the offer chip through its own templ
     });
   });
 
+  // The row's checkbox shows no text, and every card has one, so its name is
+  // what says which row it chooses. MatCheckbox puts its `aria-label` input on
+  // the <input> inside it, which is what a screen reader lands on, so that is
+  // where the name is read.
+  describe('choosing a row', () => {
+    const box = (id: string) =>
+      fixture.nativeElement.querySelector(`[data-row-id="${id}"] .card-select input[type="checkbox"]`) as HTMLInputElement | null;
+
+    it('names each row\'s checkbox for its row, a blank row by the stand-in the card\'s sentences use', () => {
+      component.transactions = [makeRow({ id: 'filled' }), blankImportRow('blank', undefined, 'USD')];
+      component.categories = [];
+      fixture.detectChanges();
+
+      expect(box('filled')).withContext('the filled row\'s checkbox').not.toBeNull();
+      expect(box('filled')?.getAttribute('aria-label'))
+        .toBe('import.selectRowLabel:{"description":"Coffee Shop"}');
+      expect(box('blank')?.getAttribute('aria-label'))
+        .withContext('nothing typed yet')
+        .toBe('import.selectRowLabel:{"description":"import.untitledRow"}');
+    });
+
+    it('leaves Select all named by its own text', () => {
+      component.transactions = [makeRow({ id: 'filled' })];
+      component.categories = [];
+      fixture.detectChanges();
+
+      const all = fixture.nativeElement.querySelector('.header-left input[type="checkbox"]') as HTMLInputElement | null;
+      expect(all).withContext('the Select all checkbox').not.toBeNull();
+      expect(all?.getAttribute('aria-label')).withContext('no name laid over its visible text').toBeNull();
+      expect(all?.closest('label')?.textContent?.trim()).toBe('import.selectAll');
+    });
+  });
+
   // #430: Remove asks first on a row carrying the reviewer's own work, and a
   // bare scanned row still leaves in one press (ADR 0108). The root MatDialog's
   // open is spied rather than a dialog rendered: what is asserted is the
@@ -5463,6 +5536,75 @@ describe('TransactionPreviewTableComponent, the offer chip through its own templ
           }
         });
       }
+    });
+  });
+
+  // The review card is on no route the smoke walkthrough opens (/import/file
+  // is never visited), so its controls are swept here, over a card carrying
+  // every kind of row the review shows: a plain one, one whose amount and
+  // date are doubted, a refund whose type is, a duplicate, and one added by
+  // hand, in both schemes.
+  describe('under the axe sweep', () => {
+    function renderEveryKind(): void {
+      component.transactions = [
+        makeRow({ id: 'plain' }),
+        makeRow({ id: 'doubted', fieldConfidence: { amount: 0.6, date: 0.6 } }),
+        makeRow({ id: 'refund', type: 'income', suggestedCategoryId: 'other_income', fieldConfidence: { type: 0.5 } }),
+        makeRow({ id: 'duplicate', isDuplicate: true, duplicateOf: 'stored-1', selected: false }),
+        blankImportRow('blank', undefined, 'USD'),
+      ];
+      component.categories = [];
+      fixture.detectChanges();
+    }
+
+    /**
+     * Runs `pass` with the list let out to its full height, then puts its cap
+     * back. The container clips what overflows it, and axe takes a card
+     * outside that clip as off screen: at its 70dvh cap in Karma's short frame
+     * the list shows about two cards, and contrast on the rest would go
+     * unscored while the pass still read as clean. So every card is first
+     * seen inside the container.
+     */
+    async function withEveryCardShown<T>(pass: () => Promise<T>): Promise<T> {
+      const list = fixture.nativeElement.querySelector('.transactions-list') as HTMLElement;
+      const cap = list.style.maxHeight;
+      list.style.maxHeight = 'none';
+      try {
+        const container = (fixture.nativeElement.querySelector('.table-container') as HTMLElement).getBoundingClientRect();
+        const cards = [...fixture.nativeElement.querySelectorAll('.transaction-card')] as HTMLElement[];
+        const clipped = cards
+          .filter(card => {
+            const rect = card.getBoundingClientRect();
+            return rect.top < container.top || rect.bottom > container.bottom
+              || rect.left < container.left || rect.right > container.right;
+          })
+          .map(card => card.dataset['rowId']);
+        expect(clipped).withContext('cards outside the container, which axe would skip').toEqual([]);
+        return await pass();
+      } finally {
+        list.style.maxHeight = cap;
+      }
+    }
+
+    for (const scheme of AUDIT_SCHEMES) {
+      it(`finds nothing on a card of every kind of row, in the ${scheme} scheme`, async () => {
+        renderEveryKind();
+        expect(fixture.nativeElement.querySelectorAll('.transaction-card').length)
+          .withContext('every row on the card')
+          .toBe(5);
+
+        await withScheme(TestBed.inject(ThemeService), scheme, async () => {
+          fixture.detectChanges();
+          const results = await withEveryCardShown(() => runAxe(fixture.nativeElement));
+          expect(summarizeViolations(results)).toEqual([]);
+        });
+      });
+    }
+
+    it('scores the card\'s contrast rather than skipping it', async () => {
+      renderEveryKind();
+      const results = await withEveryCardShown(() => runAxe(fixture.nativeElement));
+      expect(results.passes.map(result => result.id)).toContain('color-contrast');
     });
   });
 });

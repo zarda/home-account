@@ -419,6 +419,15 @@ describe('toCreateTransactionDTO and the review flags', () => {
     );
     expect('typeFlaggedAs' in dto).toBeFalse();
   });
+
+  it('never forwards readOnDevice — a review-step mark, not a field', () => {
+    // A pin. Mutation: spread `...row` into toCreateTransactionDTO.
+    const dto = toCreateTransactionDTO(
+      { amount: 5, date: new Date(2026, 0, 1), readOnDevice: true } as never,
+      'USD'
+    );
+    expect('readOnDevice' in dto).toBeFalse();
+  });
 });
 
 describe('readTransactionSnapshot', () => {

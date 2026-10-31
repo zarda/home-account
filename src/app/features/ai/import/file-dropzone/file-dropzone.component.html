@@ -70,8 +70,8 @@
         }
 
         <div class="file-list" cdkDropList (cdkDropListDropped)="onFileDrop($event)">
-          @for (file of selectedFiles(); track file.name; let i = $index) {
-            <div class="file-item" [class.image-file]="isImageFile(file)" cdkDrag>
+          @for (file of selectedFiles(); track file; let i = $index) {
+            <div class="file-item" [class.image-file]="isImageFile(file)" [class.reorderable]="isImageFile(file) && hasMultipleImages()" cdkDrag>
               <!-- Image number badge for multi-image -->
               @if (isImageFile(file) && hasMultipleImages()) {
                 <div class="image-number">{{ i + 1 }}</div>
@@ -94,7 +94,7 @@
                 </span>
               </div>
 
-              <!-- Reorder controls for images -->
+              <!-- Each button names the file it acts on by its place and its name: two photos from an iPhone are both image.jpg, and the place is the number the badge shows. Reorder controls for images. -->
               @if (isImageFile(file) && hasMultipleImages()) {
                 <div class="reorder-controls">
                   <button
@@ -102,7 +102,7 @@
                     (click)="moveFileUp(i, $event)"
                     [disabled]="i === 0"
                     class="reorder-btn"
-                    [attr.aria-label]="'common.moveUp' | translate"
+                    [attr.aria-label]="'import.moveFileUpLabel' | translate: { position: i + 1, name: file.name }"
                   >
                     <mat-icon>arrow_upward</mat-icon>
                   </button>
@@ -111,7 +111,7 @@
                     (click)="moveFileDown(i, $event)"
                     [disabled]="i === selectedFiles().length - 1"
                     class="reorder-btn"
-                    [attr.aria-label]="'common.moveDown' | translate"
+                    [attr.aria-label]="'import.moveFileDownLabel' | translate: { position: i + 1, name: file.name }"
                   >
                     <mat-icon>arrow_downward</mat-icon>
                   </button>
@@ -122,7 +122,7 @@
                 mat-icon-button
                 (click)="removeFile(file, $event)"
                 class="remove-btn"
-                [attr.aria-label]="'common.remove' | translate"
+                [attr.aria-label]="'import.removeFileLabel' | translate: { position: i + 1, name: file.name }"
               >
                 <mat-icon>close</mat-icon>
               </button>

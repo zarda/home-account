@@ -11,9 +11,10 @@ import { SharedIntakeFile } from '../plugins/share-intake.plugin';
  * What a share may hand the import wizard — the dropzone's accepted set
  * (`file-dropzone.component.ts`) less the JSON backup, expressed as MIME
  * types with an extension fallback for the platforms that share CSVs with a
- * blank or vendor type. A backup never arrives through an OS share sheet;
- * this door also validates nothing past "`transactions` is an array", and
- * the share target (`public/manifest.json`) lags behind on every installed
+ * blank or vendor type. A backup is never imported through a share: the
+ * gate names it ('backup'), so the user picks it in the upload area; this
+ * door also validates nothing past "`transactions` is an array", and the
+ * share target (`public/manifest.json`) lags behind on every installed
  * client, so widening it here would promise a path this app cannot open.
  */
 export const SHARED_FILE_ACCEPT_TYPES = [
@@ -33,12 +34,29 @@ export const SHARED_FILE_ACCEPT_EXTENSIONS = ['.csv', '.pdf', '.png', '.jpg', '.
  */
 export const IMPORT_FILE_MAX_BYTES = 10 * 1024 * 1024;
 
-/** Pure gate for one shared file; exported for the spec. */
-export function isAcceptedShare(file: File): boolean {
-  if (file.size === 0 || file.size > IMPORT_FILE_MAX_BYTES) return false;
-  if (SHARED_FILE_ACCEPT_TYPES.includes(file.type)) return true;
+/** Why the share gate turns a file away. */
+export type ShareRefusalReason = 'tooLarge' | 'backup' | 'type' | 'empty';
+/** A shared file the gate turned away, and why. */
+export interface RefusedShare { file: File; reason: ShareRefusalReason; }
+/** One drain of the share source: the files the wizard takes, and the rest with their reasons. */
+export interface ConsumedShares { accepted: File[]; refused: RefusedShare[]; }
+
+/**
+ * Pure gate for one shared file: why it is refused, or null when the wizard
+ * may take it; exported for the spec. Size, then type, is the dropzone's own
+ * order, so a file both gates refuse gets the reason the dropzone would give.
+ * A JSON backup is named as one before the type check, and a file of an
+ * accepted type is called empty last.
+ */
+export function shareRefusal(file: File): ShareRefusalReason | null {
+  if (file.size > IMPORT_FILE_MAX_BYTES) return 'tooLarge';
   const name = file.name.toLowerCase();
-  return SHARED_FILE_ACCEPT_EXTENSIONS.some(ext => name.endsWith(ext));
+  if (file.type === 'application/json' || name.endsWith('.json')) return 'backup';
+  const accepted = SHARED_FILE_ACCEPT_TYPES.includes(file.type)
+    || SHARED_FILE_ACCEPT_EXTENSIONS.some(ext => name.endsWith(ext));
+  if (!accepted) return 'type';
+  if (file.size === 0) return 'empty';
+  return null;
 }
 
 /**
@@ -52,8 +70,9 @@ export function isAcceptedShare(file: File): boolean {
  * Native iOS: the Share Extension saves files into the App Group container;
  * the ShareIntake plugin surfaces them, and app activation re-checks.
  *
- * Either way the wizard calls consumeAll() and the files enter the normal
- * import flow.
+ * Either way the wizard calls consumeAll(): the files shareRefusal() lets
+ * through enter the normal import flow, and the ones it refuses come back
+ * beside them, each with its reason.
  */
 @Injectable({ providedIn: 'root' })
 export class ShareIntakeService {
@@ -95,12 +114,26 @@ export class ShareIntakeService {
     }
   }
 
-  /** Every waiting shared file, filtered to the accepted set; clears the source. */
-  async consumeAll(): Promise<File[]> {
+  /**
+   * Every waiting shared file, sorted by shareRefusal() into the accepted and
+   * the refused with their reasons; clears the source either way. A share
+   * past the claim window is in neither list: it may be another account's,
+   * and its name is not this session's to read.
+   */
+  async consumeAll(): Promise<ConsumedShares> {
     const files = Capacitor.isNativePlatform()
       ? await this.consumeNative()
       : await this.consumeWeb();
-    return files.filter(isAcceptedShare);
+    const consumed: ConsumedShares = { accepted: [], refused: [] };
+    for (const file of files) {
+      const reason = shareRefusal(file);
+      if (reason === null) {
+        consumed.accepted.push(file);
+      } else {
+        consumed.refused.push({ file, reason });
+      }
+    }
+    return consumed;
   }
 
   private async pendingCount(): Promise<number> {

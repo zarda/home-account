@@ -15,6 +15,7 @@ import {
   provideNoMotion,
   ratio,
   settleAnimations,
+  styleRules,
   withTheme,
 } from '../../../core/services/testing';
 
@@ -663,30 +664,12 @@ describe('BudgetProgressCardComponent', () => {
       fixture.detectChanges();
       const glyph = icon('.menu-btn mat-icon');
       const declared: Record<string, Record<string, string>> = {};
-      const visit = (rules: CSSRuleList, media: string) => {
-        for (const rule of Array.from(rules)) {
-          if (rule instanceof CSSMediaRule) {
-            visit(rule.cssRules, rule.conditionText);
-          } else if (
-            rule instanceof CSSStyleRule &&
-            rule.selectorText.includes('.menu-btn') &&
-            glyph.matches(rule.selectorText)
-          ) {
-            for (const prop of ['font-size', 'width', 'height', 'line-height']) {
-              const value = rule.style.getPropertyValue(prop);
-              if (value) (declared[media] ??= {})[prop] = value;
-            }
-          }
+      for (const { media, rule } of styleRules()) {
+        if (!rule.selectorText.includes('.menu-btn') || !glyph.matches(rule.selectorText)) continue;
+        for (const prop of ['font-size', 'width', 'height', 'line-height']) {
+          const value = rule.style.getPropertyValue(prop);
+          if (value) (declared[media ?? ''] ??= {})[prop] = value;
         }
-      };
-      for (const sheet of Array.from(document.styleSheets)) {
-        let rules: CSSRuleList;
-        try {
-          rules = sheet.cssRules;
-        } catch {
-          continue; // cross-origin sheet; nothing this app injects is one
-        }
-        visit(rules, '');
       }
       expect(declared).toEqual({
         '': { 'font-size': 'var(--text-base)', width: '1em', height: '1em', 'line-height': '1' },
