@@ -1,6 +1,7 @@
 import { TestBed } from '@angular/core/testing';
 import { Component } from '@angular/core';
 import capacitorConfig from '../../../capacitor.config';
+import { styleRules } from '../core/services/testing';
 
 /**
  * The shell keeps content clear of the notch, the home indicator and the
@@ -123,25 +124,6 @@ describe('safe-area insets', () => {
     expect(capacitorConfig.ios?.contentInset).toBe('never');
   });
 
-  /** Every style rule in the global sheet, with the media query it sits under. */
-  function globalRules(): { media: string | null; rule: CSSStyleRule }[] {
-    const found: { media: string | null; rule: CSSStyleRule }[] = [];
-    const walk = (rules: CSSRuleList, media: string | null) => {
-      for (const rule of Array.from(rules)) {
-        if (rule instanceof CSSStyleRule) found.push({ media, rule });
-        else if (rule instanceof CSSMediaRule) walk(rule.cssRules, rule.media.mediaText);
-      }
-    };
-    for (const sheet of Array.from(document.styleSheets)) {
-      try {
-        walk(sheet.cssRules, null);
-      } catch {
-        // A cross-origin sheet refuses cssRules; ours are all same-origin.
-      }
-    }
-    return found;
-  }
-
   const rootSelectors = (rule: CSSStyleRule) =>
     rule.selectorText.split(',').map((s) => s.trim());
 
@@ -155,7 +137,7 @@ describe('safe-area insets', () => {
     // screen there (no toolbar to collapse); a page that tall gives iOS the
     // room. Karma cannot be a Home Screen app, so this pins the rule; the
     // geometry was measured on the iPhone 17 Pro simulator, iOS 26.2.
-    const standalone = globalRules().filter(
+    const standalone = styleRules().filter(
       ({ media, rule }) =>
         media?.includes('display-mode: standalone') && rule.style.minHeight === '100lvh'
     );
@@ -168,7 +150,7 @@ describe('safe-area insets', () => {
     // In a tab, lvh is the height with the toolbar collapsed: 40 pt taller
     // than what is on screen while it shows. A page that tall would scroll
     // under the toolbar, so the floor belongs to the Home Screen app alone.
-    const unscoped = globalRules().filter(
+    const unscoped = styleRules().filter(
       ({ media, rule }) =>
         !media?.includes('display-mode: standalone') &&
         rule.style.minHeight.includes('lvh') &&
