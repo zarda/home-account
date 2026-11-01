@@ -38,7 +38,7 @@ needs. `ExtractedTransaction`, `ProcessedTransaction` and the review shape
 also carry `receiptCountry`, a mark rather than a field: `printedLocationSlot(name, country)`
 files it under a printed address and nowhere else.
 
-`CategorizedImportTransaction` carries fifteen more that are **review-step
+`CategorizedImportTransaction` carries sixteen more that are **review-step
 marks, not fields**: `currencyFellBack` (nobody read a currency, so the base
 currency is standing in), `dateAssumed` (the row's `date` is *now* rather than
 something read off the source, because `resolveImportDate` could not vouch
@@ -90,15 +90,21 @@ what makes **Remove** ask before it throws the row away; see
 a flip, a merge's net or the catalogue's arrival — which a flip back
 restores; a pick forgets it, a split carries it to both halves, a merge on
 one side keeps the target's, and a merge across sides drops it, the re-file
-writing a fresh one where it moves the category) and
+writing a fresh one where it moves the category),
 `typeFlaggedAs` (the type the reader flagged, filed by the flip that
 answered the flag, since the flip drops the type grade that was the only
 record of it; the first verdict stands through a second flip, and the batch
 counts the flags raised and overturned from it — see
-[ADR 0185](ADR/0185-a-refund-is-asked-about-at-every-door-and-a-category-follows-its-rows-side-there-and-back.md)). None of them
+[ADR 0185](ADR/0185-a-refund-is-asked-about-at-every-door-and-a-category-follows-its-rows-side-there-and-back.md))
+and `readOnDevice` (the row was read on the device, so its amount and date
+grades are the device's policy rather than a confidence a model reported,
+and a doubted amount's flag names the scan instead of quoting a percentage;
+set by `convertStrategyResultToCategories` from the row's `source`, and
+carried through a split and a merge's target — see
+[ADR 0186](ADR/0186-a-date-stops-at-a-currency-sign-and-a-line-break-a-total-read-past-an-aside-or-under-a-count-is-flagged-and-a-shared-file-lands-in-the-upload-area.md)). None of them
 reaches the mapper — it names its fields, and its spec pins that `fileRate`,
-`importFailure`, `importAttempts`, `editedOnCard`, `movedCategory` and
-`typeFlaggedAs` never come out of it —
+`importFailure`, `importAttempts`, `editedOnCard`, `movedCategory`,
+`typeFlaggedAs` and `readOnDevice` never come out of it —
 and none of them is ever written to a transaction as itself: `fileRate`
 reaches the write only as the snapshot the confirm step computes from it,
 over the amount actually being written.

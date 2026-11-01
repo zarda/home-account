@@ -161,7 +161,8 @@ describe('App routes (emulator smoke test)', () => {
   }
 
   /**
-   * An axe-core pass over the page just opened, WCAG 2.1 A and AA.
+   * An axe-core pass over the page just opened, WCAG 2.0 A and AA (axe's
+   * wcag2a and wcag2aa tags).
    *
    * Asserted inside expectPage for the same reason expectCurrentRouteMarked
    * is: every route this spec visits gets it, so the sweep widens whenever

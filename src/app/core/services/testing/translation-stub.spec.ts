@@ -71,6 +71,14 @@ describe('createLocaleFormatStub', () => {
     expect(stub.formatTime(null)).toBe('');
     expect(stub.formatTime('not a date')).toBe('');
   });
+
+  // A pin. Mutation: the stub's formatFileSize returning String(bytes).
+  it('formats a file size as its byte count, and an absent one as nothing', () => {
+    const stub = createLocaleFormatStub();
+
+    expect(stub.formatFileSize(2048)).toBe('2048 B');
+    expect(stub.formatFileSize(undefined)).toBe('');
+  });
 });
 
 @Component({

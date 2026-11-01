@@ -446,6 +446,17 @@ module.exports = defineConfig([
       // wraps it holds only hoisted copies and is not matched. Only a BINDING
       // satisfies it: a static `sortActionDescription="…"` is one language
       // for every reader.
+      //
+      // The track-by-name selector bans a `@for` whose track expression ends
+      // in `.name` (ADR 0186). Two files can share a name, since two iOS
+      // captures are both image.jpg, and a list keyed by it hands one row,
+      // and with it the row's preview, to the other: the upload area tracked
+      // its files and the wizard its preview tiles that way. The template
+      // parser keeps the whitespace after the expression in
+      // `trackBy.source`, so the pattern allows it, and a `; let i = $index`
+      // after the expression is not part of it. It reads the source text, so
+      // `f.nameKey`, `f.id`, the item itself and `$index` pass, and so do
+      // `f['name']` and a track function, which it cannot see.
       "no-restricted-syntax": [
         "error",
         {
@@ -474,6 +485,13 @@ module.exports = defineConfig([
             "Bind [sortActionDescription]=\"'transactions.sortBy' | translate\". Material describes " +
             "a sortable header as the English word \"Sort\" otherwise, and a static " +
             "sortActionDescription=\"…\" is one language for every reader.",
+        },
+        {
+          selector: "ForLoopBlock[trackBy.source=/\\.name\\s*$/]",
+          message:
+            "Track the item itself or its id, not its name. Two files can share a name (two iOS " +
+            "captures are both image.jpg), and a list keyed by it hands one row and its preview to " +
+            "the other (ADR 0186).",
         },
       ],
     },

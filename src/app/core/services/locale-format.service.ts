@@ -31,9 +31,12 @@ const DIGITS_INFO = /^(\d+)?\.(\d+)-(\d+)$/;
 /** Used when a partial test mock supplies no locale resolver. */
 const DEFAULT_INTL_LOCALE = 'en-US';
 
+/** The steps a file size climbs past whole bytes, each 1024 of the one before. */
+const FILE_SIZE_UNITS = ['kilobyte', 'megabyte', 'gigabyte'] as const;
+
 /**
- * Every user-facing date and number is formatted here, against the language
- * the user chose rather than the browser's.
+ * Every user-facing date, number and file size is formatted here, against
+ * the language the user chose rather than the browser's.
  *
  * Before this existed the app formatted three different ways: Angular's
  * `date`/`number` pipes with no LOCALE_ID provided (always en-US), bare
@@ -57,6 +60,7 @@ export class LocaleFormatService {
 
   private dateFormatters = new Map<string, Intl.DateTimeFormat>();
   private numberFormatters = new Map<string, Intl.NumberFormat>();
+  private unitFormatters = new Map<string, Intl.NumberFormat>();
   private timeFormatters = new Map<string, Intl.DateTimeFormat>();
   private fieldOrders = new Map<string, DateFieldOrder>();
 
@@ -149,6 +153,35 @@ export class LocaleFormatService {
   }
 
   /**
+   * A file's size in the active language: whole bytes below 1024, then kB,
+   * MB and GB to one decimal place, each step 1024 of the one before.
+   *
+   * From kB up the unit is Intl's own short form: `10 MB` in en, ja and tc,
+   * `kB` in en and tc, `KB` in ja. The byte step is the catalog's
+   * (`common.fileSizeBytes`), its figure formatted here, because CLDR writes
+   * the byte in English for zh-Hant at every width and its short en form does
+   * not agree in number ("281 byte"). An absent or non-finite size formats as
+   * the empty string, as `formatNumber` does.
+   */
+  formatFileSize(bytes: number | null | undefined): string {
+    if (bytes === null || bytes === undefined || !Number.isFinite(bytes)) return '';
+    // A loop rather than Math.log, so 1024 ** 3 cannot floor to the step below.
+    // It steps on the figure as it will be written, so 1,048,525 bytes reads
+    // 1 MB rather than 1,024 kB.
+    const written = (figure: number, at: number) => (at === 0 ? Math.round(figure) : Math.round(figure * 10) / 10);
+    let value = Math.max(0, bytes);
+    let step = 0;
+    while (written(value, step) >= 1024 && step < FILE_SIZE_UNITS.length) {
+      value /= 1024;
+      step++;
+    }
+    if (step === 0) {
+      return this.translationService.t('common.fileSizeBytes', { size: this.formatNumber(value, '1.0-0') });
+    }
+    return this.unitFormatter(FILE_SIZE_UNITS[step - 1]).format(value);
+  }
+
+  /**
    * A time of day in the active locale's conventions (hour and minute; the
    * locale's own 12/24-hour convention and separator). Same absent/unparseable
    * contract as `formatDate`.
@@ -187,6 +220,17 @@ export class LocaleFormatService {
     if (!formatter) {
       formatter = new Intl.NumberFormat(locale, this.digitOptions(digitsInfo));
       this.numberFormatters.set(key, formatter);
+    }
+    return formatter;
+  }
+
+  private unitFormatter(unit: string): Intl.NumberFormat {
+    const locale = this.locale;
+    const key = `${locale}|${unit}`;
+    let formatter = this.unitFormatters.get(key);
+    if (!formatter) {
+      formatter = new Intl.NumberFormat(locale, { style: 'unit', unit, unitDisplay: 'short', maximumFractionDigits: 1 });
+      this.unitFormatters.set(key, formatter);
     }
     return formatter;
   }

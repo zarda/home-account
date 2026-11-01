@@ -116,7 +116,7 @@ describe('ImportHistoryComponent', () => {
     mockRouter = jasmine.createSpyObj('Router', ['navigate'], { events: EMPTY });
     // Markers no Intl formatter would produce, so the joined text can only
     // come from the two calls.
-    mockLocaleFormat = jasmine.createSpyObj('LocaleFormatService', ['formatDate', 'formatTime']);
+    mockLocaleFormat = jasmine.createSpyObj('LocaleFormatService', ['formatDate', 'formatTime', 'formatFileSize']);
     mockLocaleFormat.formatDate.and.returnValue('DAY-FROM-FORMATTER');
     mockLocaleFormat.formatTime.and.returnValue('TIME-FROM-FORMATTER');
 
@@ -285,20 +285,10 @@ describe('ImportHistoryComponent', () => {
       fixture.detectChanges();
     });
 
-    it('should return 0 B for 0 bytes', () => {
-      expect(component.formatFileSize(0)).toBe('0 B');
-    });
-
-    it('should format bytes', () => {
-      expect(component.formatFileSize(500)).toBe('500 B');
-    });
-
-    it('should format kilobytes', () => {
-      expect(component.formatFileSize(2048)).toBe('2 KB');
-    });
-
-    it('should format megabytes', () => {
-      expect(component.formatFileSize(512000)).toBe('500 KB');
+    it('hands the size to the locale formatter', () => {
+      mockLocaleFormat.formatFileSize.and.returnValue('SIZE-FROM-FORMATTER');
+      expect(component.formatFileSize(2048)).toBe('SIZE-FROM-FORMATTER');
+      expect(mockLocaleFormat.formatFileSize).toHaveBeenCalledOnceWith(2048);
     });
   });
 
@@ -558,6 +548,16 @@ describe('ImportHistoryComponent transaction shortcut', () => {
     // day and a time as its UTC hour and minute.
     const subtitle = fixture.nativeElement.querySelector('mat-card-subtitle') as HTMLElement;
     expect(subtitle.textContent?.trim()).toBe('2024-01-01 00:00');
+  });
+
+  it('renders each record\'s file size through the locale formatter the upload area reads', () => {
+    render([itemWith(undefined)]);
+
+    // The stub writes a size as its byte count and B, which no size the card
+    // worked out for itself would read: 2048 bytes is the formatter's text.
+    const chips = Array.from(fixture.nativeElement.querySelectorAll('.chips mat-chip'))
+      .map(chip => (chip as HTMLElement).textContent?.trim());
+    expect(chips).toContain('2048 B');
   });
 
   it('shows no shortcut for a record without transaction ids', () => {

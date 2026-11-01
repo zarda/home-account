@@ -9,7 +9,7 @@ import { Transaction } from '../../../models';
 import { CurrencyService } from '../../../core/services/currency.service';
 import { TranslationService } from '../../../core/services/translation.service';
 import { APP_BREAKPOINTS } from '../../../core/layout/breakpoints';
-import { provideNoMotion } from '../../../core/services/testing';
+import { provideNoMotion, styleRules } from '../../../core/services/testing';
 
 /**
  * The component spec blanks its own template (monthly-comparison.component.
@@ -107,25 +107,10 @@ describe('overflow guard: monthly-comparison grid tracks (#450)', () => {
    * spec), a parseable one as its exact resolved value.
    */
   function summaryStatsRuleUnderMinWidth768(): string | null {
-    for (const sheet of Array.from(document.styleSheets)) {
-      let rules: CSSRuleList;
-      try {
-        rules = sheet.cssRules;
-      } catch {
-        continue; // cross-origin sheet; nothing this app injects is one
-      }
-      for (const rule of Array.from(rules)) {
-        if (!(rule instanceof CSSMediaRule) || !rule.conditionText.includes('min-width: 768px')) {
-          continue;
-        }
-        for (const inner of Array.from(rule.cssRules)) {
-          if (inner instanceof CSSStyleRule && inner.selectorText.includes('.summary-stats')) {
-            return inner.style.gridTemplateColumns;
-          }
-        }
-      }
-    }
-    return null;
+    const found = styleRules().find(
+      ({ media, rule }) => !!media?.includes('min-width: 768px') && rule.selectorText.includes('.summary-stats'),
+    );
+    return found ? found.rule.style.gridTemplateColumns : null;
   }
 
   it('parses the two-column rule under >=768px (unobservable as layout at the Karma window)', () => {

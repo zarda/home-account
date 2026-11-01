@@ -498,6 +498,9 @@ export class AIImportService {
         selected: true,
         notes: tx.notes,
         fieldConfidence: tx.fieldConfidence,
+        // Whose grades those are: the device's are its policy, a cloud
+        // reader's the confidence its model reported.
+        ...(tx.source === 'native' ? { readOnDevice: true as const } : {}),
         ...(imageMetadata ? { imageMetadata } : {}),
         ...(tx.tags?.length ? { tags: tx.tags } : {}),
         ...(tx.location ? { location: tx.location } : {}),

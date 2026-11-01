@@ -30,12 +30,12 @@
  * flag the cure; asserting the outcome catches every mechanism that kills a
  * ban, including ones not invented yet.
  *
- * Six further rules ride the same mechanism through no-restricted-syntax.
+ * Seven further rules ride the same mechanism through no-restricted-syntax.
  * The first three share one options array precisely because a second block
- * setting the same key would replace it; the two template rules (the pipe ban
- * and the sort-header rule) govern templates and share the template block's
- * array, and the last governs specs, which the app block ignores, so each
- * has a block of its own:
+ * setting the same key would replace it; the three template rules (the pipe
+ * ban, the sort-header rule and the track-by-name ban) govern templates and
+ * share the template block's array, and the last governs specs, which the app
+ * block ignores, so each has a block of its own:
  *
  *   - firstValueFrom over a TransactionService or FirestoreService listener
  *     (docs/one-shot-reads.md, #427) — a warm cache's first emission is a
@@ -76,6 +76,14 @@
  *     `sortActionDescription="…"` still fails. Every header binds it today, so
  *     nothing in the app would notice the rule dying; the self-test's
  *     fixtures prove it fires.
+ *   - A `@for` that tracks its items by name (ADR 0186): a track expression
+ *     ending in `.name`, trailing whitespace allowed, since the template
+ *     parser keeps it in the source. Two files can share a name (two iOS
+ *     captures are both image.jpg), and a list keyed by it hands one row, and
+ *     its preview, to the other. The selector sits in the template block's
+ *     array beside the two above; it fires on the name read off the item,
+ *     and leaves the item itself, an id, `$index` and a longer member that
+ *     merely starts with `name` alone, which the self-test's fixtures prove.
  *   - A spec listening for a rejection nobody caught on window (#500,
  *     docs/testing.md): the `unhandledrejection` and `rejectionhandled` event
  *     names as any string literal, and the `onunhandledrejection` /
@@ -131,6 +139,11 @@
  *   - What a bound sort-header description says. The selector asks for a
  *     binding, not for the catalog key: `[sortActionDescription]="'Sort'"` is a
  *     binding and passes.
+ *   - A list keyed by name some other way than a member read ending in
+ *     `.name`: `track f['name']` (a keyed read), a track function
+ *     (`track byName(f)`), or a name under another member (`track f.fileName`).
+ *     The selector reads the track expression's source text, and only its
+ *     ending.
  *   - App code listening for a rejection. The ban resolves for specs; the
  *     population row proves nothing about src/app outside *.spec.ts.
  *   - A detector that is merely too weak: a spec that never listens, but reads
@@ -245,6 +258,13 @@ const TEMPLATE_SORT_HEADER_SELECTOR =
   'Element:has(> TextAttribute[name="mat-sort-header"], > BoundAttribute[name="mat-sort-header"])' +
   ':not(:has(> BoundAttribute[name="sortActionDescription"]))';
 
+// A `@for` that tracks its items by name (ADR 0186). Two files can share a
+// name, so a list keyed by it hands one row and its preview to the other. The
+// template parser keeps trailing whitespace in the track source, so the
+// pattern allows it. A plain string, not imported, so a drift from
+// eslint.config.js shows up as a resolved-selector mismatch below.
+const TEMPLATE_TRACK_BY_NAME_SELECTOR = 'ForLoopBlock[trackBy.source=/\\.name\\s*$/]';
+
 // The dynamic half of the analytics ban. no-restricted-imports reads static
 // declarations only, so import('@capacitor-firebase/analytics') passes it —
 // which is why this one is a syntax selector and why it lives in the same
@@ -305,7 +325,7 @@ const SYNTAX_POPULATIONS = [
     ],
   },
   {
-    label: 'templates under the built-in date/number/currency pipe and the sort-header description bans',
+    label: 'templates under the built-in date/number/currency pipe, the sort-header description and the track-by-name bans',
     files: [
       'src/app/features/reports/monthly-comparison/monthly-comparison.component.html',
       'src/app/shared/components/transaction-row/transaction-row.component.html',
@@ -315,6 +335,7 @@ const SYNTAX_POPULATIONS = [
       TEMPLATE_NUMBER_SELECTOR,
       TEMPLATE_CURRENCY_SELECTOR,
       TEMPLATE_SORT_HEADER_SELECTOR,
+      TEMPLATE_TRACK_BY_NAME_SELECTOR,
     ],
   },
   {
@@ -897,6 +918,27 @@ async function selfTest() {
     { filePath: templatePath }
   );
   check('only the sort header that lacks a description fails the rule', countSyntaxMessages(twoSortHeaders), 1);
+
+  // The track-by-name half (ADR 0186). Two files can share a name, so a list
+  // tracked by it hands one row to the other. The template parser keeps the
+  // whitespace after the expression in its source, so a name followed by a
+  // space, or ending its own line, must fail as the plain one does; the item
+  // itself, an id, a longer member that merely starts with `name` and the
+  // index must not.
+  const trackCases = [
+    ['a list tracked by name', '@for (f of files; track f.name) {<p>{{ f.name }}</p>}', 1],
+    ['a list tracked by name before a trailing space', '@for (f of files; track f.name ) {<p>{{ f.name }}</p>}', 1],
+    ['a list tracked by a name on its own line', '@for (\n  f of files;\n  track f.name\n) {\n  <p>{{ f.name }}</p>\n}', 1],
+    ['a list tracked by name beside its index', '@for (f of files; track f.name; let i = $index) {<p>{{ i }}</p>}', 1],
+    ['a list tracked by the item itself', '@for (f of files; track f) {<p>{{ f.name }}</p>}', 0],
+    ['a list tracked by id', '@for (f of files; track f.id) {<p>{{ f.name }}</p>}', 0],
+    ['a list tracked by a member that starts with name', '@for (f of files; track f.nameKey) {<p>{{ f.name }}</p>}', 0],
+    ['a list tracked by index', '@for (f of files; track $index) {<p>{{ f.name }}</p>}', 0],
+  ];
+  for (const [shape, source, expected] of trackCases) {
+    const linted = await fixtureEslint.lintText(source + '\n', { filePath: templatePath });
+    check(`${shape} ${expected === 0 ? 'passes' : 'fails'} the rule${expected === 0 ? '' : ' once'}`, countSyntaxMessages(linted), expected);
+  }
 
   // The spec-only half: a listener for a rejection nobody caught. Each shape a
   // spec could use to hear one on window must fail the rule once, and the

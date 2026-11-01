@@ -1,9 +1,23 @@
 # 13. The printed total is the amount, not the sum of the items
 
-**Status:** Accepted, implemented · **Date:** 2026-08-05 · **Issues:** #226
+**Status:** Accepted, implemented; amended by
+[0186](0186-a-date-stops-at-a-currency-sign-and-a-line-break-a-total-read-past-an-aside-or-under-a-count-is-flagged-and-a-shared-file-lands-in-the-upload-area.md)
+· **Date:** 2026-08-05 · **Issues:** #226
 
 Reference documentation lives in [../receipt-import.md](../receipt-import.md). This
 record keeps the decision and the reasoning.
+
+**Amended by
+[0186](0186-a-date-stops-at-a-currency-sign-and-a-line-break-a-total-read-past-an-aside-or-under-a-count-is-flagged-and-a-shared-file-lands-in-the-upload-area.md).**
+The parser still keeps largest-wins, and the cash-tendered correction still
+stands, but it is no longer the only one. Which figures on a line are money is
+read figure by figure: a whole number printed bare beside money on its line is
+a count, a size or a code rather than the line's money, which moves the reading
+at the tier's own grade. A reading that passes a figure printed as a labelled
+aside, keeps one only because nothing else in its tier stands beside it while a
+weaker tier holds a figure printed on its own, or that a larger count might
+have been the total in place of, is graded at 0.75× its tier, under the review
+bar.
 
 ## Context
 

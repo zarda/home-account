@@ -1,5 +1,6 @@
-import { AfterViewInit, ChangeDetectionStrategy, Component, DestroyRef, Injector, OnDestroy, OnInit, ViewChild, afterNextRender, computed, inject, signal, viewChild } from '@angular/core';
+import { AfterViewInit, ChangeDetectionStrategy, Component, DestroyRef, ErrorHandler, Injector, OnDestroy, OnInit, ViewChild, afterNextRender, computed, inject, signal, viewChild } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
+import { concatMap, filter, from, tap } from 'rxjs';
 import { CommonModule } from '@angular/common';
 import { ActivatedRoute, Router } from '@angular/router';
 import { MatStepperModule, MatStepper } from '@angular/material/stepper';
@@ -45,7 +46,7 @@ import {
 } from '../../../../core/services/receipt-attempt.service';
 import { AnalyticsService } from '../../../../core/services/analytics.service';
 import { ReceiptAttemptDiagnostics } from '../../../../core/services/ai-types';
-import { ShareIntakeService } from '../../../../core/services/share-intake.service';
+import { RefusedShare, ShareIntakeService } from '../../../../core/services/share-intake.service';
 import { AI_QUEUE_WRITE_PARTIAL } from '../../../../core/utils/ai-error.utils';
 import { looksLikeImageFile } from '../../../../core/utils/file.utils';
 import { errorCode } from '../../../../core/utils/firebase-error.utils';
@@ -121,6 +122,7 @@ export class ImportWizardComponent implements OnInit, AfterViewInit, OnDestroy {
   private route = inject(ActivatedRoute);
   private shareIntake = inject(ShareIntakeService);
   private destroyRef = inject(DestroyRef);
+  private errorHandler = inject(ErrorHandler);
   private injector = inject(Injector);
 
   @ViewChild('stepper') stepper!: MatStepper;
@@ -131,9 +133,10 @@ export class ImportWizardComponent implements OnInit, AfterViewInit, OnDestroy {
    */
   table = viewChild(TransactionPreviewTableComponent);
   /**
-   * Reached from `processFiles` rather than through a binding: the zone keeps
-   * a list of its own, and the photos the offline queue stored have to leave
-   * it as they leave this selection.
+   * Reached from `processFiles` and for shares rather than through a
+   * binding: the zone keeps a list of its own, so the photos the offline
+   * queue stored have to leave it as they leave this selection, and a shared
+   * file has to join it as it joins this one.
    */
   dropzone = viewChild(FileDropzoneComponent);
 
@@ -266,6 +269,13 @@ export class ImportWizardComponent implements OnInit, AfterViewInit, OnDestroy {
    * own run has settled.
    */
   runInFlight = signal(false);
+  /**
+   * Raised while a share is read out of the stash and onto the zone. The
+   * busy guard is read before the stash answers, so a run started then would
+   * read the selection the drain is about to change, and the drain would
+   * empty the rows the run had appended: Process waits on it as on a run.
+   */
+  shareDraining = signal(false);
   isImporting = signal(false);
   /**
    * Re-checks still waiting on their stored-history read. Import waits on
@@ -507,19 +517,28 @@ export class ImportWizardComponent implements OnInit, AfterViewInit, OnDestroy {
     }
 
     // Files shared from another app: both share pipelines stage them (see
-    // ShareIntakeService) and arrive here with ?source=share. They enter
-    // exactly the flow a dropzone pick would, review step included. The
-    // share-target worker adds error=1 when it could not stash the POST.
-    const params = this.route.snapshot.queryParamMap;
-    if (params.get('source') === 'share') {
-      const lost = params.get('error') === '1';
-      if (lost) {
-        this.notifications.error(this.t('import.shareLost'));
-      }
-      this.stripShareParams();
+    // ShareIntakeService) and arrive here with ?source=share. They land on
+    // the dropzone's list as a pick would and take a pick's path from there,
+    // review step included. The share-target worker adds error=1 when it
+    // could not stash the POST. A stream, not the snapshot: the router
+    // reuses a wizard already open, so a share made then reaches it only as
+    // new params. The strip's own navigation emits params without the flag,
+    // which the filter drops. Drains run one at a time, so a queued one
+    // reads the stash the one before it emptied.
+    this.route.queryParamMap.pipe(
+      filter(p => p.get('source') === 'share'),
+      tap(p => {
+        if (p.get('error') === '1') this.notifications.error(this.t('import.shareLost'));
+        this.stripShareParams();
+      }),
       // Still drained when this share was lost: an earlier one may be waiting.
-      void this.consumeSharedFiles(lost);
-    }
+      // A drain that throws is reported, not passed down the stream: an
+      // error there would end it, and no later share would drain.
+      concatMap(p => from(
+        this.consumeSharedFiles(p.get('error') === '1').catch((error: unknown) => this.errorHandler.handleError(error))
+      )),
+      takeUntilDestroyed(this.destroyRef)
+    ).subscribe();
   }
 
   /**
@@ -536,9 +555,23 @@ export class ImportWizardComponent implements OnInit, AfterViewInit, OnDestroy {
   }
 
   private async consumeSharedFiles(lostAlreadySaid: boolean): Promise<void> {
-    let files: File[];
+    // A run, rows on review and an import being written each rest on the
+    // selection as it stands, and a change to it empties the rows. The
+    // share stays in the stash, and the next drain takes it.
+    if (this.isImporting() || this.processingBusy() || this.extractedTransactions().length > 0) return;
+    this.shareDraining.set(true);
     try {
-      files = await this.shareIntake.consumeAll();
+      await this.drainShares(lostAlreadySaid);
+    } finally {
+      this.shareDraining.set(false);
+    }
+  }
+
+  private async drainShares(lostAlreadySaid: boolean): Promise<void> {
+    let accepted: File[];
+    let refused: RefusedShare[];
+    try {
+      ({ accepted, refused } = await this.shareIntake.consumeAll());
     } catch {
       // The files never reach the picker, so to the user this share is lost
       // as surely as one the worker could not stash.
@@ -547,9 +580,25 @@ export class ImportWizardComponent implements OnInit, AfterViewInit, OnDestroy {
       }
       return;
     }
-    if (files.length > 0) {
-      this.onFilesSelected(files);
+    if (accepted.length === 0 && refused.length === 0) return;
+    const zone = this.dropzone();
+    if (!zone) {
+      // Only the blanked template the unit suite renders has no zone; the
+      // real one always does.
+      if (accepted.length > 0) this.onFilesSelected(accepted);
+      return;
     }
+    // The zone lists them as a pick's, so its next add, remove or reorder
+    // emits them with the rest, and names the refused in its own banner.
+    // The selection is then written from its whole list, which keeps a
+    // file picked while the stash was read.
+    if (zone.adopt(accepted, refused).length > 0) this.onFilesSelected(zone.selectedFiles());
+    // A run that settled on a card of its own (an error, photos queued for
+    // later, nothing found) leaves the stepper past the upload step. The
+    // share is on the zone, so the stepper goes back to it: the file or the
+    // refusal is on screen, and no card's Done leaves over a share nobody
+    // saw. The guard above keeps the upload step editable.
+    if (this.stepper && this.stepper.selectedIndex !== 0) this.stepper.selectedIndex = 0;
   }
 
   ngAfterViewInit(): void {
@@ -622,8 +671,9 @@ export class ImportWizardComponent implements OnInit, AfterViewInit, OnDestroy {
 
   async processFiles(): Promise<void> {
     // One run at a time: a second one during the queue write would queue the
-    // same photos again, and the drain would write each of them twice.
-    if (this.processingBusy()) return;
+    // same photos again, and the drain would write each of them twice. Nor
+    // while a share is read onto the zone, which changes the selection.
+    if (this.processingBusy() || this.shareDraining()) return;
     this.runInFlight.set(true);
     this.processingError.set(null);
     this.queuedOfflineCount.set(0);
@@ -1469,6 +1519,8 @@ export class ImportWizardComponent implements OnInit, AfterViewInit, OnDestroy {
   }
 
   retryProcessing(): void {
+    // Cleared while no run can start, the card would claim nothing was found.
+    if (this.processingBusy() || this.shareDraining()) return;
     this.processingError.set(null);
     this.queuedOfflineCount.set(0);
     this.processingErrorKey.set(null);

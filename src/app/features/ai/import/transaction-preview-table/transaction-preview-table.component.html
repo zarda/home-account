@@ -53,6 +53,7 @@
         <div class="card-select">
           <mat-checkbox
             [checked]="row.selected"
+            [aria-label]="selectLabel(row)"
             (change)="toggleSelection(row, $event.checked)"
           ></mat-checkbox>
         </div>

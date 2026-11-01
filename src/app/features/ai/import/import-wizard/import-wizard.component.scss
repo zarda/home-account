@@ -688,10 +688,20 @@
 /* Responsive */
 @media (max-width: 599.98px) {
   /* Below the mobile breakpoint the four step labels truncate to garbage
-     ("Uplo / Proces / Revie / Impo"); collapse to icon-only headers so the
-     numbered/checked circles carry the progress instead. */
+     ("Uplo / Proces / Revie / Impo"), so the numbered/checked circles carry
+     the progress instead. Each header is a tab its label names (and, while
+     the import is written, the lock in it), so the label is clipped in place
+     rather than taken out with display: none, which left four tabs with no
+     name. Material positions the header, so the 1px box stays inside it,
+     and gives the label a 50px min-width the box has to drop. */
   ::ng-deep .modern-stepper .mat-step-label {
-    display: none;
+    position: absolute;
+    width: 1px;
+    min-width: 0;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
   }
 
   ::ng-deep .modern-stepper .mat-horizontal-stepper-header {

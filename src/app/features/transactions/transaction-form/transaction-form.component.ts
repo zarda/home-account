@@ -75,7 +75,7 @@ import { countryForCoordinates, currencyForCountry } from '../../../core/utils/c
 import { locationSlot } from '../../../core/utils/import-dto.utils';
 import { countryDisplayName, currencyReasonKey, localeRegion, suggestCurrency } from '../../../core/utils/currency-suggestion.utils';
 import { readCountryCode } from '../../../core/utils/receipt-extraction.utils';
-import { countTypeAnswers, datedToday, joinSentences, readerFlaggedType, withoutFieldConfidence } from '../../../core/utils/import-review.utils';
+import { countTypeAnswers, datedToday, fieldDoubtSentence, joinSentences, readerFlaggedType, withoutFieldConfidence } from '../../../core/utils/import-review.utils';
 import { CurrencyChoiceSessionService } from '../../../core/services/currency-choice-session.service';
 import { LocaleFormatService } from '../../../core/services/locale-format.service';
 import { normalizeTag, normalizeTags } from '../../../core/utils/tag.utils';
@@ -315,6 +315,15 @@ export class TransactionFormComponent implements OnInit, AfterViewInit, OnDestro
    * grade: the type standing after it is the user's answer.
    */
   scanFieldConfidence = signal<FieldConfidence | null>(null);
+
+  /**
+   * Whether the last scan was read on the device, whose amount and date
+   * grades are the reader's policy rather than a confidence a model
+   * reported: the flag then names the scan instead of quoting a percentage
+   * (verifyFieldTooltip). Set with scanFieldConfidence on every scan, and
+   * cleared with it.
+   */
+  scanReadOnDevice = signal(false);
 
   /**
    * The date the last scan put in the field, held until the user moves the
@@ -1321,6 +1330,7 @@ export class TransactionFormComponent implements OnInit, AfterViewInit, OnDestro
       this.scanCountry = primary.receiptCountry || null;
 
       this.scanFieldConfidence.set(primary.fieldConfidence ?? null);
+      this.scanReadOnDevice.set(primary.source === 'native');
 
       // The receipt did not say what money this was, so the account's base
       // currency is sitting in the field. Offer a better guess; never apply it.
@@ -1349,6 +1359,7 @@ export class TransactionFormComponent implements OnInit, AfterViewInit, OnDestro
       this.filledByScan = false;
       this.scanReading = null;
       this.scanFieldConfidence.set(null);
+      this.scanReadOnDevice.set(false);
       this.scanDate.set(null);
       this.suggestedCurrency.set(null);
       this.suggestedCoordinates.set(null);
@@ -1600,16 +1611,21 @@ export class TransactionFormComponent implements OnInit, AfterViewInit, OnDestro
    *
    * The type has a sentence of its own and no percentage, as on the review
    * card: its grade is the device reader's policy rather than a measurement
-   * (ADR 0162), and a percentage would report a reading nothing took.
+   * (ADR 0162), and a percentage would report a reading nothing took. A
+   * scan read on the device grades its amount and date by policy too, so
+   * their doubt names the scan; only a cloud reader's doubt quotes the
+   * confidence its model reported. That choice is the card's too, in
+   * `fieldDoubtSentence`; the form joins its not-today sentence after it.
    */
   verifyFieldTooltip(field: keyof FieldConfidence): string {
     if (field === 'type') {
       return this.translationService.t('import.verifyType');
     }
-    const percent = Math.round((this.scanFieldConfidence()?.[field] ?? 0) * 100);
-    const doubt = this.translationService.t(
-      field === 'amount' ? 'import.verifyAmount' : 'import.verifyDate',
-      { percent }
+    const doubt = fieldDoubtSentence(
+      this.translationService.t.bind(this.translationService),
+      field,
+      this.scanReadOnDevice(),
+      this.scanFieldConfidence()?.[field],
     );
     const anotherDay = field === 'date' ? this.scanDateOnAnotherDay() : null;
     if (!anotherDay) {
@@ -1695,6 +1711,7 @@ export class TransactionFormComponent implements OnInit, AfterViewInit, OnDestro
       this.scanReading = null;
       this.scanError.set(null);
       this.scanFieldConfidence.set(null);
+      this.scanReadOnDevice.set(false);
       this.scanDate.set(null);
       this.suggestedCurrency.set(null);
       this.scanCurrencyFellBack = false;

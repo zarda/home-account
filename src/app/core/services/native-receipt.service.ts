@@ -4,7 +4,7 @@ import { AppleIntelligenceService } from './apple-intelligence.service';
 import { CategoryService } from './category.service';
 import { TranslationService } from './translation.service';
 import { ProcessedTransaction, ProcessingResult } from './ai-types';
-import { ParsedReceiptText, parseReceiptOcrText } from './receipt-text-parser';
+import { DEMOTION_FACTOR, ParsedReceiptText, parseReceiptOcrText } from './receipt-text-parser';
 import { buildCategoryPromptCatalog, categoryFitsType, matchCategoryName } from '../utils/categorization.utils';
 import {
   MODEL_INCOME_GRADE,
@@ -82,6 +82,55 @@ function typeVerdict(
     return { type: 'expense', grade: DISPUTED_TYPE_GRADE };
   }
   return { type: 'expense' };
+}
+
+/**
+ * Whether the text parser read its total among the figures it read beside a
+ * currency mark, and a rule or the cash-tendered sum then moved or kept it
+ * there: the tier's grade under DEMOTION_FACTOR, a reading that would have
+ * passed the review bar but for the demotion. A demoted pick from the weaker
+ * tiers says no more about the print than an undemoted one there (ADR 0186).
+ */
+function demotedBesideCurrency(text: ParsedReceiptText): boolean {
+  return (
+    text.amountDemotion !== undefined &&
+    text.amountConfidence >= VERIFY_FIELD_THRESHOLD * DEMOTION_FACTOR
+  );
+}
+
+/**
+ * Whether a rule, rather than the print, picked that total: any demotion but
+ * the cash-tendered sum, which is arithmetic on the print.
+ */
+function pickedByRule(text: ParsedReceiptText): boolean {
+  return demotedBesideCurrency(text) && text.amountDemotion !== 'tender';
+}
+
+/**
+ * The amount grade when the model and the text parser read the same total.
+ * Agreement backs what the parser read off the print, the cash-tendered sum
+ * included, up to MODEL_READ_GRADE. A total a rule picked is a guess a model
+ * reading the same text can share, so the parser's own grade stands, under
+ * the bar.
+ */
+function agreedAmountGrade(text: ParsedReceiptText): number {
+  return pickedByRule(text)
+    ? text.amountConfidence
+    : Math.max(text.amountConfidence, MODEL_READ_GRADE);
+}
+
+/**
+ * The amount grade when the two read different totals. A parser that read its
+ * figure beside a currency mark disputes the model's, and the row is flagged,
+ * a figure a rule or the cash-tendered sum moved there included: a model that
+ * reads the cash handed over or the change is wrong as surely as one that
+ * reads a count. A disagreement with a parser that did not trust its own
+ * reading is no evidence against the model.
+ */
+function disputedAmountGrade(text: ParsedReceiptText): number {
+  return text.amountConfidence >= VERIFY_FIELD_THRESHOLD || demotedBesideCurrency(text)
+    ? REVIEW_AMOUNT_CONFIDENCE
+    : MODEL_READ_GRADE;
 }
 
 /**
@@ -255,10 +304,8 @@ export class NativeReceiptService {
         amount: !(amount > 0)
           ? 0
           : sameTotal
-            ? Math.max(text.amountConfidence, MODEL_READ_GRADE)
-            : text.amountConfidence >= VERIFY_FIELD_THRESHOLD
-              ? REVIEW_AMOUNT_CONFIDENCE
-              : MODEL_READ_GRADE,
+            ? agreedAmountGrade(text)
+            : disputedAmountGrade(text),
         date: parsedDate === null ? 0 : MODEL_READ_GRADE,
         ...(verdict.grade !== undefined ? { type: verdict.grade } : {}),
       },

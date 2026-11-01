@@ -362,12 +362,10 @@ export class ImportHistoryComponent implements OnInit, OnDestroy {
     return [this.currencyService.formatCurrency(item.totalsByCurrency ? 0 : legacy, base)];
   }
 
+  // A record's size in the reader's language, through the formatter the
+  // upload area's rows read too.
   formatFileSize(bytes: number): string {
-    if (bytes === 0) return '0 B';
-    const k = 1024;
-    const sizes = ['B', 'KB', 'MB', 'GB'];
-    const i = Math.floor(Math.log(bytes) / Math.log(k));
-    return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + ' ' + sizes[i];
+    return this.localeFormat.formatFileSize(bytes);
   }
 
   deleteHistory(item: ImportHistory): void {

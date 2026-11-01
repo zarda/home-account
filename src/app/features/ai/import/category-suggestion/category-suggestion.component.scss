@@ -102,12 +102,15 @@
 // Material's own stylesheet. A margin declared here would lose to it at
 // (0,3,0) anyway — the same fight a leading-slot `margin-inline-start: -2px`
 // was already losing at (0,2,0) against Material's leading-icon rule.
+//
+// It rests at full strength in the button's own colour, the name's. A fade by
+// opacity left it near 3.2:1 on the light cards, under the 4.5:1 a resting
+// glyph is held to wherever axe scores it as text.
 .dropdown-icon {
   font-size: var(--text-xl);
   width: 1em;
   height: 1em;
   line-height: 1em;
-  opacity: 0.7;
 }
 
 // A phone's card is under ~380px and the 600px viewport layout leaves one

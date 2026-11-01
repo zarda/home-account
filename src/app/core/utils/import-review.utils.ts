@@ -333,6 +333,29 @@ export function sumByCurrency(
 }
 
 /**
+ * What a flagged amount or date says, on the review card and in the
+ * transaction form alike (ADR 0171). A scan read on the device grades both
+ * by policy, the parser's tiers and demotions and the cross-check's 0.5 and
+ * 0.8, so its doubt names the scan; a cloud reader's doubt quotes the
+ * confidence its model reported. What each caller says before or after it
+ * (the card's assumed date, the form's not-today sentence) stays the
+ * caller's.
+ */
+export function fieldDoubtSentence(
+  t: (key: string, params?: Record<string, string | number>) => string,
+  field: 'amount' | 'date',
+  readOnDevice: boolean,
+  confidence: number | undefined,
+): string {
+  if (readOnDevice) {
+    return t(field === 'amount' ? 'import.verifyAmountOnDevice' : 'import.verifyDateOnDevice');
+  }
+  return t(field === 'amount' ? 'import.verifyAmount' : 'import.verifyDate', {
+    percent: Math.round((confidence ?? 0) * 100),
+  });
+}
+
+/**
  * Two sentences as one line of text, in the order they are read.
  *
  * A lead that ends in a stop — "." in en, "。" in ja and tc — gives it up
@@ -481,20 +504,20 @@ export function sameSplit(
  *    what was read, the same rule a hand-typed correction follows
  *    (`commitAmount`). The date's grade, and every other review-step mark
  *    (`dateAssumed`, `dateReviewed`, `currencyFellBack`, `currencySuggestion`,
- *    `receiptCountry`, `movedCategory`, `typeFlaggedAs`) and reader-supplied
- *    field (`tags`, `location`, `merchant`, `suggestedCategoryId`,
- *    `categoryConfidence`, `period`), travel to both untouched: the receipt
- *    was read once, and splitting the amount does not reread the date. Nor
- *    does it move either half to the other side, so each can still be
- *    flipped back to the category a flip once moved off the row, and each
- *    still says which type the reader flagged: a split does not undo a
- *    flip's answer, and the count of flags overturned (`countTypeAnswers`)
- *    reads both halves for it. A part born of a row whose
- *    date question is still open carries `dateAssumed` and shows the chip
- *    too — but the part's id is new, so the wizard's `receiptRowIds`
- *    (stamped once, at extraction) never contains it, and the question does
- *    not gate Continue or Import the way a receipt row's does. It stands on
- *    the same footing as any other assumed date outside a receipt batch.
+ *    `receiptCountry`, `movedCategory`, `typeFlaggedAs`, `readOnDevice`) and
+ *    reader-supplied field (`tags`, `location`, `merchant`,
+ *    `suggestedCategoryId`, `categoryConfidence`, `period`), travel to both
+ *    untouched: the receipt was read once, and splitting the amount does not
+ *    reread the date. Nor does it move either half to the other side, so each
+ *    can still be flipped back to the category a flip once moved off the row,
+ *    and each still says which type the reader flagged: a split does not undo
+ *    a flip's answer, and the count of flags overturned (`countTypeAnswers`)
+ *    reads both halves for it. A part born of a row whose date question is
+ *    still open carries `dateAssumed` and shows the chip too — but the part's
+ *    id is new, so the wizard's `receiptRowIds` (stamped once, at extraction)
+ *    never contains it, and the question does not gate Continue or Import the
+ *    way a receipt row's does. It stands on the same footing as any other
+ *    assumed date outside a receipt batch.
  *  - `notes`, `duplicateOf`, `recurringId`, `isRecurring` and
  *    `recurringMatch` are deleted off the part rather than carried or
  *    cleared to `undefined` (so `'notes' in part` is false, not true of

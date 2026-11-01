@@ -411,8 +411,9 @@ beside itself instead of passing for what the door receives today.
 ## What the axe pass can and cannot see
 
 `app.smoke.spec.ts`'s `expectPage()` runs axe-core over every page it opens,
-WCAG 2.1 A and AA, scoped to the routed element. Six properties, each of the
-harness or of how axe meets it, shape what that can honestly mean:
+WCAG 2.0 A and AA (axe's `wcag2a` and `wcag2aa` tags), scoped to the routed
+element. Six properties, each of the harness or of how axe meets it, shape
+what that can honestly mean:
 
 - **i18n is not served.** Karma's asset config does not publish the catalogs,
   so `| translate` renders the raw key. Every accessible name on screen is a

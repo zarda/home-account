@@ -2,7 +2,7 @@ import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { NO_ERRORS_SCHEMA } from '@angular/core';
 
 import { FileDropzoneComponent } from './file-dropzone.component';
-import { IMPORT_FILE_MAX_BYTES } from '../../../../core/services/share-intake.service';
+import { IMPORT_FILE_MAX_BYTES, RefusedShare } from '../../../../core/services/share-intake.service';
 import { TranslationService } from '../../../../core/services/translation.service';
 import {
   channels,
@@ -13,12 +13,26 @@ import {
   provideNoMotion,
   ratio,
   settleAnimations,
+  textLines,
+  type TranslationStub,
   withTheme,
 } from '../../../../core/services/testing';
+import en from '../../../../../assets/i18n/en.json';
+import ja from '../../../../../assets/i18n/ja.json';
+import tc from '../../../../../assets/i18n/tc.json';
 
 describe('FileDropzoneComponent', () => {
   let component: FileDropzoneComponent;
   let fixture: ComponentFixture<FileDropzoneComponent>;
+
+  const image = (name: string) => new File([''], name, { type: 'image/jpeg' });
+  const csv = (name: string) => new File([''], name, { type: 'text/csv' });
+  const names = (files: readonly File[]) => files.map(f => f.name);
+
+  /** Drives the private processFiles the way the file input does. */
+  function select(...files: File[]): void {
+    component.onFileSelect({ target: { files, value: 'x' } } as unknown as Event);
+  }
 
   beforeEach(async () => {
     await TestBed.configureTestingModule({
@@ -96,46 +110,88 @@ describe('FileDropzoneComponent', () => {
   });
 
   describe('image preview lifetime', () => {
-    const image = (name: string) => new File([''], name, { type: 'image/jpeg' });
-
-    /** Drives the private processFiles the way the file input does. */
-    function select(...files: File[]): void {
-      component.onFileSelect({ target: { files, value: 'x' } } as unknown as Event);
-    }
-
-    it('releases the previous blob when a file of the same name is re-picked', () => {
-      select(image('receipt.jpg'));
-      const first = component.getFilePreview(image('receipt.jpg'));
+    // Two iOS captures are both image.jpg. Each is a row of its own, so each
+    // keeps a preview of its own: the second pick takes nothing from the
+    // first, and the first's blob is still the one its row shows.
+    it('gives each of two same-named photos its own preview, and releases neither', () => {
+      const first = image('receipt.jpg');
+      const second = image('receipt.jpg');
+      select(first);
+      const firstPreview = component.getFilePreview(first);
       const revoke = spyOn(URL, 'revokeObjectURL');
 
-      select(image('receipt.jpg'));
+      select(second);
 
-      // The map is keyed by name, so without this the first URL is overwritten
-      // and stays alive with nothing able to reach it.
-      expect(revoke).toHaveBeenCalledOnceWith(first);
+      expect(firstPreview).withContext('the first photo\'s preview').toMatch(/^blob:/);
+      expect(component.getFilePreview(first)).withContext('the first photo\'s preview, after the second pick').toBe(firstPreview);
+      expect(component.getFilePreview(second)).withContext('the second photo\'s preview').toMatch(/^blob:/);
+      expect(component.getFilePreview(second)).withContext('the second photo\'s preview').not.toBe(firstPreview);
+      expect(revoke).withContext('a blob a row still shows').not.toHaveBeenCalled();
     });
 
+    // PIN: passes before the fix, and has to keep passing after it. Mutation
+    // run and seen failing: the single-mode revoke skipped.
     it('releases what it displaces when only one file is allowed', () => {
       component.multiple = false;
-      select(image('first.jpg'));
-      const first = component.getFilePreview(image('first.jpg'));
+      const first = image('first.jpg');
+      select(first);
+      const firstPreview = component.getFilePreview(first);
       const revoke = spyOn(URL, 'revokeObjectURL');
 
       select(image('second.jpg'));
 
-      expect(revoke).toHaveBeenCalledOnceWith(first);
+      expect(revoke).toHaveBeenCalledOnceWith(firstPreview);
       expect(component.selectedFiles().map(f => f.name)).toEqual(['second.jpg']);
     });
 
+    // Single mode lists one photo of a pick, so it mints one preview: a blob
+    // for a photo it leaves off the list would live until the zone goes.
+    it('mints a preview only for the photo it keeps when only one file is allowed', () => {
+      component.multiple = false;
+      const first = image('first.jpg');
+      const second = image('second.jpg');
+      const mint = spyOn(URL, 'createObjectURL').and.callThrough();
+
+      select(first, second);
+
+      // By identity: two empty Files are equal to toEqual.
+      expect(mint.calls.count()).withContext('the previews minted').toBe(1);
+      expect(mint.calls.argsFor(0)[0]).withContext('the photo previewed').toBe(first);
+      expect(component.getFilePreview(second)).withContext('the photo left off the list').toBe('');
+      expect(component.selectedFiles().length).withContext('the list').toBe(1);
+      expect(component.selectedFiles()[0]).withContext('the file listed').toBe(first);
+    });
+
+    // The same File taken again gets a new preview, and the blob it had is
+    // released: nothing points at it once its entry is overwritten.
+    // A pin. Mutation: the revokePreview before the preview is set removed.
+    it('releases the old preview when the same file is taken again', () => {
+      component.multiple = false;
+      const photo = image('photo.jpg');
+      select(photo);
+      const firstPreview = component.getFilePreview(photo);
+      const revoke = spyOn(URL, 'revokeObjectURL');
+
+      select(photo);
+
+      expect(firstPreview).withContext('the first preview').toMatch(/^blob:/);
+      expect(revoke).withContext('the old blob').toHaveBeenCalledOnceWith(firstPreview);
+      expect(component.getFilePreview(photo)).withContext('the new preview').toMatch(/^blob:/);
+      expect(component.getFilePreview(photo)).withContext('the new preview').not.toBe(firstPreview);
+    });
+
+    // PIN: passes before the fix, and has to keep passing after it. Mutation
+    // run and seen failing: the map left uncleared in ngOnDestroy.
     it('releases every preview when the component is destroyed', () => {
-      select(image('a.jpg'), image('b.jpg'));
+      const a = image('a.jpg');
+      select(a, image('b.jpg'));
       const urls = component.selectedFiles().map(f => component.getFilePreview(f));
       const revoke = spyOn(URL, 'revokeObjectURL');
 
       component.ngOnDestroy();
 
       expect(revoke.calls.allArgs().flat().sort()).toEqual(urls.sort());
-      expect(component.getFilePreview(image('a.jpg'))).toBe('');
+      expect(component.getFilePreview(a)).toBe('');
     });
   });
 
@@ -143,15 +199,6 @@ describe('FileDropzoneComponent', () => {
   // selection, and this list has to drop them too: every change here emits
   // the whole list, so a photo left on it returns with the next one.
   describe('forget', () => {
-    const image = (name: string) => new File([''], name, { type: 'image/jpeg' });
-    const csv = (name: string) => new File([''], name, { type: 'text/csv' });
-    const names = (files: readonly File[]) => files.map(f => f.name);
-
-    /** Drives the private processFiles the way the file input does. */
-    function select(...files: File[]): void {
-      component.onFileSelect({ target: { files, value: 'x' } } as unknown as Event);
-    }
-
     it('takes out exactly the named files, releasing their previews, without emitting', () => {
       const first = image('first.jpg');
       const kept = image('kept.jpg');
@@ -185,13 +232,14 @@ describe('FileDropzoneComponent', () => {
       expect(emitted.map(names)).toEqual([['ledger.csv', 'next.jpg']]);
     });
 
-    // Previews are keyed by name and two iOS captures are both image.jpg:
-    // the later one's blob replaced the queued one's entry when it was
-    // added, so revoking that name would blank the photo still listed.
-    it('keeps the preview of a later photo that shares the forgotten one\'s name', () => {
+    // Two iOS captures are both image.jpg. Each photo owns its own preview,
+    // so the forgotten one's blob is released and the later one keeps its
+    // own, whatever their names.
+    it('releases the forgotten photo\'s own preview and keeps a later one\'s of the same name', () => {
       const queued = image('image.jpg');
       const later = image('image.jpg');
       select(queued);
+      const queuedPreview = component.getFilePreview(queued);
       select(later);
       const laterPreview = component.getFilePreview(later);
       const revoke = spyOn(URL, 'revokeObjectURL');
@@ -201,26 +249,130 @@ describe('FileDropzoneComponent', () => {
       // By identity: two empty Files of one name are equal to toEqual.
       expect(component.selectedFiles().length).withContext('the list').toBe(1);
       expect(component.selectedFiles()[0]).withContext('the file kept').toBe(later);
+      expect(laterPreview).withContext('the later photo\'s preview').toMatch(/^blob:/);
       expect(component.getFilePreview(later)).withContext('the later photo\'s preview').toBe(laterPreview);
-      expect(component.getFilePreview(later)).withContext('the later photo\'s preview').not.toBe('');
-      expect(revoke).withContext('a blob the later row still shows').not.toHaveBeenCalled();
+      expect(revoke).withContext('the forgotten photo\'s blob').toHaveBeenCalledOnceWith(queuedPreview);
+    });
+  });
+
+  // A file shared into the app reaches the wizard, not this zone, so the
+  // wizard hands it here: it joins the list a pick would have joined, and
+  // a file the share gate refused is named in this zone's own banner.
+  describe('adopt', () => {
+    it('takes files its host received elsewhere onto the list, previews minted, without emitting', () => {
+      select(csv('ledger.csv'));
+      const emit = spyOn(component.filesSelected, 'emit');
+      const shared = image('shared.jpg');
+
+      const taken = component.adopt([shared]);
+
+      expect(taken.length).withContext('the files taken').toBe(1);
+      expect(taken[0]).withContext('the file taken').toBe(shared);
+      expect(names(component.selectedFiles())).toEqual(['ledger.csv', 'shared.jpg']);
+      expect(component.getFilePreview(shared)).toMatch(/^blob:/);
+      // The host is the one asking, and writes its selection from this list
+      // once the call returns; an emit would run its handler a second time.
+      expect(emit).not.toHaveBeenCalled();
     });
 
-    // Only an image owns a preview, so a kept document of the same name
-    // holds no blob of its own and must not keep the photo's alive.
-    it('releases a forgotten photo\'s preview when only a document of its name stays', () => {
-      const photo = new File([''], 'scan', { type: 'image/png' });
-      const document = new File([''], 'scan', { type: 'application/pdf' });
-      select(photo, document);
-      const photoPreview = component.getFilePreview(photo);
+    it('hands the next pick the adopted files with it', () => {
+      component.adopt([image('shared.jpg')]);
+      const emitted: File[][] = [];
+      component.filesSelected.subscribe(files => emitted.push(files));
+
+      select(csv('ledger.csv'));
+
+      expect(emitted.map(names)).toEqual([['shared.jpg', 'ledger.csv']]);
+    });
+
+    it('names the files a gate upstream refused in its banner, in its own words and ahead of its own refusals', () => {
+      const big = new File(['x'], 'big.png', { type: 'image/png' });
+      Object.defineProperty(big, 'size', { value: component.maxFileSize + 1 });
+      const refused: RefusedShare[] = [
+        { file: big, reason: 'tooLarge' },
+        { file: new File([], 'empty.pdf', { type: 'application/pdf' }), reason: 'empty' },
+        { file: new File(['{}'], 'backup.json', { type: 'application/json' }), reason: 'backup' },
+      ];
+
+      const taken = component.adopt([image('ok.jpg'), new File(['x'], 'notes.txt')], refused);
+
+      expect(names(taken)).toEqual(['ok.jpg']);
+      expect(component.hasError()).toBeTrue();
+      expect(component.errorMessage()).toBe([
+        'import.fileTooLarge:{"name":"big.png","limit":"10 MB"}',
+        'import.fileEmpty:{"name":"empty.pdf"}',
+        'import.shareBackup:{"name":"backup.json"}',
+        'import.fileTypeUnsupported:{"name":"notes.txt"}',
+      ].join('common.sentenceSeparator'));
+    });
+
+    // A share can land while the banner still names a file the user picked:
+    // that refusal is still true, so the share's is added to it, not put in
+    // its place.
+    it('keeps a refusal the user\'s own pick put in the banner, and adds the share\'s after it', () => {
+      select(new File(['hi'], 'notes.txt', { type: 'text/plain' }));
+
+      component.adopt([], [{ file: new File([], 'empty.pdf', { type: 'application/pdf' }), reason: 'empty' }]);
+
+      expect(component.hasError()).toBeTrue();
+      expect(component.errorMessage()).toBe(
+        ['import.fileTypeUnsupported:{"name":"notes.txt"}', 'import.fileEmpty:{"name":"empty.pdf"}']
+          .join('common.sentenceSeparator')
+      );
+    });
+
+    it('takes the first file only when one is allowed, and releases what it displaces', () => {
+      component.multiple = false;
+      const first = image('first.jpg');
+      select(first);
+      const firstPreview = component.getFilePreview(first);
       const revoke = spyOn(URL, 'revokeObjectURL');
+      const a = image('a.jpg');
+      const b = image('b.jpg');
 
-      component.forget([photo]);
+      const taken = component.adopt([a, b]);
 
+      // By identity: two empty Files are equal to toEqual.
+      expect(taken.length).withContext('the files taken').toBe(1);
+      expect(taken[0]).withContext('the file taken').toBe(a);
       expect(component.selectedFiles().length).withContext('the list').toBe(1);
-      expect(component.selectedFiles()[0]).withContext('the file kept').toBe(document);
-      expect(photoPreview).withContext('the photo had a preview').not.toBe('');
-      expect(revoke).withContext('the forgotten photo\'s blob').toHaveBeenCalledOnceWith(photoPreview);
+      expect(component.selectedFiles()[0]).withContext('the file listed').toBe(a);
+      expect(revoke).withContext('the displaced file\'s blob').toHaveBeenCalledOnceWith(firstPreview);
+    });
+
+    // The host reaches the zone after an await, so the zone can be gone by
+    // the time it is asked; a preview minted then has no destroy left to
+    // release it.
+    // A pin. Mutation: `if (this.destroyRef.destroyed) return [];` removed from adopt.
+    it('takes nothing once it is destroyed, so it mints no preview no destroy is left to release', () => {
+      fixture.destroy();
+      const mint = spyOn(URL, 'createObjectURL');
+
+      const taken = component.adopt([image('late.jpg')]);
+
+      expect(taken).toEqual([]);
+      expect(component.selectedFiles()).toEqual([]);
+      expect(mint).not.toHaveBeenCalled();
+    });
+
+    it('takes a file it already lists, or one repeated in the batch, once', () => {
+      const mint = spyOn(URL, 'createObjectURL').and.callThrough();
+      const s = image('s.jpg');
+      const t = image('t.jpg');
+
+      component.adopt([s]);
+      const again = component.adopt([s]);
+      const repeated = component.adopt([t, t]);
+
+      expect(again).withContext('a file already listed').toEqual([]);
+      expect(repeated.length).withContext('a file repeated in the batch').toBe(1);
+      expect(repeated[0]).withContext('the repeated file').toBe(t);
+      expect(component.selectedFiles().length).withContext('the list').toBe(2);
+      expect(component.selectedFiles()[0]).withContext('the first file listed').toBe(s);
+      expect(component.selectedFiles()[1]).withContext('the second file listed').toBe(t);
+      expect(mint.calls.count()).withContext('the previews minted').toBe(2);
+      expect(mint.calls.argsFor(0)[0]).withContext('the first preview').toBe(s);
+      expect(mint.calls.argsFor(1)[0]).withContext('the second preview').toBe(t);
     });
   });
 
@@ -298,6 +450,18 @@ describe('FileDropzoneComponent', () => {
       expect(component.errorMessage()).toBe('import.fileTypeUnsupported:{"name":"notes.txt"}');
     });
 
+    // A pick that adds nothing leaves the list as it was, so the host has
+    // nothing new to hear.
+    // A pin. Mutation: processFiles emitting after take() whatever it took.
+    it('emits nothing for a pick it refuses whole', () => {
+      const emit = spyOn(component.filesSelected, 'emit');
+
+      select(new File(['hi'], 'notes.txt', { type: 'text/plain' }));
+
+      expect(component.hasError()).toBeTrue();
+      expect(emit).not.toHaveBeenCalled();
+    });
+
     it('refuses an oversized file from the catalog too', () => {
       const file = new File(['x'], 'huge.png', { type: 'image/png' });
       Object.defineProperty(file, 'size', { value: component.maxFileSize + 1 });
@@ -313,16 +477,16 @@ describe('FileDropzoneComponent', () => {
 
   describe('file size formatting', () => {
     it('should format 0 bytes', () => {
-      expect(component.formatFileSize(0)).toBe('0 Bytes');
+      expect(component.formatFileSize(0)).toBe('common.fileSizeBytes:{"size":"0"}');
     });
 
     it('should format bytes', () => {
-      expect(component.formatFileSize(500)).toBe('500 Bytes');
+      expect(component.formatFileSize(500)).toBe('common.fileSizeBytes:{"size":"500"}');
     });
 
     it('should format kilobytes', () => {
-      expect(component.formatFileSize(1024)).toBe('1 KB');
-      expect(component.formatFileSize(2048)).toBe('2 KB');
+      expect(component.formatFileSize(1024)).toBe('1 kB');
+      expect(component.formatFileSize(2048)).toBe('2 kB');
     });
 
     it('should format megabytes', () => {
@@ -358,6 +522,35 @@ describe('FileDropzoneComponent', () => {
       const file = new File([''], 'test', { type: 'application/octet-stream' });
       expect(component.getFileTypeLabel(file)).toBe('TEST');
     });
+  });
+});
+
+/**
+ * The alert's sentences as the catalogs write them. The zone joins one
+ * sentence a file with the reader's own stop, so the separator is each
+ * catalog's, and none of the sentences may bring a stop of its own.
+ */
+describe('FileDropzoneComponent, the sentences its alert joins', () => {
+  const CATALOGS = [['en', en], ['ja', ja], ['tc', tc]] as const;
+
+  it('joins them with a Latin stop and a space in en, and 。 alone in ja and tc', () => {
+    expect(CATALOGS.map(([, catalog]) => (catalog.common as Record<string, string>)['sentenceSeparator']))
+      .toEqual(['. ', '。', '。']);
+  });
+
+  // A sentence ending in its own stop would be read out with two once the
+  // separator follows it.
+  // A pin. Mutations: 。 added to the end of ja's import.fileEmpty; a key in
+  // KEYS renamed to one no catalog holds, which the first expectation names.
+  it('ends none of the four sentences with a stop of its own, in any catalog', () => {
+    const KEYS = ['fileTooLarge', 'fileTypeUnsupported', 'fileEmpty', 'shareBackup'];
+    const sentences = CATALOGS.flatMap(([code, catalog]) =>
+      KEYS.map(key => [`${code} import.${key}`, (catalog.import as unknown as Record<string, unknown>)[key]] as const));
+    expect(sentences.filter(([, sentence]) => typeof sentence !== 'string').map(([name]) => name))
+      .withContext('a sentence the case reads is missing from its catalog')
+      .toEqual([]);
+    expect(sentences.filter(([, sentence]) => /[.。]\s*$/.test(String(sentence))).map(([name]) => name))
+      .toEqual([]);
   });
 });
 
@@ -436,9 +629,22 @@ describe('FileDropzoneComponent, through its own template', () => {
 
     expect(all('.file-item').length).toBe(1);
     expect(text('.file-name')).toBe('statement.csv');
-    expect(text('.file-size')).toBe('3 Bytes');
+    expect(text('.file-size')).toBe('common.fileSizeBytes:{"size":"3"}');
     expect(text('.file-type-label')).toBe('CSV');
     expect(text('.file-icon-wrapper mat-icon')).toBe('table_chart');
+  });
+
+  // A Japanese reader read "281 Bytes" beside each file, the one English
+  // word on the row. The byte step is the catalog's, its figure the locale's.
+  it('writes a small file\'s size in the reader\'s words', () => {
+    const stub = TestBed.inject(TranslationService) as unknown as TranslationStub;
+    const echo = stub.t;
+    stub.t = (key, params) => (key === 'common.fileSizeBytes' ? `${params?.['size']} バイト` : echo(key, params));
+    fixture.detectChanges();
+
+    dropFiles([new File(['x'.repeat(281)], 'receipt.csv', { type: 'text/csv' })]);
+
+    expect(text('.file-size')).toBe('281 バイト');
   });
 
   it('gives an image a thumbnail rather than an icon', () => {
@@ -463,6 +669,28 @@ describe('FileDropzoneComponent, through its own template', () => {
 
     expect(all('.file-name').map(n => n.textContent?.trim())).toEqual(['two.csv']);
     expect(emitted[emitted.length - 1].map(f => f.name)).toEqual(['two.csv']);
+  });
+
+  // Two iOS captures are both image.jpg. Each is a row with a thumbnail of
+  // its own, and removing one leaves the other's where it was.
+  it('gives two photos of one name a row and a thumbnail each, and keeps the first one\'s when the second goes', () => {
+    const thumbnails = () => all('.file-thumbnail img').map(img => img.getAttribute('src'));
+    fixture.detectChanges();
+    dropFiles([imageFile('image.jpg'), imageFile('image.jpg')]);
+
+    const [first, second] = thumbnails();
+    expect(all('.file-item').length).withContext('the rows').toBe(2);
+    expect(thumbnails().length).withContext('the thumbnails').toBe(2);
+    expect(first).withContext('the first thumbnail').toMatch(/^blob:/);
+    expect(second).withContext('the second thumbnail').toMatch(/^blob:/);
+    expect(second).withContext('the second thumbnail').not.toBe(first);
+
+    const remove = all('.file-item')[1]?.querySelector<HTMLButtonElement>('.remove-btn');
+    expect(remove).withContext('the second row\'s remove button').toBeTruthy();
+    remove?.click();
+    fixture.detectChanges();
+
+    expect(thumbnails()).withContext('the thumbnails left').toEqual([first]);
   });
 
   it('keeps the reorder controls out of a single-image pick', () => {
@@ -492,6 +720,41 @@ describe('FileDropzoneComponent, through its own template', () => {
     fixture.detectChanges();
 
     expect(all('.file-name').map(n => n.textContent?.trim())).toEqual(['second.png', 'first.png']);
+  });
+
+  // Two iOS captures are both image.jpg. Each row's buttons name the file
+  // they act on by its place in the list and its name, the way the badge and
+  // the thumbnail tell the rows apart by sight: "Remove", "Move up" and
+  // "Move down" alone gave every row the same three names.
+  it('names each row\'s remove and move buttons by the file\'s place and name', () => {
+    fixture.detectChanges();
+    dropFiles([imageFile('image.jpg'), imageFile('image.jpg'), csvFile('rows.csv')]);
+    const labels = (selector: string) => all(selector).map(b => b.getAttribute('aria-label'));
+
+    expect(labels('.remove-btn')).withContext('the remove buttons').toEqual([
+      'import.removeFileLabel:{"position":1,"name":"image.jpg"}',
+      'import.removeFileLabel:{"position":2,"name":"image.jpg"}',
+      'import.removeFileLabel:{"position":3,"name":"rows.csv"}',
+    ]);
+    expect(labels('.reorder-btn')).withContext('the move buttons').toEqual([
+      'import.moveFileUpLabel:{"position":1,"name":"image.jpg"}',
+      'import.moveFileDownLabel:{"position":1,"name":"image.jpg"}',
+      'import.moveFileUpLabel:{"position":2,"name":"image.jpg"}',
+      'import.moveFileDownLabel:{"position":2,"name":"image.jpg"}',
+    ]);
+  });
+
+  it('renames a row\'s buttons when its file moves', () => {
+    fixture.detectChanges();
+    dropFiles([imageFile('first.png'), imageFile('second.png')]);
+
+    (all('.file-item')[0].querySelectorAll('.reorder-btn')[1] as HTMLButtonElement).click();
+    fixture.detectChanges();
+
+    expect(all('.remove-btn').map(b => b.getAttribute('aria-label'))).toEqual([
+      'import.removeFileLabel:{"position":1,"name":"second.png"}',
+      'import.removeFileLabel:{"position":2,"name":"first.png"}',
+    ]);
   });
 
   it('shows the error banner when a dropped file is refused', () => {
@@ -560,6 +823,25 @@ describe('FileDropzoneComponent, through its own template', () => {
     expect(banner.textContent).toContain('import.fileTypeUnsupported:{"name":"tool.exe"}');
   });
 
+  // ja and tc end a sentence with 。 and put no space after it, and the alert
+  // joined every language's sentences with the Latin ". ". The separator is
+  // the catalog's.
+  it('joins the files it refuses with the reader\'s own stop', () => {
+    const stub = TestBed.inject(TranslationService) as unknown as TranslationStub;
+    const echo = stub.t;
+    stub.t = (key, params) => (key === 'common.sentenceSeparator' ? '。' : echo(key, params));
+    fixture.detectChanges();
+
+    dropFiles([
+      new File(['x'], 'notes.txt', { type: 'text/plain' }),
+      new File(['x'], 'tool.exe', { type: 'application/octet-stream' }),
+    ]);
+
+    expect(text('.error-message')).toBe(
+      'import.fileTypeUnsupported:{"name":"notes.txt"}。import.fileTypeUnsupported:{"name":"tool.exe"}'
+    );
+  });
+
   // Below the zone, the banner sat just under the fold of a 768px window,
   // where the zone fills the first screen: a sighted user who dropped the
   // file saw nothing change. The scroll waits for the render that inserts
@@ -597,6 +879,95 @@ describe('FileDropzoneComponent, through its own template', () => {
 
     expect(text('.file-name')).toBe('statement.csv');
     expect(scroll).not.toHaveBeenCalled();
+  });
+
+  it('renders an adopted file as a row with its thumbnail', () => {
+    fixture.detectChanges();
+
+    component.adopt([imageFile('shared.png')]);
+    fixture.detectChanges();
+
+    expect(all('.file-name').map(n => n.textContent?.trim())).toEqual(['shared.png']);
+    const thumb = el().querySelector('.file-thumbnail img') as HTMLImageElement | null;
+    expect(thumb).withContext('the thumbnail').not.toBeNull();
+    expect(thumb?.getAttribute('src') ?? '').toMatch(/^blob:/);
+    expect(el().querySelector('.dropzone')?.getAttribute('role')).toBeNull();
+  });
+
+  // A share the gate refused is said where a refused pick is said: the
+  // same alert, scrolled into view the same way.
+  it('announces a share the gate refused in the same alert, brought into view', () => {
+    const scroll = spyOn(Element.prototype, 'scrollIntoView');
+    fixture.detectChanges();
+
+    component.adopt([], [{ file: new File([], 'empty.pdf', { type: 'application/pdf' }), reason: 'empty' }]);
+    fixture.detectChanges();
+    TestBed.tick();
+
+    const banner = el().querySelector('.error-banner') as HTMLElement | null;
+    expect(banner).withContext('the banner').not.toBeNull();
+    expect(banner?.getAttribute('role')).toBe('alert');
+    expect(text('.error-message')).toBe('import.fileEmpty:{"name":"empty.pdf"}');
+    expect(scroll).toHaveBeenCalledOnceWith({ block: 'nearest' });
+    expect(scroll.calls.mostRecent()?.object).withContext('the element scrolled').toBe(banner as HTMLElement);
+  });
+
+  // The zone keeps what it refused and why, and writes the sentences as it
+  // renders: a reader who switches language with a refusal standing reads it
+  // in the new one, as every other line on the page is.
+  it('rewrites a standing refusal in the language the reader switches to', () => {
+    const stub = TestBed.inject(TranslationService) as unknown as TranslationStub;
+    stub.t = (key, params) => `${stub.currentLocale()}|${key}${params ? `:${JSON.stringify(params)}` : ''}`;
+    fixture.detectChanges();
+    dropFiles([new File(['x'], 'notes.txt', { type: 'text/plain' })]);
+    expect(text('.error-message')).withContext('as refused')
+      .toBe('en|import.fileTypeUnsupported:{"name":"notes.txt"}');
+
+    stub.currentLocale.set('ja');
+    fixture.detectChanges();
+
+    expect(text('.error-message')).withContext('after the switch')
+      .toBe('ja|import.fileTypeUnsupported:{"name":"notes.txt"}');
+  });
+
+  // A switch rewrites the words, not what was refused: the page stays where
+  // the reader has it.
+  // A pin. Mutation: the scroll effect reading errorMessage() in place of the refusals.
+  it('brings nothing into view when the language changes under a standing refusal', () => {
+    const stub = TestBed.inject(TranslationService) as unknown as TranslationStub;
+    stub.t = (key, params) => `${stub.currentLocale()}|${key}${params ? `:${JSON.stringify(params)}` : ''}`;
+    fixture.detectChanges();
+    dropFiles([new File(['x'], 'notes.txt', { type: 'text/plain' })]);
+    TestBed.tick();
+    const scroll = spyOn(Element.prototype, 'scrollIntoView');
+
+    stub.currentLocale.set('ja');
+    fixture.detectChanges();
+    TestBed.tick();
+
+    expect(text('.error-message')).withContext('the banner after the switch').toContain('import.fileTypeUnsupported');
+    expect(scroll).not.toHaveBeenCalled();
+  });
+
+  // Dropping the same file again is a second refusal, though its sentence is
+  // the first one's word for word: the banner is brought into view again,
+  // and stays the same alert.
+  // A pin. Mutation: take() no longer clearing the refusals before a fresh pick's.
+  it('brings the banner into view again when the same file is refused a second time', () => {
+    const scroll = spyOn(Element.prototype, 'scrollIntoView');
+    fixture.detectChanges();
+    dropFiles([new File(['x'], 'notes.txt', { type: 'text/plain' })]);
+    TestBed.tick();
+    const banner = el().querySelector('.error-banner') as HTMLElement;
+    expect(scroll).withContext('the first refusal').toHaveBeenCalledTimes(1);
+
+    dropFiles([new File(['x'], 'notes.txt', { type: 'text/plain' })]);
+    TestBed.tick();
+
+    expect(el().querySelector('.error-banner')).withContext('the same alert').toBe(banner);
+    expect(text('.error-message')).toBe('import.fileTypeUnsupported:{"name":"notes.txt"}');
+    expect(scroll).withContext('the second refusal').toHaveBeenCalledTimes(2);
+    expect(scroll.calls.mostRecent().object).withContext('the element scrolled').toBe(banner);
   });
 
   it('marks the zone while a drag is over it', () => {
@@ -638,6 +1009,121 @@ describe('FileDropzoneComponent, through its own template', () => {
     expect(text('.file-name')).toBe('picked.csv');
     // The handler clears the input so the same file can be picked twice.
     expect(input.value).toBe('');
+  });
+
+  /**
+   * At 375px the wizard leaves the zone 303px beside the browser's 8px
+   * scrollbar (311px on a phone), and a row of a multi-image pick lent its
+   * name 51px beside the preview, the arrows, the remove button and the
+   * handle: the name broke over four lines and its size and type ran on
+   * under the arrows. The rows answer the list's own width, so a host this
+   * narrow is the phone; Karma's 756px window never reaches the viewport
+   * query that trims the row's padding and preview, so the row measured
+   * here is the harder one. The faces are pinned because Karma serves none.
+   */
+  describe('at a phone\'s width', () => {
+    const FACE = "Verdana, 'DejaVu Sans', sans-serif";
+
+    function narrow(widthPx: number): void {
+      const host = el();
+      host.style.display = 'block';
+      host.style.width = `${widthPx}px`;
+      host.style.fontFamily = FACE;
+      for (const token of ['--mat-sys-body-medium-font', '--mat-sys-label-large-font']) {
+        host.style.setProperty(token, FACE);
+      }
+    }
+
+    const box = (row: HTMLElement, selector: string) =>
+      (row.querySelector(selector) as HTMLElement).getBoundingClientRect();
+
+    it('gives a multi-image row\'s name a column it reads in, and keeps the size and type inside it', () => {
+      narrow(303);
+      fixture.detectChanges();
+      dropFiles([imageFile('e2e-109-shared.png'), imageFile('image.jpg')]);
+
+      const rows = all('.file-item');
+      expect(rows.length).withContext('the rows').toBe(2);
+      for (const row of rows) {
+        const name = row.querySelector('.file-name') as HTMLElement;
+        const label = name.textContent?.trim();
+        const info = box(row, '.file-info');
+        const edges = row.getBoundingClientRect();
+
+        expect(info.width).withContext(`${label}: the name's column`).toBeGreaterThanOrEqual(100);
+        expect(textLines(name)).withContext(`${label}: the name's lines`).toBeLessThanOrEqual(2);
+        for (const part of ['.file-size', '.file-type-label']) {
+          expect(box(row, part).right)
+            .withContext(`${label}: ${part} right edge vs the name's column`)
+            .toBeLessThanOrEqual(info.right + 1);
+        }
+        for (const [selector, what] of [
+          ['.reorder-controls', 'the arrows'],
+          ['.remove-btn', 'remove'],
+          ['.drag-handle', 'the handle'],
+        ] as const) {
+          const control = box(row, selector);
+          const overlaps = control.left < info.right - 1 && control.right > info.left + 1
+            && control.top < info.bottom - 1 && control.bottom > info.top + 1;
+          expect(overlaps).withContext(`${label}: ${what} over the name's column`).toBeFalse();
+          expect(control.left).withContext(`${label}: ${what} left edge vs the row`)
+            .toBeGreaterThanOrEqual(edges.left - 1);
+          expect(control.right).withContext(`${label}: ${what} right edge vs the row`)
+            .toBeLessThanOrEqual(edges.right + 1);
+        }
+      }
+    });
+
+    // Tab reaches a row's buttons in their template order, the arrows and
+    // then remove, so on screen they read in that order too: no button
+    // stands before, or on a line above, the one Tab reaches before it.
+    it('lays a multi-image row\'s buttons out in the order Tab reaches them', () => {
+      narrow(303);
+      fixture.detectChanges();
+      dropFiles([imageFile('e2e-109-shared.png'), imageFile('image.jpg'), imageFile('third.png')]);
+
+      for (const row of all('.file-item')) {
+        const label = row.querySelector('.file-name')?.textContent?.trim();
+        const buttons = Array.from(row.querySelectorAll<HTMLElement>('button'));
+        expect(buttons.length).withContext(`${label}: the buttons`).toBe(3);
+        for (let i = 1; i < buttons.length; i++) {
+          const before = buttons[i - 1].getBoundingClientRect();
+          const after = buttons[i].getBoundingClientRect();
+          const sameLine = after.top < before.bottom - 1 && after.bottom > before.top + 1;
+          const inOrder = sameLine ? after.left >= before.right - 1 : after.top >= before.bottom - 1;
+          const key = (button: HTMLElement) => button.getAttribute('aria-label')?.split(':')[0];
+          expect(inOrder)
+            .withContext(`${label}: ${key(buttons[i])} after ${key(buttons[i - 1])}`)
+            .toBeTrue();
+        }
+      }
+    });
+
+    // A pin. Mutation: the grid rule written outside the @container, so a
+    // wide list takes it too.
+    it('keeps a multi-image row on one line where the list has room', () => {
+      narrow(600);
+      fixture.detectChanges();
+      dropFiles([imageFile('first.png'), imageFile('second.png')]);
+
+      const row = all('.file-item')[0];
+      const info = box(row, '.file-info');
+      const arrows = box(row, '.reorder-controls');
+      expect(getComputedStyle(row).display).withContext('the row').toBe('flex');
+      expect(arrows.top < info.bottom && arrows.bottom > info.top)
+        .withContext('the arrows beside the name').toBeTrue();
+    });
+
+    // A pin. Mutation: the rule keyed on .file-item rather than .file-item.reorderable.
+    it('leaves a lone photo\'s row on one line at a phone\'s width', () => {
+      narrow(303);
+      fixture.detectChanges();
+      dropFiles([imageFile('e2e-109-shared.png')]);
+
+      const row = all('.file-item')[0];
+      expect(getComputedStyle(row).display).withContext('the row').toBe('flex');
+      expect(box(row, '.file-info').width).withContext('the name\'s column').toBeGreaterThanOrEqual(100);
+    });
   });
 
   describe('colours, as painted', () => {
@@ -801,6 +1287,134 @@ describe('FileDropzoneComponent, through its own template', () => {
               state.leave();
             }
           }
+        });
+      }
+    });
+
+    /**
+     * A row's move arrows, drag handle and remove button are glyphs, owed a
+     * graphic's 3:1 (WCAG 1.4.11). Karma serves no icon font, so axe scores
+     * each ligature as text, and a resting glyph is held to text's 4.5:1
+     * here as elsewhere. A fade by opacity would leave the handle at 2.3:1,
+     * so each rests at full strength in --text-muted. An arrow with nowhere
+     * to move is disabled, which no contrast bar covers (WCAG 1.4.3, and axe
+     * skips it), and stays fainter than one that moves.
+     */
+    it('rests a two-photo pick\'s move arrows, drag handles and remove buttons in --text-muted at AA on the row, in both themes', () => {
+      fixture.detectChanges();
+      dropFiles([imageFile('first.png'), imageFile('second.png')]);
+      const [first, second] = all('.file-item');
+      const icon = (control: Element | null | undefined) => control?.querySelector<HTMLElement>('mat-icon') ?? null;
+      const contrast = (glyph: HTMLElement) => ratio(paintedColor(glyph), paintedBackground(glyph));
+      const [firstUp, firstDown] = Array.from(first.querySelectorAll<HTMLButtonElement>('.reorder-btn'));
+      const [secondUp, secondDown] = Array.from(second.querySelectorAll<HTMLButtonElement>('.reorder-btn'));
+      expect([firstUp?.disabled, firstDown?.disabled, secondUp?.disabled, secondDown?.disabled])
+        .withContext('the arrows with nowhere to move')
+        .toEqual([true, false, false, true]);
+
+      const resting: [string, HTMLElement | null][] = [
+        ['the first photo\'s down arrow', icon(firstDown)],
+        ['the second photo\'s up arrow', icon(secondUp)],
+        ['the first photo\'s drag handle', icon(first.querySelector('.drag-handle'))],
+        ['the second photo\'s drag handle', icon(second.querySelector('.drag-handle'))],
+        ['the first photo\'s remove button', icon(first.querySelector('.remove-btn'))],
+        ['the second photo\'s remove button', icon(second.querySelector('.remove-btn'))],
+      ];
+      const disabled: [string, HTMLElement, HTMLElement][] = [
+        ['the first photo\'s up arrow', icon(firstUp) as HTMLElement, icon(firstDown) as HTMLElement],
+        ['the second photo\'s down arrow', icon(secondDown) as HTMLElement, icon(secondUp) as HTMLElement],
+      ];
+
+      for (const theme of THEMES) {
+        withTheme(theme, () => {
+          settleAnimations(document);
+          for (const [label, glyph] of resting) {
+            expectPainted(glyph, '--text-muted', `${theme} ${label} at rest`);
+          }
+          for (const [label, glyph, moving] of disabled) {
+            expect(contrast(glyph))
+              .withContext(`${theme} ${label}, disabled, against the arrow that moves`)
+              .toBeLessThan(contrast(moving));
+          }
+        });
+      }
+    });
+
+    /**
+     * Under the pointer each control takes a colour of its own: the arrows
+     * and the handle --text-primary, the remove button the error colour.
+     * Karma cannot hover, so each :hover rule's colour is set on what it
+     * styles and the glyph is measured against itself at rest. A hovered
+     * glyph is held to a graphic's 3:1; axe never hovers.
+     */
+    it('turns a hovered move arrow and drag handle --text-primary and a hovered remove button --color-error, apart from their resting colour, in both themes', () => {
+      fixture.detectChanges();
+      dropFiles([imageFile('first.png'), imageFile('second.png')]);
+      const row = all('.file-item')[1];
+      const arrow = row.querySelector<HTMLElement>('.reorder-btn:not(:disabled)') as HTMLElement;
+      const handle = row.querySelector<HTMLElement>('.drag-handle mat-icon') as HTMLElement;
+      const remove = row.querySelector<HTMLElement>('.remove-btn') as HTMLElement;
+      const controls = [
+        { label: 'move arrow', styled: arrow, glyph: arrow.querySelector<HTMLElement>('mat-icon') as HTMLElement, hovered: hoverValue(arrow, '.reorder-btn', 'color') },
+        { label: 'drag handle', styled: handle, glyph: handle, hovered: hoverValue(handle, '.drag-handle', 'color') },
+        { label: 'remove button', styled: remove, glyph: remove.querySelector<HTMLElement>('mat-icon') as HTMLElement, hovered: hoverValue(remove, '.remove-btn', 'color') },
+      ];
+      expect(controls.map(({ hovered }) => hovered))
+        .withContext('the arrow\'s, the handle\'s and the remove button\'s hover rules')
+        .toEqual(['var(--text-primary)', 'var(--text-primary)', 'var(--color-error)']);
+
+      for (const theme of THEMES) {
+        withTheme(theme, () => {
+          settleAnimations(document);
+          for (const { label, styled, glyph, hovered } of controls) {
+            const resting = paintedColor(glyph);
+            styled.style.color = hovered;
+            try {
+              const shown = paintedColor(glyph);
+              expect(shown).withContext(`${theme} the ${label} hovered, against itself at rest`).not.toEqual(resting);
+              expect(ratio(shown, paintedBackground(glyph)))
+                .withContext(`${theme} the ${label} hovered, on the row`)
+                .toBeGreaterThanOrEqual(3);
+            } finally {
+              styled.style.color = '';
+            }
+          }
+        });
+      }
+    });
+
+    // A lone file's row has no arrows or handle; its remove button rests as a
+    // photo's does, and its name, size and type read at text's bar.
+    it('rests a lone file\'s remove button in --text-muted at AA, and reads its name, size and type at AA, in both themes', () => {
+      fixture.detectChanges();
+      dropFiles([csvFile('rows.csv')]);
+      const row = all('.file-item')[0];
+
+      for (const theme of THEMES) {
+        withTheme(theme, () => {
+          settleAnimations(document);
+          expectPainted(row.querySelector<HTMLElement>('.remove-btn mat-icon'), '--text-muted', `${theme} the remove button at rest`);
+          expectPainted(row.querySelector<HTMLElement>('.file-name'), '--text-primary', `${theme} the name`);
+          expectPainted(row.querySelector<HTMLElement>('.file-size'), '--text-muted', `${theme} the size`);
+          expectPainted(row.querySelector<HTMLElement>('.file-type-label'), '--text-muted', `${theme} the type`);
+        });
+      }
+    });
+
+    // The rest of a photo's row reads in tokens that clear text's bar; the
+    // closest is the type chip on its own --surface-hover fill, 4.6:1 in dark.
+    it('reads a photo row\'s name, size, type and number at AA, in both themes', () => {
+      fixture.detectChanges();
+      dropFiles([imageFile('first.png'), imageFile('second.png')]);
+      const row = all('.file-item')[0];
+
+      for (const theme of THEMES) {
+        withTheme(theme, () => {
+          settleAnimations(document);
+          expectPainted(row.querySelector<HTMLElement>('.file-name'), '--text-primary', `${theme} the name`);
+          expectPainted(row.querySelector<HTMLElement>('.file-size'), '--text-muted', `${theme} the size`);
+          expectPainted(row.querySelector<HTMLElement>('.file-type-label'), '--text-muted', `${theme} the type`);
+          expectPainted(row.querySelector<HTMLElement>('.image-number'), '--text-inverse', `${theme} the number`);
         });
       }
     });
