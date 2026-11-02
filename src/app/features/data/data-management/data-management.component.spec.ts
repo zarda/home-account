@@ -1130,6 +1130,50 @@ describe('DataManagementComponent, through its own template', () => {
     expect(el().querySelector('.dropzone-text')).toBeNull();
   });
 
+  // The upload area answers a press on keydown, and Space went on to scroll
+  // the page under it. Its hidden input sat inside its own click target, so
+  // the input's own click, which is the picker, bubbled back out through the
+  // area and asked again.
+  describe('the backup upload area, pressed or clicked', () => {
+    let area: HTMLElement;
+    let picker: jasmine.Spy;
+
+    beforeEach(() => {
+      fixture.detectChanges();
+      area = el().querySelector('.import-dropzone') as HTMLElement;
+      // Let through, so the click the input dispatches is real and bubbles.
+      picker = spyOn(el().querySelector('input[type="file"]') as HTMLInputElement, 'click').and.callThrough();
+    });
+
+    /** A key's keydown on the area, the way the browser delivers it. */
+    function press(key: 'Enter' | ' '): KeyboardEvent {
+      const keydown = new KeyboardEvent('keydown', { key, bubbles: true, cancelable: true });
+      area.dispatchEvent(keydown);
+      return keydown;
+    }
+
+    it('cancels Space\'s keydown, so the page does not scroll under it', () => {
+      expect(press(' ').defaultPrevented).withContext('Space\'s keydown cancelled').toBeTrue();
+    });
+
+    it('asks the input once for a press or a click, though the input\'s own click bubbles', () => {
+      const words = el().querySelector<HTMLElement>('.dropzone-text');
+      expect(words).withContext('the area\'s words').toBeTruthy();
+      const actions: readonly (readonly [string, () => void])[] = [
+        ['Space', () => press(' ')],
+        ['Enter', () => press('Enter')],
+        ['a click on the area', () => area.click()],
+        ['a click on its words', () => words?.click()],
+      ];
+
+      for (const [action, act] of actions) {
+        const before = picker.calls.count();
+        act();
+        expect(picker.calls.count() - before).withContext(`picker requests for ${action}`).toBe(1);
+      }
+    });
+  });
+
   it('previews a full backup as its section counts, and offers a restore', () => {
     fixture.detectChanges();
     component.backupContents.set({
