@@ -1425,6 +1425,24 @@ describe('FileDropzoneComponent, through its own template', () => {
       }
     });
 
+    // A glyph, held here to text's 4.5:1 rather than a graphic's 3:1: that is
+    // the bar docs/accessibility.md sets for a glyph at rest, since Karma
+    // serves no icon font and axe scores the ligature as text, at 4.5:1. The
+    // error fill read 3.04:1 on the banner's tint in light. The glyph takes
+    // the message's text step, as the review step's notices take the
+    // warning's.
+    it('paints a refused file\'s glyph in --color-error-text at text\'s 4.5:1 on its banner, as axe scores its ligature, in both themes', () => {
+      fixture.detectChanges();
+      dropFiles([new File(['x'], 'notes.txt', { type: 'text/plain' })]);
+
+      for (const theme of THEMES) {
+        withTheme(theme, () => {
+          settleAnimations(document);
+          expectPainted(el().querySelector('.error-banner mat-icon'), '--color-error-text', `${theme} glyph`);
+        });
+      }
+    });
+
     it('paints the multi-image hint\'s icon in --color-ai at 3:1 and its text at AA, in both themes', () => {
       fixture.detectChanges();
       dropFiles([imageFile('first.png'), imageFile('second.png')]);

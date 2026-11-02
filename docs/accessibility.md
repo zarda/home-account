@@ -576,7 +576,7 @@ do, because what they hold is a glyph or a dot, never a word:
 | Pair | What it holds |
 |---|---|
 | `--color-ai` on `--surface-card` | the AI features' icons |
-| `--color-error` on `--surface-card` | the exact-duplicate mark and the dropzone's hovered remove; the dropzone's banner icon and the data page's danger icon, on their error tints, are measured in the row's reason |
+| `--color-error` on `--surface-card` | the exact-duplicate mark and the dropzone's hovered remove; the data page's danger icon, on its error tint, is measured in the row's reason |
 | `--color-error` on `--surface-background` | the import wizard's failure icons, and the low-confidence dot on an unchecked review card |
 | `--color-warning-text` on `--surface-background` | the review card's amount and type flags, and the medium-confidence dot |
 | `--color-success-text` on `--surface-background` | the wizard's success glyph, and the high-confidence dot |

@@ -478,8 +478,11 @@
   border: 1px solid color-mix(in srgb, var(--color-error) 30%, transparent);
 }
 
+/* The message's text step, not the error fill: on the banner's tint the fill
+   read 3.04:1 in light, under the 4.5:1 the suite holds a glyph to
+   (docs/accessibility.md). */
 .error-banner mat-icon {
-  color: var(--color-error);
+  color: var(--color-error-text);
   font-size: var(--text-xl);
   width: 1em;
   height: 1em;
