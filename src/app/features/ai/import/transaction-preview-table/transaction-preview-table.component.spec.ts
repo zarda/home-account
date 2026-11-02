@@ -25,6 +25,7 @@ import { createCategory } from '../../../../core/services/testing/test-data';
 import {
   AUDIT_SCHEMES,
   GLYPH_PROBE_COLOURS,
+  accessibleName,
   catalogTranslator,
   channels,
   echoTranslation,
@@ -3131,6 +3132,71 @@ describe('TransactionPreviewTableComponent, the offer chip through its own templ
       expect(fixture.nativeElement.querySelector('.extra-chip.date-check'))
         .withContext('the question renders on the row now')
         .not.toBeNull();
+    });
+  });
+
+  /**
+   * Every one of these is stamped once per card, so a name that is only what
+   * the control does — "Notes", "Remove suggested location" — reads the same
+   * on every card, and a list of them says nothing about which row each one
+   * changes. Each names its row the way the row's checkbox does: by its
+   * description, or the stand-in for a row that has none. Two rows are open
+   * at once, because the editing state is kept per row.
+   */
+  describe('every field and button on a card names its row', () => {
+    const carries = {
+      isDuplicate: true,
+      duplicateOf: 'stored-1',
+      location: { name: 'Myeongdong', country: 'KR' },
+      currencySuggestion: { code: 'KRW', country: 'KR', reason: 'receipt' as const },
+      notes: 'two lattes',
+    };
+    const rows: readonly (readonly [id: string, description: string, named: string])[] = [
+      ['titled', 'Coffee Shop', 'Coffee Shop'],
+      ['blank', '', 'import.untitledRow'],
+    ];
+    const card = (id: string) => fixture.nativeElement.querySelector(`[data-row-id="${id}"]`) as HTMLElement | null;
+    const nameOf = (id: string, selector: string) => {
+      const control = card(id)?.querySelector(selector);
+      expect(control).withContext(`${selector} renders on the ${id} row`).not.toBeNull();
+      return control ? accessibleName(control) : '';
+    };
+    const label = (key: string, description: string) => `${key}:${JSON.stringify({ description })}`;
+
+    beforeEach(() => {
+      component.transactions = rows.map(([id, description]) => makeRow({ id, description, ...carries }));
+      component.categories = [];
+      fixture.detectChanges();
+    });
+
+    it('names the overrule, the location\'s remove, the currency dismiss and the notes by the row', () => {
+      for (const [id, , named] of rows) {
+        expect(nameOf(id, '.duplicate-clear')).withContext(`the overrule on the ${id} row`)
+          .toBe(label('import.notADuplicate', named));
+        expect(nameOf(id, '.extra-country ~ .extra-remove')).withContext(`the location's remove on the ${id} row`)
+          .toBe(label('import.removeLocation', named));
+        expect(nameOf(id, '.currency-offer .extra-remove')).withContext(`the currency dismiss on the ${id} row`)
+          .toBe(label('import.dismissCurrencySuggestion', named));
+        expect(nameOf(id, '.notes-input')).withContext(`the notes on the ${id} row`)
+          .toBe(label('import.notesLabel', named));
+      }
+    });
+
+    it('names each field by the row as it opens, on two rows open at once', () => {
+      const fields = [
+        ['description', 'import.descriptionFieldLabel'],
+        ['amount', 'import.amountFieldLabel'],
+        ['split', 'import.splitAmountLabel'],
+        ['place', 'import.placeName'],
+        ['tag', 'import.newTagLabel'],
+      ] as const;
+      for (const [field, key] of fields) {
+        for (const row of component.transactions) component.startEdit(row, field);
+        fixture.detectChanges();
+        for (const [id, , named] of rows) {
+          expect(nameOf(id, '.inline-input')).withContext(`the ${field} field on the ${id} row`).toBe(label(key, named));
+        }
+      }
     });
   });
 
