@@ -691,7 +691,8 @@ describe('BudgetFormComponent', () => {
       expect(ends.map(end => end.textContent?.trim())).toEqual(['50%', '100%']);
       const lines = [
         ['label', label, '--text-muted'],
-        ['value', label.querySelector('strong') as HTMLElement, '--text-secondary'],
+        // The value sits beside the label's words, outside the span that names the slider.
+        ['value', label.parentElement!.querySelector('strong') as HTMLElement, '--text-secondary'],
         ['scale start', ends[0], '--text-muted'],
         ['scale end', ends[1], '--text-muted'],
       ] as const;

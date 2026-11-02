@@ -244,11 +244,14 @@
  *     input binding is the spelling that reaches the control.
  *   - **A `mat-icon` is not text.** MatIcon hides itself, so its ligature
  *     names nothing, and a toggle whose only content is an icon is unnamed.
- *   - **A slider is read the other way round.** `mat-slider` takes no name
- *     input and forwards no attribute to its thumbs, so a name on its host
- *     reaches nothing and the `<input matSliderThumb>` stays unnamed. The
- *     rule: a slider that carries a name on its host carries one on each
- *     thumb. A slider named nowhere is not that shape and is not read.
+ *   - **A slider is read by its thumbs.** `mat-slider` takes no name input
+ *     and forwards no attribute to its thumbs, so a name on its host reaches
+ *     nothing: a screen reader lands on each `<input matSliderThumb>`, which
+ *     is named by what it carries itself. The rule: each thumb carries
+ *     `aria-label` or `aria-labelledby` with a value, as a literal, an
+ *     interpolation or a binding (`[aria-label]`, `[aria-labelledby]`,
+ *     `[attr.aria-label]`, `[attr.aria-labelledby]`), whatever its host
+ *     carries.
  *   - **What it found and could not fix is frozen** in UNNAMED_FROZEN, in
  *     ITEMLESS_FROZEN's rows with the tag as the key, set against the hits by
  *     the same helper: a hit no row names fails, and so does a row whose
@@ -931,10 +934,13 @@ const SLIDER_THUMBS = new Set(['matSliderThumb', 'matSliderStartThumb', 'matSlid
 const isSliderThumb = (attrs) => attributesOf(attrs).some(({ name }) => SLIDER_THUMBS.has(name));
 
 /**
- * Any spelling of `aria-label` or `aria-labelledby`, bound to the attribute
- * or not: on a slider's host and on a plain input each lands where written.
+ * The names a slider's thumb carries itself. The thumb is a plain input, so
+ * the attribute bindings land on it too; each needs a value.
  */
-const anyAriaName = (attrs) => attributesOf(attrs).some(({ name }) => name.includes('aria-label'));
+const THUMB_NAMES = new Set([...TOGGLE_NAMES, '[attr.aria-label]', '[attr.aria-labelledby]']);
+
+const thumbNamed = (attrs) =>
+  attributesOf(attrs).some(({ name, value }) => value !== undefined && THUMB_NAMES.has(name));
 
 /**
  * True when a run of template text between two tags renders text: an
@@ -951,18 +957,17 @@ function projectsText(run) {
 
 /**
  * Every toggle that hands the control inside it no name, and every slider
- * whose name sits on its host while a thumb carries none. A toggle is named
- * by text projected into it, outside any `mat-icon`, or by one of TOGGLE_NAMES.
- * Returns `{ line, tag }` for each, `line` being the opening tag's.
+ * with a thumb that carries none, whatever the slider's host carries. A
+ * toggle is named by text projected into it, outside any `mat-icon`, or by
+ * one of TOGGLE_NAMES; a thumb by one of THUMB_NAMES. Returns `{ line, tag }`
+ * for each, `line` being the opening tag's.
  */
 export function scanUnnamedToggles(source) {
   const masked = maskComments(source);
   const hits = [];
   const judge = (entry) => {
     if (entry.tag === 'mat-slider') {
-      if (anyAriaName(entry.attrs) && entry.thumbs.some((thumb) => !anyAriaName(thumb))) {
-        hits.push({ line: entry.line, tag: entry.tag });
-      }
+      if (entry.thumbs.some((thumb) => !thumbNamed(thumb))) hits.push({ line: entry.line, tag: entry.tag });
       return;
     }
     if (entry.text || toggleNamed(entry.attrs)) return;
@@ -1008,20 +1013,7 @@ export function scanUnnamedToggles(source) {
  * the key being the tag; `why` says which control it is and where its name
  * went instead. Empty is the goal.
  */
-export const UNNAMED_FROZEN = [
-  {
-    file: 'src/app/features/budgets/budget-form/budget-form.component.html',
-    key: 'mat-slider',
-    count: 1,
-    why: 'the alert threshold slider: its aria-labelledby sits on the mat-slider host, and its thumb is named by nothing',
-  },
-  {
-    file: 'src/app/features/settings/ai-settings-page/ai-settings-page.component.html',
-    key: 'mat-slide-toggle',
-    count: 1,
-    why: 'the Auto sync switch on the AI page: its label is a sibling span the switch never references',
-  },
-];
+export const UNNAMED_FROZEN = [];
 
 /**
  * Which templates belong to a component rendered once per item somewhere.
@@ -1444,7 +1436,7 @@ function run() {
       console.error(`\n${unnamedFindings.length} toggle(s) or slider(s) leave the control inside them unnamed:\n`);
       for (const finding of unnamedFindings) {
         if (finding.tag === 'mat-slider') {
-          console.error(`  ${finding.site}  <mat-slider> named on its host, a thumb named by nothing`);
+          console.error(`  ${finding.site}  <mat-slider> with a thumb named by nothing`);
           console.error(`    → put the aria-label or aria-labelledby on each <input matSliderThumb>\n`);
         } else {
           console.error(`  ${finding.site}  <${finding.tag}> with no text and no aria-label or aria-labelledby`);
@@ -1496,7 +1488,7 @@ function run() {
       `button names its item, every tooltip icon takes focus, every control ` +
       `stamped once per item names its item or is frozen by name, every id ` +
       `a literal reference names is declared in its own template, and every ` +
-      `checkbox, slide toggle, radio button and host-named slider names the ` +
+      `checkbox, slide toggle, radio button and slider names the ` +
       `control inside it or is frozen by name.`
   );
 }
@@ -2247,7 +2239,7 @@ function selfTest() {
     [{ line: 2, tag: 'mat-checkbox' }]
   );
   check(
-    'a bare slide toggle beside a span that names nothing, the AI page\'s Auto sync switch',
+    'a bare slide toggle beside a span it never references',
     unnamedTags(
       '<span>{{ \'aiPage.autoSync\' | translate }}</span>\n<mat-slide-toggle\n  [checked]="autoSync()"\n' +
         '  color="primary">\n</mat-slide-toggle>'
@@ -2296,7 +2288,7 @@ function selfTest() {
     ['2 mat-checkbox']
   );
   check(
-    'a slider named on its host and not on its thumb, the budget form\'s threshold',
+    'a slider named on its host alone, by a literal aria-labelledby, leaves its thumb unnamed',
     unnamedTags(
       '<mat-slider min="50" max="100" step="5" aria-labelledby="threshold-label" discrete>\n' +
         '  <input matSliderThumb formControlName="alertThreshold">\n</mat-slider>'
@@ -2309,6 +2301,17 @@ function selfTest() {
       '<mat-slider [attr.aria-label]="range">\n  <input matSliderStartThumb aria-label="From">\n' +
         '  <input matSliderEndThumb>\n</mat-slider>'
     ),
+    ['1 mat-slider']
+  );
+  check(
+    'a slider named on its host alone, by an interpolated aria-label, leaves its thumb unnamed',
+    unnamedTags('<mat-slider aria-label="{{ \'budget.alertWhenReaches\' | translate }}">\n  <input matSliderThumb>\n</mat-slider>'),
+    ['1 mat-slider']
+  );
+  check('a slider named nowhere', unnamedTags('<mat-slider>\n  <input matSliderThumb>\n</mat-slider>'), ['1 mat-slider']);
+  check(
+    'a thumb\'s aria-labelledby with no value names nothing',
+    unnamedTags('<mat-slider>\n  <input matSliderThumb aria-labelledby>\n</mat-slider>'),
     ['1 mat-slider']
   );
   const inlineToggle =
@@ -2380,7 +2383,21 @@ function selfTest() {
     ),
     []
   );
-  check('a slider named nowhere is not this shape', unnamedTags('<mat-slider>\n  <input matSliderThumb>\n</mat-slider>'), []);
+  check(
+    'a thumb named by a literal aria-labelledby, its host named by nothing',
+    unnamedTags(
+      '<span id="threshold-label">x</span>\n<mat-slider discrete>\n' +
+        '  <input matSliderThumb formControlName="alertThreshold" aria-labelledby="threshold-label">\n</mat-slider>'
+    ),
+    []
+  );
+  check(
+    'a thumb named in each spelling that lands on it',
+    ['aria-label="x"', 'aria-labelledby="t"', '[aria-label]="x"', '[aria-labelledby]="t"', '[attr.aria-label]="x"', '[attr.aria-labelledby]="t"'].map(
+      (name) => unnamedTags(`<mat-slider>\n  <input matSliderThumb ${name}>\n</mat-slider>`)
+    ),
+    [[], [], [], [], [], []]
+  );
   check('a commented-out toggle is not a toggle', unnamedTags('<!-- <mat-checkbox></mat-checkbox> -->'), []);
 
   // --- the toggle rule: the frozen list ---
