@@ -10,6 +10,9 @@ import { CurrencyService } from '../../../../core/services/currency.service';
 import { TranslationService } from '../../../../core/services/translation.service';
 import { CreateGoalDTO, Goal } from '../../../../models';
 import {
+  accessibleName,
+  catalogTranslationStub,
+  catalogTranslator,
   createTranslationStub,
   paintedBackground,
   paintedColor,
@@ -248,7 +251,7 @@ describe('GoalFormComponent, through its own template', () => {
     document.querySelectorAll('.cdk-overlay-container').forEach(node => node.remove());
   });
 
-  async function render(data: GoalFormDialogData): Promise<void> {
+  async function render(data: GoalFormDialogData, translation = createTranslationStub()): Promise<void> {
     // Two cases render twice to compare add mode against edit mode, and the
     // dialog data is an injection token rather than an input — so the module
     // has to be torn down between them.
@@ -270,7 +273,7 @@ describe('GoalFormComponent, through its own template', () => {
           useValue: { currentUser: signal({ preferences: { baseCurrency: 'USD' } }) },
         },
         { provide: CurrencyService, useValue: currency },
-        { provide: TranslationService, useValue: createTranslationStub() },
+        { provide: TranslationService, useValue: translation },
         provideNoMotion(),
         provideNativeDateAdapter(),
       ],
@@ -350,6 +353,40 @@ describe('GoalFormComponent, through its own template', () => {
     expect(el().querySelectorAll('.item-row').length).toBe(1);
     expect(component.items.at(0).get('name')?.value).toBe('Hotel');
   });
+
+  /**
+   * Each row's delete names the row by its place in the list, which holds
+   * still while the item's own name is typed, and follows the row when one
+   * above it goes.
+   */
+  for (const locale of ['en', 'ja', 'tc'] as const) {
+    it(`names each item's delete by the item's place in ${locale}`, async () => {
+      const t = catalogTranslator(locale, { strict: true });
+      await render({ mode: 'edit', goal: savedGoalFixture }, catalogTranslationStub(locale));
+      const deletes = () => (Array.from(el().querySelectorAll('.item-row')) as HTMLElement[])
+        .map(row => row.querySelector('button')!);
+
+      expect(deletes().map(accessibleName)).toEqual([
+        t('goal.deleteItemLabel', { position: 1 }),
+        t('goal.deleteItemLabel', { position: 2 }),
+      ]);
+
+      const name = el().querySelector('.item-row input[formControlName="name"]') as HTMLInputElement;
+      name.value = 'Flights and trains';
+      name.dispatchEvent(new Event('input'));
+      fixture.detectChanges();
+      expect(deletes().map(accessibleName)).withContext('while the first item is renamed').toEqual([
+        t('goal.deleteItemLabel', { position: 1 }),
+        t('goal.deleteItemLabel', { position: 2 }),
+      ]);
+
+      deletes()[0].click();
+      fixture.detectChanges();
+      expect(deletes().map(accessibleName)).withContext('once the first item is gone').toEqual([
+        t('goal.deleteItemLabel', { position: 1 }),
+      ]);
+    });
+  }
 
   it('offers the items total only once there is an item to total', async () => {
     await render({ mode: 'add' });

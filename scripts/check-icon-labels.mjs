@@ -1882,6 +1882,39 @@ function selfTest() {
     itemlessLines(`@for (b of list; track b.id) {\n  <button [matMenuTriggerFor]="m" [attr.aria-label]="'common.options' | translate">x</button>\n}`),
     [2]
   );
+  check(
+    'a ternary between two bare keys piped once, the search history\'s pin button',
+    scanItemlessLabels(
+      '@for (record of history.answers(); track record.id) {\n  <button\n    mat-icon-button\n' +
+        '    [attr.aria-pressed]="!!record.pinned"\n    [attr.aria-label]="\n' +
+        '      (record.pinned ? \'aiSearch.historyUnpin\' : \'aiSearch.historyPin\') | translate\n    "\n' +
+        '    (click)="togglePin(record)"\n  >x</button>\n}'
+    ),
+    [{ line: 5, tag: 'button', key: 'aiSearch.historyUnpin : aiSearch.historyPin' }]
+  );
+  check(
+    'a ternary between two bare keys, each branch piped',
+    itemlessLines(`@for (r of rows; track r.id) {\n  <button [attr.aria-label]="r.on ? ('a.turnOff' | translate) : ('a.turnOn' | translate)">x</button>\n}`),
+    [2]
+  );
+  check(
+    'a ternary between two bare keys in the interpolated literal form',
+    itemlessLines(`@for (r of rows; track r.id) {\n  <button aria-label="{{ (r.on ? 'a.turnOff' : 'a.turnOn') | translate }}">x</button>\n}`),
+    [2]
+  );
+  check(
+    'a ternary whose condition reads ?. and ?? is still a ternary',
+    itemlessLines(`@for (r of rows; track r.id) {\n  <button [attr.aria-label]="((r?.on ?? false) ? 'a.turnOff' : 'a.turnOn') | translate">x</button>\n}`),
+    [2]
+  );
+  check(
+    'a ternary between two bare keys, the first branch piped in parentheses and the last bare',
+    [
+      scanItemlessLabels(`@for (r of rows; track r.id) {\n  <button [attr.aria-label]="r.on ? ('a.turnOff' | translate) : 'a.turnOn' | translate">x</button>\n}`),
+      itemlessLines(`@for (r of rows; track r.id) {\n  <button aria-label="{{ r.on ? ('a.turnOff' | translate) : 'a.turnOn' | translate }}">x</button>\n}`),
+    ],
+    [[{ line: 2, tag: 'button', key: 'a.turnOff : a.turnOn' }], [2]]
+  );
 
   // --- the per-item rule: must not hit (the load-bearing half) ---
   check(
@@ -1894,6 +1927,34 @@ function selfTest() {
   check(
     'a key computed from the item names it through the key',
     itemlessLines(`@for (icon of icons; track icon) {\n  <button [attr.aria-label]="iconNameKeys[icon] | translate">x</button>\n}`),
+    []
+  );
+  check(
+    'a ternary with parameters on either branch has a slot for the item',
+    [
+      itemlessLines(`@for (r of rows; track r.id) {\n  <button [attr.aria-label]="r.on ? ('a.turnOff' | translate: { name: r.name }) : ('a.turnOn' | translate)">x</button>\n}`),
+      itemlessLines(`@for (r of rows; track r.id) {\n  <button [attr.aria-label]="r.on ? ('a.turnOff' | translate) : ('a.turnOn' | translate: { name: r.name })">x</button>\n}`),
+    ],
+    [[], []]
+  );
+  check(
+    'a ternary whose bare last branch takes parameters has a slot for the item',
+    itemlessLines(`@for (r of rows; track r.id) {\n  <button [attr.aria-label]="r.on ? ('a.turnOff' | translate) : 'a.turnOn' | translate: { name: r.name }">x</button>\n}`),
+    []
+  );
+  check(
+    'a ternary piped once with parameters has a slot for the item',
+    itemlessLines(`@for (r of rows; track r.id) {\n  <button [attr.aria-label]="(r.on ? 'a.turnOff' : 'a.turnOn') | translate: { name: r.name }">x</button>\n}`),
+    []
+  );
+  check(
+    'the pin button fixed, one key whose parameters name the answer',
+    itemlessLines(
+      '@for (record of history.answers(); track record.id) {\n  <button\n    mat-icon-button\n' +
+        '    [attr.aria-pressed]="!!record.pinned"\n' +
+        '    [attr.aria-label]="\'aiSearch.historyPinLabel\' | translate: { query: record.query, date: recordDateLabel(record) }"\n' +
+        '  >x</button>\n}'
+    ),
     []
   );
   check('a bare key outside any repeat, a page\'s own button', itemlessLines(`<div class="toolbar">\n  ${REMOVE}\n</div>`), []);

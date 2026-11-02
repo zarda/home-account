@@ -18,6 +18,8 @@ import { Category, SEARCH_ANSWER_SCHEMA_VERSION, SearchAnswerRecord } from '../.
 import { dayKey } from '../../../core/utils/transaction-date.utils';
 import { createCategory } from '../../../core/services/testing/test-data';
 import {
+  accessibleName,
+  catalogTranslator,
   paintedBackground,
   paintedColor,
   ratio,
@@ -246,6 +248,40 @@ describe('SearchAnswerHistoryComponent', () => {
     expect(matDialog.open).toHaveBeenCalled();
     expect(answerHistory.deleteAnswer).toHaveBeenCalledWith('a-1');
   });
+
+  /**
+   * Each row's pin and delete name the question they act on and the day it
+   * was answered, the two things the row shows. The pin keeps one name
+   * whether it is pressed or not; aria-pressed says which.
+   */
+  for (const locale of ['en', 'ja', 'tc'] as const) {
+    it(`names each row's pin and delete by its question and day in ${locale}`, () => {
+      const t = catalogTranslator(locale, { strict: true });
+      const translation = TestBed.inject(TranslationService) as jasmine.SpyObj<TranslationService>;
+      translation.t.and.callFake(catalogTranslator(locale));
+      const pinned = rec('a-1', Date.UTC(2026, 7, 14, 12), { query: 'coffee in August', pinned: true });
+      const loose = rec('a-2', Date.UTC(2026, 6, 2, 12), { query: 'rent this year' });
+      storedAnswers.set([pinned, loose]);
+      fixture.detectChanges();
+
+      const rows = Array.from(fixture.nativeElement.querySelectorAll('.history-row')) as HTMLElement[];
+      const named = (selector: string) => rows.map(row => accessibleName(row.querySelector(selector)!));
+      const params = (record: SearchAnswerRecord) =>
+        ({ query: record.query, date: dayKey(record.computedAt.toDate()) });
+
+      expect(named('.history-pin')).toEqual([
+        t('aiSearch.historyPinLabel', params(pinned)),
+        t('aiSearch.historyPinLabel', params(loose)),
+      ]);
+      expect(rows.map(row => row.querySelector('.history-pin')!.getAttribute('aria-pressed')))
+        .withContext('the pin says whether it is pressed')
+        .toEqual(['true', 'false']);
+      expect(named('.history-delete')).toEqual([
+        t('aiSearch.historyDeleteLabel', params(pinned)),
+        t('aiSearch.historyDeleteLabel', params(loose)),
+      ]);
+    });
+  }
 
   it('view-transactions hands the stored scope to the pending channel and navigates', () => {
     storedAnswers.set([rec('a-1', 2_000)]);

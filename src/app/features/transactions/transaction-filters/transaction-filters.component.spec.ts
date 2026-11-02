@@ -15,6 +15,8 @@ import { SearchHistoryService } from '../../../core/services/search-history.serv
 import { GoalService } from '../../../core/services/goal.service';
 import { Category, Goal, SavedSearch, TransactionFilters } from '../../../models';
 import {
+  accessibleName,
+  catalogTranslator,
   channels,
   chooseOption,
   hoverValue,
@@ -896,6 +898,36 @@ describe('TransactionFiltersComponent', () => {
       expect(mockSearchHistory.touch).toHaveBeenCalledWith('r1');
       flush();
     }));
+
+    /**
+     * Each suggestion's remove names the search it removes, in the words its
+     * row shows: a saved search by its label, or by its query when it has
+     * none, and a recent search by its query.
+     */
+    for (const l of ['en', 'ja', 'tc'] as const) {
+      it(`names each suggestion's remove by its search in ${l}`, fakeAsync(() => {
+        const t = catalogTranslator(l, { strict: true });
+        mockTranslationService.t.and.callFake(catalogTranslator(l));
+        locale.set(l);
+        mockSearchHistory.savedSearches.set([
+          savedSearch('s1', 'utilities', { label: 'Bills' }),
+          savedSearch('s2', 'gym'),
+        ]);
+        mockSearchHistory.recentSearches.set([savedSearch('r1', 'starbucks')]);
+        const { input, root } = renderExpanded();
+        tick();
+
+        input.dispatchEvent(new Event('focus'));
+        fixture.detectChanges();
+
+        expect(Array.from(root.querySelectorAll('.suggestion-remove')).map(accessibleName)).toEqual([
+          t('transactions.removeSavedSearch', { name: 'Bills' }),
+          t('transactions.removeSavedSearch', { name: 'gym' }),
+          t('transactions.removeRecentSearch', { query: 'starbucks' }),
+        ]);
+        flush();
+      }));
+    }
 
     it('moves focus into the panel on ArrowDown', fakeAsync(() => {
       mockSearchHistory.recentSearches.set([savedSearch('r1', 'starbucks')]);

@@ -30,6 +30,8 @@ import { AnalyticsService } from '../../../core/services/analytics.service';
 import { ShareDialogComponent, ShareDialogData } from '../sharing/share-dialog.component';
 import { MAX_BULK_SHARE, Transaction } from '../../../models';
 import {
+  accessibleName,
+  catalogTranslator,
   createTransaction,
   createUser,
   echoTranslation,
@@ -798,6 +800,73 @@ describe('TransactionListComponent desktop note doors', () => {
       'common.moreActionsFor:{"description":"Apple"}',
     ]);
   });
+
+  // tc quotes a row's description in 「」 in its note and receipt buttons'
+  // names, and the catalog's words for an untitled row would read, in
+  // quotes, as its name: an untitled row is named by those words bare.
+  for (const blank of ['', '   ']) {
+    it(`names a row whose description is ${JSON.stringify(blank)} by the catalog's words, unquoted, in its note and receipt buttons in tc, and a titled row in quotes`, () => {
+      const t = catalogTranslator('tc', { strict: true });
+      (TestBed.inject(TranslationService) as jasmine.SpyObj<TranslationService>).t.and.callFake(catalogTranslator('tc'));
+      const untitled = createTransaction({
+        id: 'c',
+        amount: 5,
+        description: blank,
+        note: 'no idea what this was',
+        receiptUrl: 'https://storage.example.com/c.jpg',
+      });
+      fixture = TestBed.createComponent(TransactionListComponent);
+      fixture.componentRef.setInput('transactions', [withNote, untitled]);
+      fixture.detectChanges();
+
+      const named = (selector: string) =>
+        Array.from(fixture.nativeElement.querySelectorAll(selector)).map(button => accessibleName(button as HTMLElement));
+      const [notes, receipts] = [named('.note-button'), named('.receipt-icon-button')];
+      const nameless = t('transactions.untitledRow');
+      expect([notes[0], receipts[0]]).withContext('Banana keeps its quotes (pin)')
+        .toEqual(['查看「Banana」的備註', '查看「Banana」的收據']);
+      expect([notes[1], receipts[1]].filter(name => !name?.includes(nameless)))
+        .withContext("each names it by the catalog's words")
+        .toEqual([]);
+      expect([notes[1], receipts[1]].filter(name => name?.includes(`「${nameless}」`)))
+        .withContext("the catalog's words in quotes")
+        .toEqual([]);
+    });
+  }
+
+  // The note and receipt icons repeat down the description column as well,
+  // so each names the row it opens, and an untitled row by the catalog's
+  // words for one rather than by nothing.
+  for (const locale of ['en', 'ja', 'tc'] as const) {
+    it(`names each row's note and receipt button by the row's description in ${locale}`, () => {
+      const t = catalogTranslator(locale, { strict: true });
+      const translation = TestBed.inject(TranslationService) as jasmine.SpyObj<TranslationService>;
+      translation.t.and.callFake(catalogTranslator(locale));
+      const untitled = createTransaction({
+        id: 'c',
+        amount: 5,
+        description: '  ',
+        note: 'no idea what this was',
+        receiptUrl: 'https://storage.example.com/c.jpg',
+      });
+      fixture = TestBed.createComponent(TransactionListComponent);
+      fixture.componentRef.setInput('transactions', [withNote, withoutNote, untitled]);
+      fixture.detectChanges();
+
+      const named = (selector: string) =>
+        Array.from(fixture.nativeElement.querySelectorAll(selector)).map(button => accessibleName(button as HTMLElement));
+      const nameless = t('transactions.untitledRow');
+      const banana = t('common.quotedName', { name: 'Banana' });
+      expect(named('.note-button')).toEqual([
+        t('transactions.viewNoteFor', { description: banana }),
+        t('transactions.viewNoteFor', { description: nameless }),
+      ]);
+      expect(named('.receipt-icon-button')).toEqual([
+        t('transactions.viewReceiptFor', { description: banana }),
+        t('transactions.viewReceiptFor', { description: nameless }),
+      ]);
+    });
+  }
 });
 
 /**
@@ -1928,6 +1997,26 @@ describe('TransactionListComponent select mode', () => {
       }
     });
 
+    // An untitled row is named by the catalog's words for one on every
+    // control that names it, so its menu never reads "More actions for "
+    // and its checkbox and row button never open on a bare comma.
+    it("names an untitled row's menu, checkbox and row button by the catalog's words for one", async () => {
+      const t = catalogTranslator('en', { strict: true });
+      TestBed.overrideProvider(TranslationService, { useValue: { t: catalogTranslator('en') } });
+      rows = [createTransaction({ id: 'u', amount: 5, currency: 'USD', description: '  ' })];
+      await render();
+      const nameless = t('transactions.untitledRow');
+
+      const menu = rowOf('u').querySelector<HTMLElement>('.row-menu-btn');
+      expect(menu).withContext('the row menu, outside the mode').not.toBeNull();
+      expect(accessibleName(menu!)).withContext('the row menu').toBe(t('common.moreActionsFor', { description: nameless }));
+
+      enter();
+      const row = t('transactions.rowLabel', { description: nameless, amount: '-USD 5', date: 'rel' });
+      expect(accessibleName(boxOf('u'))).withContext('the checkbox').toBe(row);
+      expect(accessibleName(rowOf('u').querySelector<HTMLElement>('.row-activate')!)).withContext('the row button').toBe(row);
+    });
+
     it('gives each row checkbox a 40px target', async () => {
       await render();
       enter();
@@ -2502,6 +2591,47 @@ describe('TransactionListComponent select mode', () => {
       expect(host.querySelector('th.col-select')).toBeNull();
       rowOf('b').click();
       expect(edited).toHaveBeenCalledOnceWith(rows[1]);
+    });
+
+    // As on a phone: the actions column's menu and the select column's
+    // checkbox name an untitled row by the catalog's words for one.
+    it("names an untitled row's menu and checkbox by the catalog's words for one", async () => {
+      const t = catalogTranslator('en', { strict: true });
+      TestBed.overrideProvider(TranslationService, { useValue: { t: catalogTranslator('en') } });
+      rows = [createTransaction({ id: 'u', amount: 5, currency: 'USD', description: '  ' })];
+      await render();
+      const nameless = t('transactions.untitledRow');
+
+      const menu = rowOf('u').querySelector<HTMLElement>('.action-btn');
+      expect(menu).withContext('the row menu').not.toBeNull();
+      expect(accessibleName(menu!)).withContext('the row menu').toBe(t('common.moreActionsFor', { description: nameless }));
+
+      enter();
+      expect(accessibleName(boxOf('u'))).withContext('the checkbox')
+        .toBe(t('transactions.rowLabel', { description: nameless, amount: '-USD 5', date: 'rel' }));
+    });
+
+    // The select column's header shows no words, and the hidden ones are its
+    // only name. They are clipped by the a11y mixin's inset(50%), not by
+    // Tailwind's screen-reader utility, whose clip: rect() leaves clip-path at
+    // none, and clipped in place they still name the header. The pin reads
+    // the clip's computed shape, not where it is declared, so a hand-written
+    // copy of the mixin's rules would read the same here.
+    // A pin. Mutations: the class dropped (clip none, a box wider than 1px),
+    // the mixin swapped for Tailwind's screen-reader utility (clip none, the
+    // box still 1px), the mixin swapped for display: none (clip none, the
+    // name empty).
+    it("clips the select column header's words as every visually hidden label is, and keeps them its name", async () => {
+      await render();
+      enter();
+
+      const header = host.querySelector<HTMLElement>('th.col-select');
+      expect(header).withContext('the select column').not.toBeNull();
+      const words = header!.querySelector<HTMLElement>(':scope > span');
+      expect(words).withContext("the header's words").not.toBeNull();
+      expect(getComputedStyle(words!).clipPath).withContext("the mixin's clip").toBe('inset(50%)');
+      expect(words!.getBoundingClientRect().width).withContext("the words' box, px").toBeLessThanOrEqual(1);
+      expect(accessibleName(header!)).withContext("the header's name").toBe('transactions.select.start');
     });
 
     it('lets Escape close a note\'s tooltip without leaving the mode or dropping the selection', async () => {

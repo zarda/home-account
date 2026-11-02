@@ -15,6 +15,8 @@ import { TranslationService } from '../../core/services/translation.service';
 import { FeedbackEntry } from '../../models';
 import {
   AUDIT_SCHEMES,
+  accessibleName,
+  catalogTranslator,
   echoTranslation,
   paintedBackground,
   paintedColor,
@@ -417,6 +419,29 @@ describe('AboutComponent', () => {
       const data = mockDialog.open.calls.mostRecent().args[1]?.data as { message: string };
       expect(data.message).toBe('about.feedback.deleteMessage');
     });
+
+    /**
+     * One delete per sent entry, so a screen reader moving down the list hears
+     * which entry each one removes: its place in the list and its category,
+     * the two things the row shows before its message.
+     */
+    for (const locale of ['en', 'ja', 'tc'] as const) {
+      it(`names each delete by its entry's place and category in ${locale}`, () => {
+        const t = catalogTranslator(locale, { strict: true });
+        const translation = TestBed.inject(TranslationService) as jasmine.SpyObj<TranslationService>;
+        translation.t.and.callFake(catalogTranslator(locale));
+        mockFeedback.watchOwn.and.returnValue(of([entry, { ...entry, id: 'f2', category: 'idea' }]));
+        fixture = TestBed.createComponent(AboutComponent);
+        fixture.detectChanges();
+
+        const names = Array.from(fixture.nativeElement.querySelectorAll('.feedback-item-delete'))
+          .map(button => accessibleName(button as HTMLElement));
+        expect(names).toEqual([
+          t('about.feedback.deleteLabel', { position: 1, category: t('about.feedback.categoryBug') }),
+          t('about.feedback.deleteLabel', { position: 2, category: t('about.feedback.categoryIdea') }),
+        ]);
+      });
+    }
   });
 
   describe('colours, as painted', () => {
