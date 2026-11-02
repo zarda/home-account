@@ -6,6 +6,7 @@ import { MatSnackBar } from '@angular/material/snack-bar';
 import { MatStepper } from '@angular/material/stepper';
 import { provideNativeDateAdapter } from '@angular/material/core';
 import { By } from '@angular/platform-browser';
+import axe from 'axe-core';
 
 import { ImportWizardComponent } from './import-wizard.component';
 import { FileDropzoneComponent } from '../file-dropzone/file-dropzone.component';
@@ -3783,6 +3784,8 @@ describe('ImportWizardComponent', () => {
 
     const zone = () =>
       realFixture.debugElement.query(By.directive(FileDropzoneComponent)).componentInstance as FileDropzoneComponent;
+    const uploadStep = () =>
+      (realFixture.nativeElement as HTMLElement).querySelector<HTMLElement>('.upload-step');
     const names = (files: readonly File[]) => files.map(f => f.name);
     const rowNames = () =>
       Array.from((realFixture.nativeElement as HTMLElement).querySelectorAll('app-file-dropzone .file-name'))
@@ -4382,15 +4385,88 @@ describe('ImportWizardComponent', () => {
       }));
     });
 
+    /**
+     * Runs axe's heading-order alone over the whole wizard, whose h1 heads the
+     * page, so a heading on a step sits one level under it: the stepper's
+     * labels are no headings. heading-order is best practice, outside the
+     * wcag2a/wcag2aa tags axeOptions runs, so the steps' sweeps never ask it.
+     */
+    async function expectHeadingsInOrder(): Promise<void> {
+      const results = await axe.run(realFixture.nativeElement as HTMLElement, {
+        runOnly: { type: 'rule', values: ['heading-order'] },
+        resultTypes: ['violations'],
+      });
+      expect(summarizeViolations(results)).withContext('heading-order').toEqual([]);
+      expect(results.passes.map(result => result.id)).withContext('headings were found to order').toContain('heading-order');
+    }
+
+    // The same step with nothing picked, the state a reader meets first: the
+    // zone, its hint, the four file types and Browse. The zone was a
+    // role="button" around Browse, axe's nested-interactive, and no pass had
+    // looked at it.
+    describe('the empty upload step, under the axe sweep', () => {
+      for (const scheme of AUDIT_SCHEMES) {
+        it(`finds nothing on the step in the ${scheme} scheme`, async () => {
+          const step = uploadStep();
+          expect(step).withContext('the upload step').toBeTruthy();
+          expect(step?.querySelector('app-file-dropzone .dropzone-content'))
+            .withContext('the empty zone is on the swept step')
+            .toBeTruthy();
+          expect(step?.querySelector('app-file-dropzone .browse-btn')).withContext('Browse is on it').toBeTruthy();
+          expect(step?.querySelectorAll('app-file-dropzone .file-item').length).withContext('nothing picked').toBe(0);
+          if (!step) return;
+
+          await withScheme(TestBed.inject(ThemeService), scheme, async () => {
+            realFixture.detectChanges();
+            expect(summarizeViolations(await runAxe(step))).toEqual([]);
+          });
+        });
+
+        // A pass keeps one node per rule, and over the whole step axe hands
+        // back the hidden file input as color-contrast's: a pass over the
+        // step holds the rule whether or not any of the zone's words were
+        // scored. Each part is swept on its own, so its pass can only come
+        // from its own text. A pin. Mutations: .dropzone-content given
+        // visibility: hidden, which leaves the step's pass holding the rule;
+        // the step's upload-step class dropped, so no step is found to score.
+        it(`scores the empty zone's title, hint, file types and Browse for contrast in the ${scheme} scheme`, async () => {
+          const step = uploadStep();
+          expect(step).withContext('the upload step').toBeTruthy();
+          if (!step) return;
+
+          await withScheme(TestBed.inject(ThemeService), scheme, async () => {
+            realFixture.detectChanges();
+            for (const part of ['.title', '.hint', '.file-types', '.browse-btn']) {
+              const node = step.querySelector(`app-file-dropzone ${part}`);
+              expect(node).withContext(part).toBeTruthy();
+              if (!node) continue;
+              const results = await runAxe(node);
+              expect(results.passes.map(result => result.id)).withContext(`${part}'s own pass`).toContain('color-contrast');
+            }
+          });
+        });
+
+        // The zone's title heads the empty step under the page's h1, so it is
+        // an h2. While the zone was a role="button", a button's children
+        // being presentational, the title was out of the tree; dropping the
+        // role brought its h3 in.
+        it(`keeps the zone's title one level under the page's heading in the ${scheme} scheme`, async () => {
+          expect(uploadStep()?.querySelector('app-file-dropzone .title')).withContext('the zone\'s title').toBeTruthy();
+
+          await withScheme(TestBed.inject(ThemeService), scheme, async () => {
+            realFixture.detectChanges();
+            await expectHeadingsInOrder();
+          });
+        });
+      }
+    });
+
     // /import/file is a route the smoke walkthrough never opens, so no axe
     // pass had looked at the upload step with photos on it: the question that
     // asks what they are, the zone's rows and previews, and the banner a
     // refused file leaves. Swept here in both schemes, as the walkthrough
     // sweeps its routes.
     describe('the upload step with photos picked, under the axe sweep', () => {
-      const uploadStep = () =>
-        (realFixture.nativeElement as HTMLElement).querySelector<HTMLElement>('.upload-step');
-
       beforeEach(() => {
         // Two photos and a file the zone refuses, so the rows, the previews,
         // the question and the banner all stand.

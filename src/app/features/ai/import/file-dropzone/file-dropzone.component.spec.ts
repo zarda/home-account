@@ -1,6 +1,7 @@
 import { ComponentFixture, TestBed } from '@angular/core/testing';
-import { NO_ERRORS_SCHEMA } from '@angular/core';
+import { Component, NO_ERRORS_SCHEMA } from '@angular/core';
 import { By } from '@angular/platform-browser';
+import { InteractivityChecker } from '@angular/cdk/a11y';
 
 import { FileDropzoneComponent } from './file-dropzone.component';
 import { IMPORT_FILE_MAX_BYTES, RefusedShare } from '../../../../core/services/share-intake.service';
@@ -10,12 +11,14 @@ import {
   accessibleName,
   channels,
   createTranslationStub,
+  expectOneRule,
   hoverValue,
   paintedBackground,
   paintedColor,
   provideNoMotion,
   ratio,
   settleAnimations,
+  styleRules,
   textLines,
   type TranslationStub,
   withTheme,
@@ -564,6 +567,13 @@ describe('FileDropzoneComponent, the sentences its alert joins', () => {
  * that only exist for a multi-image pick, or the error banner. This is the
  * one place the real template renders and its controls are clicked.
  */
+/** The zone inside a link of the page's own, which is no control of the zone's. */
+@Component({
+  imports: [FileDropzoneComponent],
+  template: '<a class="page-link"><app-file-dropzone /></a>',
+})
+class ZoneInsideALink {}
+
 describe('FileDropzoneComponent, through its own template', () => {
   let fixture: ComponentFixture<FileDropzoneComponent>;
   let component: FileDropzoneComponent;
@@ -583,6 +593,8 @@ describe('FileDropzoneComponent, through its own template', () => {
   const el = () => fixture.nativeElement as HTMLElement;
   const text = (selector: string) => el().querySelector(selector)?.textContent?.trim() ?? null;
   const all = (selector: string) => Array.from(el().querySelectorAll(selector)) as HTMLElement[];
+  /** The hidden input whose own click is the picker. */
+  const fileInput = () => el().querySelector('input[type="file"]') as HTMLInputElement;
 
   beforeEach(async () => {
     await TestBed.configureTestingModule({
@@ -638,6 +650,154 @@ describe('FileDropzoneComponent, through its own template', () => {
     expect(zone.getAttribute('tabindex')).toBeNull();
     expect(el().querySelector('.dropzone-content')).toBeNull();
     expect(el().querySelector('.selected-files')).not.toBeNull();
+  });
+
+  // Tab met the zone and then Browse, two stops that opened the same picker.
+  it('keeps one tab stop on the empty zone, Browse', () => {
+    fixture.detectChanges();
+    const checker = TestBed.inject(InteractivityChecker);
+    const stop = (node: HTMLElement) =>
+      node.classList.contains('dropzone') ? 'zone' : node.classList.contains('browse-btn') ? 'browse' : node.outerHTML;
+
+    const stops = Array.from(el().querySelectorAll<HTMLElement>('*'))
+      .filter(node => checker.isFocusable(node) && checker.isTabbable(node))
+      .map(stop);
+    expect(stops).toEqual(['browse']);
+  });
+
+  describe('a key pressed on Browse', () => {
+    let browse: HTMLElement;
+    let picker: jasmine.Spy;
+
+    beforeEach(() => {
+      fixture.detectChanges();
+      browse = el().querySelector('.browse-btn') as HTMLElement;
+      picker = spyOn(fileInput(), 'click');
+    });
+
+    /**
+     * The key as the browser delivers it: its keydown bubbles out through the
+     * zone first, and Browse then presses itself (on Enter's keypress, on
+     * Space's keyup) unless something on the way cancelled that keydown. A
+     * synthetic keydown presses nothing, so the press is Browse's own click.
+     */
+    function press(key: 'Enter' | ' '): KeyboardEvent {
+      const keydown = new KeyboardEvent('keydown', { key, bubbles: true, cancelable: true });
+      browse.dispatchEvent(keydown);
+      if (!keydown.defaultPrevented) browse.click();
+      return keydown;
+    }
+
+    // The zone's own keydown handler opened the picker, and then Browse's
+    // press opened it again: one Enter, two requests.
+    it('opens the picker once for Enter', () => {
+      const keydown = press('Enter');
+      expect(picker).withContext('picker requests').toHaveBeenCalledTimes(1);
+      expect(keydown.defaultPrevented).withContext('the key left to Browse').toBeFalse();
+    });
+
+    // The zone cancelled Space on its way out and opened the picker itself,
+    // so Browse never pressed: the key was the zone's, not the button's.
+    it('opens the picker once for Space, through Browse\'s own press', () => {
+      const keydown = press(' ');
+      expect(picker).withContext('picker requests').toHaveBeenCalledTimes(1);
+      expect(keydown.defaultPrevented).withContext('the key left to Browse').toBeFalse();
+    });
+  });
+
+  // A pin. Mutation: onZoneClick's guard against a click from inside a
+  // button dropped, so Browse's click reaches the host and asks again.
+  it('opens the picker once for a click on Browse', () => {
+    fixture.detectChanges();
+    const picker = spyOn(fileInput(), 'click');
+
+    for (const selector of ['.browse-btn', '.browse-btn mat-icon']) {
+      const before = picker.calls.count();
+      (el().querySelector(selector) as HTMLElement).click();
+      expect(picker.calls.count() - before).withContext(`picker requests from ${selector}`).toBe(1);
+    }
+  });
+
+  // The picker is the input's own click, and that click bubbles: out through
+  // the zone to the host that asked for it, which would ask again. The spy
+  // lets it through here, so the click the input dispatches is real.
+  // Mutation: onZoneClick's guard against a click from inside an input
+  // dropped.
+  it('asks the input once a click, though the input\'s own click bubbles back out through the zone', () => {
+    fixture.detectChanges();
+    const picker = spyOn(fileInput(), 'click').and.callThrough();
+
+    (el().querySelector('.title') as HTMLElement).click();
+    expect(picker).withContext('from the zone').toHaveBeenCalledTimes(1);
+    (el().querySelector('.browse-btn') as HTMLElement).click();
+    expect(picker).withContext('from the zone, then Browse').toHaveBeenCalledTimes(2);
+  });
+
+  // The banner sits beside the zone, inside the frame a file is dropped on:
+  // it is read, not pressed. A pin. Mutation: onZoneClick's guard that the
+  // click came from inside .dropzone dropped.
+  it('opens nothing from the refusal banner', () => {
+    fixture.detectChanges();
+    dropFiles([new File(['x'], 'notes.txt', { type: 'text/plain' })]);
+    expect(component.selectedFiles().length).withContext('nothing picked').toBe(0);
+    expect(el().querySelector('.error-banner')).withContext('the banner').not.toBeNull();
+    const picker = spyOn(fileInput(), 'click');
+
+    for (const selector of ['.error-banner', '.error-message', '.error-banner mat-icon']) {
+      (el().querySelector(selector) as HTMLElement).click();
+    }
+    expect(picker).not.toHaveBeenCalled();
+  });
+
+  // A click from inside a control is that control's own, but only a control
+  // inside the zone: a zone rendered inside a link of the page's own met
+  // that link on every click and opened nothing. Browse still opens it once.
+  it('opens the picker from a zone rendered inside a link of the page\'s own', () => {
+    const page = TestBed.createComponent(ZoneInsideALink);
+    page.detectChanges();
+    const root = page.nativeElement as HTMLElement;
+    expect(root.querySelector('a.page-link app-file-dropzone .title')).withContext('the zone, inside the link').toBeTruthy();
+    const picker = spyOn(root.querySelector('input[type="file"]') as HTMLInputElement, 'click');
+
+    (root.querySelector('.title') as HTMLElement).click();
+    expect(picker).withContext('from the zone\'s title').toHaveBeenCalledTimes(1);
+    (root.querySelector('.browse-btn') as HTMLElement).click();
+    expect(picker).withContext('from the title, then Browse').toHaveBeenCalledTimes(2);
+  });
+
+  // The zone is no control, so it is never :focus-visible itself, and the
+  // ring styles.scss draws would go round Browse alone. What a keyboard user
+  // is choosing is the zone, so the ring goes round it while Browse has
+  // keyboard focus, at the 2px outline and 2px offset of every other ring (3px
+  // under high contrast, which styles.scss widens by :focus-visible alone):
+  // the room the wizard leaves round its step, 5px, is cut to that ring.
+  // Browse's own ring is cleared, so one ring shows.
+  it('rings the zone while Browse has keyboard focus, 3px under high contrast, and clears Browse\'s own', () => {
+    fixture.detectChanges();
+    const rules = styleRules()
+      .filter(({ media }) => media === null)
+      .map(({ rule }) => rule);
+    // The zone itself, its own attribute and then :has( at once: a ring on
+    // anything inside it (.dropzone-content, or a bare :has() nested in
+    // .dropzone without &) goes round that instead. Angular scopes nothing
+    // inside :has(), so Browse in it carries no attribute.
+    const zoneRing = rules.filter(rule =>
+      /(?:^|[\s,])\.dropzone\[_ngcontent-[^\]]+\]:has\(\.browse-btn(?:\[_ngcontent-[^\]]+\])?:focus-visible\)/
+        .test(rule.selectorText));
+    const plain = zoneRing.filter(rule => !rule.selectorText.includes('.high-contrast'));
+    const wide = zoneRing.filter(rule => rule.selectorText.includes('.high-contrast'));
+    const browseRing = rules.filter(rule => /^\.browse-btn\[_ngcontent-[^\]]+\]:focus-visible$/.test(rule.selectorText));
+
+    expectOneRule(plain);
+    // A shorthand holding a var() leaves its longhands unread in the CSSOM,
+    // so the ring is read whole.
+    expect([plain[0]?.style.outline, plain[0]?.style.outlineOffset])
+      .withContext('the zone\'s ring, then its offset')
+      .toEqual(['2px solid var(--color-primary)', '2px']);
+    expectOneRule(wide);
+    expect(wide[0]?.style.outlineWidth).withContext('the zone\'s ring under high contrast').toBe('3px');
+    expectOneRule(browseRing);
+    expect(browseRing[0]?.style.outlineStyle).withContext('Browse\'s own ring').toBe('none');
   });
 
   it('renders a dropped file as a row carrying its name, size and type', () => {
@@ -999,17 +1159,44 @@ describe('FileDropzoneComponent, through its own template', () => {
     expect(zone.classList).not.toContain('dragover');
   });
 
-  it('opens the picker from the empty zone but not from the file list', () => {
+  // A pointer still opens the picker from anywhere on the empty zone. Once
+  // files are picked, the list of rows must not re-open it on every stray
+  // click; adding more is Add more's. A pin. Mutations: onZoneClick's guard
+  // that nothing is picked dropped; the host's click binding removed.
+  it('opens the picker once for a click anywhere on the empty zone, and not from the file list', () => {
     fixture.detectChanges();
-    const input = el().querySelector('input[type="file"]') as HTMLInputElement;
-    const click = spyOn(input, 'click');
+    const picker = spyOn(fileInput(), 'click');
 
-    (el().querySelector('.dropzone') as HTMLElement).click();
-    expect(click).toHaveBeenCalledTimes(1);
+    const empty = ['.dropzone', '.dropzone-content', '.icon-container', '.upload-icon', '.title', '.hint', '.file-type'];
+    for (const selector of empty) {
+      const before = picker.calls.count();
+      (el().querySelector(selector) as HTMLElement).click();
+      expect(picker.calls.count() - before).withContext(`picker requests from ${selector}`).toBe(1);
+    }
 
     dropFiles([csvFile()]);
-    (el().querySelector('.dropzone') as HTMLElement).click();
-    expect(click).toHaveBeenCalledTimes(1);
+    for (const selector of ['.dropzone', '.selected-files', '.file-item', '.file-name']) {
+      (el().querySelector(selector) as HTMLElement).click();
+    }
+    expect(picker.calls.count()).withContext('none from the file list').toBe(empty.length);
+  });
+
+  // Add more's click bubbles out through the zone to the host, as Browse's
+  // does, and the input's own click after it. A pin. Mutation: onZoneClick's
+  // guard that nothing is picked and its guard against a click from inside a
+  // button both dropped.
+  it('opens the picker once for a click on Add more', () => {
+    fixture.detectChanges();
+    dropFiles([csvFile()]);
+    const picker = spyOn(fileInput(), 'click').and.callThrough();
+
+    for (const selector of ['.add-more-btn', '.add-more-btn mat-icon']) {
+      const before = picker.calls.count();
+      const node = el().querySelector<HTMLElement>(selector);
+      expect(node).withContext(selector).toBeTruthy();
+      node?.click();
+      expect(picker.calls.count() - before).withContext(`picker requests from ${selector}`).toBe(1);
+    }
   });
 
   it('takes a file through the hidden input the browse button reaches', () => {
