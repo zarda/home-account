@@ -10,6 +10,7 @@ import axe from 'axe-core';
 
 import { ImportWizardComponent } from './import-wizard.component';
 import { FileDropzoneComponent } from '../file-dropzone/file-dropzone.component';
+import { withEveryCardShown } from '../transaction-preview-table/transaction-preview-table.testing';
 import { AIImportService, AI_QUEUED_OFFLINE, IMPORT_NOT_STARTED, IMPORT_READBACK_FAILED } from '../../../../core/services/ai-import.service';
 import { DuplicateDetectionService } from '../../../../core/services/duplicate-detection.service';
 import { CategoryService } from '../../../../core/services/category.service';
@@ -26,15 +27,19 @@ import {
   AUDIT_SCHEMES,
   MockAuthService,
   channels,
+  expectContrastScored,
   expectOneRule,
+  expectPainted,
   paintedBackground,
   paintedColor,
   ratio,
   rulesUnder,
   runAxe,
   settleAnimations,
+  standOnThePage,
   summarizeViolations,
   textLines,
+  tokenValue,
   underRule,
   withInlineStyle,
   withScheme,
@@ -4405,6 +4410,10 @@ describe('ImportWizardComponent', () => {
     // role="button" around Browse, axe's nested-interactive, and no pass had
     // looked at it.
     describe('the empty upload step, under the axe sweep', () => {
+      beforeEach(() => {
+        standOnThePage(realFixture.nativeElement as HTMLElement);
+      });
+
       for (const scheme of AUDIT_SCHEMES) {
         it(`finds nothing on the step in the ${scheme} scheme`, async () => {
           const step = uploadStep();
@@ -4422,13 +4431,11 @@ describe('ImportWizardComponent', () => {
           });
         });
 
-        // A pass keeps one node per rule, and over the whole step axe hands
-        // back the hidden file input as color-contrast's: a pass over the
-        // step holds the rule whether or not any of the zone's words were
-        // scored. Each part is swept on its own, so its pass can only come
-        // from its own text. A pin. Mutations: .dropzone-content given
-        // visibility: hidden, which leaves the step's pass holding the rule;
-        // the step's upload-step class dropped, so no step is found to score.
+        // Each part is swept on its own (expectContrastScored), so its pass
+        // can only come from its own text. A pin. Mutations:
+        // .dropzone-content given visibility: hidden, which leaves the step's
+        // pass holding the rule; the step's upload-step class dropped, so no
+        // step is found to score.
         it(`scores the empty zone's title, hint, file types and Browse for contrast in the ${scheme} scheme`, async () => {
           const step = uploadStep();
           expect(step).withContext('the upload step').toBeTruthy();
@@ -4436,12 +4443,32 @@ describe('ImportWizardComponent', () => {
 
           await withScheme(TestBed.inject(ThemeService), scheme, async () => {
             realFixture.detectChanges();
-            for (const part of ['.title', '.hint', '.file-types', '.browse-btn']) {
+            // A file type's words stand beside its glyph in no element of
+            // their own, so each type is scored with every element it holds
+            // hidden and the pass can only come from its own text nodes, the
+            // words, whatever draws the glyph (a mat-icon, a span holding a
+            // ligature); Browse's words are its label. Mutation: the words
+            // given visibility: hidden (each type hidden with its glyph shown,
+            // and Browse's label), which leaves each unscored, where
+            // .file-types and .browse-btn, scored whole, still passed on the
+            // glyphs alone. Mutation: a type's glyph a bare ligature, in no
+            // element, which leaves that type nothing to hide.
+            const types = [...step.querySelectorAll<HTMLElement>('app-file-dropzone .file-type')];
+            expect(types.length).withContext('the four file types').toBe(4);
+            const held = types.map(type => [...type.querySelectorAll<HTMLElement>(':scope > *')]);
+            for (const [i, elements] of held.entries()) {
+              expect(elements.length).withContext(`.file-type ${i + 1}'s glyph, hidden`).toBeGreaterThan(0);
+            }
+            await withInlineStyle(held.flat(), 'visibility: hidden', async () => {
+              for (const [i, type] of types.entries()) {
+                await expectContrastScored(type, `.file-type ${i + 1}`);
+              }
+            });
+            for (const part of ['.title', '.hint', '.browse-btn .mdc-button__label']) {
               const node = step.querySelector(`app-file-dropzone ${part}`);
               expect(node).withContext(part).toBeTruthy();
               if (!node) continue;
-              const results = await runAxe(node);
-              expect(results.passes.map(result => result.id)).withContext(`${part}'s own pass`).toContain('color-contrast');
+              await expectContrastScored(node, part);
             }
           });
         });
@@ -4467,7 +4494,23 @@ describe('ImportWizardComponent', () => {
     // refused file leaves. Swept here in both schemes, as the walkthrough
     // sweeps its routes.
     describe('the upload step with photos picked, under the axe sweep', () => {
+      /** What holds the words of each part of the step, apart from any glyph beside them. */
+      const PICKED_PARTS = [
+        '.image-kind-label',
+        '.image-kind-hint',
+        'app-file-dropzone .multi-image-hint span',
+        'app-file-dropzone .file-item .image-number',
+        'app-file-dropzone .file-item .file-name',
+        'app-file-dropzone .file-item .file-size',
+        'app-file-dropzone .file-item .file-type-label',
+        'app-file-dropzone .add-more-btn .mdc-button__label',
+        'app-file-dropzone .error-banner .error-message',
+        '.image-previews h3',
+        '.step-actions .action-button .mdc-button__label',
+      ] as const;
+
       beforeEach(() => {
+        standOnThePage(realFixture.nativeElement as HTMLElement);
         // Two photos and a file the zone refuses, so the rows, the previews,
         // the question and the banner all stand.
         drop(photo('a.png'), photo('b.png'), new File(['x'], 'run.exe', { type: 'application/x-msdownload' }));
@@ -4494,41 +4537,161 @@ describe('ImportWizardComponent', () => {
             expect(summarizeViolations(await runAxe(step!))).toEqual([]);
           });
         });
+
+        // Each part's words are swept on their own (expectContrastScored), so
+        // the pass can only come from them, not from a glyph beside them.
+        // Left out: the chips, whose background axe reports as overlapped
+        // (bgOverlap) and leaves unscored, and the previews' captions, which
+        // sit on the photo and are held at AA over white paper under
+        // *colours, as painted*. A pin. Mutations: .image-kind-hint given
+        // visibility: hidden; the page's fill dropped (standOnThePage), which
+        // leaves the question, its hint, the refusal and the previews'
+        // heading unscored.
+        it(`scores the words of the question, its hint, each row, Add more, the refusal, the previews' heading and Process for contrast in the ${scheme} scheme`, async () => {
+          const step = uploadStep();
+          expect(step).withContext('the upload step').toBeTruthy();
+          if (!step) return;
+
+          await withScheme(TestBed.inject(ThemeService), scheme, async () => {
+            realFixture.detectChanges();
+            for (const part of PICKED_PARTS) {
+              const nodes = [...step.querySelectorAll(part)];
+              expect(nodes.length).withContext(`${part} is on the step`).toBeGreaterThan(0);
+              for (const [i, node] of nodes.entries()) {
+                await expectContrastScored(node, `${part} ${i + 1}`);
+              }
+            }
+          });
+        });
+      }
+    });
+
+    // The review step with everything that can stand around its rows: the
+    // cut-off answer and the PDF read in part above them, the duplicate
+    // warning, the date and fill-in hints below them, and Back and Continue.
+    // No axe pass had looked at any of it. Material hides a step that is not
+    // selected, so the step is selected first. The stepper is linear, and CDK
+    // refuses a move past a step that is not yet complete without a word, so
+    // the signals are written and rendered before the move, and the move is
+    // checked.
+    describe('the review step\'s body, under the axe sweep', () => {
+      /** Each notice and hint, and the paragraphs it holds its words in. */
+      const NOTICES_AND_HINTS = [
+        ['.incomplete-notice', '.incomplete-notice p'],
+        ['.truncated-notice', '.truncated-notice p'],
+        ['.dates-hint', '.dates-hint'],
+        ['.rows-hint', '.rows-hint'],
+      ] as const;
+
+      /**
+       * What else holds words on the step, apart from any glyph beside them:
+       * the header, the duplicate warning's title and Back's label. Continue
+       * is held disabled here (a date and a row are owed), so axe, as WCAG
+       * 1.4.3 does, leaves its contrast out.
+       */
+      const OTHER_WORDS = [
+        '.review-header h2',
+        '.review-header p',
+        'app-duplicate-warning mat-panel-title span',
+        '.step-actions button:not(.action-button) .mdc-button__label',
+      ] as const;
+
+      /** The review step with both notices, the warning and both hints on it, selected. */
+      function landReviewStep(): HTMLElement | null {
+        standOnThePage(realFixture.nativeElement as HTMLElement);
+        const real = realFixture.componentInstance;
+        real.selectedFiles.set([photo('r.png')]);
+        real.receiptRowIds.set(new Set(['dated']));
+        real.extractedTransactions.set([
+          { ...mockTransactions[0], id: 'dated', dateAssumed: true },
+          { ...mockTransactions[0], id: 'unfilled', description: '' },
+          { ...mockTransactions[1], id: 'skipped', isDuplicate: true, selected: false },
+        ]);
+        real.duplicateChecks.set([{
+          transactionId: 'skipped', isDuplicate: true, matchType: 'exact', existingTransactionId: 'stored-skipped', confidence: 1,
+        }]);
+        real.answerIncomplete.set(true);
+        real.pagesTruncated.set({ read: 15, total: 40, others: 1 });
+        realFixture.detectChanges();
+        real.stepper.selectedIndex = 2;
+        realFixture.detectChanges();
+        expect(real.stepper.selectedIndex).withContext('the review step is selected').toBe(2);
+
+        const step = (realFixture.nativeElement as HTMLElement).querySelector<HTMLElement>('.review-step');
+        expect(step).withContext('the review step').toBeTruthy();
+        if (!step) return null;
+        for (const [part] of NOTICES_AND_HINTS) {
+          expect(step.querySelector(part)).withContext(`${part} is on the swept step`).toBeTruthy();
+        }
+        expect(step.querySelectorAll('.truncated-notice p').length).withContext('the part read, and the others').toBe(2);
+        expect(step.querySelector('app-duplicate-warning .duplicate-warning')).withContext('the warning').toBeTruthy();
+        const actions = [...step.querySelectorAll('.step-actions button')]
+          .map(b => b.textContent?.replace(/\s+/g, ' ').trim());
+        expect(actions).withContext('Back and Continue').toEqual(['arrow_back common.back', 'common.continue 2']);
+        return step;
       }
 
-      it('scores the step\'s contrast rather than skipping it', async () => {
-        const results = await runAxe(uploadStep()!);
-        expect(results.passes.map(result => result.id)).toContain('color-contrast');
-      });
+      for (const scheme of AUDIT_SCHEMES) {
+        // A pin. Mutations: the move to the step dropped, and the move made
+        // before the first render, which CDK refuses: either way the step
+        // stays hidden and the pass finds nothing on it, which only the
+        // move's check catches; the hints painted rgb(128, 128, 128).
+        it(`finds nothing on the step in the ${scheme} scheme`, async () => {
+          const step = landReviewStep();
+          if (!step) return;
+
+          await withScheme(TestBed.inject(ThemeService), scheme, async () => {
+            realFixture.detectChanges();
+            await withEveryCardShown(step, async () => {
+              expect(summarizeViolations(await runAxe(step))).toEqual([]);
+            });
+          });
+        });
+
+        // Each of the step's word-holders is swept on its own
+        // (expectContrastScored), so its pass can only come from its own
+        // words, and each notice's and hint's are read as painted. A
+        // notice's own pass would not do: its glyph holds the rule by
+        // itself. Each selector must find its words, so no loop can run
+        // empty. A pin. Mutations: .incomplete-notice p given visibility:
+        // hidden; the hints painted rgb(128, 128, 128), which the step's
+        // pass also finds; the cut-off notice's words moved out of their
+        // <p>; the warning's title given visibility: hidden; the page's fill
+        // dropped (standOnThePage), which leaves the header and Back
+        // unscored while the step's pass still finds nothing.
+        it(`scores the words of the header, each notice and hint (in --text-secondary at AA), the duplicate warning and Back for contrast in the ${scheme} scheme`, async () => {
+          const step = landReviewStep();
+          if (!step) return;
+
+          await withScheme(TestBed.inject(ThemeService), scheme, async () => {
+            realFixture.detectChanges();
+            await withEveryCardShown(step, async () => {
+              for (const [part, words] of NOTICES_AND_HINTS) {
+                const paragraphs = [...step.querySelectorAll(words)];
+                expect(paragraphs.length).withContext(`${words} is on the step`).toBeGreaterThan(0);
+                for (const [i, paragraph] of paragraphs.entries()) {
+                  const label = `${scheme} ${part}, paragraph ${i + 1}`;
+                  await expectContrastScored(paragraph, label);
+                  expectPainted(paragraph, '--text-secondary', label);
+                }
+              }
+              for (const words of OTHER_WORDS) {
+                const nodes = [...step.querySelectorAll(words)];
+                expect(nodes.length).withContext(`${words} is on the step`).toBeGreaterThan(0);
+                for (const [i, node] of nodes.entries()) {
+                  await expectContrastScored(node, `${scheme} ${words} ${i + 1}`);
+                }
+              }
+            });
+          });
+        });
+      }
     });
 
     describe('colours, as painted', () => {
       const THEMES = ['light', 'dark'] as const;
       const el = () => realFixture.nativeElement as HTMLElement;
       const part = (selector: string) => el().querySelector(selector) as HTMLElement | null;
-
-      /** What `<property>: var(token)` computes to under the theme on <html> now. */
-      function tokenValue(token: string, property = 'color'): string {
-        const probe = document.createElement('span');
-        probe.style.setProperty(property, `var(${token})`);
-        document.body.appendChild(probe);
-        try {
-          settleAnimations(document);
-          return getComputedStyle(probe).getPropertyValue(property);
-        } finally {
-          probe.remove();
-        }
-      }
-
-      /** `node` is `token`, and reads at `floor` or better on what is painted behind it. */
-      function expectPainted(node: HTMLElement | null, token: string, label: string, floor = 4.5): void {
-        expect(node).withContext(label).toBeTruthy();
-        if (!node) return;
-        expect(getComputedStyle(node).color).withContext(label).toBe(tokenValue(token));
-        expect(ratio(paintedColor(node), paintedBackground(node)))
-          .withContext(`${label} on what it sits on`)
-          .toBeGreaterThanOrEqual(floor);
-      }
 
       const merged = (id: string): CategorizedImportTransaction => ({
         ...mockTransactions[0],
@@ -4555,7 +4718,7 @@ describe('ImportWizardComponent', () => {
 
       // The wizard sits on the page itself.
       beforeEach(() => {
-        el().style.backgroundColor = 'var(--surface-background)';
+        standOnThePage(realFixture.nativeElement as HTMLElement);
       });
 
       // A glyph is a graphic, so its floor is 3:1 (WCAG 1.4.11).

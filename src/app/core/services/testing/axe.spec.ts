@@ -1,6 +1,6 @@
 import { ChangeDetectionStrategy, Component, inject, signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
-import type { AxeResults } from 'axe-core';
+import axe, { type AxeResults } from 'axe-core';
 import { type EffectiveTheme, ThemeService } from '../theme.service';
 import {
   AUDIT_SCHEMES,
@@ -11,7 +11,9 @@ import {
   accessibleName,
   auditInView,
   axeOptions,
+  expectContrastScored,
   runAxe,
+  standOnThePage,
   summarizeViolations,
   unexpectedViolations,
   withScheme,
@@ -126,6 +128,37 @@ class FoldFixtureComponent {}
 })
 class OutOfBandFixtureComponent {}
 
+/**
+ * Words further down the document than body's box reaches. styles.scss holds
+ * html and body at the frame's height, and the spacer is taller than any
+ * Karma frame. The words have no fill of their own, as most text on a page
+ * has none.
+ */
+@Component({
+  selector: 'app-axe-below-body-fixture',
+  standalone: true,
+  changeDetection: ChangeDetectionStrategy.OnPush,
+  template: '<div class="spacer"></div><p class="words">Total</p>',
+  styles: `
+    :host { display: block; }
+    .spacer { height: 2000px; }
+    .words { margin: 0; color: var(--text-primary); }
+  `,
+})
+class BelowBodyFixtureComponent {}
+
+/** Words on a fill of their own, clearing AA whichever scheme the host is in. */
+@Component({
+  selector: 'app-axe-pair-fixture',
+  standalone: true,
+  changeDetection: ChangeDetectionStrategy.OnPush,
+  template: '<p class="pair">Total</p>',
+  styles: `
+    .pair { margin: 0; color: #000000; background: #ffffff; }
+  `,
+})
+class PairFixtureComponent {}
+
 /** A pair that clears AA in the light theme and fails it in the dark one. */
 @Component({
   selector: 'app-axe-dark-only-fixture',
@@ -204,6 +237,27 @@ describe('the axe harness', () => {
     expect(axeOptions().rules?.['color-contrast']).toBeUndefined();
   });
 
+  // expectContrastScored reads one rule's result, so it runs that rule
+  // alone. A sweep calls it once per node, and with the whole wcag2a/wcag2aa
+  // pass per node a sweep of fifteen outlasted jasmine's five seconds on a
+  // loaded full run.
+  it('scores contrast with color-contrast alone, keeping the shared pass\'s result types', async () => {
+    TestBed.configureTestingModule({ imports: [PairFixtureComponent] });
+    const fixture = TestBed.createComponent(PairFixtureComponent);
+    fixture.detectChanges();
+    const run = spyOn(axe, 'run').and.callThrough();
+
+    await expectContrastScored((fixture.nativeElement as HTMLElement).querySelector('.pair') as HTMLElement, 'the pair');
+
+    expect(run).toHaveBeenCalledTimes(1);
+    // Typed by axe.run's last overload, the callback form, which returns void.
+    const results = await (run.calls.mostRecent().returnValue as unknown as Promise<AxeResults>);
+    expect([...results.passes, ...results.violations, ...results.incomplete, ...results.inapplicable].map(r => r.id))
+      .withContext('the rules the pass ran')
+      .toEqual(['color-contrast']);
+    expect(results.toolOptions.resultTypes).withContext('its result types').toEqual(axeOptions().resultTypes);
+  });
+
   describe('motion', () => {
     // Headless Chrome need not paint a frame between a class landing and the
     // pass, so a transition can still sit on its first colours for the whole
@@ -279,6 +333,43 @@ describe('the axe harness', () => {
       await expectAsync(auditInView(root.querySelector('.tall') as HTMLElement))
         .withContext('taller than the band')
         .toBeRejectedWithError(/outside the band .*64/);
+    });
+  });
+
+  describe('below body\'s box', () => {
+    // The tall fixture scrolls the document itself.
+    afterEach(() => {
+      document.scrollingElement?.scrollTo(0, 0);
+    });
+
+    // Body paints the page's fill only as far down as its own box, so axe
+    // finds no background it can trust behind words further down, and
+    // leaves them incomplete rather than failing or passing them: a pass
+    // over a long fixture reads clean without having measured them.
+    it('leaves words below body\'s box unscored until their host stands on the page\'s fill', async () => {
+      TestBed.configureTestingModule({ imports: [BelowBodyFixtureComponent] });
+      const fixture = TestBed.createComponent(BelowBodyFixtureComponent);
+      fixture.detectChanges();
+      const host = fixture.nativeElement as HTMLElement;
+      const words = host.querySelector('.words') as HTMLElement;
+      expect(words.getBoundingClientRect().top)
+        .withContext('the words start below body\'s box')
+        .toBeGreaterThan(document.body.getBoundingClientRect().bottom);
+
+      const bare = await runAxe(words);
+      expect([...bare.passes, ...bare.violations].map(result => result.id))
+        .withContext('with no fill, passed or failed')
+        .not.toContain('color-contrast');
+      const left = bare.incomplete.find(result => result.id === 'color-contrast');
+      expect((left?.nodes[0]?.any[0]?.data as { messageKey?: string } | undefined)?.messageKey)
+        .withContext('with no fill, why it was left incomplete')
+        .toBe('elmPartiallyObscured');
+
+      standOnThePage(host);
+      expect(getComputedStyle(host).backgroundColor)
+        .withContext('the host paints what body paints')
+        .toBe(getComputedStyle(document.body).backgroundColor);
+      await expectContrastScored(words, 'on the page\'s fill');
     });
   });
 

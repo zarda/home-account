@@ -37,13 +37,17 @@ import type { EffectiveTheme, ThemeService } from '../theme.service';
  * Each is disabled by name rather than by dropping a whole tag, so everything
  * else in wcag2a/wcag2aa still runs — and the list is short enough to read.
  *
- * Two more limits would make a pass read clean where it never looked, and
+ * Three more limits would make a pass read clean where it never looked, and
  * each has a helper below rather than a caveat:
  *
  *   - **The fold.** Every page renders inside the shell's fixed scroller,
  *     and under a fixed ancestor axe skips whatever starts at or below the
  *     viewport's bottom. Karma's frame is a few hundred pixels tall.
  *     `auditInView` scrolls a node into the band axe can score first.
+ *   - **Body's box.** A fixture rendered without the shell runs on below
+ *     body, whose box is the frame's height, and axe leaves text down there
+ *     with no fill of its own unscored. `standOnThePage` paints the
+ *     fixture's host as body is painted.
  *   - **The scheme.** A pass renders the host's `prefers-color-scheme`:
  *     dark on a dark Mac, light on CI. `withScheme` forces each of
  *     `AUDIT_SCHEMES` through the real ThemeService.
@@ -137,10 +141,72 @@ export function settleAnimations(doc: Document): void {
   }
 }
 
+/** Runs `options` over one element, once its motion has settled. */
+function runSettled(element: Element, options: RunOptions): Promise<AxeResults> {
+  settleAnimations(element.ownerDocument);
+  return axe.run(element, options);
+}
+
 /** Runs the shared pass over one element, once its motion has settled. */
 export function runAxe(element: Element): Promise<AxeResults> {
-  settleAnimations(element.ownerDocument);
-  return axe.run(element, axeOptions());
+  return runSettled(element, axeOptions());
+}
+
+/**
+ * The shared pass cut to `color-contrast`. A `rule` runOnly runs the rules it
+ * names whatever `enabled` flag the `rules` map gives them, but axe still reads
+ * a running rule's check options from that map, so the map is kept whole.
+ */
+function contrastOptions(): RunOptions {
+  return { ...axeOptions(), runOnly: { type: 'rule', values: ['color-contrast'] } };
+}
+
+/**
+ * Runs `color-contrast` alone over `el` and expects it among the passes:
+ * axe measured text inside `el` and found it clears AA. `label` names `el`
+ * in a failure, which also says why axe left the rule `incomplete` when it
+ * did.
+ *
+ * Only a pass scoped to the element proves that element was scored.
+ * `axeOptions` keeps every violation but one pass node per rule, so a pass
+ * over a whole step holds `color-contrast` as soon as any one node there
+ * clears it (over the upload step, the hidden file input), whether or not
+ * the words in question were measured. Run over `el`, the pass can only come
+ * from inside it. Point it at what holds the words, apart from any glyph
+ * beside them: Karma serves no icon font, so axe reads a ligature as text,
+ * and a glyph's pass would hold the rule by itself.
+ *
+ * The one rule, because a sweep calls this once per node and reads nothing
+ * else: the shared pass runs every wcag2a/wcag2aa rule over each, and a sweep
+ * of fifteen nodes outlasted jasmine's five seconds on a loaded full run. The
+ * others cannot change this rule's verdicts. Each rule scores its own nodes,
+ * and the one shared cache whose value depends on who fills it, a node's
+ * background colour (kept with whatever text-shadow bound its first caller
+ * passed), has one other caller, `link-in-text-block`, which axe runs after
+ * this rule.
+ */
+export async function expectContrastScored(el: Element, label: string): Promise<void> {
+  const results = await runSettled(el, contrastOptions());
+  const left = results.incomplete.find(result => result.id === 'color-contrast');
+  const why = left ? `, left incomplete: ${left.nodes[0]?.any[0]?.data?.messageKey ?? left.description}` : '';
+  expect(results.passes.map(result => result.id))
+    .withContext(`${label}'s own pass${why}`)
+    .toContain('color-contrast');
+}
+
+/**
+ * Gives `host` the fill of the page it stands on, `--surface-background`,
+ * which body paints in both schemes.
+ *
+ * styles.scss holds html and body at the frame's height, and Karma's frame
+ * is short (413px), so a long fixture runs on below body's box. Text down
+ * there with no fill of its own gets no background: axe finds body's fill
+ * behind it, sees that the fill does not reach that far, and leaves the
+ * text's contrast `incomplete` (elmPartiallyObscured), neither passed nor
+ * failed. A pass over it reads clean without having measured it.
+ */
+export function standOnThePage(host: HTMLElement): void {
+  host.style.backgroundColor = 'var(--surface-background)';
 }
 
 /**
