@@ -15,14 +15,14 @@
         <button
           mat-icon-button
           (click)="edit.emit()"
-          [attr.aria-label]="'common.edit' | translate"
+          [attr.aria-label]="'goal.editNamed' | translate: { name: goal().name }"
         >
           <mat-icon>edit</mat-icon>
         </button>
         <button
           mat-icon-button
           (click)="delete.emit()"
-          [attr.aria-label]="'common.delete' | translate"
+          [attr.aria-label]="'goal.deleteNamed' | translate: { name: goal().name }"
         >
           <mat-icon>delete</mat-icon>
         </button>

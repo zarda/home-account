@@ -299,8 +299,9 @@ describe('GoalProgressCardComponent, through its own template', () => {
     component.contribute.subscribe(() => seen.push('contribute'));
     card();
 
-    (el().querySelector('[aria-label="common.edit"]') as HTMLButtonElement).click();
-    (el().querySelector('[aria-label="common.delete"]') as HTMLButtonElement).click();
+    const [edit, remove] = Array.from(el().querySelectorAll<HTMLButtonElement>('.goal-actions button'));
+    edit.click();
+    remove.click();
     button('goal.contribute')?.click();
 
     expect(seen).toEqual(['edit', 'delete', 'contribute']);

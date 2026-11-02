@@ -131,11 +131,11 @@
  *     would say the same.
  *
  * What it cannot see: a name built in TypeScript and bound as an expression;
- * any other key that names no item on a trigger only its parent repeats (the
- * sixth rule below takes any key, in a template's own repeats); a component
- * stamped through `NgComponentOutlet`, a dialog or a router outlet rather than
- * by its selector; a repeat written as `<ng-template ngFor>`; and a trigger
- * with no `aria-label` at all, whose name comes from its text.
+ * a component stamped through `NgComponentOutlet`, a dialog or a router
+ * outlet rather than by its selector; a repeat written as
+ * `<ng-template ngFor>`; and a trigger with no `aria-label` at all, whose
+ * name comes from its text. Any other key that names no item is the sixth
+ * rule's, below.
  *
  * A fifth rule puts a flag's tooltip within reach of the keyboard. MatTooltip
  * opens for a pointer and for keyboard focus, and a `mat-icon` takes focus
@@ -168,12 +168,12 @@
  * parameters gives every copy the same name. The upload area had that shape:
  * each file's row read "Move up", "Move down" and "Remove", and two photos
  * from an iPhone are both image.jpg, so neither the buttons nor the rows could
- * be told apart by ear. The rule: inside a repeat in its own template, a
- * control does not take its whole name from one key with no parameters, or
- * from a ternary between two such keys, piped once after it or in each
- * branch; bound (`[attr.aria-label]="'key' | translate"`) or interpolated
- * (`aria-label="{{ 'key' | translate }}"`), either is bare. A ternary with
- * parameters on either branch passes.
+ * be told apart by ear. The rule: a control stamped once per item, by its own
+ * template or by another's, does not take its whole name from one key with no
+ * parameters, or from a ternary between two such keys, piped once after it or
+ * in each branch; bound (`[attr.aria-label]="'key' | translate"`) or
+ * interpolated (`aria-label="{{ 'key' | translate }}"`), either is bare. A
+ * ternary with parameters on either branch passes.
  *
  *   - **Only a control.** A button, a link, a form field, a Material toggle
  *     or an element with a control's literal `role`: what a user acts on, so
@@ -191,11 +191,29 @@
  *     item it acts on: the search history's pin buttons had that shape. A
  *     ternary with parameters on either branch, or on the pipe after it, has
  *     a slot.
- *   - **"Once per item" is read in the template only**: an `@for` block, or an
- *     element under a repeating structural directive, as the fourth rule reads
- *     it there. Its cross-template reading errs toward "repeated" — the
- *     dashboard renders each card once through an `@switch` in its `@for` — and
- *     here that would freeze controls that are not repeated at all.
+ *   - **"Once per item" is read two ways, as the fourth rule reads it.**
+ *     Inside the template, an `@for` block or an element under a repeating
+ *     structural directive. Across templates, a component another template
+ *     stamps that way: the goals page stamps one card per goal, so the goal
+ *     card's Edit and Delete are repeated although nothing repeats in the
+ *     card's own template.
+ *   - **An `@case` on the `@for`'s own item is held apart.** The fourth
+ *     rule's reading errs toward "repeated", and here that would flag
+ *     controls rendered once: the dashboard's `@for` stamps each card through
+ *     an `@switch (card)`, so each `@case` renders for the one item that
+ *     matches it, and the insights card's Refresh is one button on the page.
+ *     An `@case` under an `@switch` whose subject is the nearest `@for`'s item
+ *     lifts that `@for`, inside the template and across it. What two or
+ *     more of the switch's cases reach still repeats, whether a component's
+ *     selector or a control under one bare key, and whether a case writes it
+ *     or reaches it through a component it stamps, at any depth: every card
+ *     that reaches one of those cases renders a copy, so the page holds one
+ *     copy per such card. The card menu is a selector the cases write, into
+ *     all five cards; the empty state is one they reach, through four of the
+ *     cards they stamp. The tally is per switch and per selector or key
+ *     (heldApartAcross). An `@default`, an `@switch` on something the item
+ *     holds (`c.kind`) and an outer `@for` around the switch's own still
+ *     repeat. The fourth rule reads every `@for` as repeating, as before.
  *   - **A menu trigger the fourth rule reports is reported there**, once.
  *   - **What it found and could not fix is frozen** in ITEMLESS_FROZEN, by
  *     file and key with how many controls carry that key there (ADR 0145's
@@ -205,10 +223,13 @@
  *     books. An edit that only moves a frozen control leaves the list alone.
  *
  * What it cannot see: a name built in TypeScript; a ternary nested in
- * another, or with a branch that is not a quoted key; a control repeated only
- * by its parent's repeat, such as the goal card's edit and delete buttons,
- * stamped once per goal by the goals page; and a name that comes from
- * `aria-labelledby` or from the control's text.
+ * another, or with a branch that is not a quoted key; a label wrapped whole
+ * in parentheses, or a branch in doubled parentheses; a component stamped
+ * through an outlet or a dialog rather than by its selector, as the fourth
+ * rule cannot; a selector or key that two switches on the same item each
+ * reach in one case, since the tally counts the cases of one switch; an item
+ * the list holds twice, whose `@case` then renders twice; and a name that
+ * comes from `aria-labelledby` or from the control's text.
  *
  * A seventh rule keeps a reference from pointing at nothing. `aria-labelledby`,
  * `aria-describedby`, `aria-controls`, `aria-owns` and a label's `for` name
@@ -487,6 +508,33 @@ const ARIA_LABEL = /(?:\[(?:attr\.)?aria-label\]|(?<![\w.[-])aria-label)\s*=\s*(
 /** The catalog key that names no item, closed by its quote so `moreActionsFor` is not it. */
 const ITEMLESS_KEY = /(['"])common\.moreActions\1/;
 
+/** An `@for` header's item: `(card of cards(); track card)` gives `card`. */
+const FOR_ITEM = /^\s*\(\s*([A-Za-z_$][\w$]*)\s+of\b/;
+
+/** An `@switch` header's subject, the expression inside its parentheses. */
+const SWITCH_SUBJECT = /^\s*\(([\s\S]*)\)\s*$/;
+
+/**
+ * The frame a block opens, from its keyword, its header and the frames open
+ * around it, as readBlocks describes.
+ */
+function openBlock(keyword, header, frames, { casesApart, at }) {
+  if (keyword === 'for') {
+    return { element: null, repeat: true, at, item: FOR_ITEM.exec(header)?.[1] ?? null };
+  }
+  if (keyword === 'switch') {
+    const subject = SWITCH_SUBJECT.exec(header)?.[1].trim() ?? null;
+    const nearest = frames.findLast((frame) => frame.repeat);
+    const onItem = nearest?.element === null && nearest.item !== null && nearest.item === subject;
+    return { element: null, repeat: false, at, subject, on: onItem ? nearest : null };
+  }
+  if (keyword === 'case' && casesApart) {
+    const parent = frames.at(-1);
+    if (parent?.on) return { element: null, repeat: false, at, lifts: parent.on, switchAt: parent.at };
+  }
+  return { element: null, repeat: false, at };
+}
+
 /**
  * Reads the control-flow syntax in one run of text between two tags, pushing
  * a frame onto `frames` for each block it opens and removing one for each `}`.
@@ -494,8 +542,16 @@ const ITEMLESS_KEY = /(['"])common\.moreActions\1/;
  * `@empty`, `@switch`, `@case`, `@defer`, …) a plain one. Interpolations are
  * blanked first, because their braces are expressions; Angular rejects a bare
  * `{`, `}` or `@` in text, so what remains is block syntax.
+ *
+ * An `@for` frame records its item's name, and an `@switch` frame its
+ * subject, with `on` set to the `@for` frame whose item it is when the
+ * nearest repeat around the switch is that `@for`. With `casesApart`, an
+ * `@case` under such a switch `lifts` that `@for`: it renders for the one
+ * item that matches, so its contents are stamped once. `@default` lifts
+ * nothing, since every other item lands in it. `base` is the run's offset in
+ * the template, so `at` names each block by where its `@` sits.
  */
-function readBlocks(text, frames) {
+function readBlocks(text, frames, { casesApart = false, base = 0 } = {}) {
   const plain = text.replace(/\{\{[\s\S]*?\}\}/g, (body) => ' '.repeat(body.length));
   let i = 0;
   while (i < plain.length) {
@@ -516,7 +572,10 @@ function readBlocks(text, frames) {
         else if (plain[j] === ')') depth--;
         else if (plain[j] === '{' && depth === 0) break;
       }
-      if (j < plain.length) frames.push({ element: null, repeat: keyword[1] === 'for' });
+      if (j < plain.length) {
+        const header = plain.slice(i + keyword[0].length, j);
+        frames.push(openBlock(keyword[1], header, frames, { casesApart, at: base + i }));
+      }
       i = j + 1;
       continue;
     }
@@ -534,12 +593,19 @@ function readBlocks(text, frames) {
 
 /**
  * Walks a template's opening tags in order, calling
- * `visit({ name, attrs, line, repeated, inTemplate })` for each. `repeated` is
- * true when the element is stamped once per item within this template: inside
- * an `@for` block, or on or under an element carrying a repeating structural
- * directive. `inTemplate` is true when an `<ng-template>` is open around it.
+ * `visit({ name, attrs, line, repeated, inTemplate, cases })` for each.
+ * `repeated` is true when the element is stamped once per item within this
+ * template: inside an `@for` block, or on or under an element carrying a
+ * repeating structural directive. `inTemplate` is true when an
+ * `<ng-template>` is open around it.
+ *
+ * With `casesApart`, an `@case` on the nearest `@for`'s own item holds that
+ * `@for` apart (readBlocks), so an element under it is not repeated by it,
+ * and `cases` lists each such `@case` around the element as
+ * `{ switchAt, caseAt }`. Without it, `cases` is empty and every `@for`
+ * repeats.
  */
-export function walkTemplate(source, visit) {
+export function walkTemplate(source, visit, { casesApart = false } = {}) {
   const masked = maskComments(source);
   // Open elements and blocks, innermost last. An element frame carries its
   // tag name; a block frame carries null.
@@ -548,7 +614,7 @@ export function walkTemplate(source, visit) {
   let last = 0;
   let match;
   while ((match = tag.exec(masked)) !== null) {
-    readBlocks(masked.slice(last, match.index), frames);
+    readBlocks(masked.slice(last, match.index), frames, { casesApart, base: last });
     last = tag.lastIndex;
     const [, closing, rawName, attrs] = match;
     const name = rawName.toLowerCase();
@@ -558,12 +624,15 @@ export function walkTemplate(source, visit) {
       continue;
     }
     const repeat = REPEAT_DIRECTIVE.test(attrs);
+    const cases = frames.filter((frame) => frame.lifts);
+    const lifted = new Set(cases.map((frame) => frame.lifts));
     visit({
       name,
       attrs,
       line: lineOf(masked, match.index),
-      repeated: repeat || frames.some((frame) => frame.repeat),
+      repeated: repeat || frames.some((frame) => frame.repeat && !lifted.has(frame)),
       inTemplate: frames.some((frame) => frame.element === 'ng-template'),
+      cases: cases.map((frame) => ({ switchAt: frame.switchAt, caseAt: frame.at })),
     });
     const selfClosing = /\/\s*$/.test(attrs) || VOID_ELEMENTS.has(name);
     if (!selfClosing) frames.push({ element: name, repeat });
@@ -692,24 +761,174 @@ function bareKeyLabel(attrs) {
 }
 
 /**
- * Every control stamped once per item in this template whose `aria-label` is
- * one catalog key with no parameters, or a ternary between two (see
- * bareKeyLabel). `line` is the label's own line, which is
- * where a finding is reported. A menu trigger the fourth rule reports is left
- * to it. Returns `{ line, tag, key }` for each.
+ * One template read for the sixth rule, an `@case` on the `@for`'s own item
+ * held apart: each control named by a bare key (`{ line, tag, key, repeated,
+ * cases }`, `line` the label's own), and, when `selectors` is given, each
+ * use of one of them (`{ name, repeated, cases }`).
  */
-export function scanItemlessLabels(source) {
-  const hits = [];
-  walkTemplate(source, ({ name, attrs, line, repeated }) => {
-    if (!repeated) return;
-    if (!CONTROL_TAGS.has(name) && !CONTROL_ROLE.test(attrs)) return;
-    if (MENU_TRIGGER.test(attrs) && itemlessName(attrs)) return;
-    const label = bareKeyLabel(attrs);
-    if (!label) return;
-    const before = attrs.slice(0, label.index);
-    hits.push({ line: line + before.split('\n').length - 1, tag: name, key: label.key });
-  });
-  return hits;
+function readHeldApart(source, selectors = null) {
+  const controls = [];
+  const stamps = [];
+  walkTemplate(
+    source,
+    ({ name, attrs, line, repeated, cases }) => {
+      if (selectors?.has(name)) stamps.push({ name, repeated, cases });
+      if (!CONTROL_TAGS.has(name) && !CONTROL_ROLE.test(attrs)) return;
+      if (MENU_TRIGGER.test(attrs) && itemlessName(attrs)) return;
+      const label = bareKeyLabel(attrs);
+      if (!label) return;
+      const before = attrs.slice(0, label.index);
+      controls.push({ line: line + before.split('\n').length - 1, tag: name, key: label.key, repeated, cases });
+    },
+    { casesApart: true }
+  );
+  return { controls, stamps };
+}
+
+/** Each element selector the templates' components carry, with the templates that carry it. */
+function selectorIndex(templates) {
+  const bySelector = new Map();
+  for (const { key, selector } of templates) {
+    if (!selector) continue;
+    if (!bySelector.has(selector)) bySelector.set(selector, []);
+    bySelector.get(selector).push(key);
+  }
+  return bySelector;
+}
+
+/**
+ * The one exception to the hold-apart. A held-apart `@case` reaches what it
+ * writes and what every component it stamps reaches, to any depth: their
+ * selectors, and the bare keys their controls are named by. A selector or key
+ * that two or more cases of one switch reach renders once per item reaching
+ * any of them, whichever template holds it, so it stays repeated. The tally is
+ * per switch and per selector or key. `templates` is a list of
+ * `{ key, selector, source }`. Returns `{ selectors, keys, slots }`: the
+ * selectors so reached; by template, the keys so reached that its own
+ * controls carry; and, by the template holding the switch, each
+ * `switchAt key` so reached, written in its cases or below them.
+ */
+export function heldApartAcross(templates) {
+  const bySelector = selectorIndex(templates);
+  const reads = new Map(templates.map(({ key, source }) => [key, readHeldApart(source, bySelector)]));
+  // What a template reaches: the selectors it and the components under it
+  // use, and each bare key their controls carry, with the templates holding
+  // it. Read to a fixed point, as repeatedTemplates reads repetition, so
+  // components that stamp each other, or one that stamps itself, reach the
+  // same whichever of them a switch's cases read first.
+  const reachOf = new Map();
+  for (const { key } of templates) {
+    const found = { selectors: new Set(), keys: new Map() };
+    for (const control of reads.get(key).controls) {
+      if (!found.keys.has(control.key)) found.keys.set(control.key, new Set());
+      found.keys.get(control.key).add(key);
+    }
+    reachOf.set(key, found);
+  }
+  const sizeOf = ({ selectors, keys }) =>
+    [...keys.values()].reduce((n, holders) => n + holders.size, selectors.size);
+  let grew = true;
+  while (grew) {
+    grew = false;
+    for (const [key, found] of reachOf) {
+      const was = sizeOf(found);
+      for (const { name } of reads.get(key).stamps) {
+        found.selectors.add(name);
+        for (const target of bySelector.get(name)) {
+          const below = reachOf.get(target);
+          for (const selector of below.selectors) found.selectors.add(selector);
+          for (const [label, holders] of below.keys) {
+            if (!found.keys.has(label)) found.keys.set(label, new Set());
+            for (const holder of holders) found.keys.get(label).add(holder);
+          }
+        }
+      }
+      if (sizeOf(found) > was) grew = true;
+    }
+  }
+  const selectors = new Set();
+  const keys = new Map();
+  const slots = new Map();
+  const add = (map, key, value) => {
+    if (!map.has(key)) map.set(key, new Set());
+    map.get(key).add(value);
+  };
+  for (const { key } of templates) {
+    const { controls, stamps } = reads.get(key);
+    // Per switch and per selector or key: the cases that reach it, and the
+    // templates below the cases whose controls carry the key.
+    const tally = new Map();
+    const reached = (switchAt, caseAt, kind, id, holders = []) => {
+      const slot = `${switchAt} ${kind} ${id}`;
+      if (!tally.has(slot)) tally.set(slot, { switchAt, kind, id, cases: new Set(), holders: new Set() });
+      tally.get(slot).cases.add(caseAt);
+      for (const holder of holders) tally.get(slot).holders.add(holder);
+    };
+    for (const control of controls) {
+      for (const { switchAt, caseAt } of control.cases) reached(switchAt, caseAt, 'key', control.key);
+    }
+    for (const stamp of stamps) {
+      for (const { switchAt, caseAt } of stamp.cases) {
+        reached(switchAt, caseAt, 'selector', stamp.name);
+        for (const target of bySelector.get(stamp.name)) {
+          const below = reachOf.get(target);
+          for (const selector of below.selectors) reached(switchAt, caseAt, 'selector', selector);
+          for (const [label, holders] of below.keys) reached(switchAt, caseAt, 'key', label, holders);
+        }
+      }
+    }
+    for (const { switchAt, kind, id, cases, holders } of tally.values()) {
+      if (cases.size < 2) continue;
+      if (kind === 'selector') {
+        selectors.add(id);
+        continue;
+      }
+      add(slots, key, `${switchAt} ${id}`);
+      for (const holder of holders) add(keys, holder, id);
+    }
+  }
+  return { selectors, keys, slots };
+}
+
+/**
+ * Every control stamped once per item whose `aria-label` is one catalog key
+ * with no parameters, or a ternary between two (see bareKeyLabel): inside a
+ * repeat in this template, an `@case` on the `@for`'s own item held apart
+ * (walkTemplate's `casesApart`) unless two or more cases of that switch reach
+ * the same key (heldApartAcross), or anywhere in it when `componentRepeated`
+ * says another template stamps the component it belongs to once per item.
+ * `across` is heldApartAcross's verdict for this template, read over every
+ * template by the run: `keys`, the keys of its controls that two cases of a
+ * switch elsewhere reach through what they stamp, and `slots`, each
+ * `switchAt key` its own switches reach in two cases. Without it, this
+ * template is read alone. `line` is the label's own line, which is where a
+ * finding is reported. A menu trigger the fourth rule reports is left to it.
+ * Returns `{ line, tag, key }` for each.
+ */
+export function scanItemlessLabels(source, componentRepeated = false, across = null) {
+  const { controls } = readHeldApart(source);
+  const apart = across ?? {
+    keys: new Set(),
+    slots: heldApartAcross([{ key: '', selector: null, source }]).slots.get('') ?? new Set(),
+  };
+  const reachedApart = (control) =>
+    apart.keys.has(control.key) || control.cases.some(({ switchAt }) => apart.slots.has(`${switchAt} ${control.key}`));
+  return controls
+    .filter((control) => control.repeated || componentRepeated || reachedApart(control))
+    .map(({ line, tag, key }) => ({ line, tag, key }));
+}
+
+/**
+ * The binding the sixth rule's fix hint gives as its model: the upload
+ * area's own, which names a photo by its place among the photos and its
+ * name. The self-test holds it to file-dropzone.component.html, so the hint
+ * never quotes a binding the tree no longer has.
+ */
+export const ITEMLESS_MODEL = "'import.movePhotoUpLabel' | translate: { position: photoNumber(file), name: file.name }";
+
+/** The fix the sixth rule prints under each hit, ITEMLESS_MODEL its example. */
+export function itemlessHint() {
+  return `give the key a slot for the item and fill it, as ${ITEMLESS_MODEL}`;
 }
 
 /**
@@ -912,22 +1131,32 @@ export const UNNAMED_FROZEN = [];
  * another stamps its selector inside a repeat, or uses it at all inside a
  * template that is itself repeated; the second clause runs to a fixed point,
  * so a card inside a repeated row is repeated too. Returns the set of keys.
+ *
+ * With `casesApart`, a selector under an `@case` on the `@for`'s own item is
+ * stamped once (walkTemplate), as the dashboard stamps each of its cards,
+ * unless two or more of that switch's cases reach it, written there or
+ * stamped by what they stamp (heldApartAcross, or `apart` when the caller
+ * has it): then it renders once per item that reaches any of them, as the
+ * dashboard's card menu and empty state render once per card, and stays
+ * repeated.
  */
-export function repeatedTemplates(templates) {
-  const bySelector = new Map();
-  for (const { key, selector } of templates) {
-    if (!selector) continue;
-    if (!bySelector.has(selector)) bySelector.set(selector, []);
-    bySelector.get(selector).push(key);
-  }
+export function repeatedTemplates(templates, { casesApart = false, apart = null } = {}) {
+  const bySelector = selectorIndex(templates);
   const uses = templates.map(({ key, source }) => {
     const found = [];
-    walkTemplate(source, ({ name, repeated }) => {
-      if (bySelector.has(name)) found.push({ name, repeated });
-    });
+    walkTemplate(
+      source,
+      ({ name, repeated }) => {
+        if (bySelector.has(name)) found.push({ name, repeated });
+      },
+      { casesApart }
+    );
     return { key, found };
   });
-  const repeated = new Set();
+  // A component two cases of one held-apart switch reach, written there or
+  // stamped by what they stamp, renders once per item reaching either.
+  const reachedApart = casesApart ? (apart ?? heldApartAcross(templates)).selectors : new Set();
+  const repeated = new Set(templates.filter(({ selector }) => reachedApart.has(selector)).map(({ key }) => key));
   let grew = true;
   while (grew) {
     grew = false;
@@ -944,6 +1173,30 @@ export function repeatedTemplates(templates) {
     }
   }
   return repeated;
+}
+
+/**
+ * The sixth rule over every template at once, as the run reads it: which
+ * components another template stamps once per item, an `@case` on the
+ * `@for`'s own item held apart (repeatedTemplates with `casesApart`), and
+ * each template's controls scanned with its component's verdict and the keys
+ * two cases of a held-apart switch reach in it (heldApartAcross,
+ * scanItemlessLabels). `templates` is a list of
+ * `{ key, selector, source, offset }`. Returns `{ hits, keys }`: each hit as
+ * `{ site, tag, key }`, `site` the template's key and the label's line in its
+ * file, and `keys` the set of repeated templates.
+ */
+export function scanItemlessAcross(templates) {
+  const apart = heldApartAcross(templates);
+  const keys = repeatedTemplates(templates, { casesApart: true, apart });
+  const hits = [];
+  for (const template of templates) {
+    const across = { keys: apart.keys.get(template.key) ?? new Set(), slots: apart.slots.get(template.key) ?? new Set() };
+    for (const hit of scanItemlessLabels(template.source, keys.has(template.key), across)) {
+      hits.push({ site: `${template.key}:${hit.line + template.offset}`, tag: hit.tag, key: hit.key });
+    }
+  }
+  return { hits, keys };
 }
 
 /**
@@ -1090,14 +1343,10 @@ function run() {
     }
   }
 
-  // The per-item rule reads each template's own repeats, and sets what it
-  // finds against the rows frozen when it landed.
-  const itemless = [];
-  for (const template of sources) {
-    for (const hit of scanItemlessLabels(template.source)) {
-      itemless.push({ site: `${template.key}:${hit.line + template.offset}`, tag: hit.tag, key: hit.key });
-    }
-  }
+  // The per-item rule reads each template's own repeats and the components
+  // other templates stamp per item, holding apart an @case on the @for's own
+  // item, and sets what it finds against the rows frozen when it landed.
+  const { hits: itemless, keys: itemlessKeys } = scanItemlessAcross(sources);
   const { fresh, drift } = againstFrozen(itemless, ITEMLESS_FROZEN);
   for (const hit of fresh) findings.push({ rule: 'itemless', site: hit.site, tag: hit.tag, key: hit.key });
   for (const row of drift) findings.push({ rule: 'itemless-drift', site: row.file, ...row });
@@ -1153,7 +1402,8 @@ function run() {
   console.log(
     `Checked the controls stamped once per item across ${sources.length} template(s): ` +
       `${itemless.length} take their name from a key with no parameters, ` +
-      `${ITEMLESS_FROZEN.reduce((sum, row) => sum + row.count, 0)} frozen by name.`
+      `${ITEMLESS_FROZEN.reduce((sum, row) => sum + row.count, 0)} frozen by name; ` +
+      `${itemlessKeys.size} template(s) belong to a component another template stamps once per item.`
   );
   console.log(
     `Checked ${idReferences} id(s) named by a literal aria-labelledby, aria-describedby, ` +
@@ -1269,16 +1519,17 @@ function run() {
       console.error(`\n${itemlessFindings.length} repeated control(s) take a name that names no item:\n`);
       for (const finding of itemlessFindings) {
         console.error(`  ${finding.site}  <${finding.tag}> '${finding.key}' | translate`);
-        console.error(`    → give the key a slot for the item and fill it, as 'import.removeFileLabel' | translate: { position: i + 1, name: file.name }\n`);
+        console.error(`    → ${itemlessHint()}\n`);
       }
       console.error(
         `A control stamped once per item takes its whole name from its aria-label,\n` +
           `and a key with no parameters gives every copy the same one: a screen\n` +
           `reader moving down the list hears the same button again and nothing that\n` +
           `says which item it acts on. Name the item through the key's parameters,\n` +
-          `as the upload area's remove and move buttons do, with whatever tells two\n` +
-          `items apart (two photos from an iPhone are both image.jpg, so those name\n` +
-          `the file's place too). A site that cannot be fixed in the same change is\n` +
+          `as the upload area's photo arrows do, with whatever tells two items apart\n` +
+          `(two photos from an iPhone are both image.jpg, so those name the photo's\n` +
+          `place among the photos too). A control repeated by its parent counts: the\n` +
+          `goal card is one per goal. A site that cannot be fixed in the same change is\n` +
           `frozen in ITEMLESS_FROZEN with its reason (ADR 0145).\n` +
           `Reference: ${DOC}.\n`
       );
