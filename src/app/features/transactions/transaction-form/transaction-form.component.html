@@ -24,7 +24,7 @@
           <!-- Queued receipts -->
           @if (pendingReceipts().length > 0) {
             <div class="receipt-strip">
-              @for (pending of pendingReceipts(); track pending.preview; let i = $index) {
+              @for (pending of pendingReceipts(); track pending; let i = $index) {
                 <div class="receipt-preview">
                   <img
                     [src]="pending.preview"

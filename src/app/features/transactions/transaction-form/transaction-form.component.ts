@@ -188,7 +188,9 @@ export class TransactionFormComponent implements OnInit, AfterViewInit, OnDestro
   scanError = signal<string | null>(null);
   // Compressed receipt images queued for upload alongside the transaction,
   // each with its preview data URL. On edit these append after the stored
-  // images — replacing one is remove-then-attach.
+  // images — replacing one is remove-then-attach. Each entry is made once per
+  // pick and never copied, so the strip keys its rows by the entry: two picks
+  // of one picture share a preview.
   pendingReceipts = signal<{ file: File; preview: string }[]>([]);
 
   /**
