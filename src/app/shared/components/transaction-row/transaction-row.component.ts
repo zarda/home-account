@@ -28,6 +28,7 @@ import { AuthService } from '../../../core/services/auth.service';
 import { DateFormatService } from '../../../core/services/date-format.service';
 import { CategoryHelperService } from '../../../core/services/category-helper.service';
 import { TranslationService } from '../../../core/services/translation.service';
+import { transactionDisplayName } from '../../../core/utils/transaction-display.utils';
 import { CategoryChipComponent } from '../category-chip/category-chip.component';
 import { MemberChipComponent } from '../member-chip/member-chip.component';
 import { FitTextDirective } from '../../directives/fit-text.directive';
@@ -183,6 +184,12 @@ export class TransactionRowComponent {
     const location = this.transaction().location;
     if (location?.lat === undefined || location?.lng === undefined) return null;
     return `https://www.google.com/maps/search/?api=1&query=${location.lat},${location.lng}`;
+  }
+
+  // The transaction the row button's name says, or the catalog's words for an
+  // untitled one; the list's select checkbox reads the same rule.
+  protected transactionName(): string {
+    return transactionDisplayName(this.transaction().description, key => this.translationService.t(key));
   }
 
   // One string for the amount on screen and the amount in the row button's

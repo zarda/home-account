@@ -32,6 +32,7 @@ import { MAX_BULK_SHARE, Transaction } from '../../../models';
 import {
   createTransaction,
   createUser,
+  echoTranslation,
   hoverValue,
   paintedBackground,
   paintedColor,
@@ -680,7 +681,7 @@ describe('TransactionListComponent desktop note doors', () => {
     categoryHelper.getCategoryIcon.and.returnValue('icon');
     categoryHelper.getCategoryColor.and.returnValue('#000');
     const translation = jasmine.createSpyObj('TranslationService', ['t']);
-    translation.t.and.callFake((k: string, p?: Record<string, unknown>) => (p ? `${k}:${JSON.stringify(p)}` : k));
+    translation.t.and.callFake(echoTranslation);
     dialog = jasmine.createSpyObj('MatDialog', ['open']);
 
     await TestBed.configureTestingModule({
@@ -712,7 +713,7 @@ describe('TransactionListComponent desktop note doors', () => {
     expect(button).withContext('the note icon was a decoration nothing could open').not.toBeNull();
     expect(button!.tagName).toBe('BUTTON');
     // Its visible content is one glyph, so the name has to come from the label.
-    expect(button!.getAttribute('aria-label')).toBe('transactions.viewNote');
+    expect(button!.getAttribute('aria-label')).toBe('transactions.viewNoteFor:{"description":"Banana"}');
   });
 
   it('shows no note control on a row that has no note', () => {
@@ -845,7 +846,7 @@ describe('TransactionListComponent desktop receipt doors', () => {
     categoryHelper.getCategoryIcon.and.returnValue('icon');
     categoryHelper.getCategoryColor.and.returnValue('#000');
     const translation = jasmine.createSpyObj('TranslationService', ['t']);
-    translation.t.and.callFake((k: string) => k);
+    translation.t.and.callFake(echoTranslation);
     dialog = jasmine.createSpyObj('MatDialog', ['open']);
 
     await TestBed.configureTestingModule({
@@ -872,11 +873,12 @@ describe('TransactionListComponent desktop receipt doors', () => {
 
   it('renders a real button for a row with a receipt, never a link', () => {
     const buttons = receiptButtons();
-    expect(buttons.length).withContext('one button per row that has a receipt').toBeGreaterThan(0);
-    for (const button of buttons) {
-      expect(button.tagName).toBe('BUTTON');
-      expect(button.getAttribute('aria-label')).toBe('transactions.viewReceipt');
-    }
+    expect(buttons.map(button => button.tagName)).withContext('one button per row that has a receipt')
+      .toEqual(['BUTTON', 'BUTTON']);
+    expect(buttons.map(button => button.getAttribute('aria-label'))).toEqual([
+      'transactions.viewReceiptFor:{"description":"Banana"}',
+      'transactions.viewReceiptFor:{"description":"Cherry"}',
+    ]);
     expect(fixture.nativeElement.querySelector('a.receipt-icon-link')).toBeNull();
     expect(fixture.nativeElement.querySelector('.receipt-icon-button[target]')).toBeNull();
   });

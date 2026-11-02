@@ -169,9 +169,11 @@
  * each file's row read "Move up", "Move down" and "Remove", and two photos
  * from an iPhone are both image.jpg, so neither the buttons nor the rows could
  * be told apart by ear. The rule: inside a repeat in its own template, a
- * control does not take its whole name from one key with no parameters,
- * bound (`[attr.aria-label]="'key' | translate"`) or interpolated
- * (`aria-label="{{ 'key' | translate }}"`).
+ * control does not take its whole name from one key with no parameters, or
+ * from a ternary between two such keys, piped once after it or in each
+ * branch; bound (`[attr.aria-label]="'key' | translate"`) or interpolated
+ * (`aria-label="{{ 'key' | translate }}"`), either is bare. A ternary with
+ * parameters on either branch passes.
  *
  *   - **Only a control.** A button, a link, a form field, a Material toggle
  *     or an element with a control's literal `role`: what a user acts on, so
@@ -183,6 +185,12 @@
  *     (`iconNameKeys[icon] | translate`) names it through the key. Whether a
  *     slot is filled with something that tells the items apart is a reading
  *     question: two photos named image.jpg need their place as well.
+ *   - **A ternary between two such keys is one of them.**
+ *     `(pinned ? 'a.unpin' : 'a.pin') | translate`, or the pipe in each
+ *     branch, gives every copy one of two names, neither of which says which
+ *     item it acts on: the search history's pin buttons had that shape. A
+ *     ternary with parameters on either branch, or on the pipe after it, has
+ *     a slot.
  *   - **"Once per item" is read in the template only**: an `@for` block, or an
  *     element under a repeating structural directive, as the fourth rule reads
  *     it there. Its cross-template reading errs toward "repeated" — the
@@ -196,10 +204,11 @@
  *     more control named by a frozen key, or one fixed and still on the
  *     books. An edit that only moves a frozen control leaves the list alone.
  *
- * What it cannot see: a name built in TypeScript; a ternary between two bare
- * keys; a control repeated only by its parent's repeat, such as the goal
- * card's edit and delete buttons, stamped once per goal by the goals page;
- * and a name that comes from `aria-labelledby` or from the control's text.
+ * What it cannot see: a name built in TypeScript; a ternary nested in
+ * another, or with a branch that is not a quoted key; a control repeated only
+ * by its parent's repeat, such as the goal card's edit and delete buttons,
+ * stamped once per goal by the goals page; and a name that comes from
+ * `aria-labelledby` or from the control's text.
  *
  * A seventh rule keeps a reference from pointing at nothing. `aria-labelledby`,
  * `aria-describedby`, `aria-controls`, `aria-owns` and a label's `for` name
@@ -623,17 +632,60 @@ const LABEL_ATTR = /(\[(?:attr\.)?aria-label\]|(?<![\w.[-])aria-label)\s*=\s*(?:
 /** A bound label that is one quoted key piped through translate, and nothing else. */
 const BARE_KEY_BOUND = /^\s*(['"])([\w.-]+)\1\s*\|\s*translate\s*$/;
 
-/** A literal label that is one interpolation of the same, and nothing else. */
-const BARE_KEY_INTERPOLATED = /^\s*\{\{\s*(['"])([\w.-]+)\1\s*\|\s*translate\s*\}\}\s*$/;
+/**
+ * A bound label that is a ternary between two quoted keys, piped through
+ * translate once after it with no parameters, and nothing else:
+ * `(pinned ? 'a.unpin' : 'a.pin') | translate`. The condition may read `?.`
+ * and `??`.
+ */
+const BARE_TERNARY_PIPED_ONCE =
+  /^\s*\(\s*(?:[^?{}]|\?\.|\?\?)+?\?\s*(['"])([\w.-]+)\1\s*:\s*(['"])([\w.-]+)\3\s*\)\s*\|\s*translate\s*$/;
 
 /**
- * The key a tag's `aria-label` consists of when it is one catalog key with no
- * parameters, with the label's offset in `attrs`; null otherwise.
+ * The same ternary with the pipe in each branch, and no parameters on either:
+ * `pinned ? ('a.unpin' | translate) : ('a.pin' | translate)`. The second
+ * branch may go without its parentheses, `pinned ? ('a.unpin' | translate) :
+ * 'a.pin' | translate`, since the conditional reads its last branch as a pipe;
+ * the first may not, where a `:` after the pipe would be its parameter, and
+ * Angular rejects that spelling. A label wrapped whole in parentheses,
+ * `(pinned ? ('a.unpin' | translate) : ('a.pin' | translate))`, or a branch
+ * in doubled parentheses is not read, as `('a.pin' | translate)` is not for
+ * one key.
+ */
+const BARE_TERNARY_PIPED_EACH =
+  /^\s*(?:[^?{}]|\?\.|\?\?)+?\?\s*\(\s*(['"])([\w.-]+)\1\s*\|\s*translate\s*\)\s*:\s*(?:\(\s*(['"])([\w.-]+)\3\s*\|\s*translate\s*\)|(['"])([\w.-]+)\5\s*\|\s*translate)\s*$/;
+
+/** A literal label's one interpolation, when the label is that and nothing else. */
+const ONE_INTERPOLATION = /^\s*\{\{([^{}]*)\}\}\s*$/;
+
+/**
+ * The key a bound expression consists of when it names no item: one quoted
+ * key piped with no parameters, or a ternary between two such keys, which
+ * gives every copy one of two names and is no better. A ternary's two keys
+ * are reported together, `whenTrue : whenFalse`. Null otherwise.
+ */
+function bareKeyOf(expression) {
+  const key = BARE_KEY_BOUND.exec(expression)?.[2];
+  if (key) return key;
+  const once = BARE_TERNARY_PIPED_ONCE.exec(expression);
+  if (once) return `${once[2]} : ${once[4]}`;
+  const each = BARE_TERNARY_PIPED_EACH.exec(expression);
+  return each ? `${each[2]} : ${each[4] ?? each[6]}` : null;
+}
+
+/**
+ * The key a tag's `aria-label` consists of when it names no item, with the
+ * label's offset in `attrs`; null otherwise. Bare is one quoted key piped
+ * with no parameters, or a ternary between two such keys, piped once after it
+ * or in each branch (bareKeyOf), either bound or as a literal that is one
+ * interpolation. A ternary with parameters on either branch, or on the pipe
+ * after it, is not bare.
  */
 function bareKeyLabel(attrs) {
   for (const label of attrs.matchAll(LABEL_ATTR)) {
-    const shape = label[1].startsWith('[') ? BARE_KEY_BOUND : BARE_KEY_INTERPOLATED;
-    const key = shape.exec(label[2] ?? label[3])?.[2];
+    const value = label[2] ?? label[3];
+    const expression = label[1].startsWith('[') ? value : ONE_INTERPOLATION.exec(value)?.[1];
+    const key = expression === undefined ? null : bareKeyOf(expression);
     if (key) return { key, index: label.index };
   }
   return null;
@@ -641,7 +693,8 @@ function bareKeyLabel(attrs) {
 
 /**
  * Every control stamped once per item in this template whose `aria-label` is
- * one catalog key with no parameters. `line` is the label's own line, which is
+ * one catalog key with no parameters, or a ternary between two (see
+ * bareKeyLabel). `line` is the label's own line, which is
  * where a finding is reported. A menu trigger the fourth rule reports is left
  * to it. Returns `{ line, tag, key }` for each.
  */
@@ -666,62 +719,7 @@ export function scanItemlessLabels(source) {
  * is the goal: a row is a debt with a name, and it goes when its controls name
  * their item.
  */
-export const ITEMLESS_FROZEN = [
-  {
-    file: 'src/app/features/about/about.component.html',
-    key: 'about.feedback.deleteLabel',
-    count: 1,
-    why: 'one delete button per sent feedback entry on the About page',
-  },
-  {
-    file: 'src/app/features/ai/search-history/search-answer-history.component.html',
-    key: 'common.delete',
-    count: 1,
-    why: 'one delete button per saved answer in the search history',
-  },
-  {
-    file: 'src/app/features/budgets/goals/goal-form/goal-form.component.html',
-    key: 'common.delete',
-    count: 1,
-    why: 'one delete button per item row on the goal form',
-  },
-  {
-    file: 'src/app/features/reports/insights/recurring-list/recurring-list.component.html',
-    key: 'insights.convertToRule',
-    count: 1,
-    why: 'one per recurring group in the insights list',
-  },
-  {
-    file: 'src/app/features/reports/insights/recurring-list/recurring-list.component.html',
-    key: 'insights.showTransactions',
-    count: 1,
-    why: 'one per recurring group in the insights list',
-  },
-  {
-    file: 'src/app/features/transactions/transaction-filters/transaction-filters.component.html',
-    key: 'transactions.removeSearch',
-    count: 2,
-    why: 'one remove button per saved search, and one per recent search, in the search suggestions',
-  },
-  {
-    file: 'src/app/features/transactions/transaction-list/transaction-list.component.html',
-    key: 'transactions.viewNote',
-    count: 1,
-    why: 'one per desktop table row that carries a note',
-  },
-  {
-    file: 'src/app/features/transactions/transaction-list/transaction-list.component.html',
-    key: 'transactions.viewReceipt',
-    count: 1,
-    why: 'one per desktop table row that carries a receipt',
-  },
-  {
-    file: 'src/app/shared/components/ai-search-dialog/ai-search-dialog.component.html',
-    key: 'common.delete',
-    count: 1,
-    why: 'one delete button per answer in the search dialog\'s history',
-  },
-];
+export const ITEMLESS_FROZEN = [];
 
 /**
  * Sets one rule's hits (`{ site, tag, key }`, `site` a repo-relative
@@ -1861,7 +1859,7 @@ function selfTest() {
   );
   check(
     'the interpolated literal form',
-    itemlessLines(`@for (s of searches; track s.id) {\n  <button aria-label="{{ 'transactions.removeSearch' | translate }}">x</button>\n}`),
+    itemlessLines(`@for (s of searches; track s.id) {\n  <button aria-label="{{ 'common.remove' | translate }}">x</button>\n}`),
     [2]
   );
   check(

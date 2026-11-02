@@ -70,7 +70,7 @@
               class="row-convert"
               (click)="convert(group)"
               [disabled]="isConverting(group)"
-              [attr.aria-label]="'insights.convertToRule' | translate"
+              [attr.aria-label]="'insights.convertToRuleFor' | translate: { name: group.label }"
               [title]="'insights.convertToRule' | translate"
             >
               <mat-icon>add_task</mat-icon>
@@ -83,7 +83,7 @@
               class="row-toggle"
               (click)="toggle(group)"
               [attr.aria-expanded]="isExpanded(group)"
-              [attr.aria-label]="'insights.showTransactions' | translate"
+              [attr.aria-label]="'insights.showTransactionsFor' | translate: { name: group.label }"
             >
               <mat-icon>{{ isExpanded(group) ? 'expand_less' : 'expand_more' }}</mat-icon>
             </button>

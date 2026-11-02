@@ -336,7 +336,7 @@ describe('RecurringListComponent, through its own template', () => {
     render([groupFor({ source: 'detected' })]);
 
     const convert = rows()[0].querySelector('.row-convert') as HTMLButtonElement;
-    expect(convert.getAttribute('aria-label')).toBe('insights.convertToRule');
+    expect(convert.getAttribute('aria-label')).toBe('insights.convertToRuleFor:{"name":"NETFLIX.COM"}');
     expect(convert.getAttribute('title')).toBe('insights.convertToRule');
 
     convert.click();

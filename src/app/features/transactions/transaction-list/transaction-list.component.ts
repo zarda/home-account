@@ -62,7 +62,9 @@ import { AnalyticsService } from '../../../core/services/analytics.service';
 import { PwaService } from '../../../core/services/pwa.service';
 import { AnnouncerService } from '../../../core/services/announcer.service';
 import { ShareTarget, landedKinds, shareChange } from '../../../core/utils/share-change.utils';
+import { transactionDisplayName } from '../../../core/utils/transaction-display.utils';
 import { openReceiptViewer } from '../receipt-viewer/receipt-viewer-dialog.component';
+import { quotedTransactionName } from '../../../core/utils/transaction-display.utils';
 import { TranslatePipe } from '../../../shared/pipes/translate.pipe';
 import { LocationLabelPipe } from '../../../shared/pipes/location-label.pipe';
 import { AmountDisplayComponent } from '../../../shared/components/amount-display/amount-display.component';
@@ -669,10 +671,31 @@ export class TransactionListComponent {
     }, { injector: this.injector });
   }
 
+  /**
+   * The transaction every control on a row names (its menu trigger, its
+   * checkbox, its note and receipt buttons): its description, or the
+   * catalog's words for an untitled one, through the one rule every control
+   * that names its transaction reads. The template reads it, which is why it
+   * is protected.
+   */
+  protected transactionName(transaction: Transaction): string {
+    return transactionDisplayName(transaction.description, key => this.translationService.t(key));
+  }
+
+  /**
+   * The transaction as its note and receipt buttons name it, whose keys only
+   * tc quotes: its description in the reader's own quotation marks, or the
+   * catalog's words for an untitled one, bare (quotedTransactionName). The
+   * template reads it, which is why it is protected.
+   */
+  protected quotedName(transaction: Transaction): string {
+    return quotedTransactionName(transaction.description, (key, params) => this.translationService.t(key, params));
+  }
+
   /** The row's name for its checkbox: what, how much and when, as the row's own button says it. */
   rowLabel(transaction: Transaction): string {
     return this.translationService.t('transactions.rowLabel', {
-      description: transaction.description,
+      description: this.transactionName(transaction),
       amount: signedAmountText(transaction, (amount, currency) => this.formatAmount(amount, currency)),
       date: this.formatRelativeDate(transaction.date),
     });

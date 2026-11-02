@@ -144,7 +144,7 @@
                     mat-icon-button
                     type="button"
                     class="suggestion-remove"
-                    [attr.aria-label]="'transactions.removeSearch' | translate"
+                    [attr.aria-label]="'transactions.removeSavedSearch' | translate: { name: item.label || item.query }"
                     (click)="removeSearch(item, $event)"
                   >
                     <mat-icon>close</mat-icon>
@@ -164,7 +164,7 @@
                     mat-icon-button
                     type="button"
                     class="suggestion-remove"
-                    [attr.aria-label]="'transactions.removeSearch' | translate"
+                    [attr.aria-label]="'transactions.removeRecentSearch' | translate: { query: item.query }"
                     (click)="removeSearch(item, $event)"
                   >
                     <mat-icon>close</mat-icon>

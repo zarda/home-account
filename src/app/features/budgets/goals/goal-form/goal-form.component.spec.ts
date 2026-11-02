@@ -342,7 +342,9 @@ describe('GoalFormComponent, through its own template', () => {
     await render({ mode: 'edit', goal: savedGoalFixture });
 
     const rows = Array.from(el().querySelectorAll('.item-row')) as HTMLElement[];
-    (rows[0].querySelector('[aria-label="common.delete"]') as HTMLButtonElement).click();
+    (Array.from(rows[0].querySelectorAll('button')) as HTMLButtonElement[])
+      .find(b => b.getAttribute('aria-label') === 'goal.deleteItemLabel:{"position":1}')!
+      .click();
     fixture.detectChanges();
 
     expect(el().querySelectorAll('.item-row').length).toBe(1);

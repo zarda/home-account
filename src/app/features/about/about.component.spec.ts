@@ -15,6 +15,7 @@ import { TranslationService } from '../../core/services/translation.service';
 import { FeedbackEntry } from '../../models';
 import {
   AUDIT_SCHEMES,
+  echoTranslation,
   paintedBackground,
   paintedColor,
   provideNoMotion,
@@ -45,7 +46,7 @@ describe('AboutComponent', () => {
 
   beforeEach(async () => {
     const translation = jasmine.createSpyObj<TranslationService>('TranslationService', ['t']);
-    translation.t.and.callFake((key: string) => key);
+    translation.t.and.callFake(echoTranslation);
 
     mockDialog = jasmine.createSpyObj<MatDialog>('MatDialog', ['open']);
     mockFeedback = jasmine.createSpyObj<FeedbackService>('FeedbackService', [
@@ -383,7 +384,8 @@ describe('AboutComponent', () => {
 
       const button = fixture.nativeElement.querySelector('.feedback-item-delete');
       expect(button).toBeTruthy();
-      expect(button.getAttribute('aria-label')).toBe('about.feedback.deleteLabel');
+      expect(button.getAttribute('aria-label'))
+        .toBe('about.feedback.deleteLabel:{"position":1,"category":"about.feedback.categoryBug"}');
     });
 
     it('deletes the entry once the confirm is accepted', () => {
