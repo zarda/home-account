@@ -2,6 +2,7 @@ import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { Component, NO_ERRORS_SCHEMA } from '@angular/core';
 import { By } from '@angular/platform-browser';
 import { InteractivityChecker } from '@angular/cdk/a11y';
+import { CdkDrag, CdkDragDrop } from '@angular/cdk/drag-drop';
 
 import { FileDropzoneComponent } from './file-dropzone.component';
 import { IMPORT_FILE_MAX_BYTES, RefusedShare } from '../../../../core/services/share-intake.service';
@@ -9,6 +10,8 @@ import { TranslationService } from '../../../../core/services/translation.servic
 import {
   accessibleDescription,
   accessibleName,
+  catalogTranslationStub,
+  catalogTranslator,
   channels,
   createTranslationStub,
   expectOneRule,
@@ -936,6 +939,170 @@ describe('FileDropzoneComponent, through its own template', () => {
       'import.removePhotoLabel:{"position":1,"name":"second.png"}',
       'import.removePhotoLabel:{"position":2,"name":"first.png"}',
     ]);
+  });
+
+  // A photo's place is its place among the photos: the badge, the arrows'
+  // bounds, a move and a drop all count photos alone, and a CSV picked
+  // between them keeps its row. The wizard sends the photos in the order the
+  // zone lists them, so the badges are the order they are read in.
+  describe('a pick that mixes photos and a CSV', () => {
+    const badges = () => all('.image-number').map(n => n.textContent?.trim());
+    const rowNames = () => all('.file-name').map(n => n.textContent?.trim());
+    /** The up and down arrows of the row at `row`, in that order. */
+    const arrows = (row: number) =>
+      Array.from(all('.file-item')[row]?.querySelectorAll<HTMLButtonElement>('.reorder-btn') ?? []);
+
+    it('with a CSV first, the badges read 1 and 2 and the first photo\'s up arrow is disabled', () => {
+      fixture.detectChanges();
+      dropFiles([csvFile(), imageFile('a.png'), imageFile('b.png')]);
+
+      expect(badges()).withContext('the badges').toEqual(['1', '2']);
+      const [up, down] = arrows(1);
+      expect(up).withContext('the first photo\'s up arrow').toBeDefined();
+      expect(up?.disabled).withContext('the first photo\'s up arrow, disabled').toBeTrue();
+      expect(down?.disabled).withContext('the first photo\'s down arrow, disabled').toBeFalse();
+    });
+
+    it('with two photos before a CSV, the second photo\'s down arrow is disabled', () => {
+      fixture.detectChanges();
+      dropFiles([imageFile('a.png'), imageFile('b.png'), csvFile()]);
+
+      expect(badges()).withContext('the badges').toEqual(['1', '2']);
+      const [up, down] = arrows(1);
+      expect(down).withContext('the second photo\'s down arrow').toBeDefined();
+      expect(up?.disabled).withContext('the second photo\'s up arrow, disabled').toBeFalse();
+      expect(down?.disabled).withContext('the second photo\'s down arrow, disabled').toBeTrue();
+    });
+
+    it('a photo\'s arrow steps past a CSV and leaves it in place', () => {
+      const emitted: File[][] = [];
+      component.filesSelected.subscribe(files => emitted.push(files));
+      fixture.detectChanges();
+      dropFiles([imageFile('a.png'), csvFile(), imageFile('b.png')]);
+
+      const up = arrows(2)[0];
+      expect(up).withContext('b\'s up arrow').toBeDefined();
+      up?.click();
+      fixture.detectChanges();
+
+      expect(rowNames()).withContext('the rows, b moved up').toEqual(['b.png', 'rows.csv', 'a.png']);
+      expect(emitted.at(-1)?.map(f => f.name)).withContext('what the zone emits, b moved up')
+        .toEqual(['b.png', 'rows.csv', 'a.png']);
+      expect(badges()).withContext('the badges, b moved up').toEqual(['1', '2']);
+
+      arrows(0)[1]?.click();
+      fixture.detectChanges();
+
+      expect(rowNames()).withContext('the rows, b moved back down').toEqual(['a.png', 'rows.csv', 'b.png']);
+      expect(emitted.at(-1)?.map(f => f.name)).withContext('what the zone emits, b moved back down')
+        .toEqual(['a.png', 'rows.csv', 'b.png']);
+    });
+
+    // CDK sorts every row the pointer passes, a CSV's too, and reports only
+    // where the dragged row started and where it landed. The zone reads the
+    // photos off in the order CDK left them and writes them back into the
+    // photos' own rows.
+    it('a drop reorders photos among themselves', () => {
+      const emitted: File[][] = [];
+      component.filesSelected.subscribe(files => emitted.push(files));
+      fixture.detectChanges();
+      dropFiles([imageFile('a.png'), csvFile(), imageFile('b.png')]);
+
+      component.onFileDrop({ previousIndex: 2, currentIndex: 0 } as CdkDragDrop<File[]>);
+      fixture.detectChanges();
+
+      expect(rowNames()).withContext('the rows').toEqual(['b.png', 'rows.csv', 'a.png']);
+      expect(emitted.at(-1)?.map(f => f.name)).withContext('what the zone emits').toEqual(['b.png', 'rows.csv', 'a.png']);
+    });
+
+    // A pin. Mutation: onFileDrop back to a plain moveItemInArray on the list.
+    // CDK leaves a dragged down past the CSV and b as [csv, b, a]; the photos
+    // read b then a, and go back into the photos' rows.
+    it('a downward drop reorders photos among themselves', () => {
+      const emitted: File[][] = [];
+      component.filesSelected.subscribe(files => emitted.push(files));
+      fixture.detectChanges();
+      dropFiles([imageFile('a.png'), csvFile(), imageFile('b.png')]);
+
+      component.onFileDrop({ previousIndex: 0, currentIndex: 2 } as CdkDragDrop<File[]>);
+      fixture.detectChanges();
+
+      expect(rowNames()).withContext('the rows').toEqual(['b.png', 'rows.csv', 'a.png']);
+      expect(emitted.at(-1)?.map(f => f.name)).withContext('what the zone emits').toEqual(['b.png', 'rows.csv', 'a.png']);
+    });
+
+    // A pin. Mutation: onFileDrop back to a plain moveItemInArray on the list.
+    // A photo dropped on the CSV's own row passes no other photo: CDK leaves
+    // b in the CSV's slot, [a, b, csv], and the photos still read a then b.
+    // So the list is unchanged, and the CSV keeps its row.
+    it('a drop on the CSV\'s row leaves the list as it was', () => {
+      const emitted: File[][] = [];
+      component.filesSelected.subscribe(files => emitted.push(files));
+      fixture.detectChanges();
+      dropFiles([imageFile('a.png'), csvFile(), imageFile('b.png')]);
+
+      component.onFileDrop({ previousIndex: 2, currentIndex: 1 } as CdkDragDrop<File[]>);
+      fixture.detectChanges();
+
+      expect(rowNames()).withContext('the rows').toEqual(['a.png', 'rows.csv', 'b.png']);
+      expect(emitted.at(-1)?.map(f => f.name)).withContext('what the zone emits').toEqual(['a.png', 'rows.csv', 'b.png']);
+    });
+
+    it('offers no drag on a non-photo row', () => {
+      const dragsDisabled = () =>
+        fixture.debugElement.queryAll(By.directive(CdkDrag)).map(row => row.injector.get(CdkDrag).disabled);
+      fixture.detectChanges();
+      dropFiles([imageFile('a.png'), csvFile(), imageFile('b.png')]);
+
+      expect(dragsDisabled()).withContext('two photos and a CSV').toEqual([false, true, false]);
+
+      arrows(2)[0]?.click();
+      fixture.detectChanges();
+      all('.file-item')[2]?.querySelector<HTMLButtonElement>('.remove-btn')?.click();
+      fixture.detectChanges();
+
+      expect(rowNames()).withContext('the rows left').toEqual(['b.png', 'rows.csv']);
+      expect(dragsDisabled()).withContext('one photo and a CSV').toEqual([true, true]);
+    });
+
+    // A pin. Mutation: otherNumber counting every file listed, so the second
+    // CSV, behind the photo, is numbered 3. The CSVs are numbered among the
+    // files that are not photos, so two of one name stay apart, and the photo
+    // among the photos.
+    it('names two CSVs of one name apart, and the photo among the photos', () => {
+      fixture.detectChanges();
+      dropFiles([csvFile('rows.csv'), imageFile('image.jpg'), csvFile('rows.csv')]);
+
+      expect(all('.remove-btn').map(b => b.getAttribute('aria-label'))).toEqual([
+        'import.removeFileLabel:{"position":1,"name":"rows.csv"}',
+        'import.removePhotoLabel:{"position":1,"name":"image.jpg"}',
+        'import.removeFileLabel:{"position":2,"name":"rows.csv"}',
+      ]);
+    });
+
+    for (const locale of ['en', 'ja', 'tc'] as const) {
+      it(`names carry the badge's number in ${locale}`, () => {
+        const stub = TestBed.inject(TranslationService) as unknown as TranslationStub;
+        const words = catalogTranslationStub(locale);
+        stub.t = words.t;
+        stub.currentLocale.set(words.currentLocale());
+        const t = catalogTranslator(locale, { strict: true });
+        fixture.detectChanges();
+        dropFiles([csvFile('rows.csv'), imageFile('image.jpg'), imageFile('image.jpg')]);
+
+        expect(badges()).withContext('the badges').toEqual(['1', '2']);
+        const photo = (position: number) => ({ position, name: 'image.jpg' });
+        expect(all('.reorder-btn, .remove-btn').map(button => accessibleName(button))).toEqual([
+          t('import.removeFileLabel', { position: 1, name: 'rows.csv' }),
+          t('import.movePhotoUpLabel', photo(1)),
+          t('import.movePhotoDownLabel', photo(1)),
+          t('import.removePhotoLabel', photo(1)),
+          t('import.movePhotoUpLabel', photo(2)),
+          t('import.movePhotoDownLabel', photo(2)),
+          t('import.removePhotoLabel', photo(2)),
+        ]);
+      });
+    }
   });
 
   it('shows the error banner when a dropped file is refused', () => {

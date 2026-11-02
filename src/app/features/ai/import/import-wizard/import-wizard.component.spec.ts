@@ -3936,6 +3936,32 @@ describe('ImportWizardComponent', () => {
       }));
     });
 
+    // The zone numbers a photo among the photos and moves it among them, so a
+    // CSV picked between two photos keeps its row, and Process reads the
+    // photos in the order their badges show. The up arrow used to swap the
+    // photo with the CSV above it, which left the photos in the old order.
+    it('sends the photos in badge order once a photo is moved past a CSV', fakeAsync(() => {
+      const real = realFixture.componentInstance;
+      const host = realFixture.nativeElement as HTMLElement;
+      drop(photo('a.png'), csv(), photo('b.png'));
+
+      const up = host.querySelectorAll('app-file-dropzone .file-item')[2]?.querySelector<HTMLButtonElement>('.reorder-btn');
+      expect(up).withContext('b\'s up arrow').toBeTruthy();
+      up?.click();
+      realFixture.detectChanges();
+
+      expect(rowNames()).withContext('the zone\'s rows').toEqual(['b.png', 'ledger.csv', 'a.png']);
+      expect(names(real.selectedFiles())).withContext('the wizard').toEqual(['b.png', 'ledger.csv', 'a.png']);
+
+      uploadStep()?.querySelector<HTMLButtonElement>('.step-actions button')?.click();
+      tick();
+      realFixture.detectChanges();
+
+      expect(mockImportService.importFromMultipleImages).toHaveBeenCalledTimes(1);
+      const sent = mockImportService.importFromMultipleImages.calls.mostRecent()?.args[0] ?? [];
+      expect(names(sent)).withContext('the photos Process sends, in order').toEqual(['b.png', 'a.png']);
+    }));
+
     // A share reached the wizard's selection and never the zone, so the zone
     // listed nothing, and its next pick or remove emitted a list without the
     // shared file, which then left the selection with nothing said (#518).
