@@ -120,10 +120,40 @@ export class FileDropzoneComponent implements OnDestroy {
     });
   }
 
-  // Computed signals for multi-image handling
-  hasMultipleImages = computed(() => {
-    return this.selectedFiles().filter(f => this.isImageFile(f)).length > 1;
+  /**
+   * Each listed file's number among its own kind, counted from 1 in list
+   * order: a photo's among the photos, which is the number its badge shows
+   * and its place in the order the photos are sent in, and any other file's
+   * among the other files. Keyed by the File, as the previews are: two
+   * captures are both image.jpg.
+   */
+  readonly places = computed(() => {
+    const photos = new Map<File, number>();
+    const others = new Map<File, number>();
+    for (const file of this.selectedFiles()) {
+      if (this.isImageFile(file)) photos.set(file, photos.size + 1);
+      else others.set(file, others.size + 1);
+    }
+    return { photos, others };
   });
+
+  /** A photo's number among the photos, its badge's; 0 for any other file. */
+  photoNumber(file: File): number {
+    return this.places().photos.get(file) ?? 0;
+  }
+
+  /** A file's number among the files that are not photos; 0 for a photo. */
+  otherNumber(file: File): number {
+    return this.places().others.get(file) ?? 0;
+  }
+
+  /** How many photos are listed. */
+  photoCount(): number {
+    return this.places().photos.size;
+  }
+
+  // The badges, the arrows and the drag handles stand once two photos are listed.
+  readonly hasMultipleImages = computed(() => this.photoCount() > 1);
 
   /** What Browse's aria-describedby names: the hint under the zone's title. */
   readonly hintId = `dropzone-hint-${++hintSeq}`;
@@ -357,38 +387,49 @@ export class FileDropzoneComponent implements OnDestroy {
     this.filesSelected.emit(this.selectedFiles());
   }
 
-  moveFileUp(index: number, event: Event): void {
+  // The arrows move a photo among the photos: it swaps rows with the photo
+  // before or after it, and a file between them that is no photo keeps its
+  // row. The photos are sent in list order, so the badges stay the order
+  // they are read in.
+  moveFileUp(file: File, event: Event): void {
     event.stopPropagation();
-    if (index <= 0) return;
-
-    this.selectedFiles.update(files => {
-      const newFiles = [...files];
-      [newFiles[index - 1], newFiles[index]] = [newFiles[index], newFiles[index - 1]];
-      return newFiles;
-    });
-    this.filesSelected.emit(this.selectedFiles());
+    this.swapWithPhoto(file, -1);
   }
 
-  moveFileDown(index: number, event: Event): void {
+  moveFileDown(file: File, event: Event): void {
     event.stopPropagation();
+    this.swapWithPhoto(file, 1);
+  }
+
+  private swapWithPhoto(file: File, step: -1 | 1): void {
     const files = this.selectedFiles();
-    if (index >= files.length - 1) return;
+    const from = files.indexOf(file);
+    if (from < 0 || !this.isImageFile(file)) return;
+    let to = from + step;
+    while (to >= 0 && to < files.length && !this.isImageFile(files[to])) to += step;
+    if (to < 0 || to >= files.length) return;
 
-    this.selectedFiles.update(fs => {
-      const newFiles = [...fs];
-      [newFiles[index], newFiles[index + 1]] = [newFiles[index + 1], newFiles[index]];
-      return newFiles;
-    });
-    this.filesSelected.emit(this.selectedFiles());
+    const moved = [...files];
+    [moved[from], moved[to]] = [moved[to], moved[from]];
+    this.selectedFiles.set(moved);
+    this.filesSelected.emit(moved);
   }
 
+  // CDK sorts every row the dragged photo passes, a CSV's too, and no
+  // cdkDropListSortPredicate can hold one in place: the predicate gates only
+  // where the dragged row lands. So the drop is remapped after the sort: the
+  // photos are read off in the order CDK left them and written back into the
+  // photos' own rows, and every other file keeps its row. A CSV the drag
+  // slid aside snaps back when the photo is dropped.
   onFileDrop(event: CdkDragDrop<File[]>): void {
-    this.selectedFiles.update(files => {
-      const newFiles = [...files];
-      moveItemInArray(newFiles, event.previousIndex, event.currentIndex);
-      return newFiles;
-    });
-    this.filesSelected.emit(this.selectedFiles());
+    const files = this.selectedFiles();
+    const sorted = [...files];
+    moveItemInArray(sorted, event.previousIndex, event.currentIndex);
+    const photos = sorted.filter(f => this.isImageFile(f));
+    let next = 0;
+    const placed = files.map(f => (this.isImageFile(f) ? photos[next++] : f));
+    this.selectedFiles.set(placed);
+    this.filesSelected.emit(placed);
   }
 
   isImageFile(file: File): boolean {

@@ -902,24 +902,26 @@ describe('FileDropzoneComponent, through its own template', () => {
   });
 
   // Two iOS captures are both image.jpg. Each row's buttons name the file
-  // they act on by its place in the list and its name, the way the badge and
-  // the thumbnail tell the rows apart by sight: "Remove", "Move up" and
-  // "Move down" alone gave every row the same three names.
+  // they act on by its place and its name, the way the badge and the
+  // thumbnail tell the rows apart by sight: "Remove", "Move up" and "Move
+  // down" alone gave every row the same three names. A photo's place is its
+  // number among the photos, the badge's; any other file's is its number
+  // among the other files, so two CSVs of one name stay apart too.
   it('names each row\'s remove and move buttons by the file\'s place and name', () => {
     fixture.detectChanges();
     dropFiles([imageFile('image.jpg'), imageFile('image.jpg'), csvFile('rows.csv')]);
     const labels = (selector: string) => all(selector).map(b => b.getAttribute('aria-label'));
 
     expect(labels('.remove-btn')).withContext('the remove buttons').toEqual([
-      'import.removeFileLabel:{"position":1,"name":"image.jpg"}',
-      'import.removeFileLabel:{"position":2,"name":"image.jpg"}',
-      'import.removeFileLabel:{"position":3,"name":"rows.csv"}',
+      'import.removePhotoLabel:{"position":1,"name":"image.jpg"}',
+      'import.removePhotoLabel:{"position":2,"name":"image.jpg"}',
+      'import.removeFileLabel:{"position":1,"name":"rows.csv"}',
     ]);
     expect(labels('.reorder-btn')).withContext('the move buttons').toEqual([
-      'import.moveFileUpLabel:{"position":1,"name":"image.jpg"}',
-      'import.moveFileDownLabel:{"position":1,"name":"image.jpg"}',
-      'import.moveFileUpLabel:{"position":2,"name":"image.jpg"}',
-      'import.moveFileDownLabel:{"position":2,"name":"image.jpg"}',
+      'import.movePhotoUpLabel:{"position":1,"name":"image.jpg"}',
+      'import.movePhotoDownLabel:{"position":1,"name":"image.jpg"}',
+      'import.movePhotoUpLabel:{"position":2,"name":"image.jpg"}',
+      'import.movePhotoDownLabel:{"position":2,"name":"image.jpg"}',
     ]);
   });
 
@@ -931,8 +933,8 @@ describe('FileDropzoneComponent, through its own template', () => {
     fixture.detectChanges();
 
     expect(all('.remove-btn').map(b => b.getAttribute('aria-label'))).toEqual([
-      'import.removeFileLabel:{"position":1,"name":"second.png"}',
-      'import.removeFileLabel:{"position":2,"name":"first.png"}',
+      'import.removePhotoLabel:{"position":1,"name":"second.png"}',
+      'import.removePhotoLabel:{"position":2,"name":"first.png"}',
     ]);
   });
 

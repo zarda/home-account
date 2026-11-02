@@ -74,11 +74,19 @@
         }
 
         <div class="file-list" cdkDropList (cdkDropListDropped)="onFileDrop($event)">
-          @for (file of selectedFiles(); track file; let i = $index) {
-            <div class="file-item" [class.image-file]="isImageFile(file)" [class.reorderable]="isImageFile(file) && hasMultipleImages()" cdkDrag>
-              <!-- Image number badge for multi-image -->
+          @for (file of selectedFiles(); track file) {
+            <!-- A photo is numbered, moved and dragged among the photos alone;
+                 a row that is no photo is never dragged and keeps its place. -->
+            <div
+              class="file-item"
+              [class.image-file]="isImageFile(file)"
+              [class.reorderable]="isImageFile(file) && hasMultipleImages()"
+              cdkDrag
+              [cdkDragDisabled]="!(isImageFile(file) && hasMultipleImages())"
+            >
+              <!-- The photo's number among the photos, the order they are read in -->
               @if (isImageFile(file) && hasMultipleImages()) {
-                <div class="image-number">{{ i + 1 }}</div>
+                <div class="image-number">{{ photoNumber(file) }}</div>
               }
 
               @if (isImageFile(file)) {
@@ -98,24 +106,24 @@
                 </span>
               </div>
 
-              <!-- Each button names the file it acts on by its place and its name: two photos from an iPhone are both image.jpg, and the place is the number the badge shows. Reorder controls for images. -->
+              <!-- Each button names the file it acts on by its place and its name: two photos from an iPhone are both image.jpg. A photo's place is the number its badge shows, among the photos; any other file's is its number among the files that are not photos. Reorder controls for photos. -->
               @if (isImageFile(file) && hasMultipleImages()) {
                 <div class="reorder-controls">
                   <button
                     mat-icon-button
-                    (click)="moveFileUp(i, $event)"
-                    [disabled]="i === 0"
+                    (click)="moveFileUp(file, $event)"
+                    [disabled]="photoNumber(file) === 1"
                     class="reorder-btn"
-                    [attr.aria-label]="'import.moveFileUpLabel' | translate: { position: i + 1, name: file.name }"
+                    [attr.aria-label]="'import.movePhotoUpLabel' | translate: { position: photoNumber(file), name: file.name }"
                   >
                     <mat-icon>arrow_upward</mat-icon>
                   </button>
                   <button
                     mat-icon-button
-                    (click)="moveFileDown(i, $event)"
-                    [disabled]="i === selectedFiles().length - 1"
+                    (click)="moveFileDown(file, $event)"
+                    [disabled]="photoNumber(file) === photoCount()"
                     class="reorder-btn"
-                    [attr.aria-label]="'import.moveFileDownLabel' | translate: { position: i + 1, name: file.name }"
+                    [attr.aria-label]="'import.movePhotoDownLabel' | translate: { position: photoNumber(file), name: file.name }"
                   >
                     <mat-icon>arrow_downward</mat-icon>
                   </button>
@@ -126,7 +134,9 @@
                 mat-icon-button
                 (click)="removeFile(file, $event)"
                 class="remove-btn"
-                [attr.aria-label]="'import.removeFileLabel' | translate: { position: i + 1, name: file.name }"
+                [attr.aria-label]="isImageFile(file)
+                  ? ('import.removePhotoLabel' | translate: { position: photoNumber(file), name: file.name })
+                  : ('import.removeFileLabel' | translate: { position: otherNumber(file), name: file.name })"
               >
                 <mat-icon>close</mat-icon>
               </button>
