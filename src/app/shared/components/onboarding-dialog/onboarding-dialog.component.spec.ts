@@ -118,7 +118,7 @@ describe('OnboardingDialogComponent', () => {
 
     // What is read is the translated sentence, with the step numbers in it —
     // not the raw glyph, and not an un-interpolated key.
-    expect(indicator?.querySelector('.sr-only')?.textContent?.trim()).toBe(
+    expect(indicator?.querySelector('.step-sentence')?.textContent?.trim()).toBe(
       'onboarding.stepOf {"current":1,"total":3}'
     );
 
@@ -135,7 +135,7 @@ describe('OnboardingDialogComponent', () => {
     fixture.detectChanges();
 
     const indicator = element.querySelector('.step-indicator');
-    expect(indicator?.querySelector('.sr-only')?.textContent?.trim()).toBe(
+    expect(indicator?.querySelector('.step-sentence')?.textContent?.trim()).toBe(
       'onboarding.stepOf {"current":2,"total":3}'
     );
     expect(indicator?.querySelector('[aria-hidden="true"]')?.textContent?.trim()).toBe('2/3');

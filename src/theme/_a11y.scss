@@ -1,0 +1,21 @@
+// The app's one way to take text off the screen and keep it in the
+// accessibility tree. display: none or visibility: hidden takes the text out
+// of every name it is part of too, and a control whose only words were that
+// text is left with no name. Clipped in place rather than pushed out of view,
+// which would need a physical offset.
+//
+// The 1px box stays where its text stood: with its insets left auto, an
+// absolutely positioned box sits at its static position (CSS 2.1 10.3.7 and
+// 10.6.4), so the caller's container needs no position of its own. The
+// nearest positioned ancestor decides only which overflow clips the box and
+// which scroller carries it. min-width: 0 drops a min-width the element is
+// given elsewhere (Material gives a step label 50px).
+@mixin visually-hidden {
+  position: absolute;
+  width: 1px;
+  min-width: 0;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}

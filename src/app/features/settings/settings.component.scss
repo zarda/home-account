@@ -1,3 +1,5 @@
+@use 'a11y';
+
 .settings-container {
   display: flex;
   flex-direction: column;
@@ -79,9 +81,13 @@
 }
 
 @media (max-width: 480px) {
-  // Keep the sign-out affordance but drop its label to an icon on narrow cards.
+  // Narrow cards keep Sign out as its icon alone. The label is the button's
+  // only name, so it is clipped in place rather than taken out with
+  // display: none, which left a button with no name. Its insets stay auto, so
+  // the 1px box stays where the label stood, inside the button; Material's
+  // positioned label wrapper decides only which overflow clips it.
   .sign-out-label {
-    display: none;
+    @include a11y.visually-hidden;
   }
 
   .sign-out-btn mat-icon {

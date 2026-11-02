@@ -1,3 +1,5 @@
+@use 'a11y';
+
 :host {
   display: block;
   min-width: 0;
@@ -145,20 +147,15 @@
   border-radius: var(--radius-full);
   font-size: var(--text-xs);
   font-weight: 700;
-  // Anchors the screen-reader copy below, which would otherwise position
-  // against the page and leave a stray 1px box at its origin.
+  // Makes the chip the screen-reader copy's containing block, so the copy's
+  // 1px box, which sits where its text stood either way (the a11y mixin's
+  // header), is clipped by and scrolls with the chip's own ancestors.
   position: relative;
 
   // The only place the direction survives for assistive tech: the visible
-  // figure carries no sign and the arrow is hidden from it. Clipped in place
-  // rather than pushed out of view, which would need a physical offset.
+  // figure carries no sign and the arrow is hidden from it.
   .delta-sr {
-    position: absolute;
-    width: 1px;
-    height: 1px;
-    overflow: hidden;
-    clip-path: inset(50%);
-    white-space: nowrap;
+    @include a11y.visually-hidden;
   }
 
   mat-icon {

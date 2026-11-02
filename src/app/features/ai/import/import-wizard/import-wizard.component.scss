@@ -1,3 +1,5 @@
+@use 'a11y';
+
 .import-wizard {
   max-width: 960px;
   margin: 0 auto;
@@ -692,16 +694,11 @@
      the progress instead. Each header is a tab its label names (and, while
      the import is written, the lock in it), so the label is clipped in place
      rather than taken out with display: none, which left four tabs with no
-     name. Material positions the header, so the 1px box stays inside it,
-     and gives the label a 50px min-width the box has to drop. */
+     name. Its insets stay auto, so the 1px box stays where the label stood,
+     inside the header, whose position decides only which overflow clips it.
+     Material gives the label a 50px min-width the box has to drop. */
   ::ng-deep .modern-stepper .mat-step-label {
-    position: absolute;
-    width: 1px;
-    min-width: 0;
-    height: 1px;
-    overflow: hidden;
-    clip-path: inset(50%);
-    white-space: nowrap;
+    @include a11y.visually-hidden;
   }
 
   ::ng-deep .modern-stepper .mat-horizontal-stepper-header {
