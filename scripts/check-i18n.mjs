@@ -73,6 +73,24 @@
  * their inline `template:` strings, comments are masked, and the line
  * reported is the comma's own.
  *
+ * And one code check, also without a number: two sentences must not be
+ * joined in code with a literal stop. ja and tc end a sentence with 。 and
+ * put no space after it, so `${lead}. ${next}` reads as en on every locale;
+ * the join is joinSentences (core/utils/import-review.utils.ts), which reads
+ * the reader's own stop from common.sentenceSeparator (#534). Non-spec `.ts`
+ * files under src/app are lexed with lexTs (comments and regex literals never
+ * count), and three shapes fail: a template literal whose text between two
+ * `${…}` substitutions is a stop, a stop literal between two parts of a `+`
+ * concatenation (`+=` on its left too, and a template's leading or trailing
+ * stop run into a `+`), and a stop literal as the whole argument of
+ * `.join()`. A stop is `.` followed by a space, or 。 with or without one; a
+ * `.` with no space after it is a decimal point, a path, a key, a version or
+ * an extension, never a sentence's end, and is what lets `${whole}.${fraction}`
+ * and `[a, b].join('.')` through. joinSentences itself needs no exemption: it
+ * holds no literal stop. The class was recorded as a known gap by ADR 0099
+ * and again by ADR 0186, and came back in the dropzone's alert, before ADR
+ * 0145's rule made it this check.
+ *
  * Key-set parity between locales is asserted in translation-keys.spec.ts,
  * which runs with the unit suite. Only literal keys can be checked; dynamic
  * keys (`'prefix.' + value | translate`, `t(chip.labelKey)`) are skipped and
@@ -151,7 +169,24 @@
  *     is not this shape (scan 4 reads the word if it is English), and a comma
  *     that ends the element before the value begins.
  *   - A sentence assembled in code: `t('a.b') + ', ' + name`, or a template
- *     literal. Only template interpolations are read.
+ *     literal. Only template interpolations are read (the sentence-join
+ *     check reads code, for a stop and not a comma).
+ *
+ * What the sentence-join check deliberately cannot see:
+ *   - A stop in markup: `{{ 'a' | translate }}. {{ 'b' | translate }}` in a
+ *     template is a join of the comma-join check's kind, and no template in
+ *     this tree writes one.
+ *   - A stop written with its words: `'Saved. ' + name` or `` `Saved. ${n}` ``
+ *     is English in code, which scan 4 and the fallback scan cover only in
+ *     their own shapes.
+ *   - A stop that reaches the join by another road: a constant
+ *     (`const STOP = '. '`, then `.join(STOP)`), a conditional
+ *     (`${a}${done ? '. ' : ''}${b}`), an argument to a helper of another name,
+ *     `.concat`, or a lead given its stop in one statement and its next part
+ *     in another (`message += '. '; message += next;`).
+ *   - A Latin stop with no space, `${t('a.b')}.${t('c.d')}`: en shows that
+ *     missing space itself, so it is not the class a locale alone would hide.
+ *   - The full-width `．` and the other sentence ends, `!`, `?`, `！`, `？`.
  *
  * What the widget scan (6) deliberately cannot see:
  *   - A word that is not a literal: `Text(labels.net)` shows a string the
@@ -553,15 +588,19 @@ const REGEX_KEYWORDS = new Set([
  * a template literal's `${…}`, whose own strings belong to the template.
  * (Copied from check-colors.mjs; each gate script stays runnable on its own.)
  *
- * The copy differs in one place: a string inside a `${…}` substitution is
+ * The copy differs in two places. A string inside a `${…}` substitution is
  * recorded too, alongside the template around it. check-colors reads a
  * template's text whole, so the substitution's strings stay with it there;
  * here a fallback is a literal of its own, and `${name ?? 'Unknown'}` puts
- * the word in front of a reader exactly as a bare `'Unknown'` does.
+ * the word in front of a reader exactly as a bare `'Unknown'` does. And each
+ * template's text runs are recorded, as `templates`: the [start, end) of the
+ * text before, between and after its substitutions, in order, so the
+ * sentence-join check can read the text that stands between two parts.
  */
 export function lexTs(source) {
   const out = source.split('');
   const strings = [];
+  const templates = [];
   let i = 0;
 
   const blank = (from, to) => {
@@ -610,14 +649,27 @@ export function lexTs(source) {
   // Declarations, not arrows: a template's `${…}` is code, and code holds templates.
   function readTemplate(record) {
     const start = i + 1;
+    const runs = [];
+    let runStart = start;
     i += 1;
     while (i < source.length && source[i] !== '`') {
       if (source[i] === '\\') { i += 2; continue; }
-      // check-colors passes `false` here: see the doc comment for why this copy records.
-      if (source[i] === '$' && source[i + 1] === '{') { i += 2; readCode(true, record); continue; }
+      if (source[i] === '$' && source[i + 1] === '{') {
+        runs.push([runStart, i]);
+        i += 2;
+        // check-colors passes `false` here: see the doc comment for why this copy records.
+        readCode(true, record);
+        runStart = i;
+        continue;
+      }
       i += 1;
     }
-    if (record) strings.push([start, Math.min(i, source.length)]);
+    const end = Math.min(i, source.length);
+    runs.push([runStart, end]);
+    if (record) {
+      strings.push([start, end]);
+      templates.push(runs);
+    }
     i += 1;
   }
 
@@ -654,7 +706,7 @@ export function lexTs(source) {
   }
 
   readCode(false, true);
-  return { masked: out.join(''), strings };
+  return { masked: out.join(''), strings, templates };
 }
 
 /**
@@ -790,6 +842,80 @@ export function fallbackFindings(files, allowed) {
     .map((row, index) => ({ file: row.file, text: row.text, count: row.count, hits: tally[index] }))
     .filter(row => row.hits !== row.count);
   return { offences, drift };
+}
+
+/**
+ * Literal text that is a sentence stop and nothing else: a Latin stop with the
+ * space every Latin-script locale writes after it, or the ideographic stop ja
+ * and tc write, with or without spaces round it. A Latin stop with no space
+ * after it is not a sentence's end in any locale this app reads: it is a
+ * decimal point (`${whole}.${fraction}`), a key or field path, a version, a
+ * host name or a file extension, and en itself would show the missing space.
+ * Read after STOP_ESCAPES, so `'.\n'` and `'\u3002'` are what they print.
+ */
+const SENTENCE_STOP = /^(?:\.\s+|\s*。\s*)$/;
+/** The escapes a stop literal may spell its space or its ideographic stop with. */
+const STOP_ESCAPES = [[/\\[nrt]/g, ' '], [/\\u(?:3002|\{3002\})/gi, '。']];
+/** Code that runs a literal into the part before it: `+`, or `+=`. */
+const PLUS_BEFORE = /\+=?\s*$/;
+/** Code that runs a literal into the part after it. */
+const PLUS_AFTER = /^\s*\+(?![+=])/;
+/** A literal that is the whole argument of a `.join(…)`. */
+const JOIN_BEFORE = /\.\s*join\s*\(\s*$/;
+const JOIN_AFTER = /^\s*\)/;
+
+/**
+ * Every place `source` (TypeScript) joins two sentences with a literal stop,
+ * as `{ line, text }` with `text` the trimmed line: a template literal whose
+ * text between two `${…}` substitutions is a stop (`${lead}. ${next}`,
+ * `${lead}。${next}`), a stop literal between two parts of a `+`
+ * concatenation (`lead + '. ' + next`, the template forms `${lead}. ` + next
+ * and lead + `. ${next}` among them), and a stop literal as the whole
+ * argument of `.join()`. ja and tc end a sentence with 。 and no space, so a
+ * Latin ". " written into the code reads wrong on every locale but en (#534);
+ * the join is joinSentences (core/utils/import-review.utils.ts), which reads
+ * the reader's own stop from common.sentenceSeparator. joinSentences needs no
+ * exemption: it holds no literal stop, and the `[.。]` of its strip sits in a
+ * regex literal, which the lexer steps over. A literal stop written back into
+ * it is #534's own first shape and fails as any other does.
+ */
+export function findSentenceStopJoins(source) {
+  const { masked, strings, templates } = lexTs(source);
+  const isStop = ([start, end]) =>
+    SENTENCE_STOP.test(STOP_ESCAPES.reduce((text, [escape, as]) => text.replace(escape, as), source.slice(start, end)));
+  // A window wide enough for a line break and a comment between a literal and its `+`.
+  const before = index => masked.slice(Math.max(0, index - 200), index);
+  const after = index => masked.slice(index, index + 200);
+  // A literal opens one character before its text and closes at its end.
+  const runInto = ([start, end]) => ({
+    lead: PLUS_BEFORE.test(before(start - 1)),
+    next: PLUS_AFTER.test(after(end + 1)),
+  });
+  const joinArgument = ([start, end]) => JOIN_BEFORE.test(before(start - 1)) && JOIN_AFTER.test(after(end + 1));
+
+  const hits = new Set();
+  for (const runs of templates) {
+    const outer = [runs[0][0], runs[runs.length - 1][1]];
+    const plus = runInto(outer);
+    runs.forEach((run, k) => {
+      if (!isStop(run)) return;
+      const lead = k > 0 || plus.lead;
+      const next = k < runs.length - 1 || plus.next;
+      if ((lead && next) || (runs.length === 1 && joinArgument(outer))) hits.add(run[0]);
+    });
+  }
+  for (const literal of strings) {
+    if (source[literal[0] - 1] === '`' || !isStop(literal)) continue;
+    const plus = runInto(literal);
+    if ((plus.lead && plus.next) || joinArgument(literal)) hits.add(literal[0]);
+  }
+  const lines = source.split('\n');
+  return [...hits]
+    .sort((a, b) => a - b)
+    .map(offset => {
+      const line = lineOf(source, offset);
+      return { line, text: lines[line - 1].trim() };
+    });
 }
 
 /**
@@ -1259,8 +1385,10 @@ function run() {
   const altOffences = [];
   const englishOffences = [];
   const commaOffences = [];
+  const stopOffences = [];
   const allowedSeen = new Set();
   let templatesScanned = 0;
+  let codeFilesScanned = 0;
   const fallbackFiles = [];
 
   for (const file of walk(SOURCE_DIR)) {
@@ -1324,6 +1452,13 @@ function run() {
         commaOffences.push({ site: `${path}:${join.line}`, value: join.text });
       }
     }
+
+    if (file.endsWith('.ts')) {
+      codeFilesScanned += 1;
+      for (const join of findSentenceStopJoins(text)) {
+        stopOffences.push({ site: `${relative('.', file)}:${join.line}`, value: join.text });
+      }
+    }
   }
 
   const staleAllowances = PROPER_NOUNS.map((row, index) => ({ row, index }))
@@ -1370,6 +1505,7 @@ function run() {
       `(${PROPER_NOUNS.length} proper nouns allowed by name).`
   );
   console.log(`Checked ${templatesScanned} templates for a translated fragment joined to a value by a comma.`);
+  console.log(`Checked ${codeFilesScanned} TypeScript files for two sentences joined in code with a literal stop.`);
   console.log(
     `Checked ${fallbackFiles.length} files for an English "Unknown", "Other" or "User" fallback ` +
       `(${fallbackRows.length} rows allow ${allowedHits(fallbackRows)} hits: ` +
@@ -1434,6 +1570,21 @@ function run() {
       "\nWrite the whole sentence as one key with a placeholder, e.g. 'Welcome back, {{name}}' read\n" +
         "through welcomeGreeting (core/utils/person-name.utils.ts), so each locale orders and\n" +
         'punctuates it itself (see docs/i18n.md). A label and its value may be joined by a colon.'
+    );
+  }
+  if (stopOffences.length > 0) {
+    failed = true;
+    console.error(
+      `\n${stopOffences.length} sentence(s) joined in code with a literal stop — ` +
+        'ja and tc end a sentence with 。 and no space:\n'
+    );
+    const bySite = (a, b) => a.site.localeCompare(b.site, 'en', { numeric: true });
+    for (const { site, value } of stopOffences.sort(bySite)) {
+      console.error(`  ${site}  ${value.slice(0, 120)}`);
+    }
+    console.error(
+      '\nJoin them with joinSentences (core/utils/import-review.utils.ts), which reads the reader\'s own\n' +
+        'stop from common.sentenceSeparator: ". " in en, 。 in ja and tc (see docs/i18n.md).'
     );
   }
   if (staleAllowances.length > 0) {
@@ -1523,6 +1674,7 @@ function run() {
   console.log(
     'Every literal translation key resolves in every locale, no template hard-codes an aria-label, ' +
       'alt text or English sentence or joins a translated fragment to a value by a comma, ' +
+      'no code joins two sentences with a literal stop, ' +
       'no code falls back to an English word a reader would see, and the widget names its words ' +
       'from wired string tables equal to the catalogs.'
   );
@@ -1680,6 +1832,87 @@ function selfTest() {
   check('a pipe whose name only starts with translate', joins(`{{ label | translateOrDash }}, {{ y }}`), []);
   check('a comma that ends the element', joins(`<b>{{ 'x' | translate }},</b> {{ y }}`), []);
   check('a commented-out join', joins(`<!-- {{ 'x' | translate }}, {{ y }} -->`), []);
+
+  // --- the sentence-join check ----------------------------------------------
+  const stops = source => findSentenceStopJoins(source).map(join => join.line);
+
+  // must hit
+  check('a template joining two parts with a Latin stop and a space', stops('const s = `${lead}. ${next}`;'), [1]);
+  check('a template joining two parts with the ideographic stop', stops('const s = `${lead}。${next}`;'), [1]);
+  check('the ideographic stop with a space after it', stops('const s = `${lead}。 ${next}`;'), [1]);
+  check(
+    'two translated sentences joined in a template',
+    stops("return `${this.t('import.verifyType')}. ${this.t('common.expense')}`;"),
+    [1]
+  );
+  check('a concatenation through a Latin stop', stops("return lead + '. ' + next;"), [1]);
+  check('a double-quoted Latin stop', stops('return lead + ". " + next;'), [1]);
+  check('a concatenation through the ideographic stop', stops("return lead + '。' + next;"), [1]);
+  check('an escaped ideographic stop', stops("return lead + '\\u3002' + next;"), [1]);
+  check('a stop added onto a lead in place', stops("message += '. ' + next;"), [1]);
+  check('a concatenation across lines reports the line of its stop', stops("return lead +\n  '. ' +\n  next;"), [2]);
+  check('a template that ends in the stop before a concatenation', stops('return `${lead}. ` + next;'), [1]);
+  check('a template that starts with the stop after a concatenation', stops('return lead + `. ${next}`;'), [1]);
+  check('a join through a Latin stop', stops("return [lead, next].join('. ');"), [1]);
+  check('a join through the ideographic stop', stops("return parts.join('。');"), [1]);
+  check('a join through a stop and an escaped line break', stops("return parts.join('.\\n');"), [1]);
+  check('a join through a template that is the stop alone', stops('return parts.join(`. `);'), [1]);
+  check(
+    'joinSentences as it stood before #534',
+    stops("  return `${lead.replace(/\\s*[.。]?\\s*$/, '')}. ${next}`;"),
+    [1]
+  );
+  check(
+    "the dropzone's alert as it stood before its fix",
+    stops('    this.refusals().map(r => this.refusal(r.name, r.reason)).join(\'. \')'),
+    [1]
+  );
+
+  // must not hit — joinSentences joins through the catalog, and each of the
+  // others is a shape this tree writes legitimately. A Latin stop with no space
+  // after it is a decimal point, a path, a version or an extension, never a
+  // sentence's end.
+  check(
+    "joinSentences' own body",
+    stops(
+      'export function joinSentences(\n' +
+        '  t: (key: string, params?: Record<string, string | number>) => string,\n' +
+        '  lead: string,\n' +
+        '  next: string,\n' +
+        '): string {\n' +
+        '  if (!lead) return next;\n' +
+        '  if (!next) return lead;\n' +
+        "  return lead.replace(/\\s*[.。]?\\s*$/, '') + t('common.sentenceSeparator') + next;\n" +
+        '}'
+    ),
+    []
+  );
+  check('a decimal assembled from its parts', stops('return `${whole}.${fraction}`;'), []);
+  check('a field path', stops('const path = field ? `${field}.${key}` : key;'), []);
+  check('a version', stops('const version = `${major}.${minor}.${patch}`;'), []);
+  check('a host name and a URL', stops('const url = `https://${host}.${domain}/${path}`;'), []);
+  check('a file name and its extension', stops("const file = name + '.' + extension;"), []);
+  check('an extension that leads with its stop', stops("const extension = '.' + file.name.split('.').pop();"), []);
+  check('a key joined by stops', stops("return [header, payload, signature].join('.');"), []);
+  check('a split on a stop and a space', stops("const sentences = text.split('. ');"), []);
+  check('the stops a sentence may end in, listed', stops("const ENDS = ['.', '!', '?', '。', '！', '？'];"), []);
+  check('a comparison with the ideographic stop', stops("if (char === '。' || char === '. ') return;"), []);
+  check('a stop that stands alone', stops('const STOP = `. `;'), []);
+  check('a stop in a regex literal', stops('const END = /[.。]\\s*$/;'), []);
+  check('a join in a line comment', stops("// return lead + '. ' + next;"), []);
+  check('a join in a block comment', stops('/* `${lead}。${next}` */'), []);
+  check(
+    'a join in a doc comment',
+    stops("/**\n * Once joined with `${lead}. ${next}`, now with parts.join('。').\n */"),
+    []
+  );
+
+  // reporting
+  check(
+    'a join reports its line and the trimmed text of that line',
+    findSentenceStopJoins("const a = 1;\n    return `${lead}. ${next}`;\n"),
+    [{ line: 2, text: 'return `${lead}. ${next}`;' }]
+  );
 
   // --- the fallback scan --------------------------------------------------
   const fallbacks = (source, kind = 'ts') => findEnglishFallbacks(source, kind).map(hit => hit.word);
