@@ -32,6 +32,7 @@
     "grid:check": "node scripts/check-grid-tracks.mjs --self-test && node scripts/check-grid-tracks.mjs",
     "dates:check": "node scripts/check-dates.mjs --self-test && node scripts/check-dates.mjs",
     "motion:check": "node scripts/check-motion.mjs --self-test && node scripts/check-motion.mjs",
+    "opacity:check": "node scripts/check-opacity.mjs --self-test && node scripts/check-opacity.mjs",
     "contrast:check": "node scripts/check-contrast.mjs --self-test && node scripts/check-contrast.mjs",
     "colors:check": "node scripts/check-colors.mjs --self-test && node scripts/check-colors.mjs",
     "icon-labels:check": "node scripts/check-icon-labels.mjs --self-test && node scripts/check-icon-labels.mjs",

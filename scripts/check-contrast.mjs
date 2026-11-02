@@ -72,7 +72,10 @@
  *     re-checks that claim against the stylesheets, so a row can outlive its
  *     site.
  *   - Opacity. A token painted at 60% opacity measures its full-strength
- *     ratio here and a worse one on screen.
+ *     ratio here and a worse one on screen. opacity:check
+ *     (scripts/check-opacity.mjs) is what keeps a fade off resting text: it
+ *     passes one only in a keyframe, a disabled control or a drag, and it
+ *     ratchets the rest: an ALLOWED row must match its file's count exactly.
  *   - Large text. Every row is scored at the 4.5:1 normal-text threshold
  *     unless it names its own, which errs strict: a heading that clears 3:1
  *     and not 4.5:1 would fail here and be legal on screen.
