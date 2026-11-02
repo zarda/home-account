@@ -4058,10 +4058,9 @@ describe('TransactionFormComponent, through its own template', () => {
         TestBed.overrideProvider(TranslationService, { useValue: catalogTranslationStub(locale) });
         const t = catalogTranslator(locale, { strict: true });
         render({ mode: 'edit', transaction: createTransaction({ description: 'Coffee' }) });
-        // Each its own preview, which the queued strip tracks by, so no two
-        // share a key.
+        // One preview for both: the queued strip keys its rows by the entry.
         component.pendingReceipts.set(['a.jpg', 'b.jpg'].map(name => ({
-          file: new File(['x'], name, { type: 'image/jpeg' }), preview: `${ONE_PIXEL}#${name}`,
+          file: new File(['x'], name, { type: 'image/jpeg' }), preview: ONE_PIXEL,
         })));
         // A transaction whose first images were removed: the two left keep
         // their storage slots, 2 and 5, and are numbered by their place in the
@@ -4089,6 +4088,56 @@ describe('TransactionFormComponent, through its own template', () => {
         );
       });
     }
+  });
+
+  /**
+   * The file input is cleared after each pick so the same photo can be picked
+   * again, and a photo's preview is read from its bytes: two picks of one
+   * picture queue two receipts with one preview, so each row is keyed by its
+   * own receipt and never by what it shows.
+   */
+  describe('two queued photos of one picture', () => {
+    it('keep a row each, and a remove takes the row it was asked to', async () => {
+      TestBed.overrideProvider(TranslationService, { useValue: catalogTranslationStub('en') });
+      const t = catalogTranslator('en', { strict: true });
+      // No scan: the strip is the subject, and a scan's reading is not.
+      strategySpy.canProcessNow.and.returnValue(false);
+      const warn = spyOn(console, 'warn');
+      const error = spyOn(console, 'error');
+      render();
+      const pick = async (photo: File) => {
+        await component.onReceiptSelected({ target: { files: [photo], value: '' } } as unknown as Event);
+        fixture.detectChanges();
+      };
+      const tiles = () => Array.from(el().querySelectorAll<HTMLElement>('div.receipt-preview'));
+
+      const picture = new File(['one picture'], 'image.jpg', { type: 'image/jpeg' });
+      await pick(picture);
+      await pick(picture);
+      const [first, second] = component.pendingReceipts();
+      expect(second.preview).withContext('one picture reads to one preview').toBe(first.preview);
+      // A third pick reconciles the strip against the two already shown.
+      await pick(new File(['another picture'], 'other.jpg', { type: 'image/jpeg' }));
+      const before = tiles();
+      expect(before.length).withContext('a row for each pick').toBe(3);
+
+      (before[0].querySelector('.clear-receipt-btn') as HTMLButtonElement).click();
+      fixture.detectChanges();
+
+      // Each row left is the element it was before the remove, so focus and a
+      // reader's place stay with the photo they were on: the first row goes,
+      // and the second, now first, takes the first's number.
+      expect(tiles().map(tile => [
+        before.indexOf(tile),
+        accessibleName(tile.querySelector('.clear-receipt-btn') as HTMLElement),
+      ])).toEqual([
+        [1, t('receiptImages.removeNewImage', { index: 1 })],
+        [2, t('receiptImages.removeNewImage', { index: 2 })],
+      ]);
+      expect(component.pendingReceipts()[0]).withContext('the second receipt is first now').toBe(second);
+      expect(warn.calls.allArgs().map(args => args.join(' '))).withContext('no duplicated track keys').toEqual([]);
+      expect(error).not.toHaveBeenCalled();
+    });
   });
 
   describe('colours', () => {
