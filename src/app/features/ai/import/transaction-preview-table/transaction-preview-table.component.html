@@ -72,8 +72,8 @@
                   <button
                     type="button"
                     class="duplicate-clear"
-                    [attr.aria-label]="'import.notADuplicate' | translate"
-                    [matTooltip]="'import.notADuplicate' | translate"
+                    [attr.aria-label]="'import.notADuplicate' | translate: { description: announceDescription(row) }"
+                    [matTooltip]="'import.notADuplicate' | translate: { description: announceDescription(row) }"
                     matTooltipPosition="above"
                     (click)="clearDuplicate(row)"
                   >
@@ -97,7 +97,7 @@
                   (keydown.enter)="commitDescription(row, $event)"
                   (keydown.escape)="cancelEdit(row)"
                   (blur)="commitDescription(row, $event)"
-                  [attr.aria-label]="'common.description' | translate"
+                  [attr.aria-label]="'import.descriptionFieldLabel' | translate: { description: announceDescription(row) }"
                 >
               } @else {
                 <!-- Nothing, or nothing but spaces, is a control with no
@@ -142,7 +142,7 @@
                   (keydown.enter)="commitAmount(row, $event)"
                   (keydown.escape)="cancelEdit(row)"
                   (blur)="commitAmount(row, $event)"
-                  [attr.aria-label]="'common.amount' | translate"
+                  [attr.aria-label]="'import.amountFieldLabel' | translate: { description: announceDescription(row) }"
                   [attr.aria-invalid]="amountUnreadable(row) ? 'true' : null"
                   [attr.aria-describedby]="amountUnreadable(row) ? 'amount-error-' + row.id : null"
                 >
@@ -348,7 +348,7 @@
                 inputmode="decimal"
                 enterkeyhint="done"
                 [placeholder]="'import.splitAmount' | translate"
-                [attr.aria-label]="'import.splitAmount' | translate"
+                [attr.aria-label]="'import.splitAmountLabel' | translate: { description: announceDescription(row) }"
                 [attr.aria-invalid]="amountUnreadable(row) ? 'true' : null"
                 [attr.aria-describedby]="amountUnreadable(row) ? 'split-error-' + row.id : null"
                 (keydown.enter)="commitSplit(row, $event)"
@@ -412,7 +412,7 @@
                 class="inline-input place-input"
                 type="text"
                 [value]="row.location?.name ?? ''"
-                [attr.aria-label]="'import.placeName' | translate"
+                [attr.aria-label]="'import.placeName' | translate: { description: announceDescription(row) }"
                 enterkeyhint="done"
                 (keydown.enter)="commitPlaceName(row, $event)"
                 (keydown.escape)="cancelEdit(row)"
@@ -472,7 +472,7 @@
                     }
                   </ng-template>
                 </mat-menu>
-                <button type="button" class="extra-remove" [attr.aria-label]="'import.removeLocation' | translate" (click)="removeLocation(row)">
+                <button type="button" class="extra-remove" [attr.aria-label]="'import.removeLocation' | translate: { description: announceDescription(row) }" (click)="removeLocation(row)">
                   <mat-icon>close</mat-icon>
                 </button>
               </span>
@@ -490,7 +490,7 @@
                   <mat-icon aria-hidden="true">public</mat-icon>
                   <span class="extra-text">{{ currencyOfferText(row) }}</span>
                 </button>
-                <button type="button" class="extra-remove" [attr.aria-label]="'import.dismissCurrencySuggestion' | translate" (click)="dismissCurrencySuggestion(row)">
+                <button type="button" class="extra-remove" [attr.aria-label]="'import.dismissCurrencySuggestion' | translate: { description: announceDescription(row) }" (click)="dismissCurrencySuggestion(row)">
                   <mat-icon>close</mat-icon>
                 </button>
               </span>
@@ -513,7 +513,7 @@
                 class="inline-input tag-input"
                 type="text"
                 [attr.list]="vocabularyListId"
-                [attr.aria-label]="'import.newTag' | translate"
+                [attr.aria-label]="'import.newTagLabel' | translate: { description: announceDescription(row) }"
                 [placeholder]="'import.newTag' | translate"
                 enterkeyhint="done"
                 (keydown.enter)="commitTag(row, $event)"
@@ -540,7 +540,7 @@
                 (keydown.escape)="cancelNotes(row)"
                 (blur)="commitNotes(row)"
                 [placeholder]="'import.notesPlaceholder' | translate"
-                [attr.aria-label]="'import.notes' | translate"
+                [attr.aria-label]="'import.notesLabel' | translate: { description: announceDescription(row) }"
                 [attr.rows]="getRowCount(row)"
               ></textarea>
             </div>

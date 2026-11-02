@@ -2720,7 +2720,7 @@ describe('TransactionPreviewTableComponent, the offer chip through its own templ
       expect(chip!.querySelector('.country-name')?.textContent?.trim()).toBe('South Korea');
       expect(chip!.querySelector('mat-icon')?.textContent?.trim()).toBe('place');
       const remove = chip!.querySelector('.extra-remove') as HTMLElement;
-      expect(remove.getAttribute('aria-label')).toBe('import.removeLocation');
+      expect(remove.getAttribute('aria-label')).toBe('import.removeLocation:{"description":"Coffee Shop"}');
 
       remove.click();
       fixture.detectChanges();
@@ -3032,7 +3032,7 @@ describe('TransactionPreviewTableComponent, the offer chip through its own templ
       const button = clearButtons()[0];
       expect(button.closest('[data-row-id]')?.getAttribute('data-row-id')).toBe('flagged');
       expect(button.closest('.duplicate-badge')).withContext('on the badge it answers').not.toBeNull();
-      expect(button.getAttribute('aria-label')).toBe('import.notADuplicate');
+      expect(button.getAttribute('aria-label')).toBe('import.notADuplicate:{"description":"Coffee Shop"}');
       expect(button.querySelector('mat-icon')?.textContent?.trim()).toBe('close');
     });
 
@@ -3105,9 +3105,9 @@ describe('TransactionPreviewTableComponent, the offer chip through its own templ
       fixture.detectChanges();
 
       const tooltip = fixture.debugElement.query(By.css('.duplicate-clear')).injector.get(MatTooltip);
-      expect(tooltip.message).toBe('import.notADuplicate');
+      expect(tooltip.message).toBe('import.notADuplicate:{"description":"Coffee Shop"}');
       expect(clearButtons()[0].getAttribute('aria-label'))
-        .withContext('one key, so the two names cannot drift')
+        .withContext('one key read with one set of params, so the two names cannot drift')
         .toBe(tooltip.message);
     });
 

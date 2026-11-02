@@ -681,9 +681,13 @@ export class TransactionPreviewTableComponent implements AfterViewInit {
    * placed or removed before anything is typed into it, and every announce
    * call needs the same answer rather than each deciding on its own whether
    * to say nothing instead. Remove's question and the row's checkbox name
-   * the row the same way, each inside a sentence of its own.
+   * the row the same way, each inside a sentence of its own, and so does
+   * every field and button the card stamps once per row: the template reads
+   * it, which is why it is protected. The fields commit on Enter or blur,
+   * never per keystroke, so a description being typed does not rename the
+   * field it is typed into.
    */
-  private announceDescription(row: CategorizedImportTransaction): string {
+  protected announceDescription(row: CategorizedImportTransaction): string {
     return descriptionIsUnfilled(row)
       ? this.translationService.t('import.untitledRow')
       : row.description;
