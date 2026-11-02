@@ -9,11 +9,8 @@ import { HeaderComponent } from './header.component';
 import { AuthService } from '../../../core/services/auth.service';
 import { SupportedLocale, TranslationService } from '../../../core/services/translation.service';
 import { APP_BREAKPOINTS } from '../../../core/layout/breakpoints';
-import { createTranslationStub, provideNoMotion } from '../../../core/services/testing';
+import { catalogTranslationStub, catalogTranslator, provideNoMotion } from '../../../core/services/testing';
 import { User } from '../../../models';
-import en from '../../../../assets/i18n/en.json';
-import ja from '../../../../assets/i18n/ja.json';
-import tc from '../../../../assets/i18n/tc.json';
 
 /**
  * `header.component.spec.ts` blanks the template (`overrideComponent` ->
@@ -99,18 +96,9 @@ describe('overflow guard: the header avatar', () => {
 describe('overflow guard: the header with the ? hint at 1024 px', () => {
   const DESKTOP_WIDTH = 1024;
   const HINT_KEY = 'homeaccount.shortcuts-hint-dismissed';
-  const CATALOGS: Record<SupportedLocale, unknown> = { en, ja, tc };
 
   let fixture: ComponentFixture<HeaderComponent>;
   let host: HTMLElement;
-
-  /** The catalog's own string for a dotted key, or the key when it has none. */
-  function lookup(catalog: unknown, key: string): string {
-    const found = key
-      .split('.')
-      .reduce<unknown>((node, part) => (node as Record<string, unknown> | undefined)?.[part], catalog);
-    return typeof found === 'string' ? found : key;
-  }
 
   async function setUp(locale: SupportedLocale): Promise<void> {
     localStorage.removeItem(HINT_KEY);
@@ -135,10 +123,7 @@ describe('overflow guard: the header with the ? hint at 1024 px', () => {
         },
         {
           provide: TranslationService,
-          useValue: createTranslationStub({
-            t: (key: string) => lookup(CATALOGS[locale], key),
-            currentLocale: signal<string>(locale),
-          }),
+          useValue: catalogTranslationStub(locale),
         },
         provideNoMotion(),
       ],
@@ -168,7 +153,7 @@ describe('overflow guard: the header with the ? hint at 1024 px', () => {
       const toolbar = host.querySelector('.header-toolbar') as HTMLElement;
       const hint = host.querySelector('.shortcuts-hint') as HTMLElement | null;
       expect(hint).withContext('the hint at desktop').not.toBeNull();
-      expect(hint!.textContent).withContext('the catalog sentence').toContain(lookup(CATALOGS[locale], 'shortcuts.hint'));
+      expect(hint!.textContent).withContext('the catalog sentence').toContain(catalogTranslator(locale)('shortcuts.hint'));
 
       expect(toolbar.scrollWidth).withContext('toolbar scrollWidth vs clientWidth').toBeLessThanOrEqual(toolbar.clientWidth + 1);
       expect(toolbar.getBoundingClientRect().height).withContext('the toolbar keeps its height').toBeCloseTo(64, 0);

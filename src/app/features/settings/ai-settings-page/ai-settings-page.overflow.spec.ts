@@ -16,8 +16,7 @@ import { ProviderKeyService } from '../../../core/services/provider-key.service'
 import { NotificationService } from '../../../core/services/notification.service';
 import { TranslationService } from '../../../core/services/translation.service';
 import { TEXT_MODELS, VISION_MODELS } from '../../../core/config/ai-models';
-import { createTranslationStub, provideNoMotion, textLines } from '../../../core/services/testing';
-import en from '../../../../assets/i18n/en.json';
+import { catalogTranslationStub, provideNoMotion, textLines } from '../../../core/services/testing';
 
 /**
  * The Gemini model selects at the Extra large font scale on a phone.
@@ -261,20 +260,12 @@ describe('overflow guard: the AI settings card actions at phone width', () => {
   let fixture: ComponentFixture<PageProbeComponent>;
   let host: HTMLElement;
 
-  /** A key's English copy, or the key itself where the catalog has none. */
-  function english(key: string): string {
-    const found = key
-      .split('.')
-      .reduce<unknown>((node, part) => (node as Record<string, unknown> | undefined)?.[part], en);
-    return typeof found === 'string' ? found : key;
-  }
-
   async function render(pageWidth: number): Promise<void> {
     await TestBed.configureTestingModule({
       imports: [PageProbeComponent, RouterTestingModule, HttpClientTestingModule],
       providers: [
         ...pageProviders(),
-        { provide: TranslationService, useValue: createTranslationStub({ t: english }) },
+        { provide: TranslationService, useValue: catalogTranslationStub('en') },
       ],
       schemas: [NO_ERRORS_SCHEMA],
     }).compileComponents();

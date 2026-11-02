@@ -10,13 +10,12 @@ import { HouseholdError } from '../../../../core/services/household.service';
 import { HouseholdGoalInput } from '../../../../core/services/household-plans.service';
 import { NotificationService } from '../../../../core/services/notification.service';
 import { TranslationService } from '../../../../core/services/translation.service';
-import { createTranslationStub, provideAppDatepickerForTests, provideNoMotion } from '../../../../core/services/testing';
+import { catalogTranslationStub, createTranslationStub, provideAppDatepickerForTests, provideNoMotion } from '../../../../core/services/testing';
 import { HouseholdGoal } from '../../../../models';
 import {
   PLAN_AUDIT_THEMES,
   PLAN_PHONE_WIDTH,
   auditPlanDialog,
-  englishTranslationStub,
   measureAmountRowLabels,
   measurePinnedActions,
   openPlanDialog,
@@ -233,7 +232,7 @@ describe('HouseholdGoalDialogComponent', () => {
   });
 
   it("keeps every error inside its own field at a phone's width, at every font scale", async () => {
-    TestBed.overrideProvider(TranslationService, { useValue: englishTranslationStub() });
+    TestBed.overrideProvider(TranslationService, { useValue: catalogTranslationStub('en') });
     const readings = await readAtEveryScale(
       HouseholdGoalDialogComponent,
       { currency: 'USD', save },
@@ -277,7 +276,7 @@ describe('HouseholdGoalDialogComponent', () => {
   });
 
   it("keeps the target's error inside its own field at a phone's width, the wrapped error pushing the target date down", async () => {
-    TestBed.overrideProvider(TranslationService, { useValue: englishTranslationStub() });
+    TestBed.overrideProvider(TranslationService, { useValue: catalogTranslationStub('en') });
     const dialog = await openPlanDialog(
       HouseholdGoalDialogComponent,
       { currency: 'USD', save },
@@ -306,7 +305,7 @@ describe('HouseholdGoalDialogComponent', () => {
   });
 
   it("shows the target's and the currency's floated labels whole at a phone's width, at every font scale", async () => {
-    TestBed.overrideProvider(TranslationService, { useValue: englishTranslationStub() });
+    TestBed.overrideProvider(TranslationService, { useValue: catalogTranslationStub('en') });
     const readings = await measureAmountRowLabels(HouseholdGoalDialogComponent, { currency: 'USD', save }, dialog =>
       dialog.form.patchValue({ targetAmount: 1000 })
     );

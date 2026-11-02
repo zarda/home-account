@@ -143,6 +143,63 @@ export function runAxe(element: Element): Promise<AxeResults> {
   return axe.run(element, axeOptions());
 }
 
+/**
+ * Runs `read` over a virtual tree of `el`'s document that axe builds for this
+ * one read and tears down after it.
+ *
+ * axe's text functions read the tree that `axe.setup` or a running pass
+ * builds. `runAxe` calls neither `setup` nor `configure`: `axe.run` builds
+ * its own tree and tears it down when it settles. So a read between passes
+ * leaves nothing behind for the next one. A pass still in flight holds its
+ * tree, and `setup` refuses to build over it; this throws there rather than
+ * tear the pass's tree down under it.
+ */
+function readFromAxeTree<T>(el: Element, read: () => T): T {
+  if (!el.isConnected) {
+    throw new Error('axe: the element is not in the document, so it has no accessible name');
+  }
+  try {
+    axe.setup(el.ownerDocument);
+  } catch (error) {
+    throw new Error(`axe: a pass is still running, so no name can be read until it settles (${error})`);
+  }
+  try {
+    return read();
+  } finally {
+    axe.teardown();
+  }
+}
+
+/**
+ * `el`'s accessible name, as axe computes it for its own rules: a
+ * `display:none` label gives none, a label clipped out of sight keeps its
+ * words, and `aria-labelledby` and `aria-label` win over the content.
+ */
+export function accessibleName(el: Element): string {
+  return readFromAxeTree(el, () => axe.commons.text.accessibleText(el));
+}
+
+/**
+ * `el`'s accessible description: the text of the nodes its
+ * `aria-describedby` names, in the attribute's order and each read by the
+ * same computation as a name, so one that is hidden still counts, as it does
+ * for a screen reader. With no such node it is `aria-description`, or ''. A
+ * `title` used as a description is not read.
+ */
+export function accessibleDescription(el: Element): string {
+  return readFromAxeTree(el, () => {
+    const root = el.getRootNode() as Document | ShadowRoot;
+    const described = (el.getAttribute('aria-describedby') ?? '')
+      .split(/\s+/)
+      .map(id => (id ? root.getElementById(id) : null))
+      .filter((node): node is HTMLElement => node !== null);
+    const text = described.length
+      ? described.map(node => axe.commons.text.accessibleText(node, { inLabelledByContext: true })).join(' ')
+      : (el.getAttribute('aria-description') ?? '');
+    return text.replace(/\s+/g, ' ').trim();
+  });
+}
+
 /** header.component.scss's toolbar height; the header is fixed over the viewport's top. */
 const HEADER_PX = 64;
 

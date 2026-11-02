@@ -1,6 +1,7 @@
 import { provideRouter } from '@angular/router';
 import { LocaleFormatService } from '../../../core/services/locale-format.service';
 import {
+  catalogTranslator,
   createTranslationStub,
   createLocaleFormatStub,
   hoverValue,
@@ -1420,21 +1421,13 @@ describe('DataManagementComponent, through its own template', () => {
     /** The section's 20 px padding and 1 px border, a side. */
     const SECTION_INSET_PX = 21;
 
-    /** A key's English copy, or the key itself where the catalog has none. */
-    function english(key: string): string {
-      const found = key
-        .split('.')
-        .reduce<unknown>((node, part) => (node as Record<string, unknown> | undefined)?.[part], en);
-      return typeof found === 'string' ? found : key;
-    }
-
     /**
      * The row in a section `sectionWidth` px wide, with each action's label
      * checked to be one line inside it. Returns the line each action stands
      * on, by its top edge.
      */
     function actionLines(sectionWidth: number, where: string): number[] {
-      (TestBed.inject(TranslationService) as unknown as TranslationStub).t = english;
+      (TestBed.inject(TranslationService) as unknown as TranslationStub).t = catalogTranslator('en');
       const host = el();
       host.style.display = 'block';
       host.style.width = `${sectionWidth}px`;

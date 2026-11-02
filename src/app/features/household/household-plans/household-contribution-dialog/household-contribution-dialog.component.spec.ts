@@ -9,12 +9,11 @@ import {
 import { HouseholdError } from '../../../../core/services/household.service';
 import { NotificationService } from '../../../../core/services/notification.service';
 import { TranslationService } from '../../../../core/services/translation.service';
-import { createTranslationStub, provideNoMotion } from '../../../../core/services/testing';
+import { catalogTranslationStub, createTranslationStub, provideNoMotion } from '../../../../core/services/testing';
 import { startOfDay } from '../../../../core/utils/transaction-date.utils';
 import {
   PLAN_AUDIT_THEMES,
   auditPlanDialog,
-  englishTranslationStub,
   measurePinnedActions,
   readAtEveryScale,
   readReservedRows,
@@ -160,7 +159,7 @@ describe('HouseholdContributionDialogComponent', () => {
   });
 
   it("keeps every error inside its own field at a phone's width, at every font scale", async () => {
-    TestBed.overrideProvider(TranslationService, { useValue: englishTranslationStub() });
+    TestBed.overrideProvider(TranslationService, { useValue: catalogTranslationStub('en') });
     const readings = await readAtEveryScale(
       HouseholdContributionDialogComponent,
       { goalName: 'Holiday', currency: 'EUR', save },

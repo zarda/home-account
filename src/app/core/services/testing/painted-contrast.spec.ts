@@ -2,11 +2,16 @@ import { ChangeDetectionStrategy, Component } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { Rgb, contrastRatio } from '../../utils/color-contrast.utils';
 import {
+  PALETTES,
   channels,
+  expectPainted,
   hoverValue,
+  inPalette,
   paintedBackground,
   paintedColor,
+  paintedVerdict,
   ratio,
+  tokenValue,
   withTheme,
 } from './painted-contrast';
 
@@ -239,6 +244,104 @@ describe('painted-contrast', () => {
       await run;
       expect(root.classList.contains('dark-theme')).toBeFalse();
       expect(root.classList.contains('light-theme')).toBeFalse();
+    });
+  });
+
+  describe('the palettes', () => {
+    const root = document.documentElement;
+    const PALETTE_CLASSES = ['light-theme', 'dark-theme', 'high-contrast'];
+    const stamped = () => PALETTE_CLASSES.filter(name => root.classList.contains(name));
+    let before: string[];
+
+    beforeEach(() => {
+      before = stamped();
+    });
+
+    afterEach(() => {
+      for (const name of PALETTE_CLASSES) root.classList.toggle(name, before.includes(name));
+    });
+
+    it('runs each of the four palettes with exactly its classes, and restores the classes it found', () => {
+      root.classList.add('dark-theme', 'high-contrast');
+      root.classList.remove('light-theme');
+
+      expect(PALETTES.map(palette => palette.name)).toEqual(['plain', 'high contrast', 'dark', 'dark high contrast']);
+      for (const palette of PALETTES) {
+        expect(inPalette(palette.classes, stamped))
+          .withContext(palette.name)
+          .toEqual(jasmine.arrayWithExactContents([...palette.classes]));
+        expect(stamped()).withContext(`after ${palette.name}`).toEqual(['dark-theme', 'high-contrast']);
+      }
+      expect(() =>
+        inPalette(['light-theme'], () => {
+          throw new Error('inside');
+        })
+      ).toThrowError('inside');
+      expect(stamped()).withContext('after a callback that throws').toEqual(['dark-theme', 'high-contrast']);
+    });
+
+    it('holds the palette until an async callback settles, and restores the classes it found whether it resolves or rejects', async () => {
+      root.classList.add('dark-theme', 'high-contrast');
+      root.classList.remove('light-theme');
+
+      const read = await inPalette(['light-theme'], async () => {
+        await Promise.resolve();
+        return stamped();
+      });
+      expect(read).withContext('what the callback read after an await, and returned').toEqual(['light-theme']);
+      expect(stamped()).withContext('after a callback that resolves').toEqual(['dark-theme', 'high-contrast']);
+
+      let release!: () => void;
+      const gate = new Promise<void>(resolve => (release = resolve));
+      const rejecting = inPalette(['light-theme', 'high-contrast'], async () => {
+        await gate;
+        throw new Error('inside');
+      });
+      expect(stamped()).withContext('while the callback is pending').toEqual(['light-theme', 'high-contrast']);
+      release();
+      await expectAsync(rejecting).toBeRejectedWithError('inside');
+      expect(stamped()).withContext('after a callback that rejects').toEqual(['dark-theme', 'high-contrast']);
+    });
+
+    it('reads a token as its property computes it, and holds a node painted in it to the floor', () => {
+      const card = box('background-color: #ffffff');
+      const text = box('color: var(--text-primary)', card);
+      const fill = box('background-color: var(--surface-card)');
+
+      inPalette(['light-theme'], () => {
+        expect(tokenValue('--text-primary')).toBe(getComputedStyle(text).color);
+        expect(tokenValue('--surface-card', 'background-color')).toBe(getComputedStyle(fill).backgroundColor);
+        expectPainted(text, '--text-primary', 'light text on white');
+      });
+    });
+
+    it("gives expectPainted's verdict: a pass for a node in its token above the floor, a fail for another token or a pair below it", () => {
+      const card = box('background-color: #ffffff');
+      const inToken = box('color: var(--text-primary)', card);
+      const otherToken = box('color: var(--text-muted)', card);
+      const slate = box('background-color: #1f2937');
+      const belowFloor = box('color: var(--text-primary)', slate);
+
+      inPalette(['light-theme'], () => {
+        const primary = tokenValue('--text-primary');
+        const muted = tokenValue('--text-muted');
+        expect(muted).withContext('the two tokens differ in this palette').not.toBe(primary);
+
+        const pass = paintedVerdict(inToken, '--text-primary');
+        expect(pass.colour).withContext('in its token').toBe(primary);
+        expect(pass.tokenColour).withContext('in its token').toBe(primary);
+        expect(pass.colourMatches).withContext('in its token').toBeTrue();
+        expect(pass.ratio).withContext('in its token, on white').toBeGreaterThanOrEqual(4.5);
+
+        const wrong = paintedVerdict(otherToken, '--text-primary');
+        expect(wrong.colour).withContext('in another token').toBe(muted);
+        expect(wrong.colourMatches).withContext('in another token').toBeFalse();
+        expect(wrong.ratio).withContext('in another token, on white').toBeGreaterThanOrEqual(4.5);
+
+        const dim = paintedVerdict(belowFloor, '--text-primary');
+        expect(dim.colourMatches).withContext('below the floor').toBeTrue();
+        expect(dim.ratio).withContext('below the floor, on gray-800').toBeLessThan(4.5);
+      });
     });
   });
 

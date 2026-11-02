@@ -9,6 +9,7 @@ import { provideNativeDateAdapter } from '@angular/material/core';
 import { Subject } from 'rxjs';
 
 import { TransactionPreviewTableComponent } from './transaction-preview-table.component';
+import { withEveryCardShown } from './transaction-preview-table.testing';
 import { CategorySuggestionComponent } from '../category-suggestion/category-suggestion.component';
 import { Category, CategorizedImportTransaction } from '../../../../models';
 import { TranslationService } from '../../../../core/services/translation.service';
@@ -5557,35 +5558,6 @@ describe('TransactionPreviewTableComponent, the offer chip through its own templ
       fixture.detectChanges();
     }
 
-    /**
-     * Runs `pass` with the list let out to its full height, then puts its cap
-     * back. The container clips what overflows it, and axe takes a card
-     * outside that clip as off screen: at its 70dvh cap in Karma's short frame
-     * the list shows about two cards, and contrast on the rest would go
-     * unscored while the pass still read as clean. So every card is first
-     * seen inside the container.
-     */
-    async function withEveryCardShown<T>(pass: () => Promise<T>): Promise<T> {
-      const list = fixture.nativeElement.querySelector('.transactions-list') as HTMLElement;
-      const cap = list.style.maxHeight;
-      list.style.maxHeight = 'none';
-      try {
-        const container = (fixture.nativeElement.querySelector('.table-container') as HTMLElement).getBoundingClientRect();
-        const cards = [...fixture.nativeElement.querySelectorAll('.transaction-card')] as HTMLElement[];
-        const clipped = cards
-          .filter(card => {
-            const rect = card.getBoundingClientRect();
-            return rect.top < container.top || rect.bottom > container.bottom
-              || rect.left < container.left || rect.right > container.right;
-          })
-          .map(card => card.dataset['rowId']);
-        expect(clipped).withContext('cards outside the container, which axe would skip').toEqual([]);
-        return await pass();
-      } finally {
-        list.style.maxHeight = cap;
-      }
-    }
-
     for (const scheme of AUDIT_SCHEMES) {
       it(`finds nothing on a card of every kind of row, in the ${scheme} scheme`, async () => {
         renderEveryKind();
@@ -5595,7 +5567,7 @@ describe('TransactionPreviewTableComponent, the offer chip through its own templ
 
         await withScheme(TestBed.inject(ThemeService), scheme, async () => {
           fixture.detectChanges();
-          const results = await withEveryCardShown(() => runAxe(fixture.nativeElement));
+          const results = await withEveryCardShown(fixture.nativeElement, () => runAxe(fixture.nativeElement));
           expect(summarizeViolations(results)).toEqual([]);
         });
       });
@@ -5603,7 +5575,7 @@ describe('TransactionPreviewTableComponent, the offer chip through its own templ
 
     it('scores the card\'s contrast rather than skipping it', async () => {
       renderEveryKind();
-      const results = await withEveryCardShown(() => runAxe(fixture.nativeElement));
+      const results = await withEveryCardShown(fixture.nativeElement, () => runAxe(fixture.nativeElement));
       expect(results.passes.map(result => result.id)).toContain('color-contrast');
     });
   });

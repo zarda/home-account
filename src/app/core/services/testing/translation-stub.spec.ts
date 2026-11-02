@@ -5,7 +5,8 @@ import { LocaleFormatService } from '../locale-format.service';
 import { TranslatePipe } from '../../../shared/pipes/translate.pipe';
 import { LocaleDatePipe } from '../../../shared/pipes/locale-date.pipe';
 import { LocaleNumberPipe } from '../../../shared/pipes/locale-number.pipe';
-import { createTranslationStub, createLocaleFormatStub } from './translation-stub';
+import { createTranslationStub, createLocaleFormatStub, echoKey, echoTranslation } from './translation-stub';
+import en from '../../../../assets/i18n/en.json';
 
 describe('createTranslationStub', () => {
   it('echoes the key', () => {
@@ -29,6 +30,18 @@ describe('createTranslationStub', () => {
     expect(stub.t('a.b')).toBe('Pinned');
     expect(stub.t('c.d')).toBe('c.d');
     expect(stub.currentLocale()).toBe('en');
+  });
+});
+
+describe('echoTranslation and echoKey', () => {
+  // A separator is punctuation, not words: echoed, it would glue the two
+  // sentences round it into one token.
+  it('answer the sentence separator with en\'s own, and echo every other key', () => {
+    expect(echoTranslation('common.sentenceSeparator')).toBe(en.common.sentenceSeparator);
+    expect(echoKey('common.sentenceSeparator')).toBe(en.common.sentenceSeparator);
+    expect(echoTranslation('goals.remaining', { count: 3 })).toBe('goals.remaining:{"count":3}');
+    expect(echoTranslation('settings.title')).toBe('settings.title');
+    expect(echoKey('settings.title')).toBe('settings.title');
   });
 });
 

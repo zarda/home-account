@@ -7,6 +7,8 @@ import {
   DISABLED_RULES,
   KNOWN_VIOLATIONS,
   KNOWN_VIOLATION_REASONS,
+  accessibleDescription,
+  accessibleName,
   auditInView,
   axeOptions,
   runAxe,
@@ -460,6 +462,77 @@ describe('the axe harness', () => {
       } as Parameters<typeof summarizeViolations>[0];
 
       expect(summarizeViolations(results)).toEqual(['color-contrast (2): .a, .b .c']);
+    });
+  });
+
+  describe('accessible names and descriptions', () => {
+    const VISUALLY_HIDDEN =
+      'position: absolute; width: 1px; min-width: 0; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap';
+    let host: HTMLElement;
+
+    /** `html` rendered in a fresh host on the page, which the case reads by id. */
+    function render(html: string): (id: string) => Element {
+      host.innerHTML = html;
+      return id => host.querySelector(`#${id}`)!;
+    }
+
+    beforeEach(() => {
+      host = document.createElement('div');
+      document.body.appendChild(host);
+    });
+
+    afterEach(() => host.remove());
+
+    it('gives a control the name its shown label carries, and none from a display:none label', () => {
+      const node = render(`
+        <label for="shown">Amount</label><input id="shown" />
+        <label for="gone" style="display: none">Amount</label><input id="gone" />
+      `);
+
+      expect(accessibleName(node('shown'))).withContext('a shown label').toBe('Amount');
+      expect(accessibleName(node('gone'))).withContext('a display:none label').toBe('');
+    });
+
+    it('keeps the name of a label clipped out of sight, as a screen reader does', () => {
+      const node = render(`<label for="clipped" style="${VISUALLY_HIDDEN}">Amount</label><input id="clipped" />`);
+
+      expect(accessibleName(node('clipped'))).toBe('Amount');
+    });
+
+    it('reads the description from the nodes aria-describedby names, in its order, a display:none one included, and from aria-description without them', () => {
+      const node = render(`
+        <button id="browse" type="button" aria-describedby="second first">Browse</button>
+        <span id="first">Photos or CSV.</span>
+        <span id="second" style="display: none">Drop files here.</span>
+        <button id="plain" type="button">Plain</button>
+        <button id="inline" type="button" aria-description="Opens the picker.">Inline</button>
+      `);
+
+      expect(accessibleDescription(node('browse'))).toBe('Drop files here. Photos or CSV.');
+      expect(accessibleName(node('browse'))).withContext('the name stays the button\'s own').toBe('Browse');
+      expect(accessibleDescription(node('plain'))).withContext('nothing describes it').toBe('');
+      expect(accessibleDescription(node('inline'))).withContext('aria-description').toBe('Opens the picker.');
+    });
+
+    it('refuses to read a name while a pass is still running, and leaves the pass whole', async () => {
+      TestBed.configureTestingModule({ imports: [BrokenFixtureComponent] });
+      const fixture = TestBed.createComponent(BrokenFixtureComponent);
+      fixture.detectChanges();
+      const node = render('<button id="named" type="button">Named</button>');
+
+      const pass = runAxe(fixture.nativeElement as Element);
+      expect(() => accessibleName(node('named'))).toThrowError(/a pass is still running/);
+      expect(rulesOf(await pass)).withContext('the pass it overlapped').toContain('image-alt');
+      expect(accessibleName(node('named'))).withContext('once the pass is done').toBe('Named');
+    });
+
+    it('leaves axe as it found it, so the next read and the next pass both work', async () => {
+      const node = render('<button id="named" type="button">Named</button>');
+
+      expect(accessibleName(node('named'))).toBe('Named');
+      node('named').textContent = 'Renamed';
+      expect(accessibleName(node('named'))).withContext('a second read, of the DOM as it is now').toBe('Renamed');
+      expect(await violationsOf(BrokenFixtureComponent)).withContext('a pass after it').toContain('image-alt');
     });
   });
 });

@@ -3,6 +3,7 @@ export * from './mock-auth.service';
 export * from './mock-storage.service';
 export * from './test-data';
 export * from './translation-stub';
+export * from './catalog-translator';
 export * from './emulator-admin';
 export * from './axe';
 export * from './emulator-custom-token';

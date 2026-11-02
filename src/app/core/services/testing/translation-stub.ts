@@ -1,4 +1,5 @@
 import { signal } from '@angular/core';
+import en from '../../../../assets/i18n/en.json';
 import type { LocaleDateStyle } from '../locale-format.service';
 
 /**
@@ -42,6 +43,24 @@ export function createTranslationStub(overrides: Partial<TranslationStub> = {}):
     translationsVersion: signal(0),
     ...overrides,
   };
+}
+
+const SENTENCE_SEPARATOR = 'common.sentenceSeparator';
+
+/**
+ * A translator that echoes the key, and the params beside it when there are
+ * any, as `key:JSON(params)`, except for `common.sentenceSeparator`, which it
+ * answers with en.json's own. A separator is punctuation, not words: echoed,
+ * it would glue the two sentences round it into one token.
+ */
+export function echoTranslation(key: string, params?: Record<string, string | number>): string {
+  if (key === SENTENCE_SEPARATOR) return en.common.sentenceSeparator;
+  return params ? `${key}:${JSON.stringify(params)}` : key;
+}
+
+/** `echoTranslation` without the params: the key alone, and en's separator for its key. */
+export function echoKey(key: string): string {
+  return echoTranslation(key);
 }
 
 /** The half of `LocaleFormatService` the two locale pipes and the time and size callers use. */
