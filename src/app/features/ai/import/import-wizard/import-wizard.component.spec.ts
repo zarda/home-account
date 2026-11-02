@@ -4514,9 +4514,9 @@ describe('ImportWizardComponent', () => {
       }
     });
 
-    // /import/file is a route the smoke walkthrough never opens, so no axe
-    // pass had looked at the upload step with photos on it: the question that
-    // asks what they are, the zone's rows and previews, and the banner a
+    // The smoke walkthrough opens /import/file only with nothing picked, so no
+    // axe pass had looked at the upload step with photos on it: the question
+    // that asks what they are, the zone's rows and previews, and the banner a
     // refused file leaves. Swept here in both schemes, as the walkthrough
     // sweeps its routes.
     describe('the upload step with photos picked, under the axe sweep', () => {

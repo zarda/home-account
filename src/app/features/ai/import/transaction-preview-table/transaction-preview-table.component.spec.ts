@@ -5621,11 +5621,11 @@ describe('TransactionPreviewTableComponent, the offer chip through its own templ
     });
   });
 
-  // The review card is on no route the smoke walkthrough opens (/import/file
-  // is never visited), so its controls are swept here, over a card carrying
-  // every kind of row the review shows: a plain one, one whose amount and
-  // date are doubted, a refund whose type is, a duplicate, and one added by
-  // hand, in both schemes.
+  // The smoke walkthrough opens /import/file only with nothing picked, so no
+  // axe pass there meets the review card. Its controls are swept here, over a
+  // card carrying every kind of row the review shows: a plain one, one whose
+  // amount and date are doubted, a refund whose type is, a duplicate, and one
+  // added by hand, in both schemes.
   describe('under the axe sweep', () => {
     function renderEveryKind(): void {
       component.transactions = [
