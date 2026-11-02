@@ -14,8 +14,9 @@
 // goes through in production. Emulator-only by construction: the host is
 // pinned to the emulator's and no deployed project would honour that header.
 //
-// This file compiles into the app program (tsconfig.app.json excludes only
-// *.spec.ts, not testing helpers), so it stays jasmine-free.
+// This file compiles into the app program (tsconfig.app.json excludes
+// *.spec.ts and src/test-main.ts, not testing helpers), so it stays
+// jasmine-free.
 
 /** Must match the emulator port in firebase.json. */
 const FIRESTORE_EMULATOR_ORIGIN = 'http://127.0.0.1:8080';

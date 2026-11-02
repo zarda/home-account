@@ -33,10 +33,10 @@
 // correct when run standalone (e.g. `--include` a single spec). Verified: no
 // other smoke spec asserts on console.warn, so silencing it globally is safe.
 //
-// This file compiles into the app program (tsconfig.app.json excludes only
-// *.spec.ts, not testing helpers — see the other testing/mock-*.ts files
-// here), so it stays jasmine-free rather than pulling in jasmine's ambient
-// types.
+// This file compiles into the app program (tsconfig.app.json excludes
+// *.spec.ts and src/test-main.ts, not testing helpers — see the other
+// testing/mock-*.ts files here), so it stays jasmine-free rather than pulling
+// in jasmine's ambient types.
 import { setLogLevel, LogLevel } from '@angular/fire';
 import { getApps } from '@angular/fire/app';
 

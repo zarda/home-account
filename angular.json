@@ -179,6 +179,10 @@
         "test": {
           "builder": "@angular/build:karma",
           "options": {
+            "main": "src/test-main.ts",
+            "codeCoverageExclude": [
+              "src/test-main.ts"
+            ],
             "polyfills": [
               "zone.js",
               "zone.js/testing",
