@@ -25,14 +25,17 @@ import {
   AUDIT_SCHEMES,
   MockAuthService,
   channels,
+  expectOneRule,
   paintedBackground,
   paintedColor,
   ratio,
+  rulesUnder,
   runAxe,
   settleAnimations,
-  styleRules,
   summarizeViolations,
   textLines,
+  underRule,
+  withInlineStyle,
   withScheme,
   withTheme,
   provideNoMotion,
@@ -3568,41 +3571,18 @@ describe('ImportWizardComponent', () => {
       const widths = (nodes: HTMLElement[]) => nodes.map(node => node.getBoundingClientRect().width);
 
       /** The rules under the 599.98px query that style the step labels. */
-      const phoneLabelRules = (): CSSStyleRule[] =>
-        styleRules()
-          .filter(
-            ({ media, rule }) =>
-              media !== null &&
-              media.includes('max-width: 599.98px') &&
-              rule.selectorText.includes('.modern-stepper') &&
-              /\.mat-step-label(?![\w-])/.test(rule.selectorText)
-          )
-          .map(({ rule }) => rule);
-
-      /** Runs `fn` with `cssText` as every step label's inline style, then puts the labels back. */
-      async function withLabelStyle(cssText: string, fn: () => unknown): Promise<void> {
-        const all = labels();
-        const before = all.map(label => label.style.cssText);
-        all.forEach(label => (label.style.cssText = cssText));
-        try {
-          await fn();
-        } finally {
-          all.forEach((label, i) => (label.style.cssText = before[i]));
-        }
-      }
+      const phoneLabelRules = () =>
+        rulesUnder(
+          'max-width: 599.98px',
+          selector => selector.includes('.modern-stepper') && /\.mat-step-label(?![\w-])/.test(selector)
+        );
 
       /** Runs `fn` with the phone rule's declarations on every step label. */
-      async function underPhoneRule(fn: () => unknown): Promise<void> {
-        const [rule] = phoneLabelRules();
-        expect(rule).withContext('the phone rule for the step labels').toBeDefined();
-        if (!rule) return;
-        await withLabelStyle(rule.style.cssText, fn);
-      }
+      const underPhoneRule = (fn: () => unknown) =>
+        underRule(phoneLabelRules()[0], labels(), 'the phone rule for the step labels', fn);
 
       it('finds the phone rule for the step labels, so the cases below read something', () => {
-        const rules = phoneLabelRules();
-        expect(rules.length).withContext('at least one').toBeGreaterThan(0);
-        expect(new Set(rules.map(rule => rule.cssText)).size).withContext('one rule, however many copies').toBe(1);
+        expectOneRule(phoneLabelRules());
         expect(labels().length).withContext('a label per step').toBe(4);
       });
 
@@ -3615,7 +3595,7 @@ describe('ImportWizardComponent', () => {
 
       it("takes the labels out of the headers' room under it, leaving the numbered circles", async () => {
         let bare: number[] = [];
-        await withLabelStyle('display: none', () => (bare = widths(headers())));
+        await withInlineStyle(labels(), 'display: none', () => (bare = widths(headers())));
         expect(bare.length).withContext('a header per step').toBe(4);
 
         await underPhoneRule(() => {

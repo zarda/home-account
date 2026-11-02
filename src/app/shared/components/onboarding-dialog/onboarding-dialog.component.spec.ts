@@ -3,7 +3,7 @@ import { MatDialogRef } from '@angular/material/dialog';
 
 import { OnboardingDialogComponent } from './onboarding-dialog.component';
 import { TranslationService } from '../../../core/services/translation.service';
-import { provideNoMotion } from '../../../core/services/testing';
+import { accessibleName, provideNoMotion } from '../../../core/services/testing';
 
 describe('OnboardingDialogComponent', () => {
   let fixture: ComponentFixture<OnboardingDialogComponent>;
@@ -139,6 +139,31 @@ describe('OnboardingDialogComponent', () => {
       'onboarding.stepOf {"current":2,"total":3}'
     );
     expect(indicator?.querySelector('[aria-hidden="true"]')?.textContent?.trim()).toBe('2/3');
+  });
+
+  // The sentence is the region's only reading: the glyph beside it is
+  // aria-hidden. It is clipped by the a11y mixin's inset(50%), not by
+  // Tailwind's screen-reader utility, whose clip: rect() leaves clip-path at
+  // none, and clipped in place it is still what the region reads. The pin
+  // reads the clip's computed shape, not where it is declared, so a
+  // hand-written copy of the mixin's rules would read the same here. A status
+  // region takes no name from its content, so its text is read child by
+  // child, as axe reads each: a clipped child keeps its words, a hidden one
+  // gives none.
+  // A pin. Mutations: the class dropped (clip none, a box wider than 1px),
+  // the mixin swapped for Tailwind's screen-reader utility (clip none, the
+  // box still 1px), the mixin swapped for display: none (clip none, the
+  // reading empty).
+  it('clips the step sentence as every visually hidden label is, and keeps it the status text', () => {
+    const indicator = (fixture.nativeElement as HTMLElement).querySelector<HTMLElement>('.step-indicator');
+    expect(indicator).withContext('the status region').not.toBeNull();
+    const sentence = indicator!.querySelector<HTMLElement>(':scope > span:not([aria-hidden="true"])');
+    expect(sentence).withContext('the step sentence').not.toBeNull();
+
+    expect(getComputedStyle(sentence!).clipPath).withContext("the mixin's clip").toBe('inset(50%)');
+    expect(sentence!.getBoundingClientRect().width).withContext("the sentence's box, px").toBeLessThanOrEqual(1);
+    const reading = Array.from(indicator!.children).map(child => accessibleName(child)).filter(Boolean);
+    expect(reading).withContext("the status region's text").toEqual(['onboarding.stepOf {"current":1,"total":3}']);
   });
 
   it('exposes both starting actions only on the last step', () => {

@@ -12,14 +12,26 @@ import { MatDialog } from '@angular/material/dialog';
 
 import { SettingsComponent } from './settings.component';
 import { AuthService } from '../../core/services/auth.service';
+import { ThemeService } from '../../core/services/theme.service';
 import { TranslationService } from '../../core/services/translation.service';
 import { PageHeaderComponent } from '../../shared/components/page-header/page-header.component';
 import { TranslatePipe } from '../../shared/pipes/translate.pipe';
 import {
+  AUDIT_SCHEMES,
+  accessibleName,
+  catalogTranslationStub,
+  catalogTranslator,
+  expectOneRule,
   paintedBackground,
   paintedColor,
   provideNoMotion,
   ratio,
+  rulesUnder,
+  runAxe,
+  summarizeViolations,
+  underRule,
+  withInlineStyle,
+  withScheme,
   withTheme,
 } from '../../core/services/testing';
 
@@ -150,41 +162,51 @@ describe('SettingsComponent', () => {
     });
   });
 
-  // The real template, with only the child feature components left unresolved,
-  // so the sections the page actually offers can be asserted.
+  /**
+   * The page on its real template, with only the child feature components
+   * left unresolved, rendering `translation`'s words. Not yet rendered: the
+   * caller runs the first `detectChanges()`.
+   */
+  async function createWithRealTemplate(
+    translation: object = mockTranslationService
+  ): Promise<ComponentFixture<SettingsComponent>> {
+    TestBed.resetTestingModule();
+    await TestBed.configureTestingModule({
+      imports: [SettingsComponent],
+      providers: [
+        provideRouter([]),
+        { provide: AuthService, useValue: mockAuthService },
+        { provide: MatDialog, useValue: mockDialog },
+        { provide: TranslationService, useValue: translation },
+        provideNoMotion()
+      ],
+      schemas: [NO_ERRORS_SCHEMA]
+    })
+      .overrideComponent(SettingsComponent, {
+        set: {
+          imports: [
+            CommonModule,
+            MatButtonModule,
+            MatExpansionModule,
+            MatIconModule,
+            PageHeaderComponent,
+            RouterLink,
+            TranslatePipe
+          ],
+          // A standalone component's template is governed by its own schemas,
+          // not the TestBed's, so the child feature elements need excusing here.
+          schemas: [NO_ERRORS_SCHEMA]
+        }
+      })
+      .compileComponents();
+
+    return TestBed.createComponent(SettingsComponent);
+  }
+
+  // The real template, so the sections the page actually offers can be asserted.
   describe('sections', () => {
     beforeEach(async () => {
-      TestBed.resetTestingModule();
-      await TestBed.configureTestingModule({
-        imports: [SettingsComponent],
-        providers: [
-          provideRouter([]),
-          { provide: AuthService, useValue: mockAuthService },
-          { provide: MatDialog, useValue: mockDialog },
-          { provide: TranslationService, useValue: mockTranslationService },
-          provideNoMotion()
-        ],
-        schemas: [NO_ERRORS_SCHEMA]
-      })
-        .overrideComponent(SettingsComponent, {
-          set: {
-            imports: [
-              CommonModule,
-              MatButtonModule,
-              MatExpansionModule,
-              MatIconModule,
-              PageHeaderComponent,
-              RouterLink,
-              TranslatePipe
-            ],
-            // A standalone component's template is governed by its own schemas,
-            // not the TestBed's, so the child feature elements need excusing here.
-            schemas: [NO_ERRORS_SCHEMA]
-          }
-        })
-        .compileComponents();
-
-      fixture = TestBed.createComponent(SettingsComponent);
+      fixture = await createWithRealTemplate();
       fixture.detectChanges();
     });
 
@@ -246,39 +268,87 @@ describe('SettingsComponent', () => {
     });
   });
 
+  // #531: below 480px the user card keeps Sign out as its icon alone, and the
+  // label beside the icon is the button's only name. The rule is a viewport
+  // query and Karma's window is 756px, so these cases read its declarations
+  // from the stylesheet and lay them on the rendered label, as the wizard's
+  // step-label cases do, then read the name and measure the room it leaves.
+  // Laid inline, the declarations skip the cascade, so these cases prove what
+  // the rule declares; a phone-width window is what proves the cascade. Each
+  // locale renders its catalog's words.
+  describe('Sign out under the phone rule', () => {
+    const PHONE = 'max-width: 480px';
+
+    /** The rules under the 480px query that style the Sign out label. */
+    const phoneLabelRules = () => rulesUnder(PHONE, /\.sign-out-label(?![\w-])/);
+
+    const button = () => (fixture.nativeElement as HTMLElement).querySelector<HTMLElement>('.user-card .sign-out-btn');
+    const labels = () => Array.from(button()?.querySelectorAll<HTMLElement>('.sign-out-label') ?? []);
+    const label = () => labels()[0] ?? null;
+
+    /** Runs `fn` with the phone rule's declarations on the label. */
+    const underPhoneRule = (fn: () => unknown) =>
+      underRule(phoneLabelRules()[0], labels(), 'the phone rule for the Sign out label', fn);
+
+    for (const locale of ['en', 'ja', 'tc'] as const) {
+      describe(`in ${locale}`, () => {
+        const signOutWords = () => catalogTranslator(locale, { strict: true })('auth.signOut');
+
+        beforeEach(async () => {
+          fixture = await createWithRealTemplate(catalogTranslationStub(locale));
+          fixture.detectChanges();
+        });
+
+        it('finds the phone rule for the label, so the cases below read something', () => {
+          expectOneRule(phoneLabelRules());
+          expect(label()?.textContent).withContext("the label, in the catalog's words").toBe(signOutWords());
+        });
+
+        it('names Sign out by its label under it', async () => {
+          await underPhoneRule(() => {
+            expect(accessibleName(button()!)).toBe(signOutWords());
+          });
+        });
+
+        it("takes the label out of the button's room under it, leaving the icon", async () => {
+          let bare = 0;
+          await withInlineStyle(labels(), 'display: none', () => (bare = button()!.getBoundingClientRect().width));
+          expect(bare).withContext('the button with no label, px').toBeGreaterThan(0);
+
+          await underPhoneRule(() => {
+            expect(button()!.getBoundingClientRect().width)
+              .withContext('the button, px, against the same button with no label')
+              .toBe(bare);
+            expect(label()!.getBoundingClientRect().width).withContext("the label's own box, px").toBeLessThanOrEqual(1);
+          });
+        });
+
+        it("shows the label at Karma's own width", () => {
+          expect(matchMedia(`(${PHONE})`).matches).withContext('the window is wider than the rule').toBeFalse();
+          expect(label()!.getBoundingClientRect().width).withContext("the label's box, px").toBeGreaterThan(1);
+        });
+
+        for (const scheme of AUDIT_SCHEMES) {
+          it(`keeps Sign out named under it, in the ${scheme} scheme`, async () => {
+            expect(button()).withContext('the Sign out button').not.toBeNull();
+
+            await underPhoneRule(() =>
+              withScheme(TestBed.inject(ThemeService), scheme, async () => {
+                fixture.detectChanges();
+                expect(summarizeViolations(await runAxe(button()!))).toEqual([]);
+              })
+            );
+          });
+        }
+      });
+    }
+  });
+
   // Same real-template rationale as 'sections' above: the avatar swap has to
   // be observed in the DOM, which the blank-template default fixture cannot host.
   describe('avatar', () => {
     beforeEach(async () => {
-      TestBed.resetTestingModule();
-      await TestBed.configureTestingModule({
-        imports: [SettingsComponent],
-        providers: [
-          provideRouter([]),
-          { provide: AuthService, useValue: mockAuthService },
-          { provide: MatDialog, useValue: mockDialog },
-          { provide: TranslationService, useValue: mockTranslationService },
-          provideNoMotion()
-        ],
-        schemas: [NO_ERRORS_SCHEMA]
-      })
-        .overrideComponent(SettingsComponent, {
-          set: {
-            imports: [
-              CommonModule,
-              MatButtonModule,
-              MatExpansionModule,
-              MatIconModule,
-              PageHeaderComponent,
-              RouterLink,
-              TranslatePipe
-            ],
-            schemas: [NO_ERRORS_SCHEMA]
-          }
-        })
-        .compileComponents();
-
-      fixture = TestBed.createComponent(SettingsComponent);
+      fixture = await createWithRealTemplate();
       fixture.detectChanges();
     });
 
@@ -330,35 +400,7 @@ describe('SettingsComponent', () => {
 
     beforeEach(async () => {
       lang.set('en');
-      TestBed.resetTestingModule();
-      await TestBed.configureTestingModule({
-        imports: [SettingsComponent],
-        providers: [
-          provideRouter([]),
-          { provide: AuthService, useValue: mockAuthService },
-          { provide: MatDialog, useValue: mockDialog },
-          { provide: TranslationService, useValue: { t: say } },
-          provideNoMotion()
-        ],
-        schemas: [NO_ERRORS_SCHEMA]
-      })
-        .overrideComponent(SettingsComponent, {
-          set: {
-            imports: [
-              CommonModule,
-              MatButtonModule,
-              MatExpansionModule,
-              MatIconModule,
-              PageHeaderComponent,
-              RouterLink,
-              TranslatePipe
-            ],
-            schemas: [NO_ERRORS_SCHEMA]
-          }
-        })
-        .compileComponents();
-
-      fixture = TestBed.createComponent(SettingsComponent);
+      fixture = await createWithRealTemplate({ t: say });
     });
 
     // Not trimmed here: edge space in the card is what a trimmed name must not have.
