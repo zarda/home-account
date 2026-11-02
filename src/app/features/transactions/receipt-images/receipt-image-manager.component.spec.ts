@@ -379,8 +379,10 @@ describe('ReceiptImageManagerComponent, through its own template', () => {
     await render();
 
     const actions = Array.from(tiles(groups()[0])[0].querySelectorAll('.tile-actions button')) as HTMLButtonElement[];
-    expect(actions.map(b => b.getAttribute('aria-label')))
-      .toEqual(['receiptImages.convertToNote', 'receiptImages.removeImage']);
+    expect(actions.map(b => b.getAttribute('aria-label'))).toEqual([
+      'receiptImages.convertImageOf:{"index":1,"description":"Cafe"}',
+      'receiptImages.removeImageOf:{"index":1,"description":"Cafe"}',
+    ]);
   });
 
   it('replaces one busy slot\'s actions with a spinner, leaving its neighbour alone', async () => {

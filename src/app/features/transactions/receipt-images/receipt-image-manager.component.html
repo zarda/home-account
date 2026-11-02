@@ -34,7 +34,7 @@
                 (click)="removeAllImages(group)"
                 [disabled]="isBusy(group.transaction.id)"
                 [matTooltip]="'receiptImages.removeAllImages' | translate"
-                [attr.aria-label]="'receiptImages.removeAllImages' | translate"
+                [attr.aria-label]="'receiptImages.removeAllImagesOf' | translate: { description: quotedName(group) }"
               >
                 <mat-icon>delete_sweep</mat-icon>
               </button>
@@ -68,7 +68,7 @@
                       (click)="convertToNote(group, image)"
                       [disabled]="isBusy(group.transaction.id)"
                       [matTooltip]="'receiptImages.convertToNote' | translate"
-                      [attr.aria-label]="'receiptImages.convertToNote' | translate"
+                      [attr.aria-label]="'receiptImages.convertImageOf' | translate: { index: i + 1, description: quotedName(group) }"
                     >
                       <mat-icon>notes</mat-icon>
                     </button>
@@ -79,7 +79,7 @@
                       (click)="removeImage(group, image)"
                       [disabled]="isBusy(group.transaction.id)"
                       [matTooltip]="'receiptImages.removeImage' | translate"
-                      [attr.aria-label]="'receiptImages.removeImage' | translate"
+                      [attr.aria-label]="'receiptImages.removeImageOf' | translate: { index: i + 1, description: quotedName(group) }"
                     >
                       <mat-icon>delete</mat-icon>
                     </button>

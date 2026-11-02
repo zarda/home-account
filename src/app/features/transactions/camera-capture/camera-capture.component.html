@@ -114,7 +114,7 @@
                   type="button"
                   (click)="moveImageUp(i)"
                   [disabled]="i === 0 || isProcessing()"
-                  [attr.aria-label]="'common.moveUp' | translate"
+                  [attr.aria-label]="'receiptImages.moveImageUp' | translate: { index: i + 1 }"
                   [title]="'common.moveUp' | translate"
                 >
                   <mat-icon>arrow_upward</mat-icon>
@@ -124,7 +124,7 @@
                   type="button"
                   (click)="moveImageDown(i)"
                   [disabled]="i === imageCount() - 1 || isProcessing()"
-                  [attr.aria-label]="'common.moveDown' | translate"
+                  [attr.aria-label]="'receiptImages.moveImageDown' | translate: { index: i + 1 }"
                   [title]="'common.moveDown' | translate"
                 >
                   <mat-icon>arrow_downward</mat-icon>
@@ -135,7 +135,7 @@
                   type="button"
                   (click)="removeImage(image.id)"
                   [disabled]="isProcessing()"
-                  [attr.aria-label]="'common.remove' | translate"
+                  [attr.aria-label]="'receiptImages.removeImageNumber' | translate: { index: i + 1 }"
                   [title]="'common.remove' | translate"
                 >
                   <mat-icon>close</mat-icon>

@@ -35,7 +35,7 @@
                     type="button"
                     class="clear-receipt-btn"
                     (click)="removePendingReceipt(i)"
-                    [attr.aria-label]="'common.remove' | translate"
+                    [attr.aria-label]="'receiptImages.removeNewImage' | translate: { index: i + 1 }"
                   >
                     <mat-icon>close</mat-icon>
                   </button>
@@ -117,7 +117,7 @@
                     (click)="convertStoredReceiptToNote(stored)"
                     [disabled]="busyStoredSlot() !== null"
                     [matTooltip]="'receiptImages.convertToNoteHint' | translate"
-                    [attr.aria-label]="'receiptImages.convertToNote' | translate"
+                    [attr.aria-label]="'receiptImages.convertStoredImage' | translate: { index: i + 1 }"
                   >
                     <mat-icon>notes</mat-icon>
                   </button>
@@ -128,7 +128,7 @@
                     (click)="removeStoredReceipt(stored)"
                     [disabled]="busyStoredSlot() !== null"
                     [matTooltip]="'receiptImages.removeImage' | translate"
-                    [attr.aria-label]="'receiptImages.removeImage' | translate"
+                    [attr.aria-label]="'receiptImages.removeStoredImage' | translate: { index: i + 1 }"
                   >
                     <mat-icon>delete</mat-icon>
                   </button>
