@@ -58,6 +58,8 @@ import { Transaction, Category, Goal, User } from '../../../models';
 import {
   AUDIT_SCHEMES,
   GLYPH_PROBE_COLOURS,
+  accessibleName,
+  catalogTranslationStub,
   channels,
   chooseOption,
   createTransaction,
@@ -3095,6 +3097,9 @@ describe('TransactionFormComponent, through its own template', () => {
   let transactionsSpy: jasmine.SpyObj<TransactionService>;
   let sessionSpy: jasmine.SpyObj<CurrencyChoiceSessionService>;
 
+  // A real data URI: the strips render an <img> for each receipt, and an
+  // invalid URL would log a resource error.
+  const ONE_PIXEL = 'data:image/gif;base64,R0lGODlhAQABAAD/ACwAAAAAAQABAAACADs=';
   const el = () => fixture.nativeElement as HTMLElement;
   const text = (selector: string) => el().querySelector(selector)?.textContent?.trim() ?? null;
   const field = (name: string) =>
@@ -4042,11 +4047,52 @@ describe('TransactionFormComponent, through its own template', () => {
     });
   });
 
+  /**
+   * In edit mode the queued strip and the stored strip show at once, each
+   * stamping its controls once per image, so each names its image by the
+   * number its thumbnail's alt reads, and by which strip it sits in.
+   */
+  describe('every receipt image control names its image', () => {
+    for (const locale of ['en', 'ja', 'tc'] as const) {
+      it(`in ${locale}`, () => {
+        TestBed.overrideProvider(TranslationService, { useValue: catalogTranslationStub(locale) });
+        const t = catalogTranslator(locale, { strict: true });
+        render({ mode: 'edit', transaction: createTransaction({ description: 'Coffee' }) });
+        // Each its own preview, which the queued strip tracks by, so no two
+        // share a key.
+        component.pendingReceipts.set(['a.jpg', 'b.jpg'].map(name => ({
+          file: new File(['x'], name, { type: 'image/jpeg' }), preview: `${ONE_PIXEL}#${name}`,
+        })));
+        // A transaction whose first images were removed: the two left keep
+        // their storage slots, 2 and 5, and are numbered by their place in the
+        // strip, as their alts are, never by their slots.
+        component.storedReceipts.set([{ url: ONE_PIXEL, slot: 2 }, { url: ONE_PIXEL, slot: 5 }]);
+        fixture.detectChanges();
+
+        // Each tile as a reader meets it: the thumbnail's alt, then the names
+        // of its controls, so a name's number sits beside the alt's.
+        const tileNames = (tiles: string, controls: string) =>
+          Array.from(el().querySelectorAll(tiles)).map(tile => [
+            (tile.querySelector('img') as HTMLImageElement).alt,
+            ...Array.from(tile.querySelectorAll(controls)).map(button => accessibleName(button)),
+          ]);
+        const alt = (index: number) => t('receiptImages.imageNumber', { index, total: 2 });
+        expect(tileNames('div.receipt-preview', '.clear-receipt-btn')).withContext('the queued strip').toEqual(
+          [1, 2].map(index => [alt(index), t('receiptImages.removeNewImage', { index })]),
+        );
+        expect(tileNames('.stored-receipt', '.existing-receipt-actions button')).withContext('the stored strip').toEqual(
+          [1, 2].map(index => [
+            alt(index),
+            t('receiptImages.convertStoredImage', { index }),
+            t('receiptImages.removeStoredImage', { index }),
+          ]),
+        );
+      });
+    }
+  });
+
   describe('colours', () => {
     const THEMES = ['light', 'dark'] as const;
-    // A real data URI: the strips render an <img> for each receipt, and an
-    // invalid URL would log a resource error.
-    const ONE_PIXEL = 'data:image/gif;base64,R0lGODlhAQABAAD/ACwAAAAAAQABAAACADs=';
 
     /**
      * The form, painted with the surface Material gives the dialog container

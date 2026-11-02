@@ -50,6 +50,16 @@ describe('echoTranslation and echoKey', () => {
     expect(echoTranslation('settings.title')).toBe('settings.title');
     expect(echoKey('settings.title')).toBe('settings.title');
   });
+
+  // Quotation marks round a name are punctuation, not words: echoed, they
+  // would bury the name they quote inside a key of its own. Without the
+  // name there is nothing to quote, so the key alone echoes, as any other.
+  it('answer the quoted name with en\'s own, the name bare, and echo its key when no name comes', () => {
+    expect(en.common.quotedName).toBe('{{name}}');
+    expect(echoTranslation('common.quotedName', { name: 'Cafe' })).toBe('Cafe');
+    expect(echoTranslation('common.quotedName')).toBe('common.quotedName');
+    expect(echoKey('common.quotedName')).toBe('common.quotedName');
+  });
 });
 
 describe('createLocaleFormatStub', () => {

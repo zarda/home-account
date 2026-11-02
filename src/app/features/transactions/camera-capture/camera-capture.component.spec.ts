@@ -22,6 +22,8 @@ import { ProcessingResult } from '../../../core/services/ai-strategy.service';
 import { NotificationService } from '../../../core/services/notification.service';
 import { DuplicateDetectionService } from '../../../core/services/duplicate-detection.service';
 import {
+  accessibleName,
+  catalogTranslator,
   channels,
   paintedBackground,
   paintedColor,
@@ -633,6 +635,28 @@ describe('CameraCaptureComponent processing overlay', () => {
     const thumbnail = fixture.nativeElement.querySelector('img.thumbnail') as HTMLImageElement;
     expect(thumbnail.alt).toBe('receiptImages.imageNumber');
   });
+
+  // Up, down and remove are stamped beside every captured photo, so a name
+  // that is only the action reads the same on each. Each names its photo by
+  // the number its badge and its thumbnail's alt show.
+  for (const locale of ['en', 'ja', 'tc'] as const) {
+    it(`names each photo's arrows and remove by the photo's number in ${locale}`, () => {
+      const translations = TestBed.inject(TranslationService) as jasmine.SpyObj<TranslationService>;
+      translations.t.and.callFake(catalogTranslator(locale));
+      const t = catalogTranslator(locale, { strict: true });
+      component.capturedImages.set(['i0', 'i1'].map(id => ({
+        id, file: new File(['x'], `${id}.jpg`, { type: 'image/jpeg' }), previewUrl: onePixelGif,
+      })));
+      fixture.detectChanges();
+
+      const buttons = Array.from(fixture.nativeElement.querySelectorAll('.image-actions button')) as HTMLButtonElement[];
+      expect(buttons.map(button => accessibleName(button))).toEqual([1, 2].flatMap(index => [
+        t('receiptImages.moveImageUp', { index }),
+        t('receiptImages.moveImageDown', { index }),
+        t('receiptImages.removeImageNumber', { index }),
+      ]));
+    });
+  }
 
   it("hides the process button's own spinner behind the overlay's", () => {
     component.isProcessing.set(true);

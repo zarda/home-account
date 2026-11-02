@@ -14,6 +14,9 @@ import {
 import { TranslationService } from '../../../core/services/translation.service';
 import { NotificationService } from '../../../core/services/notification.service';
 import {
+  accessibleName,
+  catalogTranslationStub,
+  catalogTranslator,
   channels,
   createTransaction,
   createTranslationStub,
@@ -383,6 +386,118 @@ describe('ReceiptImageManagerComponent, through its own template', () => {
       'receiptImages.convertImageOf:{"index":1,"description":"Cafe"}',
       'receiptImages.removeImageOf:{"index":1,"description":"Cafe"}',
     ]);
+  });
+
+  /**
+   * Remove-all is stamped once per transaction, and convert and remove once
+   * per image, so each names its transaction by the description its row
+   * shows, and its image by the number the thumbnail's alt reads. A
+   * transaction saved with no description is named by the catalog's words
+   * for an untitled one, so no name ends on "of". A transaction whose first
+   * images were removed keeps its survivors at their storage slots, so its
+   * images are numbered by their place in the row, as the alts are, never by
+   * their slots.
+   */
+  describe('every image control names its image and its transaction', () => {
+    const untitled = createTransaction({
+      id: 't3',
+      description: '',
+      receiptUrl: 'https://x/3a.jpg',
+      receiptUrls: ['https://x/3a.jpg', 'https://x/3b.jpg'],
+      receiptCount: 2,
+    });
+    const gapped = createTransaction({
+      id: 't4',
+      description: 'Bakery',
+      receiptUrl: 'https://x/4c.jpg',
+      receiptUrls: ['', '', 'https://x/4c.jpg', '', '', 'https://x/4f.jpg'],
+      receiptCount: 2,
+    });
+
+    for (const locale of ['en', 'ja', 'tc'] as const) {
+      it(`in ${locale}`, async () => {
+        TestBed.overrideProvider(TranslationService, { useValue: catalogTranslationStub(locale) });
+        const t = catalogTranslator(locale, { strict: true });
+        transactionsSpy.getTransactionsWithReceiptsOnce.and.resolveTo([...managedTransactions, untitled, gapped]);
+        await render();
+
+        const removeAll = (group: HTMLElement) => {
+          const button = group.querySelector('.remove-all-btn');
+          return button ? accessibleName(button) : null;
+        };
+        // Each tile as a reader meets it: the thumbnail's alt, then the names
+        // of its convert and remove, so a name's number sits beside the alt's.
+        const tileNames = (group: HTMLElement) => tiles(group).map(tile => [
+          (tile.querySelector('img') as HTMLImageElement).alt,
+          ...Array.from(tile.querySelectorAll('.tile-actions button')).map(button => accessibleName(button)),
+        ]);
+        const perTile = (description: string, images: number) =>
+          Array.from({ length: images }, (_, i) => i + 1).map(index => [
+            t('receiptImages.imageNumber', { index, total: images }),
+            t('receiptImages.convertImageOf', { index, description }),
+            t('receiptImages.removeImageOf', { index, description }),
+          ]);
+        const nameless = t('transactions.untitledRow');
+        const quoted = (name: string) => t('common.quotedName', { name });
+
+        expect(groups().length).withContext('four rows').toBe(4);
+        expect(component.groups()[3].images.map(image => image.slot))
+          .withContext('Bakery\'s images sit at slots 2 and 5')
+          .toEqual([2, 5]);
+        expect(removeAll(groups()[0])).withContext('Cafe\'s remove-all')
+          .toBe(t('receiptImages.removeAllImagesOf', { description: quoted('Cafe') }));
+        expect(tileNames(groups()[0])).withContext('Cafe, two images').toEqual(perTile(quoted('Cafe'), 2));
+        expect(removeAll(groups()[1])).withContext('Market has one image and no remove-all').toBeNull();
+        expect(tileNames(groups()[1])).withContext('Market, one image').toEqual(perTile(quoted('Market'), 1));
+        expect(removeAll(groups()[2])).withContext('the untitled row\'s remove-all')
+          .toBe(t('receiptImages.removeAllImagesOf', { description: nameless }));
+        expect(tileNames(groups()[2])).withContext('the untitled row').toEqual(perTile(nameless, 2));
+        expect(tileNames(groups()[3])).withContext('Bakery, at slots 2 and 5').toEqual(perTile(quoted('Bakery'), 2));
+      });
+    }
+  });
+
+  /**
+   * tc quotes a description in 「」 in each of these names, and the catalog's
+   * words for an untitled transaction would read, in quotes, as its name: an
+   * untitled transaction is named by those words bare.
+   */
+  describe('in tc, an untitled transaction\'s image controls', () => {
+    for (const blank of ['', '   ']) {
+      it(`name a transaction whose description is ${JSON.stringify(blank)} by the catalog's words, unquoted, and Cafe in quotes`, async () => {
+        TestBed.overrideProvider(TranslationService, { useValue: catalogTranslationStub('tc') });
+        const t = catalogTranslator('tc', { strict: true });
+        transactionsSpy.getTransactionsWithReceiptsOnce.and.resolveTo([
+          ...managedTransactions,
+          createTransaction({
+            id: 't3',
+            description: blank,
+            receiptUrl: 'https://x/3a.jpg',
+            receiptUrls: ['https://x/3a.jpg', 'https://x/3b.jpg'],
+            receiptCount: 2,
+          }),
+        ]);
+        await render();
+
+        const names = (group: HTMLElement) =>
+          [group.querySelector('.remove-all-btn'), ...Array.from(group.querySelectorAll('.tile-actions button'))]
+            .map(button => accessibleName(button as Element));
+        const nameless = t('transactions.untitledRow');
+        expect(names(groups()[0])).withContext('Cafe keeps its quotes (pin)').toEqual([
+          '刪除「Cafe」的所有圖片',
+          '將「Cafe」的第 1 張圖片轉換為備註',
+          '刪除「Cafe」的第 1 張圖片',
+          '將「Cafe」的第 2 張圖片轉換為備註',
+          '刪除「Cafe」的第 2 張圖片',
+        ]);
+        const untitled = names(groups()[2]);
+        expect(untitled.length).withContext('remove-all and two images\' convert and remove').toBe(5);
+        expect(untitled.filter(name => !name.includes(nameless))).withContext("each names it by the catalog's words")
+          .toEqual([]);
+        expect(untitled.filter(name => name.includes(`「${nameless}」`))).withContext("the catalog's words in quotes")
+          .toEqual([]);
+      });
+    }
   });
 
   it('replaces one busy slot\'s actions with a spinner, leaving its neighbour alone', async () => {
