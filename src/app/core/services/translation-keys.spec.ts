@@ -1,6 +1,7 @@
 import en from '../../../assets/i18n/en.json';
 import ja from '../../../assets/i18n/ja.json';
 import tc from '../../../assets/i18n/tc.json';
+import { INTL_LOCALES, type SupportedLocale } from './translation.service';
 
 /**
  * TranslationService.t() returns the key itself when a lookup misses, and setLocale()
@@ -22,7 +23,6 @@ import tc from '../../../assets/i18n/tc.json';
 type Tree = Record<string, unknown>;
 
 const PLURAL_CATEGORIES = new Set(['zero', 'one', 'two', 'few', 'many', 'other']);
-const INTL_LOCALES: Record<string, string> = { en: 'en-US', ja: 'ja-JP', tc: 'zh-Hant-TW' };
 
 /** A leaf may be a plural object: every member a CLDR category name, every value a string. */
 function isPluralObject(value: unknown): value is Record<string, string> {
@@ -36,7 +36,7 @@ function isPluralObject(value: unknown): value is Record<string, string> {
 }
 
 const REFERENCE = 'en';
-const LOCALES: { name: string; tree: Tree }[] = [
+const LOCALES: { name: SupportedLocale; tree: Tree }[] = [
   { name: REFERENCE, tree: en },
   { name: 'ja', tree: ja },
   { name: 'tc', tree: tc },

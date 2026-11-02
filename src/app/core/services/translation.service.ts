@@ -15,6 +15,79 @@ export type SupportedLocale = 'en' | 'tc' | 'ja';
  */
 const PLURAL_CATEGORIES = new Set(['zero', 'one', 'two', 'few', 'many', 'other']);
 
+/** Each catalog's BCP 47 tag, for Intl and Angular's formatters. */
+export const INTL_LOCALES: Readonly<Record<SupportedLocale, string>> = {
+  'en': 'en-US',
+  'tc': 'zh-Hant-TW',
+  'ja': 'ja-JP'
+};
+
+/**
+ * `key`'s string in `catalog`, with `params` filled in, or the key itself
+ * when the catalog has none. This is `TranslationService.t`'s whole walk,
+ * shared so a spec reads a real catalog exactly as the app does.
+ *
+ * The locale comes as a function and is read only to pick a plural member.
+ */
+export function translateFrom(
+  catalog: unknown,
+  key: string,
+  params: Record<string, string | number> | undefined,
+  intlLocale: () => string
+): string {
+  const keys = key.split('.');
+  let value: unknown = catalog;
+
+  for (const k of keys) {
+    if (value && typeof value === 'object' && k in value) {
+      value = (value as Record<string, unknown>)[k];
+    } else {
+      return key;
+    }
+  }
+
+  if (typeof value !== 'string') {
+    const selected = selectPluralMember(value, params?.['count'], intlLocale);
+    if (selected === undefined) {
+      return key;
+    }
+    value = selected;
+  }
+
+  if (params) {
+    return interpolate(value as string, params);
+  }
+
+  return value as string;
+}
+
+/**
+ * Resolves a plural object to one member via Intl.PluralRules for the
+ * active locale, falling back to `other` when the selected category has no
+ * member. Anything that is not plural-shaped — or a plural entry reached
+ * without a numeric `count` — resolves to nothing, and t() returns the key,
+ * as it always has for non-string leaves.
+ */
+function selectPluralMember(value: unknown, count: unknown, intlLocale: () => string): string | undefined {
+  if (typeof count !== 'number' || value === null || typeof value !== 'object') {
+    return undefined;
+  }
+  const members = value as Record<string, unknown>;
+  const names = Object.keys(members);
+  if (names.length === 0 || !names.every(name => PLURAL_CATEGORIES.has(name))) {
+    return undefined;
+  }
+  const category = new Intl.PluralRules(intlLocale()).select(count);
+  const selected = members[category] ?? members['other'];
+  return typeof selected === 'string' ? selected : undefined;
+}
+
+function interpolate(text: string, params: Record<string, string | number>): string {
+  return text.replace(/\{\{(\w+)\}\}/g, (_, key) => {
+    return params[key]?.toString() ?? `{{${key}}}`;
+  });
+}
+
 /**
  * Resolve a BCP 47 language tag to the catalog we would show it in, or null
  * when we ship none for it.
@@ -136,57 +209,7 @@ export class TranslationService {
   }
 
   t(key: string, params?: Record<string, string | number>): string {
-    const keys = key.split('.');
-    let value: unknown = this.translations();
-
-    for (const k of keys) {
-      if (value && typeof value === 'object' && k in value) {
-        value = (value as Record<string, unknown>)[k];
-      } else {
-        return key;
-      }
-    }
-
-    if (typeof value !== 'string') {
-      const selected = this.selectPluralMember(value, params?.['count']);
-      if (selected === undefined) {
-        return key;
-      }
-      value = selected;
-    }
-
-    if (params) {
-      return this.interpolate(value as string, params);
-    }
-
-    return value as string;
-  }
-
-  /**
-   * Resolves a plural object to one member via Intl.PluralRules for the
-   * active locale, falling back to `other` when the selected category has no
-   * member. Anything that is not plural-shaped — or a plural entry reached
-   * without a numeric `count` — resolves to nothing, and t() returns the key,
-   * as it always has for non-string leaves.
-   */
-  private selectPluralMember(value: unknown, count: unknown): string | undefined {
-    if (typeof count !== 'number' || value === null || typeof value !== 'object') {
-      return undefined;
-    }
-    const members = value as Record<string, unknown>;
-    const names = Object.keys(members);
-    if (names.length === 0 || !names.every(name => PLURAL_CATEGORIES.has(name))) {
-      return undefined;
-    }
-    const category = new Intl.PluralRules(this.getIntlLocale()).select(count);
-    const selected = members[category] ?? members['other'];
-    return typeof selected === 'string' ? selected : undefined;
-  }
-
-  private interpolate(text: string, params: Record<string, string | number>): string {
-    return text.replace(/\{\{(\w+)\}\}/g, (_, key) => {
-      return params[key]?.toString() ?? `{{${key}}}`;
-    });
+    return translateFrom(this.translations(), key, params, () => this.getIntlLocale());
   }
 
   private detectBrowserLocale(): SupportedLocale | null {
@@ -202,12 +225,6 @@ export class TranslationService {
    * Maps our locale codes to standard BCP 47 codes.
    */
   getIntlLocale(): string {
-    const locale = this.currentLocale();
-    const localeMap: Record<SupportedLocale, string> = {
-      'en': 'en-US',
-      'tc': 'zh-Hant-TW',
-      'ja': 'ja-JP'
-    };
-    return localeMap[locale] || 'en-US';
+    return INTL_LOCALES[this.currentLocale()] || 'en-US';
   }
 }
