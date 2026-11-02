@@ -12,6 +12,9 @@ import { MAX_FORECAST_POINTS } from '../../../core/utils/forecast-series.utils';
 import {
   AUDIT_SCHEMES,
   createTranslationStub,
+  expectPainted,
+  inPalette,
+  PALETTES,
   provideNoMotion,
   withScheme,
 } from '../../../core/services/testing';
@@ -248,6 +251,17 @@ describe('ForecastComponent, through its own template', () => {
     fixture.detectChanges();
   }
 
+  /** Pushes history + projection past the point cap, so the axis has to fold. */
+  function foldTheAxis(): void {
+    const end = new Date();
+    const start = new Date(end.getFullYear(), end.getMonth(), end.getDate() - MAX_FORECAST_POINTS);
+    component.dateRange = { start, end };
+    component.setHorizon(90);
+    fixture.detectChanges();
+    streams.forEach(stream => stream.next([occurrenceFor()]));
+    fixture.detectChanges();
+  }
+
   beforeEach(async () => {
     streams = [];
     rules = signal<RecurringTransaction[]>([{ id: 'r1' } as RecurringTransaction]);
@@ -346,17 +360,29 @@ describe('ForecastComponent, through its own template', () => {
     expect(component.bucketDays()).toBe(1);
     expect(el().querySelector('.forecast-bucket-note')).toBeNull();
 
-    // Push history + projection past the point cap so the axis has to fold.
-    const end = new Date();
-    const start = new Date(end.getFullYear(), end.getMonth(), end.getDate() - MAX_FORECAST_POINTS);
-    component.dateRange = { start, end };
-    component.setHorizon(90);
-    fixture.detectChanges();
-    streams.forEach(stream => stream.next([occurrenceFor()]));
-    fixture.detectChanges();
+    foldTheAxis();
 
     expect(component.bucketDays()).toBeGreaterThan(1);
     expect(text('.forecast-bucket-note'))
       .toBe(`reports.forecastBucketNote:${JSON.stringify({ count: component.bucketDays() })}`);
+  });
+
+  // #533: the card's three secondary lines rest in the muted token, not a
+  // fade, which the high-contrast palette could never deepen.
+  it('rests its note, its bucket note and its rate caption in the muted token, at AA on the card, in all four palettes', () => {
+    render();
+    foldTheAxis();
+    expect(component.bucketDays()).withContext('the axis is folded').toBeGreaterThan(1);
+
+    for (const palette of PALETTES) {
+      inPalette(palette.classes, () => {
+        for (const selector of ['.forecast-note', '.forecast-bucket-note', '.rate-caption']) {
+          const node = el().querySelector(selector);
+          const label = `${palette.name} ${selector}`;
+          expect(node ? getComputedStyle(node).opacity : null).withContext(`${label} opacity`).toBe('1');
+          expectPainted(node, '--text-muted', label);
+        }
+      });
+    }
   });
 });

@@ -14,11 +14,15 @@ import {
   channels,
   createLocaleFormatStub,
   createTranslationStub,
+  expectPainted,
+  inPalette,
   paintedBackground,
   paintedColor,
+  PALETTES,
   provideNoMotion,
   ratio,
   settleAnimations,
+  tokenValue,
   type TranslationStub,
   withTheme,
 } from '../../../../core/services/testing';
@@ -353,6 +357,75 @@ describe('GoalProgressCardComponent, through its own template', () => {
     const done = el().querySelector<HTMLElement>('.item-label.done')!;
     expect(getComputedStyle(done).textDecorationLine).toBe('line-through');
     expect(getComputedStyle(done).opacity).toBe('1');
+  });
+
+  /**
+   * #533: a secondary line rests in the muted token, not a fade. A fade
+   * lowers a line against whatever it sits on, and the high-contrast palette
+   * deepens the token but can never reach an opacity. The card is filled so
+   * every faded line renders at once: the target date and its glyph, the
+   * target, the linked share, the remaining amount, the checklist count, an
+   * item's amount and the note.
+   */
+  it('rests every secondary line in the muted token, at AA on the card, in all four palettes', () => {
+    card({
+      targetDate: Timestamp.fromDate(new Date('2026-12-01T00:00:00Z')),
+      linkedAmount: 250,
+      items: [{ name: 'Deposit', amount: 100, done: false }],
+      note: 'Three months of expenses',
+    });
+    const lines = [
+      '.goal-date',
+      '.goal-date mat-icon',
+      '.target',
+      '.linked-breakdown',
+      '.status',
+      '.items-count',
+      '.item-amount',
+      '.goal-note',
+    ];
+    const muted = new Map<string, string>();
+
+    for (const palette of PALETTES) {
+      inPalette(palette.classes, () => {
+        muted.set(palette.name, tokenValue('--text-muted'));
+        expect(paintedBackground(el().querySelector('.goal-card')!))
+          .withContext(`${palette.name} card`)
+          .toEqual(channels(tokenValue('--mat-sys-surface-container-low')).rgb);
+        for (const selector of lines) {
+          const node = el().querySelector(selector);
+          const label = `${palette.name} ${selector}`;
+          expect(node ? getComputedStyle(node).opacity : null).withContext(`${label} opacity`).toBe('1');
+          expectPainted(node, '--text-muted', label);
+        }
+      });
+    }
+
+    // Four palettes prove four things only while high contrast moves the token.
+    expect(muted.get('high contrast')).withContext('light high contrast').not.toBe(muted.get('plain'));
+    expect(muted.get('dark high contrast')).withContext('dark high contrast').not.toBe(muted.get('dark'));
+  });
+
+  // The reached note is the card's good news, so it speaks in the card's own
+  // colour rather than the muted one its `.status` class would give it.
+  it('lets the reached note keep the card\'s own colour, unfaded and at AA, in all four palettes', () => {
+    card({ contributedAmount: 3000 });
+    const note = el().querySelector<HTMLElement>('.status.reached-note');
+    expect(note).withContext('the reached note renders').not.toBeNull();
+    if (!note) return;
+
+    for (const palette of PALETTES) {
+      inPalette(palette.classes, () => {
+        settleAnimations(document);
+        expect(getComputedStyle(note).opacity).withContext(`${palette.name} opacity`).toBe('1');
+        expect(getComputedStyle(note).color)
+          .withContext(`${palette.name} colour`)
+          .toBe(getComputedStyle(note.parentElement!).color);
+        expect(ratio(paintedColor(note), paintedBackground(note)))
+          .withContext(`${palette.name} on the card`)
+          .toBeGreaterThanOrEqual(4.5);
+      });
+    }
   });
 
   // Material paints the indicator as the inner bar's top border, from
