@@ -28,6 +28,7 @@ import {
 import { TranslationService } from '../../../../core/services/translation.service';
 import { LocaleFormatService } from '../../../../core/services/locale-format.service';
 import { looksLikeImageFile } from '../../../../core/utils/file.utils';
+import { joinSentences } from '../../../../core/utils/import-review.utils';
 
 /**
  * A file the zone, or a gate upstream, refused: its name as the disk spells
@@ -79,14 +80,14 @@ export class FileDropzoneComponent implements OnDestroy {
   // fresh pick empties it first, so its refusals always do.
   private readonly refusals = signal<readonly Refusal[]>([], { equal: sameRefusals });
   readonly hasError = computed(() => this.refusals().length > 0);
-  // One sentence a file, joined by the reader's own stop: a Latin one and a
-  // space in en, 。 alone in ja and tc (common.sentenceSeparator, as
-  // transactions.share.separator joins names). None of the four sentences
-  // ends in a stop of its own in any catalog, so none is doubled.
+  // One sentence a file, joined by the reader's own stop through
+  // joinSentences, the import area's one way to join two sentences: a Latin
+  // one and a space in en, 。 alone in ja and tc. None of the four sentences
+  // ends in a stop of its own in any catalog, so none is given up.
   readonly errorMessage = computed(() =>
     this.refusals()
       .map(r => this.refusal(r.name, r.reason))
-      .join(this.translationService.t('common.sentenceSeparator'))
+      .reduce((lead, next) => joinSentences((k, p) => this.translationService.t(k, p), lead, next), '')
   );
 
   // Keyed by the File itself: two files can share a name (two iOS captures

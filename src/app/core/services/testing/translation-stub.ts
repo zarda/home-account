@@ -29,16 +29,15 @@ export interface TranslationStub {
 /**
  * A `TranslationService` a real template can render against.
  *
- * `t` echoes the key, and echoes the params beside it when there are any, so
- * an assertion can name the whole rendered label rather than a prefix — the
- * shape `transaction-preview-table.component.spec.ts:1043-1050` hand-rolled
- * first. Pass `overrides` to pin a specific key's copy, or to swap `t`
- * outright for a spy.
+ * `t` is `echoTranslation`: it echoes the key, and the params beside it when
+ * there are any, so an assertion can name the whole rendered label rather
+ * than a prefix, and it answers `common.sentenceSeparator` with en's own
+ * stop, so two joined sentences read as en. Pass `overrides` to pin a
+ * specific key's copy, or to swap `t` outright for a spy.
  */
 export function createTranslationStub(overrides: Partial<TranslationStub> = {}): TranslationStub {
   return {
-    t: (key: string, params?: Record<string, string | number>) =>
-      params ? `${key}:${JSON.stringify(params)}` : key,
+    t: echoTranslation,
     currentLocale: signal('en'),
     translationsVersion: signal(0),
     ...overrides,

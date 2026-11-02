@@ -64,6 +64,7 @@ import {
   createUser,
   createTranslationStub,
   eachOptionState,
+  echoKey,
   hoverValue,
   paintedBackground,
   paintedColor,
@@ -247,7 +248,7 @@ describe('TransactionFormComponent', () => {
     currency.getSupportedCurrencies.and.returnValue([{ code: 'USD', name: 'US Dollar', symbol: '$' }]);
     currency.getCurrencyInfo.and.callFake((code: string) => ({ code, nameKey: code, symbol: code }));
     translation = jasmine.createSpyObj('TranslationService', ['t']);
-    translation.t.and.callFake((k: string) => k);
+    translation.t.and.callFake(echoKey);
 
     await TestBed.configureTestingModule({
       imports: [TransactionFormComponent, ReactiveFormsModule],

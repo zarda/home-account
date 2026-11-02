@@ -152,6 +152,10 @@ let vocabularyListSeq = 0;
 })
 export class TransactionPreviewTableComponent implements AfterViewInit {
   private translationService = inject(TranslationService);
+  // Read at call time, not bound once, so a spec's spy on the service's `t`
+  // still reaches every sentence the card joins.
+  private readonly t = (key: string, params?: Record<string, string | number>) =>
+    this.translationService.t(key, params);
   private currencyService = inject(CurrencyService);
   private currencySession = inject(CurrencyChoiceSessionService);
   private localeFormat = inject(LocaleFormatService);
@@ -457,7 +461,11 @@ export class TransactionPreviewTableComponent implements AfterViewInit {
    */
   typeToggleLabel(row: CategorizedImportTransaction): string {
     const label = this.translationService.t(row.type === 'income' ? 'common.income' : 'common.expense');
-    return joinSentences(this.needsVerification(row, 'type') ? this.verificationTooltip(row, 'type') : '', label);
+    return joinSentences(
+      this.t,
+      this.needsVerification(row, 'type') ? this.verificationTooltip(row, 'type') : '',
+      label
+    );
   }
 
   /**
@@ -660,7 +668,7 @@ export class TransactionPreviewTableComponent implements AfterViewInit {
    */
   currencyChipLabel(row: CategorizedImportTransaction): string {
     const label = this.translationService.t('import.setCurrency', { currency: row.currency });
-    return joinSentences(row.currencyFellBack ? this.currencyFellBackTooltip() : '', label);
+    return joinSentences(this.t, row.currencyFellBack ? this.currencyFellBackTooltip() : '', label);
   }
 
   /**
@@ -869,6 +877,7 @@ export class TransactionPreviewTableComponent implements AfterViewInit {
   currencyOfferLabel(row: CategorizedImportTransaction): string {
     const code = row.currencySuggestion?.code ?? '';
     return joinSentences(
+      this.t,
       this.translationService.t('import.acceptCurrencySuggestion', { currency: code }),
       this.currencyOfferReason(row)
     );
@@ -1024,7 +1033,7 @@ export class TransactionPreviewTableComponent implements AfterViewInit {
 
   /** The mark leads the button's name, exactly as currencyChipLabel does. */
   dateChipLabel(row: CategorizedImportTransaction): string {
-    return joinSentences(this.dateTooltip(row), this.changeDateLabel(row));
+    return joinSentences(this.t, this.dateTooltip(row), this.changeDateLabel(row));
   }
 
   dateChipText(row: CategorizedImportTransaction): string {
@@ -1036,6 +1045,7 @@ export class TransactionPreviewTableComponent implements AfterViewInit {
   /** The keep button's name says why the row is asked and what it keeps; the visible text says neither fully. */
   keepDateLabel(row: CategorizedImportTransaction): string {
     return joinSentences(
+      this.t,
       this.dateTooltip(row),
       this.translationService.t('import.keepDate', { date: this.formattedDate(row) })
     );

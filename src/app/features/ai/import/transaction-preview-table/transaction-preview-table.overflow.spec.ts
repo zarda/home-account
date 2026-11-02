@@ -10,7 +10,7 @@ import { CurrencyService } from '../../../../core/services/currency.service';
 import { CurrencyChoiceSessionService } from '../../../../core/services/currency-choice-session.service';
 import { FitTextRegistry } from '../../../../shared/directives/fit-text.registry';
 import { FitTextDirective } from '../../../../shared/directives/fit-text.directive';
-import { provideNoMotion } from '../../../../core/services/testing';
+import { echoKey, provideNoMotion } from '../../../../core/services/testing';
 
 /**
  * The review card at the narrowest width the app supports, carrying
@@ -132,6 +132,10 @@ describe('overflow guard: the import review card', () => {
         // have no categories, so every chip names the unknown one, and the
         // caret cases below read it as a short word appFitText never engages
         // on.
+        //
+        // A bare key goes through `echoKey`, which answers the sentence
+        // separator with en's own stop, so a name joined of two sentences
+        // reads as en rather than as one glued token.
         {
           provide: TranslationService,
           useValue: {
@@ -142,7 +146,7 @@ describe('overflow guard: the import review card', () => {
                   ? 'Unknown'
                   : params
                     ? `${key} ${Object.values(params).join(' ')}`
-                    : key,
+                    : echoKey(key),
           },
         },
         {
@@ -1146,7 +1150,7 @@ describe('overflow guard: the currency offer label\'s ink, not just its box', ()
                   ? 'Unknown'
                   : params
                     ? `${key} ${Object.values(params).join(' ')}`
-                    : key,
+                    : echoKey(key),
           },
         },
         {

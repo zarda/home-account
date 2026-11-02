@@ -356,17 +356,20 @@ export function fieldDoubtSentence(
 }
 
 /**
- * Two sentences as one line of text, in the order they are read.
+ * Two sentences as one line of text, in the order they are read, joined by
+ * the reader's own stop: `common.sentenceSeparator`, a Latin stop and a space
+ * in en, 。 alone in ja and tc, which put no space after a sentence.
  *
  * A lead that ends in a stop — "." in en, "。" in ja and tc — gives it up
  * before the join adds one, or a flagged row would be read out "here..
- * Change"; a lead written with none, as the wizard's round sentences are,
- * takes the join's all the same. The second half keeps whatever ending it was
- * written with. The join itself is a Latin ". " in every locale: it separates
- * two statements rather than punctuating one sentence, and it is what makes a
- * reader pause between them whatever language it is speaking. Either half may
- * be empty — a row nobody doubts has no reason to lead with, a round that
- * lost no photo has no photo sentence — and an empty half adds nothing.
+ * Change" or "。。日付"; a lead written with none, as the wizard's round
+ * sentences are, takes the join's all the same. The second half keeps
+ * whatever ending it was written with. Either half may be empty — a row
+ * nobody doubts has no reason to lead with, a round that lost no photo has no
+ * photo sentence — and an empty half adds nothing.
+ *
+ * `t` is the caller's translator, as `fieldDoubtSentence` takes it, so the
+ * stop is the language the page is in when the line is written.
  *
  * Shared rather than repeated, since the first two spellings of the join had
  * already drifted apart. The callers:
@@ -374,16 +377,21 @@ export function fieldDoubtSentence(
  *   the offered currency's accept button, the date chip, the keep-date button
  *   and the type toggle;
  * - the transaction form's verify-field text, one string that is both the
- *   flag's tooltip and its accessible name;
+ *   flag's tooltip and its accessible name, and its type segments' names;
  * - the import wizard's notice for a confirm round, visible text as well as
  *   an announcement: the round's outcome, the rows set aside and the photos
  *   that did not attach travel in one snackbar, joined one after another,
- *   because a second snackbar replaces the first before it can be read.
+ *   because a second snackbar replaces the first before it can be read;
+ * - the import area's alert, one sentence for each file it refuses.
  */
-export function joinSentences(lead: string, next: string): string {
+export function joinSentences(
+  t: (key: string, params?: Record<string, string | number>) => string,
+  lead: string,
+  next: string,
+): string {
   if (!lead) return next;
   if (!next) return lead;
-  return `${lead.replace(/\s*[.。]?\s*$/, '')}. ${next}`;
+  return lead.replace(/\s*[.。]?\s*$/, '') + t('common.sentenceSeparator') + next;
 }
 
 /**

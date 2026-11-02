@@ -37,6 +37,7 @@ import {
   withTheme,
   provideNoMotion,
   createTranslationStub,
+  echoKey,
 } from '../../../../core/services/testing';
 import { ThemeService } from '../../../../core/services/theme.service';
 import { blankImportRow, joinSentences, splitImportRow } from '../../../../core/utils/import-review.utils';
@@ -180,7 +181,7 @@ describe('ImportWizardComponent', () => {
 
     mockTranslationService = jasmine.createSpyObj('TranslationService', ['t']);
     notifications = jasmine.createSpyObj('NotificationService', ['success', 'error', 'info']);
-    mockTranslationService.t.and.callFake((key: string) => key);
+    mockTranslationService.t.and.callFake(echoKey);
 
     mockSnackBar = jasmine.createSpyObj('MatSnackBar', ['open']);
     mockAnnouncer = jasmine.createSpyObj('AnnouncerService', ['announce']);
@@ -1696,7 +1697,7 @@ describe('ImportWizardComponent', () => {
       tick();
 
       expect(notifications.info).toHaveBeenCalledOnceWith(
-        joinSentences('import.importComplete', 'import.importPhotosSkipped'),
+        joinSentences(echoKey, 'import.importComplete', 'import.importPhotosSkipped'),
         { durationMs: 5000 }
       );
       expect(mockTranslationService.t).toHaveBeenCalledWith('import.importPhotosSkipped', { count: 2 });
@@ -1721,7 +1722,7 @@ describe('ImportWizardComponent', () => {
       tick();
 
       expect(notifications.info).toHaveBeenCalledOnceWith(
-        joinSentences('import.importComplete', 'import.importPhotosFailed'),
+        joinSentences(echoKey, 'import.importComplete', 'import.importPhotosFailed'),
         { durationMs: 5000 }
       );
       expect(mockTranslationService.t).toHaveBeenCalledWith('import.importPhotosFailed', { count: 1 });
@@ -1738,7 +1739,7 @@ describe('ImportWizardComponent', () => {
     ] as const) {
       it(`gives the notice time for every sentence a part carries, not one a part (${locale})`, fakeAsync(() => {
         mockTranslationService.t.and.callFake((key: string) =>
-          key === 'import.importPhotosFailed' ? photosFailed : key
+          key === 'import.importPhotosFailed' ? photosFailed : echoKey(key)
         );
         mockImportService.confirmImport.and.returnValue(Promise.resolve({
           id: 'history1', userId: 'user1', importedAt: { seconds: 0 } as never,
@@ -1754,7 +1755,7 @@ describe('ImportWizardComponent', () => {
         // Three sentences: the info tone's three seconds and two more for each
         // sentence past the first.
         expect(notifications.info).toHaveBeenCalledOnceWith(
-          joinSentences('import.importComplete', photosFailed),
+          joinSentences(echoKey, 'import.importComplete', photosFailed),
           { durationMs: 7000 }
         );
       }));
@@ -1785,7 +1786,12 @@ describe('ImportWizardComponent', () => {
       // sentence past the first, so the last is still on screen to be read.
       expect(notifications.error).toHaveBeenCalledOnceWith(
         joinSentences(
-          joinSentences(joinSentences('import.importPartial', 'import.importPartialSetAside'), 'import.importPhotosSkipped'),
+          echoKey,
+          joinSentences(
+            echoKey,
+            joinSentences(echoKey, 'import.importPartial', 'import.importPartialSetAside'),
+            'import.importPhotosSkipped'
+          ),
           'import.importPhotosFailed'
         ),
         { durationMs: 11000 }
@@ -2449,7 +2455,7 @@ describe('ImportWizardComponent', () => {
       // card already shows. A second notice would replace the first on
       // screen, and the count with it.
       expect(notifications.error).toHaveBeenCalledOnceWith(
-        joinSentences('import.importPartial', 'import.importPartialSetAside'),
+        joinSentences(echoKey, 'import.importPartial', 'import.importPartialSetAside'),
         { durationMs: 7000 }
       );
       expect(mockTranslationService.t)
@@ -2482,7 +2488,7 @@ describe('ImportWizardComponent', () => {
 
       expect(component.extractedTransactions().every(t => !t.selected)).toBeTrue();
       expect(notifications.error).toHaveBeenCalledOnceWith(
-        joinSentences('import.importPartial', 'import.importPartialSetAside'),
+        joinSentences(echoKey, 'import.importPartial', 'import.importPartialSetAside'),
         { durationMs: 7000 }
       );
       expect(mockTranslationService.t)

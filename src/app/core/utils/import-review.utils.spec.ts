@@ -26,6 +26,7 @@ import {
   withoutFieldConfidence,
 } from './import-review.utils';
 import { CategorizedImportTransaction, ImagePositionMetadata, VERIFY_FIELD_THRESHOLD } from '../../models';
+import { catalogTranslator } from '../services/testing';
 
 /**
  * Dates are built from local parts (`new Date(2026, 5, 15)`), never parsed
@@ -503,35 +504,51 @@ describe('import-review.utils', () => {
   });
 
   describe('joinSentences', () => {
+    // The join is the reader's own stop, read off the catalog it speaks:
+    // a Latin stop and a space in en, 。 alone in ja and tc.
+    const en = catalogTranslator('en');
+    const ja = catalogTranslator('ja');
+
     it('drops the leading sentence\'s own stop before adding one', () => {
-      expect(joinSentences('This receipt is dated another day.', 'Change date'))
+      expect(joinSentences(en, 'This receipt is dated another day.', 'Change date'))
         .toBe('This receipt is dated another day. Change date');
     });
 
-    it('drops a CJK stop too, so ja and tc are not read out with two', () => {
+    it('joins a ja lead ending in 。 with 。 alone', () => {
       // The reasons are whole sentences in every catalog, and ja and tc end
-      // them with 。 A joiner that only knew the Latin stop left the name as
-      // "…ください。. 日付を変更" — two terminators, both spoken.
-      expect(joinSentences('別の日を選んでください。', '日付を変更'))
-        .toBe('別の日を選んでください. 日付を変更');
+      // them with 。 and put no space after it. A join in the Latin ". "
+      // left the name as "…ください. 日付を変更", a stop no ja reader writes.
+      expect(joinSentences(ja, '別の日を選んでください。', '日付を変更'))
+        .toBe('別の日を選んでください。日付を変更');
+    });
+
+    it('joins en with a stop and a space', () => {
+      expect(joinSentences(en, 'Pick another day.', 'Change date')).toBe('Pick another day. Change date');
     });
 
     it('takes trailing whitespace with the stop', () => {
-      expect(joinSentences('Read off the receipt . ', 'Use KRW')).toBe('Read off the receipt. Use KRW');
+      expect(joinSentences(en, 'Read off the receipt . ', 'Use KRW')).toBe('Read off the receipt. Use KRW');
     });
 
     it('adds a stop to a sentence that carries none', () => {
-      expect(joinSentences('import.currencyFellBack', 'import.setCurrency'))
+      expect(joinSentences(en, 'import.currencyFellBack', 'import.setCurrency'))
         .toBe('import.currencyFellBack. import.setCurrency');
+    });
+
+    it('an empty half adds nothing', () => {
+      // A row nobody doubts has no reason to lead with, a round that lost no
+      // photo has no photo sentence: neither brings a stop with it.
+      expect(joinSentences(ja, '', '日付を変更')).toBe('日付を変更');
+      expect(joinSentences(ja, '日付を変更', '')).toBe('日付を変更');
     });
 
     it('is the trailing half alone when there is no reason to lead with', () => {
       // A row nobody doubts is not announced as suspect.
-      expect(joinSentences('', 'Change date')).toBe('Change date');
+      expect(joinSentences(en, '', 'Change date')).toBe('Change date');
     });
 
     it('leaves a lone leading sentence exactly as it is', () => {
-      expect(joinSentences('Dated another day.', '')).toBe('Dated another day.');
+      expect(joinSentences(en, 'Dated another day.', '')).toBe('Dated another day.');
     });
   });
 

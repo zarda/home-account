@@ -303,7 +303,7 @@ describe('FileDropzoneComponent', () => {
         'import.fileEmpty:{"name":"empty.pdf"}',
         'import.shareBackup:{"name":"backup.json"}',
         'import.fileTypeUnsupported:{"name":"notes.txt"}',
-      ].join('common.sentenceSeparator'));
+      ].join('. '));
     });
 
     // A share can land while the banner still names a file the user picked:
@@ -317,7 +317,7 @@ describe('FileDropzoneComponent', () => {
       expect(component.hasError()).toBeTrue();
       expect(component.errorMessage()).toBe(
         ['import.fileTypeUnsupported:{"name":"notes.txt"}', 'import.fileEmpty:{"name":"empty.pdf"}']
-          .join('common.sentenceSeparator')
+          .join('. ')
       );
     });
 

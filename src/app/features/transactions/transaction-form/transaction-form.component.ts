@@ -1588,6 +1588,7 @@ export class TransactionFormComponent implements OnInit, AfterViewInit, OnDestro
    */
   typeButtonLabel(type: 'expense' | 'income'): string {
     return joinSentences(
+      this.translationService.t.bind(this.translationService),
       this.flagsType(type) ? this.verifyFieldTooltip('type') : '',
       this.translationService.t(type === 'income' ? 'common.income' : 'common.expense')
     );
@@ -1621,20 +1622,14 @@ export class TransactionFormComponent implements OnInit, AfterViewInit, OnDestro
     if (field === 'type') {
       return this.translationService.t('import.verifyType');
     }
-    const doubt = fieldDoubtSentence(
-      this.translationService.t.bind(this.translationService),
-      field,
-      this.scanReadOnDevice(),
-      this.scanFieldConfidence()?.[field],
-    );
+    const t = this.translationService.t.bind(this.translationService);
+    const doubt = fieldDoubtSentence(t, field, this.scanReadOnDevice(), this.scanFieldConfidence()?.[field]);
     const anotherDay = field === 'date' ? this.scanDateOnAnotherDay() : null;
     if (!anotherDay) {
       return doubt;
     }
-    const notToday = this.translationService.t('import.dateNotTodayTooltip', {
-      date: this.localeFormat.formatDate(anotherDay),
-    });
-    return this.readerDoubts(field) ? joinSentences(doubt, notToday) : notToday;
+    const notToday = t('import.dateNotTodayTooltip', { date: this.localeFormat.formatDate(anotherDay) });
+    return this.readerDoubts(field) ? joinSentences(t, doubt, notToday) : notToday;
   }
 
   private onDateEdited(value: unknown): void {

@@ -17,6 +17,13 @@ describe('createTranslationStub', () => {
     expect(createTranslationStub().t('goals.remaining', { count: 3 })).toBe('goals.remaining:{"count":3}');
   });
 
+  // Two sentences joined through the stub read as en, so a two-part notice
+  // keeps its stop, its space and the time its second sentence earns.
+  it('answers the separator with en\'s own stop', () => {
+    expect(createTranslationStub().t('common.sentenceSeparator')).toBe('. ');
+    expect(createTranslationStub().t('common.sentenceSeparator')).toBe(en.common.sentenceSeparator);
+  });
+
   it('exposes currentLocale and translationsVersion as readable signals', () => {
     const stub = createTranslationStub();
 

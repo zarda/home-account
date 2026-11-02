@@ -26,6 +26,7 @@ import {
   AUDIT_SCHEMES,
   GLYPH_PROBE_COLOURS,
   channels,
+  echoTranslation,
   hoverValue,
   paintedBackground,
   paintedColor,
@@ -117,10 +118,7 @@ describe('TransactionPreviewTableComponent', () => {
           // Echoes the key and its params so tooltip assertions can check the
           // interpolated value without depending on the English wording.
           provide: TranslationService,
-          useValue: {
-            t: (key: string, params?: Record<string, string | number>) =>
-              params ? `${key}:${JSON.stringify(params)}` : key,
-          },
+          useValue: { t: echoTranslation },
         },
         {
           // Two codes are enough to prove the picker curates: one the row
@@ -662,28 +660,28 @@ describe('TransactionPreviewTableComponent', () => {
 
     it('drops the reason\'s own stop before the join adds one', () => {
       // The three date tooltips are sentences with a terminator of their
-      // own — "." in en, "。" in ja and tc — and the join puts one between
-      // the reason and the action, so a flagged row's name would end its
-      // reason "here.. Change" or "。. 日付". dateReviewed and the percent
-      // wording carry no stop and keep the plain ". " join the cases above
-      // pin; the echoing stub returns bare keys, so these two are stood in
-      // for with real sentences.
+      // own — "." in en, "。" in ja and tc — and the join puts the reader's
+      // stop between the reason and the action, so a flagged row's name
+      // would end its reason "here.. Change" or "。。日付". dateReviewed and
+      // the percent wording carry no stop and keep the plain ". " join the
+      // cases above pin; the echoing stub returns bare keys, so these two are
+      // stood in for with real sentences, and the ja one with ja's own stop.
       const sentences: Record<string, string> = {
         'import.dateAssumedTooltip': 'This row is dated today — keep it or change it here.',
         'import.dateNotTodayTooltip': 'このレシートの日付は今日ではありません。',
       };
       spyOn(TestBed.inject(TranslationService), 't').and.callFake(
-        (key: string, params?: Record<string, string | number>) =>
-          sentences[key] ?? (params ? `${key}:${JSON.stringify(params)}` : key)
+        (key: string, params?: Record<string, string | number>) => sentences[key] ?? echoTranslation(key, params)
       );
 
       const assumed = makeRow({ dateAssumed: true });
       expect(component.dateChipLabel(assumed))
         .toBe(`This row is dated today — keep it or change it here. import.changeDate:{"date":"${formatted(assumed)}"}`);
+      sentences['common.sentenceSeparator'] = '。';
       const receipt = makeRow({ id: 'receipt', date: new Date(2026, 5, 1) });
       component.dateAttentionIds = new Set(['receipt']);
       expect(component.keepDateLabel(receipt))
-        .toBe(`このレシートの日付は今日ではありません. import.keepDate:{"date":"${formatted(receipt)}"}`);
+        .toBe(`このレシートの日付は今日ではありません。import.keepDate:{"date":"${formatted(receipt)}"}`);
     });
 
     it('asks a not-today row to keep the day it is dated, and flags its button', () => {
@@ -1338,10 +1336,7 @@ describe('TransactionPreviewTableComponent, the offer chip through its own templ
           // Echoes the key and its params, as the first describe does, so a
           // label that carries the formatted date can be asserted whole.
           provide: TranslationService,
-          useValue: {
-            t: (key: string, params?: Record<string, string | number>) =>
-              params ? `${key}:${JSON.stringify(params)}` : key,
-          },
+          useValue: { t: echoTranslation },
         },
         {
           provide: CurrencyService,
