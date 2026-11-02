@@ -10,7 +10,7 @@
     .forecast-note {
       margin: 0;
       font-size: 13px;
-      opacity: 0.75;
+      color: var(--text-muted);
     }
   }
 
@@ -22,7 +22,7 @@
   .forecast-bucket-note {
     margin: 8px 0 0;
     font-size: 13px;
-    opacity: 0.75;
+    color: var(--text-muted);
   }
 
   .forecast-summary {
@@ -34,7 +34,7 @@
     .rate-caption {
       font-size: 13px;
       font-weight: 400;
-      opacity: 0.75;
+      color: var(--text-muted);
     }
   }
 }
