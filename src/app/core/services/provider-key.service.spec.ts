@@ -6,6 +6,11 @@ import { FirestoreService } from './firestore.service';
 import { AuthService } from './auth.service';
 import { User, UserPreferences, LegacyProviderApiKeys } from '../../models';
 import { createMockUser } from './testing/mock-auth.service';
+import { silenceFirebaseWarnings } from './testing/silence-firebase-warnings';
+
+// deleteField() runs here outside any injector, in the service under test,
+// where the zone wrapper would print its advisory into the run's output.
+silenceFirebaseWarnings();
 
 describe('ProviderKeyService', () => {
   let service: ProviderKeyService;

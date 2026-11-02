@@ -1,6 +1,7 @@
 // Silences the @angular/fire zone wrapper's injection-context warnings across
-// the smoke suite (#355). Every @angular/fire call is wrapped so it can hop
-// in and out of NgZone; when the wrapper can't find an active Angular
+// the smoke suite (#355), and in the unit specs that reach a zone-wrapped
+// call outside any injector (#537). Every @angular/fire call is wrapped so it
+// can hop in and out of NgZone; when the wrapper can't find an active Angular
 // injector — the normal case for a raw SDK call in a beforeAll/afterAll hook
 // or a spec body, module scope included — it falls back to calling the
 // underlying SDK function directly, but logs first:
@@ -28,10 +29,28 @@
 // app.smoke.spec.ts's header for the full explanation).
 //
 // Idempotent and side-effect-free beyond the two warnings above, so every
-// smoke file calls it for itself at module scope instead of relying on some
+// caller calls it for itself at module scope instead of relying on some
 // designated "first" file — that keeps every file order-independent and
-// correct when run standalone (e.g. `--include` a single spec). Verified: no
-// other smoke spec asserts on console.warn, so silencing it globally is safe.
+// correct when run standalone (e.g. `--include` a single spec). The callers
+// are every *.smoke.spec.ts that reaches Firebase, and the ten unit specs that
+// reach a zone-wrapped call outside any injector:
+//   - firestore.service.spec.ts: aggregateFieldEqual(), doc(), sum(),
+//     writeBatch() and afterAll's deleteApp();
+//   - deleteField(), in the spec, the service under test or both:
+//     auth.service.spec.ts, goal.service.spec.ts, household.service.spec.ts,
+//     household-plans.service.spec.ts, provider-key.service.spec.ts,
+//     recurring.service.spec.ts, search-answer-history.service.spec.ts and
+//     transaction.service.spec.ts;
+//   - data-management.component.spec.ts: the component's terminate().
+// test:dates runs two of them, recurring and household-plans, without
+// firestore.service.spec.ts. Module scope runs when the bundle loads, so under
+// test:ci the whole unit suite runs silenced through any one of them.
+//
+// Verified for smoke and unit specs alike: no spec asserts that either line
+// prints. The specs that spy on console.warn assert on the app's own lines,
+// and the one spec that names the advisory,
+// silence-firebase-warnings.smoke.spec.ts, asserts it is absent. Silencing
+// only takes lines away, so doing it for the whole run is safe.
 //
 // This file compiles into the app program (tsconfig.app.json excludes
 // *.spec.ts and src/test-main.ts, not testing helpers — see the other

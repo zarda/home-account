@@ -32,6 +32,7 @@ import { ledgerJournalKey } from './ledger-journal';
 import { MockFirestoreService } from './testing/mock-firestore.service';
 import { MockAuthService } from './testing/mock-auth.service';
 import { MockStorageService } from './testing/mock-storage.service';
+import { silenceFirebaseWarnings } from './testing/silence-firebase-warnings';
 import {
   createBudget,
   createRecurring,
@@ -39,6 +40,11 @@ import {
   createMixedTransactions
 } from './testing/test-data';
 import { Timestamp, deleteField } from '@angular/fire/firestore';
+
+// deleteField() runs here outside any injector, in the specs and in the
+// service under test, where the zone wrapper would print its advisory into
+// the run's output.
+silenceFirebaseWarnings();
 
 describe('TransactionService', () => {
   let service: TransactionService;

@@ -15,6 +15,7 @@ import { AuthService } from './auth.service';
 import { BudgetService } from './budget.service';
 import { CurrencyService } from './currency.service';
 import { TranslationService } from './translation.service';
+import { silenceFirebaseWarnings } from './testing/silence-firebase-warnings';
 import { findSerializationIssues } from '../utils/firestore-value.utils';
 import { addDays, dayKey, startOfDay } from '../utils/transaction-date.utils';
 import { isSeed, opaqueRowId } from '../utils/opaque-id.utils';
@@ -26,6 +27,11 @@ import {
   Transaction,
   UpcomingSchedule
 } from '../../models';
+
+// deleteField() runs here outside any injector, in the specs and in the
+// service under test, where the zone wrapper would print its advisory into
+// the run's output.
+silenceFirebaseWarnings();
 
 describe('RecurringService', () => {
   let service: RecurringService;

@@ -13,6 +13,7 @@ import {
   provideNoMotion,
   TranslationStub,
 } from '../../../core/services/testing';
+import { silenceFirebaseWarnings } from '../../../core/services/testing/silence-firebase-warnings';
 import { ComponentFixture, TestBed, fakeAsync, tick } from '@angular/core/testing';
 import { Component, signal, NO_ERRORS_SCHEMA } from '@angular/core';
 import { of, Subject } from 'rxjs';
@@ -50,6 +51,11 @@ import { Firestore } from '@angular/fire/firestore';
 import { Category, FONT_SCALES, Transaction } from '../../../models';
 import { BACKUP_SECTIONS, NOT_IN_BACKUP } from '../../../core/services/export.service';
 import en from '../../../../assets/i18n/en.json';
+
+// terminate() runs here outside any injector, in the component under test,
+// where the zone wrapper would print its advisory and a per-call warning into
+// the run's output.
+silenceFirebaseWarnings();
 
 describe('DataManagementComponent', () => {
   let component: DataManagementComponent;

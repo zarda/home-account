@@ -19,6 +19,7 @@ import { LedgerShareService } from './ledger-share.service';
 import { PwaService } from './pwa.service';
 import { TranslationService } from './translation.service';
 import { MockFirestoreService } from './testing/mock-firestore.service';
+import { silenceFirebaseWarnings } from './testing/silence-firebase-warnings';
 import { createTranslationStub } from './testing/translation-stub';
 import {
   HOUSEHOLD_CONTRIBUTION_DELETE_CHUNK,
@@ -33,6 +34,11 @@ import {
   ledgerCopyPath
 } from '../../models';
 import { DateWindow, endOfDay, monthWindow } from '../utils/transaction-date.utils';
+
+// deleteField() runs here outside any injector, in the specs and in the
+// service under test, where the zone wrapper would print its advisory into
+// the run's output.
+silenceFirebaseWarnings();
 
 interface Listener {
   path: string;
