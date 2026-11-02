@@ -10,7 +10,7 @@ import { BudgetService } from '../../../core/services/budget.service';
 import { CategoryService } from '../../../core/services/category.service';
 import { CurrencyService } from '../../../core/services/currency.service';
 import { AuthService } from '../../../core/services/auth.service';
-import { TranslationService } from '../../../core/services/translation.service';
+import { SupportedLocale, TranslationService } from '../../../core/services/translation.service';
 import { NotificationService } from '../../../core/services/notification.service';
 import { ThemeService } from '../../../core/services/theme.service';
 import { Budget, Category, User } from '../../../models';
@@ -18,6 +18,9 @@ import { of } from 'rxjs';
 import {
   AUDIT_SCHEMES,
   GLYPH_PROBE_COLOURS,
+  type Translator,
+  accessibleName,
+  catalogTranslator,
   chooseOption,
   eachOptionState,
   iconBox,
@@ -25,7 +28,9 @@ import {
   paintedBackground,
   paintedColor,
   ratio,
+  runAxe,
   settleAnimations,
+  summarizeViolations,
   textLines,
   withScheme,
   withTheme,
@@ -182,6 +187,22 @@ describe('BudgetFormComponent', () => {
       schemas: [NO_ERRORS_SCHEMA]
     }).compileComponents();
   };
+
+  /**
+   * The add form, painted with the surface Material gives the dialog
+   * container (`dialog-container-color` is `surface` in M3), which is what it
+   * sits on in the app. `t`, when given, answers in place of the key table.
+   */
+  async function renderOnDialogSurface(t?: Translator): Promise<void> {
+    await setupTestBed({ mode: 'add' });
+    if (t) mockTranslationService.t.and.callFake(t);
+    fixture = TestBed.createComponent(BudgetFormComponent);
+    component = fixture.componentInstance;
+    fixture.detectChanges();
+    const host = fixture.nativeElement as HTMLElement;
+    host.style.display = 'block';
+    host.style.background = 'var(--mat-sys-surface)';
+  }
 
   describe('Add Mode', () => {
     beforeEach(async () => {
@@ -654,19 +675,7 @@ describe('BudgetFormComponent', () => {
     const THEMES = ['light', 'dark'] as const;
     const el = () => fixture.nativeElement as HTMLElement;
 
-    /**
-     * The form, painted with the surface Material gives the dialog container
-     * (`dialog-container-color` is `surface` in M3), which is what it sits on
-     * in the app.
-     */
-    beforeEach(async () => {
-      await setupTestBed({ mode: 'add' });
-      fixture = TestBed.createComponent(BudgetFormComponent);
-      component = fixture.componentInstance;
-      fixture.detectChanges();
-      el().style.display = 'block';
-      el().style.background = 'var(--mat-sys-surface)';
-    });
+    beforeEach(() => renderOnDialogSurface());
 
     // The category select's panel renders into the CDK overlay.
     afterEach(() => {
@@ -756,6 +765,38 @@ describe('BudgetFormComponent', () => {
         });
       }
     });
+  });
+
+  /**
+   * The alert threshold slider is reached as its `<input type="range">`,
+   * which is named by the label's words alone. The value beside them is
+   * Material's own `aria-valuetext` on the same input, so the name does not
+   * repeat it. Each locale renders its catalog's words, on the surface the
+   * dialog gives the form.
+   */
+  describe('names (real template)', () => {
+    const LOCALES: readonly SupportedLocale[] = ['en', 'ja', 'tc'];
+    const el = () => fixture.nativeElement as HTMLElement;
+
+    for (const locale of LOCALES) {
+      it(`names the alert slider's range input by the label's words, in ${locale}`, async () => {
+        await renderOnDialogSurface(catalogTranslator(locale));
+        const input = el().querySelector('mat-slider input[type="range"]');
+        expect(input).withContext('the slider thumb').not.toBeNull();
+        if (!input) return;
+        expect(accessibleName(input)).toBe(catalogTranslator(locale, { strict: true })('budget.alertWhenReaches'));
+      });
+
+      it(`leaves axe nothing to find over the form, in ${locale}, in both schemes`, async () => {
+        await renderOnDialogSurface(catalogTranslator(locale));
+        for (const scheme of AUDIT_SCHEMES) {
+          await withScheme(TestBed.inject(ThemeService), scheme, async () => {
+            fixture.detectChanges();
+            expect(summarizeViolations(await runAxe(el()))).withContext(`${locale} ${scheme}`).toEqual([]);
+          });
+        }
+      });
+    }
   });
 
   /**
