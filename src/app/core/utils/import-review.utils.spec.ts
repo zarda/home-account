@@ -26,7 +26,7 @@ import {
   withoutFieldConfidence,
 } from './import-review.utils';
 import { CategorizedImportTransaction, ImagePositionMetadata, VERIFY_FIELD_THRESHOLD } from '../../models';
-import { catalogTranslator } from '../services/testing';
+import { catalogTranslator, echoTranslation } from '../services/testing';
 
 /**
  * Dates are built from local parts (`new Date(2026, 5, 15)`), never parsed
@@ -488,18 +488,15 @@ describe('import-review.utils', () => {
   });
 
   describe('fieldDoubtSentence', () => {
-    const t = (key: string, params?: Record<string, string | number>) =>
-      params ? `${key}:${JSON.stringify(params)}` : key;
-
     it("names the scan for a field the device read, and quotes no percentage", () => {
-      expect(fieldDoubtSentence(t, 'amount', true, 0.6)).toBe('import.verifyAmountOnDevice');
-      expect(fieldDoubtSentence(t, 'date', true, 0.3)).toBe('import.verifyDateOnDevice');
+      expect(fieldDoubtSentence(echoTranslation, 'amount', true, 0.6)).toBe('import.verifyAmountOnDevice');
+      expect(fieldDoubtSentence(echoTranslation, 'date', true, 0.3)).toBe('import.verifyDateOnDevice');
     });
 
     it("quotes a cloud reader's confidence as a whole percentage, and 0 where it reported none", () => {
-      expect(fieldDoubtSentence(t, 'amount', false, 0.655)).toBe('import.verifyAmount:{"percent":66}');
-      expect(fieldDoubtSentence(t, 'date', false, 0.5)).toBe('import.verifyDate:{"percent":50}');
-      expect(fieldDoubtSentence(t, 'date', false, undefined)).toBe('import.verifyDate:{"percent":0}');
+      expect(fieldDoubtSentence(echoTranslation, 'amount', false, 0.655)).toBe('import.verifyAmount:{"percent":66}');
+      expect(fieldDoubtSentence(echoTranslation, 'date', false, 0.5)).toBe('import.verifyDate:{"percent":50}');
+      expect(fieldDoubtSentence(echoTranslation, 'date', false, undefined)).toBe('import.verifyDate:{"percent":0}');
     });
   });
 

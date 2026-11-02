@@ -41,6 +41,7 @@ import { CategoryService } from '../../../core/services/category.service';
 import { CurrencyService } from '../../../core/services/currency.service';
 import { AuthService } from '../../../core/services/auth.service';
 import { TranslationService } from '../../../core/services/translation.service';
+import { LocaleFormatService } from '../../../core/services/locale-format.service';
 import { AnnouncerService } from '../../../core/services/announcer.service';
 import { AIStrategyService, ProcessingResult, ProcessedTransaction } from '../../../core/services/ai-strategy.service';
 import { AnalyticsService } from '../../../core/services/analytics.service';
@@ -61,6 +62,7 @@ import {
   chooseOption,
   createTransaction,
   createCategory,
+  catalogTranslator,
   createUser,
   createTranslationStub,
   eachOptionState,
@@ -2231,6 +2233,24 @@ describe('TransactionFormComponent', () => {
       await (component as unknown as { scanReceipt: (f: File) => Promise<void> }).scanReceipt(receiptFile());
       expect(component.shouldVerifyField('date')).toBeTrue();
       expect(component.verifyFieldTooltip('date')).toBe('import.verifyDate. import.dateNotTodayTooltip');
+    });
+
+    it('scanReceipt joins the ja doubt and not-today sentences of a scanned date with 。, not the Latin stop', async () => {
+      // ja ends a sentence with 。 and puts no space after it: the flag's one
+      // string, its tooltip and its name alike, joins in the reader's stop.
+      const ja = catalogTranslator('ja');
+      translation.t.and.callFake(ja);
+      const scanned = new Date(2026, 7, 14);
+      strategy.processReceipt.and.resolveTo(scanResult({ date: scanned, fieldConfidence: { date: 0.4 } }));
+      const component = build().componentInstance;
+      await (component as unknown as { scanReceipt: (f: File) => Promise<void> }).scanReceipt(receiptFile());
+
+      const tooltip = component.verifyFieldTooltip('date');
+      expect(tooltip).not.toContain('. ');
+      expect(tooltip).toBe(
+        `${ja('import.verifyDate', { percent: 40 })}。` +
+          ja('import.dateNotTodayTooltip', { date: TestBed.inject(LocaleFormatService).formatDate(scanned) })
+      );
     });
 
     it('names a doubted type with its own sentence and no percentage', () => {

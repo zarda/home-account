@@ -25,6 +25,7 @@ import { createCategory } from '../../../../core/services/testing/test-data';
 import {
   AUDIT_SCHEMES,
   GLYPH_PROBE_COLOURS,
+  catalogTranslator,
   channels,
   echoTranslation,
   hoverValue,
@@ -1824,6 +1825,25 @@ describe('TransactionPreviewTableComponent, the offer chip through its own templ
       fixture.componentRef.setInput('dateAttentionIds', new Set(['old']));
       fixture.detectChanges();
       expect(questionChips().length).withContext('attention on: the not-today row is asked too').toBe(2);
+    });
+
+    it('names the keep button and the date chip of a ja row dated another day with 。 between their sentences', () => {
+      // ja ends a sentence with 。 and puts no space after it. The not-today
+      // reason ends in its own 。, which the join gives up before adding the
+      // reader's, so the reason and the action read as two ja sentences.
+      const ja = catalogTranslator('ja');
+      spyOn(TestBed.inject(TranslationService), 't').and.callFake(ja);
+      const row = makeRow({ id: 'old', date: yesterday() });
+      render([row], ['old']);
+
+      const date = formatted(row);
+      const reason = ja('import.dateNotTodayTooltip', { date });
+      const keep = fixture.nativeElement.querySelector('.extra-chip.date-check .extra-accept') as HTMLElement | null;
+      expect(keep).withContext('the not-today row is asked').not.toBeNull();
+      expect(keep?.getAttribute('aria-label')).not.toContain('. ');
+      expect(keep?.getAttribute('aria-label')).toBe(`${reason}${ja('import.keepDate', { date })}`);
+      expect(dateButton().getAttribute('aria-label')).not.toContain('. ');
+      expect(dateButton().getAttribute('aria-label')).toBe(`${reason}${ja('import.changeDate', { date })}`);
     });
 
     it('renders the question only while the row carries the mark', () => {
@@ -5626,12 +5646,10 @@ describe('TransactionPreviewTableComponent, its catalogue arriving after its row
       imports: [CatalogueArrivalHostComponent],
       providers: [
         {
-          // Echoes the key and its params, as the describes above do.
+          // Echoes the key and its params, and answers the sentence separator
+          // with en's own stop, as the describes above do.
           provide: TranslationService,
-          useValue: {
-            t: (key: string, params?: Record<string, string | number>) =>
-              params ? `${key}:${JSON.stringify(params)}` : key,
-          },
+          useValue: { t: echoTranslation },
         },
         {
           provide: CurrencyService,

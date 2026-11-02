@@ -36,8 +36,11 @@ import {
   withScheme,
   withTheme,
   provideNoMotion,
+  catalogTranslator,
   createTranslationStub,
   echoKey,
+  echoTranslation,
+  type Translator,
 } from '../../../../core/services/testing';
 import { ThemeService } from '../../../../core/services/theme.service';
 import { blankImportRow, joinSentences, splitImportRow } from '../../../../core/utils/import-review.utils';
@@ -1706,6 +1709,33 @@ describe('ImportWizardComponent', () => {
       expect(mockRouter.navigate).toHaveBeenCalled();
     }));
 
+    // ja through its catalog, for the ja notices below.
+    const ja = catalogTranslator('ja');
+
+    it('raises a two-part notice in ja as one snackbar joined by 。', fakeAsync(() => {
+      // ja ends a sentence with 。 and puts no space after it, so the round's
+      // outcome and its photo sentence are joined by the catalog's own stop,
+      // not by the Latin ". ".
+      mockTranslationService.t.and.callFake(ja);
+      mockImportService.confirmImport.and.returnValue(Promise.resolve({
+        id: 'history1', userId: 'user1', importedAt: { seconds: 0 } as never,
+        source: 'image' as const, fileType: 'receipt_image' as const,
+        fileName: 'r.png', fileSize: 10, transactionCount: 2, successCount: 2,
+        skippedCount: 0, errorCount: 0, totalIncome: 0, totalExpenses: 5,
+        duplicatesSkipped: 0, status: 'completed' as const, receiptsSkipped: 2
+      }));
+
+      component.confirmImport();
+      tick();
+
+      // Two sentences: the info tone's three seconds and two more for the second.
+      expect(notifications.info).toHaveBeenCalledOnceWith(
+        `${ja('import.importComplete', { count: 2 })}。${ja('import.importPhotosSkipped', { count: 2 })}`,
+        { durationMs: 5000 }
+      );
+      expect(notifications.info.calls.mostRecent().args[0]).not.toContain('. ');
+    }));
+
     it('says when photos could not be uploaded, info-toned, without calling the import partial', fakeAsync(() => {
       // The rows landed; only their photos did not. Calling this partial would
       // invite re-importing transactions that already saved (#334), and
@@ -1732,15 +1762,22 @@ describe('ImportWizardComponent', () => {
     }));
 
     // The photo-failure sentence is two sentences in en and in ja, where no
-    // space follows the full stop, and each is read before the notice goes.
-    for (const [locale, photosFailed] of [
-      ['en', 'The transactions were saved, but 1 receipt photo could not be uploaded. You can attach it from the transaction.'],
-      ['ja', '取引は保存されましたが、レシート写真1枚をアップロードできませんでした。取引の画面から添付し直せます。'],
-    ] as const) {
+    // space follows the full stop, and each is read before the notice goes:
+    // en through the echo with its sentence stood in, ja through its catalog,
+    // which joins the round's outcome to it with 。.
+    const enPhotosFailed =
+      'The transactions were saved, but 1 receipt photo could not be uploaded. You can attach it from the transaction.';
+    const rounds: [string, Translator, string][] = [
+      [
+        'en',
+        (key: string) => (key === 'import.importPhotosFailed' ? enPhotosFailed : echoKey(key)),
+        joinSentences(echoKey, 'import.importComplete', enPhotosFailed),
+      ],
+      ['ja', ja, `${ja('import.importComplete', { count: 1 })}。${ja('import.importPhotosFailed', { count: 1 })}`],
+    ];
+    for (const [locale, translate, notice] of rounds) {
       it(`gives the notice time for every sentence a part carries, not one a part (${locale})`, fakeAsync(() => {
-        mockTranslationService.t.and.callFake((key: string) =>
-          key === 'import.importPhotosFailed' ? photosFailed : echoKey(key)
-        );
+        mockTranslationService.t.and.callFake(translate);
         mockImportService.confirmImport.and.returnValue(Promise.resolve({
           id: 'history1', userId: 'user1', importedAt: { seconds: 0 } as never,
           source: 'image' as const, fileType: 'receipt_image' as const,
@@ -1754,10 +1791,7 @@ describe('ImportWizardComponent', () => {
 
         // Three sentences: the info tone's three seconds and two more for each
         // sentence past the first.
-        expect(notifications.info).toHaveBeenCalledOnceWith(
-          joinSentences(echoKey, 'import.importComplete', photosFailed),
-          { durationMs: 7000 }
-        );
+        expect(notifications.info).toHaveBeenCalledOnceWith(notice, { durationMs: 7000 });
       }));
     }
 
@@ -4296,9 +4330,7 @@ describe('ImportWizardComponent', () => {
       beforeEach(() => {
         // The figures travel with the key, so a notice that lost its numbers
         // on the way to the template fails here.
-        mockTranslationService.t.and.callFake((key: string, params?: Record<string, string | number>) =>
-          params ? `${key}|${JSON.stringify(params)}` : key
-        );
+        mockTranslationService.t.and.callFake(echoTranslation);
       });
 
       function processBatch(files: File[]): void {
@@ -4330,8 +4362,8 @@ describe('ImportWizardComponent', () => {
         const notice = el().querySelector('.truncated-notice');
         expect(notice).not.toBeNull();
         expect(notice!.getAttribute('role')).toBe('status');
-        expect(notice!.textContent).toContain('import.pdfPagesTruncated|{"read":15,"total":40}');
-        expect(notice!.textContent).toContain('import.pdfPagesTruncatedMore|{"others":1}');
+        expect(notice!.textContent).toContain('import.pdfPagesTruncated:{"read":15,"total":40}');
+        expect(notice!.textContent).toContain('import.pdfPagesTruncatedMore:{"others":1}');
         expect(el().querySelector('.incomplete-notice')).withContext('nothing was cut off mid-answer').toBeNull();
       }));
 
