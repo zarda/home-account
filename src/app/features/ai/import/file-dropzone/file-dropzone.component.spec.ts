@@ -1,10 +1,13 @@
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { NO_ERRORS_SCHEMA } from '@angular/core';
+import { By } from '@angular/platform-browser';
 
 import { FileDropzoneComponent } from './file-dropzone.component';
 import { IMPORT_FILE_MAX_BYTES, RefusedShare } from '../../../../core/services/share-intake.service';
 import { TranslationService } from '../../../../core/services/translation.service';
 import {
+  accessibleDescription,
+  accessibleName,
   channels,
   createTranslationStub,
   hoverValue,
@@ -556,8 +559,8 @@ describe('FileDropzoneComponent, the sentences its alert joins', () => {
 
 /**
  * Every case above overrides the template to `<div></div>`, so none of them
- * touches the zone a user actually drops on: the empty state's own
- * `role`/`tabindex`/`aria-label` gate, the per-file row, the reorder controls
+ * touches the zone a user actually drops on: the empty state's one control
+ * and what it is described by, the per-file row, the reorder controls
  * that only exist for a multi-image pick, or the error banner. This is the
  * one place the real template renders and its controls are clicked.
  */
@@ -600,19 +603,33 @@ describe('FileDropzoneComponent, through its own template', () => {
     fixture.destroy();
   });
 
-  it('offers the empty zone as a keyboard-reachable button', () => {
+  // A role="button" zone around Browse made Browse, the hint and the file
+  // types a button's presentational children, axe's nested-interactive, and
+  // gave the keyboard two stops that did one thing. The zone is a plain frame
+  // now, as the transaction row's wrapper is: the host answers a pointer
+  // click on it, and Browse is the one control a keyboard or a screen reader
+  // meets, with the hint read as its description.
+  it('offers Browse as the empty zone\'s one control, described by the hint', () => {
     fixture.detectChanges();
 
-    const zone = el().querySelector('.dropzone') as HTMLElement;
-    expect(zone.getAttribute('role')).toBe('button');
-    expect(zone.getAttribute('tabindex')).toBe('0');
-    expect(zone.getAttribute('aria-label')).toBe('import.dropzoneTitle');
+    const zone = fixture.debugElement.query(By.css('.dropzone'));
+    const frame = zone.nativeElement as HTMLElement;
+    expect(frame.getAttribute('role')).withContext('not a button').toBeNull();
+    expect(frame.getAttribute('tabindex')).withContext('not a tab stop').toBeNull();
+    expect(frame.getAttribute('aria-label')).withContext('no name of its own').toBeNull();
+    expect(zone.listeners.map(listener => listener.name))
+      .withContext('the pointer is answered on the host, the keyboard by Browse')
+      .toEqual([]);
+
+    const browse = el().querySelector('.browse-btn') as HTMLElement;
+    expect(accessibleName(browse)).withContext('Browse, by its own words').toBe('import.browseFiles');
+    expect(accessibleDescription(browse)).withContext('Browse, described by the hint').toBe('import.dropzoneHint');
     expect(text('.title')).toBe('import.dropzoneTitle');
     expect(text('.hint')).toBe('import.dropzoneHint');
     expect(all('.file-type').length).toBe(4);
   });
 
-  it('stops being a button once a file is picked', () => {
+  it('shows the file list in the empty zone\'s place once a file is picked', () => {
     fixture.detectChanges();
     dropFiles([csvFile()]);
 
@@ -783,11 +800,10 @@ describe('FileDropzoneComponent, through its own template', () => {
     expect(banner.textContent).toContain('import.fileTooLarge:{"name":"big-statement.csv","limit":"10 MB"}');
     expect(banner.querySelector('mat-icon')?.getAttribute('aria-hidden')).toBe('true');
 
-    // A refusal leaves nothing picked, so the zone is a role="button" right
-    // now, and a button's children are presentational: an alert inside one
-    // is each engine's to keep or prune. The banner sits beside the zone.
-    expect(el().querySelector('.dropzone')?.getAttribute('role')).toBe('button');
-    expect(banner.closest('[role="button"]')).toBeNull();
+    // A refusal leaves nothing picked, the state the zone was a role="button"
+    // in, and a button's children are presentational: an alert inside one is
+    // each engine's to keep or prune. No role="button" stands anywhere now.
+    expect(el().querySelector('[role="button"]')).withContext('a role="button" in the zone').toBeNull();
   });
 
   // Beside the zone, the banner still sits inside the frame that takes the

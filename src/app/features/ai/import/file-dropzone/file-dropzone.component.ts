@@ -14,6 +14,7 @@ import {
   inject,
   signal,
   untracked,
+  viewChild,
 } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { MatIconModule } from '@angular/material/icon';
@@ -45,6 +46,9 @@ function sameRefusals(a: readonly Refusal[], b: readonly Refusal[]): boolean {
   return a.length === b.length && a.every((r, i) => r.name === b[i].name && r.reason === b[i].reason);
 }
 
+/** One hint id per zone, so Browse's description never resolves to another zone's hint. */
+let hintSeq = 0;
+
 @Component({
   selector: 'app-file-dropzone',
   standalone: true,
@@ -57,7 +61,13 @@ function sameRefusals(a: readonly Refusal[], b: readonly Refusal[]): boolean {
   ],
   changeDetection: ChangeDetectionStrategy.OnPush,
   templateUrl: './file-dropzone.component.html',
-  styleUrl: './file-dropzone.component.scss'
+  styleUrl: './file-dropzone.component.scss',
+  // On the host rather than the template: a template click on the zone, an
+  // element with no tabindex, fails interactive-supports-focus, and the zone
+  // must not be a tab stop or a button. Browse is both, inside it.
+  host: {
+    '(click)': 'onZoneClick($event)',
+  },
 })
 export class FileDropzoneComponent implements OnDestroy {
   private translationService = inject(TranslationService);
@@ -115,17 +125,33 @@ export class FileDropzoneComponent implements OnDestroy {
     return this.selectedFiles().filter(f => this.isImageFile(f)).length > 1;
   });
 
-  imageFilesCount = computed(() => {
-    return this.selectedFiles().filter(f => this.isImageFile(f)).length;
-  });
+  /** What Browse's aria-describedby names: the hint under the zone's title. */
+  readonly hintId = `dropzone-hint-${++hintSeq}`;
 
-  // Only the empty zone acts as a click-to-browse target. Once files are
-  // picked the list of thumbnails must not re-open the OS picker on every
-  // stray click; adding more is done through the explicit "Add more" button.
-  browse(input: HTMLInputElement): void {
-    if (this.selectedFiles().length === 0) {
-      input.click();
-    }
+  /** The hidden input whose own click opens the picker. */
+  private readonly fileInput = viewChild.required<ElementRef<HTMLInputElement>>('fileInput');
+
+  /**
+   * A pointer click anywhere on the empty zone opens the picker, as a click
+   * on Browse does; the keyboard and a screen reader reach it through Browse
+   * alone. Once files are picked the list of rows must not re-open it on
+   * every stray click: adding more is Add more's.
+   *
+   * Only a click inside the zone counts, so the refusal banner beside it,
+   * which is read rather than pressed, opens nothing. A click from inside a
+   * control of the zone's is that control's own: Browse has opened the
+   * picker already, and the input's own click, which is the picker, bubbles
+   * out through the zone to here and would ask again. A control the zone
+   * sits inside, a link of the page's own, is none of the zone's.
+   */
+  onZoneClick(event: Event): void {
+    if (this.selectedFiles().length > 0) return;
+    const target = event.target instanceof Element ? event.target : null;
+    const zone = this.host.nativeElement.querySelector('.dropzone');
+    if (!target || !zone?.contains(target)) return;
+    const control = target.closest('button, a, input');
+    if (control && zone.contains(control)) return;
+    this.fileInput().nativeElement.click();
   }
 
   onDragOver(event: DragEvent): void {
@@ -363,10 +389,6 @@ export class FileDropzoneComponent implements OnDestroy {
       return newFiles;
     });
     this.filesSelected.emit(this.selectedFiles());
-  }
-
-  getFileIndex(file: File): number {
-    return this.selectedFiles().indexOf(file);
   }
 
   isImageFile(file: File): boolean {

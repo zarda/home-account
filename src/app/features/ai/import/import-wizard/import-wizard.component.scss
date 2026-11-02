@@ -711,10 +711,10 @@
      on a line of its own. The wizard's padding is the page's gutter here.
      Not all of Material's padding goes, though: the container clips
      (overflow: hidden), and the focus ring drawn outside a step's own
-     controls, the dropzone's among them, needs room inside it — 5px, the
-     high-contrast ring's 3px outline and 2px offset. The negative margin
-     takes those 5px back out of the wizard's gutter, so the content keeps
-     the full width. */
+     controls needs room inside it, the ring drawn round the dropzone while
+     Browse has keyboard focus among them — 5px, the high-contrast ring's
+     3px outline and 2px offset. The negative margin takes those 5px back
+     out of the wizard's gutter, so the content keeps the full width. */
   ::ng-deep .modern-stepper .mat-horizontal-content-container {
     padding-inline: 5px;
     margin-inline: -5px;

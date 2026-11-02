@@ -1,7 +1,11 @@
-<!-- The frame takes the drop; the zone inside it is the button. A refusal
-     that leaves nothing picked shows its alert while the zone is a
-     role="button", and a button's children are presentational, so the alert
-     sits beside the zone, still inside the frame a file is dropped on. -->
+<!-- The frame takes the drop. The zone inside it is no control of its own,
+     the transaction row's shape: a button around Browse made Browse, the
+     hint and the file types its presentational children. While nothing is
+     picked, the host answers a pointer click anywhere on the zone, and
+     Browse is the one control a keyboard or a screen reader meets,
+     described by the hint. The refusal alert sits beside the zone, still
+     inside the frame a file is dropped on, and a click on it opens
+     nothing. -->
 <div
   (dragover)="onDragOver($event)"
   (dragleave)="onDragLeave($event)"
@@ -12,12 +16,6 @@
     [class.dragover]="isDragOver()"
     [class.has-files]="selectedFiles().length > 0"
     [class.error]="hasError()"
-    (click)="browse(fileInput)"
-    (keydown.enter)="browse(fileInput)"
-    (keydown.space)="browse(fileInput); $event.preventDefault()"
-    [attr.tabindex]="selectedFiles().length === 0 ? 0 : null"
-    [attr.role]="selectedFiles().length === 0 ? 'button' : null"
-    [attr.aria-label]="selectedFiles().length === 0 ? ('import.dropzoneTitle' | translate) : null"
   >
     <input
       #fileInput
@@ -34,8 +32,8 @@
           <div class="icon-bg"></div>
           <mat-icon class="upload-icon">cloud_upload</mat-icon>
         </div>
-        <h3 class="title">{{ 'import.dropzoneTitle' | translate }}</h3>
-        <p class="hint">{{ 'import.dropzoneHint' | translate }}</p>
+        <h2 class="title">{{ 'import.dropzoneTitle' | translate }}</h2>
+        <p class="hint" [id]="hintId">{{ 'import.dropzoneHint' | translate }}</p>
         <div class="file-types">
           <span class="file-type">
             <mat-icon>image</mat-icon>
@@ -54,7 +52,13 @@
             JSON
           </span>
         </div>
-        <button mat-stroked-button color="primary" class="browse-btn" (click)="$event.stopPropagation(); fileInput.click()">
+        <button
+          mat-stroked-button
+          color="primary"
+          class="browse-btn"
+          (click)="fileInput.click()"
+          [attr.aria-describedby]="hintId"
+        >
           <mat-icon>folder_open</mat-icon>
           {{ 'import.browseFiles' | translate }}
         </button>
@@ -139,7 +143,7 @@
         <button
           mat-stroked-button
           class="add-more-btn"
-          (click)="$event.stopPropagation(); fileInput.click()"
+          (click)="fileInput.click()"
         >
           <mat-icon>add</mat-icon>
           {{ 'import.addMoreFiles' | translate }}

@@ -1,3 +1,5 @@
+@use 'a11y';
+
 .dropzone {
   border: 2px dashed var(--border-primary);
   border-radius: var(--radius-lg);
@@ -126,6 +128,14 @@
 .browse-btn {
   margin-top: 8px;
 }
+
+/* The ring goes round the zone, not Browse: a pointer opens the picker from
+   anywhere on the zone, and Browse is the one control a keyboard reaches it
+   through, so what a keyboard user is choosing is the whole zone. Outside
+   the zone at the 2px offset of every other ring, which the wizard's 5px of
+   room round its step is cut to. Browse's own ring is cleared, so one ring
+   shows. */
+@include a11y.frame-ring('.dropzone', '.browse-btn', 2px);
 
 .browse-btn mat-icon {
   margin-right: 8px;

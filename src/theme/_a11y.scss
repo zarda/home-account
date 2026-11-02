@@ -19,3 +19,29 @@
   clip-path: inset(50%);
   white-space: nowrap;
 }
+
+// The ring round a frame while the one control inside it has keyboard focus.
+// The frame is no control, so it is never :focus-visible itself, and the
+// ring styles.scss draws would go round the control alone; what a keyboard
+// user is choosing is the whole frame. The control's own ring is cleared, so
+// one ring shows. The offset is the caller's: inset where the frame's
+// container clips at its edge, outset where there is room. styles.scss
+// widens every ring under high contrast by matching :focus-visible, which
+// the frame never is, so its 3px is stated here.
+//
+// Included at the stylesheet's top level, with the frame's and the
+// control's selectors: `@include a11y.frame-ring('.transaction-row', '.row-activate', -2px)`.
+@mixin frame-ring($frame, $control, $offset) {
+  #{$control}:focus-visible {
+    outline: none;
+  }
+
+  #{$frame}:has(#{$control}:focus-visible) {
+    outline: 2px solid var(--color-primary);
+    outline-offset: $offset;
+  }
+
+  :host-context(.high-contrast) #{$frame}:has(#{$control}:focus-visible) {
+    outline-width: 3px;
+  }
+}
