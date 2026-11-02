@@ -101,11 +101,13 @@ describe('AboutComponent', () => {
     expect(component.angularMajorVersion).toBeGreaterThanOrEqual(22);
   });
 
-  it('shows the real launcher icon in the app info card', () => {
+  it('shows the real launcher icon in the app info card', async () => {
     fixture.detectChanges();
     const icon = fixture.nativeElement.querySelector('.app-icon img') as HTMLImageElement;
     expect(icon).toBeTruthy();
     expect(icon.getAttribute('src')).toBe('assets/icons/icon-128x128.png');
+    await expectAsync(icon.decode()).toBeResolved();
+    expect(icon.naturalWidth).toBeGreaterThan(0);
   });
 
   it('shows the donate section on web', () => {
