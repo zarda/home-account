@@ -8,6 +8,9 @@ import { Goal } from '../../../../models';
 import { TranslationService } from '../../../../core/services/translation.service';
 import { LocaleFormatService } from '../../../../core/services/locale-format.service';
 import {
+  accessibleName,
+  catalogTranslationStub,
+  catalogTranslator,
   channels,
   createLocaleFormatStub,
   createTranslationStub,
@@ -16,6 +19,7 @@ import {
   provideNoMotion,
   ratio,
   settleAnimations,
+  type TranslationStub,
   withTheme,
 } from '../../../../core/services/testing';
 
@@ -167,6 +171,7 @@ describe('GoalProgressCardComponent', () => {
 describe('GoalProgressCardComponent, through its own template', () => {
   let fixture: ComponentFixture<GoalProgressCardComponent>;
   let component: GoalProgressCardComponent;
+  let translation: TranslationStub;
 
   function card(overrides: Partial<Goal> = {}): void {
     fixture.componentRef.setInput('goal', goalOf(overrides));
@@ -183,12 +188,13 @@ describe('GoalProgressCardComponent, through its own template', () => {
   beforeEach(async () => {
     const mockCurrency = jasmine.createSpyObj('CurrencyService', ['formatCurrency']);
     mockCurrency.formatCurrency.and.callFake((amount: number, code: string) => `${code} ${amount}`);
+    translation = createTranslationStub();
 
     await TestBed.configureTestingModule({
       imports: [GoalProgressCardComponent],
       providers: [
         { provide: CurrencyService, useValue: mockCurrency },
-        { provide: TranslationService, useValue: createTranslationStub() },
+        { provide: TranslationService, useValue: translation },
         { provide: LocaleFormatService, useValue: createLocaleFormatStub() },
         provideNoMotion()
       ]
@@ -306,6 +312,26 @@ describe('GoalProgressCardComponent, through its own template', () => {
 
     expect(seen).toEqual(['edit', 'delete', 'contribute']);
   });
+
+  /**
+   * The goals page stamps one card per goal, so each card's Edit and Delete
+   * name the goal they act on, in the words the card's header shows. The
+   * catalog stub goes in before the first render, so the pipe never caches
+   * an echoed key.
+   */
+  for (const locale of ['en', 'ja', 'tc'] as const) {
+    it(`names its Edit and Delete by the goal in ${locale}`, () => {
+      const t = catalogTranslator(locale, { strict: true });
+      Object.assign(translation, catalogTranslationStub(locale));
+      card({ name: 'Japan trip' });
+
+      expect(text('.goal-name')).toBe('Japan trip');
+      expect(Array.from(el().querySelectorAll('.goal-actions button')).map(accessibleName)).toEqual([
+        t('goal.editNamed', { name: 'Japan trip' }),
+        t('goal.deleteNamed', { name: 'Japan trip' }),
+      ]);
+    });
+  }
 
   it('shows the note only when the goal carries one', () => {
     card();

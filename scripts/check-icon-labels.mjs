@@ -295,7 +295,7 @@
  * Reference documentation lives in docs/accessibility.md.
  */
 
-import { readFileSync, readdirSync, statSync } from 'node:fs';
+import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs';
 import { dirname, join, sep } from 'node:path';
 
 const SOURCE_DIR = 'src/app';
@@ -1950,8 +1950,8 @@ function selfTest() {
   );
 
   // --- the menu rule: which components are repeated ---
-  const repeatedKeys = (templates) =>
-    [...repeatedTemplates(templates.map(([key, selector, source]) => ({ key, selector, source })))].sort();
+  const repeatedKeys = (templates, options) =>
+    [...repeatedTemplates(templates.map(([key, selector, source]) => ({ key, selector, source })), options)].sort();
 
   check(
     'a card stamped in its parent\'s @for is repeated, the budget card\'s shape',
@@ -2092,7 +2092,8 @@ function selfTest() {
   check('a commented-out flag is not a flag', tooltipLines('<!-- ' + FLAG + ' -->'), []);
 
   // --- the per-item rule: must hit ---
-  const itemlessLines = (source) => scanItemlessLabels(source).map((hit) => hit.line);
+  const itemlessLines = (source, componentRepeated = false) =>
+    scanItemlessLabels(source, componentRepeated).map((hit) => hit.line);
   const REMOVE = '<button mat-icon-button [attr.aria-label]="\'common.remove\' | translate">x</button>';
 
   check(
@@ -2169,10 +2170,8 @@ function selfTest() {
 
   // --- the per-item rule: must not hit (the load-bearing half) ---
   check(
-    'a parameterised key names its item, the fixed upload area',
-    itemlessLines(
-      `@for (file of files(); track file; let i = $index) {\n  <button [attr.aria-label]="'import.removeFileLabel' | translate: { position: i + 1, name: file.name }">x</button>\n}`
-    ),
+    'a parameterised key names its item, the upload area\'s photo arrows',
+    itemlessLines(`@for (file of files(); track file) {\n  <button [attr.aria-label]="${ITEMLESS_MODEL}">x</button>\n}`),
     []
   );
   check(
@@ -2249,6 +2248,15 @@ function selfTest() {
     itemlessLines(`<!-- @for (f of files; track f) { ${REMOVE} } -->`),
     []
   );
+
+  // --- the per-item rule: the fix hint ---
+  const DROPZONE = join(SOURCE_DIR, 'features/ai/import/file-dropzone/file-dropzone.component.html');
+  check(
+    'the fix hint\'s model is a binding the upload area carries; if it left the upload area, update ITEMLESS_MODEL',
+    existsSync(DROPZONE) && readFileSync(DROPZONE, 'utf8').includes(`[attr.aria-label]="${ITEMLESS_MODEL}"`),
+    true
+  );
+  check('the fix hint quotes its model', itemlessHint().includes(ITEMLESS_MODEL), true);
 
   // --- the per-item rule: the frozen list ---
   const row = { file: 'src/app/x.component.html', key: 'common.remove', count: 1, why: 'a fixture row' };
@@ -2648,6 +2656,238 @@ function selfTest() {
     'no file and tag is frozen twice',
     UNNAMED_FROZEN.map((r) => `${r.file} ${r.key}`).filter((pair, i, pairs) => pairs.indexOf(pair) !== i),
     []
+  );
+
+  // --- the per-item rule across templates: a component another stamps per item ---
+  const EDIT = '<button mat-icon-button [attr.aria-label]="\'common.edit\' | translate">x</button>';
+  const REFRESH = '<button mat-icon-button [attr.aria-label]="\'ai.refresh\' | translate">x</button>';
+  // The dashboard's shape: one @for over the arranged cards, an @switch on
+  // the card itself, and each @case stamping its own card component.
+  const arranged = (insights, chart) =>
+    `@for (card of arrangedCards(); track card) {\n  @switch (card) {\n` +
+    `    @case ('insights') {\n      <app-summary>${insights}</app-summary>\n    }\n` +
+    `    @case ('chart') {\n      <app-chart>${chart}</app-chart>\n    }\n  }\n}`;
+  const CARDS = [
+    ['summary', 'app-summary', `<mat-card>\n  ${REFRESH}\n  <ng-content />\n</mat-card>`],
+    ['chart', 'app-chart', '<mat-card><ng-content /></mat-card>'],
+  ];
+  // The goal card's shape: its Edit sits in no repeat of its own template.
+  const GOAL_CARD = `<mat-card>\n  <div class="goal-actions">\n    ${EDIT}\n  </div>\n</mat-card>`;
+
+  check(
+    'a bare key in no repeat of its own template is reported only when its component is said to be repeated',
+    [itemlessLines(GOAL_CARD), itemlessLines(GOAL_CARD, true)],
+    [[], [3]]
+  );
+
+  // The run's own path: the verdict across templates and each template's scan
+  // with it, both through scanItemlessAcross.
+  const itemlessSites = (templates) =>
+    scanItemlessAcross(templates.map(([key, selector, source]) => ({ key, selector, source, offset: 0 }))).hits.map(
+      (hit) => hit.site
+    );
+
+  check(
+    'a bare key in a card its parent stamps in a plain @for is reported at the card\'s line, through the run\'s path',
+    itemlessSites([
+      ['goals', 'app-goals', '@for (goal of goals(); track goal.id) {\n  <app-goal-card [goal]="goal" />\n}'],
+      ['card', 'app-goal-card', GOAL_CARD],
+    ]),
+    ['card:3']
+  );
+  check(
+    'the same card stamped under an @case on the @for\'s own item is held apart, through the run\'s path',
+    itemlessSites([
+      ['dashboard', 'app-dashboard', '@for (card of cards(); track card) {\n  @switch (card) {\n    @case (\'goal\') {\n      <app-goal-card />\n    }\n  }\n}'],
+      ['card', 'app-goal-card', GOAL_CARD],
+    ]),
+    []
+  );
+  {
+    const keys = repeatedKeys([['dashboard', 'app-dashboard', arranged('', '')], ...CARDS], { casesApart: true });
+    check(
+      'the dashboard\'s @switch on the @for\'s own item renders each card once',
+      [keys, itemlessLines(CARDS[0][2], keys.includes('summary'))],
+      [[], []]
+    );
+  }
+  check(
+    'an @case on the item, read in its own template, is not repeated',
+    itemlessLines(`@for (card of cards(); track card) {\n  @switch (card) {\n    @case ('insights') {\n      ${REFRESH}\n    }\n  }\n}`),
+    []
+  );
+  check(
+    'rule 4\'s default still counts the dashboard\'s cards as repeated',
+    repeatedKeys([['dashboard', 'app-dashboard', arranged('', '')], ...CARDS]),
+    ['chart', 'summary']
+  );
+  check(
+    'an @switch (c.kind) on something the item holds still repeats',
+    itemlessLines(`@for (c of cards(); track c.id) {\n  @switch (c.kind) {\n    @case ('insights') {\n      ${REFRESH}\n    }\n  }\n}`),
+    [4]
+  );
+  check(
+    'an @case on the item under an outer @for over rows still repeats',
+    itemlessLines(
+      `@for (row of rows(); track row.id) {\n  @for (card of row.cards; track card) {\n    @switch (card) {\n` +
+        `      @case ('insights') {\n        ${REFRESH}\n      }\n    }\n  }\n}`
+    ),
+    [5]
+  );
+  check(
+    'an @default under an @switch on the item still repeats, since every other item lands in it',
+    itemlessLines(`@for (card of cards(); track card) {\n  @switch (card) {\n    @default {\n      ${REFRESH}\n    }\n  }\n}`),
+    [4]
+  );
+  check(
+    'a selector stamped in two cases of one lifted switch still repeats, the card menu\'s shape',
+    repeatedKeys(
+      [
+        ['dashboard', 'app-dashboard', arranged('<app-card-menu [card]="card" />', '<app-card-menu [card]="card" />')],
+        ['menu', 'app-card-menu', `<button [matMenuTriggerFor]="m" [attr.aria-label]="'dashboard.cardActions' | translate: { card: card() }">x</button>`],
+      ],
+      { casesApart: true }
+    ),
+    ['menu']
+  );
+  const DELETE = '<button mat-icon-button [attr.aria-label]="\'common.delete\' | translate">x</button>';
+  const twoCases = (first, second) =>
+    `@for (card of cards(); track card) {\n  @switch (card) {\n` +
+    `    @case ('a') {\n      ${first}\n    }\n    @case ('b') {\n      ${second}\n    }\n  }\n}`;
+  check(
+    'a bare key written in two cases of one lifted switch still repeats, as the card menu does',
+    itemlessLines(twoCases(DELETE, DELETE)),
+    [4, 7]
+  );
+  check(
+    'a bare key written in only one case of a lifted switch is lifted, beside another key in the other case',
+    itemlessLines(twoCases(DELETE, EDIT)),
+    []
+  );
+
+  // --- the per-item rule across templates: what a held-apart case reaches through what it stamps ---
+  const RETRY = '<button mat-icon-button [attr.aria-label]="\'common.retry\' | translate">x</button>';
+  check(
+    'a component every case reaches only through the card it stamps still repeats',
+    repeatedKeys(
+      [
+        ['dashboard', 'app-dashboard', twoCases('<app-a />', '<app-b />')],
+        ['a', 'app-a', '<mat-card><app-shared /></mat-card>'],
+        ['b', 'app-b', '<mat-card><div><app-shared /></div></mat-card>'],
+        ['shared', 'app-shared', RETRY],
+      ],
+      { casesApart: true }
+    ),
+    ['shared']
+  );
+  check(
+    'a component one case writes and another reaches through its card still repeats',
+    repeatedKeys(
+      [
+        ['dashboard', 'app-dashboard', twoCases('<app-shared />', '<app-b />')],
+        ['b', 'app-b', '<mat-card><app-shared /></mat-card>'],
+        ['shared', 'app-shared', RETRY],
+      ],
+      { casesApart: true }
+    ),
+    ['shared']
+  );
+  check(
+    'the empty state two of the dashboard\'s cards stamp is repeated, two levels down too',
+    repeatedKeys(
+      [
+        ['dashboard', 'app-dashboard', arranged('', '')],
+        ['summary', 'app-summary', '<mat-card>\n  @if (empty) {\n    <app-empty-state />\n  }\n</mat-card>'],
+        ['chart', 'app-chart', '<mat-card><app-chart-body /></mat-card>'],
+        ['body', 'app-chart-body', '<app-empty-state />'],
+        ['empty', 'app-empty-state', '<button mat-button>{{ actionLabel }}</button>'],
+      ],
+      { casesApart: true }
+    ),
+    ['empty']
+  );
+  check(
+    'a component that stamps itself is read to an end, and still repeats when two cases reach it',
+    repeatedKeys(
+      [
+        ['dashboard', 'app-dashboard', twoCases('<app-tree />', '<app-b />')],
+        ['b', 'app-b', '<mat-card><app-tree /></mat-card>'],
+        ['tree', 'app-tree', '@if (kids) {<app-tree />}'],
+      ],
+      { casesApart: true }
+    ),
+    ['tree']
+  );
+  // A stamps B and B stamps A: each case reaches both, and through A the
+  // Retry that X holds, whichever case the switch reads first.
+  const stampEachOther = [
+    ['a', 'app-a', '<div><app-b /><app-x /></div>'],
+    ['b', 'app-b', '@if (open) {<app-a />}'],
+    ['x', 'app-x', RETRY],
+  ];
+  check(
+    'components that stamp each other reach the same whichever case reads them first',
+    [
+      itemlessSites([
+        ['dashboard', 'app-dashboard', twoCases(`${RETRY}<app-a />`, '<app-b />')],
+        ...stampEachOther,
+      ]),
+      itemlessSites([
+        ['dashboard', 'app-dashboard', twoCases('<app-b />', `${RETRY}<app-a />`)],
+        ...stampEachOther,
+      ]),
+    ],
+    [
+      ['dashboard:4', 'x:1'],
+      ['dashboard:7', 'x:1'],
+    ]
+  );
+  check(
+    'a bare key every case reaches only through the card it stamps is reported at each card\'s line, through the run\'s path',
+    itemlessSites([
+      ['dashboard', 'app-dashboard', twoCases('<app-a />', '<app-b />')],
+      ['a', 'app-a', `<mat-card>\n  ${RETRY}\n</mat-card>`],
+      ['b', 'app-b', `<mat-card>\n  ${RETRY}\n</mat-card>`],
+    ]),
+    ['a:2', 'b:2']
+  );
+  check(
+    'a bare key one case writes and another reaches through its card is reported at both, and the page\'s own copy is not',
+    itemlessSites([
+      ['dashboard', 'app-dashboard', `${RETRY}\n` + twoCases(RETRY, '<app-b />')],
+      ['b', 'app-b', `<mat-card>\n  ${RETRY}\n</mat-card>`],
+    ]),
+    ['dashboard:5', 'b:2']
+  );
+  check(
+    'a bare key two levels below one case and written in another is reported at both',
+    itemlessSites([
+      ['dashboard', 'app-dashboard', twoCases('<app-a />', RETRY)],
+      ['a', 'app-a', '<mat-card><app-inner /></mat-card>'],
+      ['inner', 'app-inner', `<div>\n  ${RETRY}\n</div>`],
+    ]),
+    ['dashboard:7', 'inner:2']
+  );
+  check(
+    'a component and a key only one case reaches stay lifted, however deep',
+    [
+      repeatedKeys(
+        [
+          ['dashboard', 'app-dashboard', twoCases('<app-a />', '<app-b />')],
+          ['a', 'app-a', '<mat-card><app-shared /></mat-card>'],
+          ['b', 'app-b', `<mat-card>${EDIT}</mat-card>`],
+          ['shared', 'app-shared', RETRY],
+        ],
+        { casesApart: true }
+      ),
+      itemlessSites([
+        ['dashboard', 'app-dashboard', twoCases('<app-a />', '<app-b />')],
+        ['a', 'app-a', '<mat-card><app-shared /></mat-card>'],
+        ['b', 'app-b', `<mat-card>${EDIT}</mat-card>`],
+        ['shared', 'app-shared', RETRY],
+      ]),
+    ],
+    [[], []]
   );
 
   const failed = cases.filter((c) => !c.ok);
