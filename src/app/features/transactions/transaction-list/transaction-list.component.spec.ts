@@ -27,6 +27,7 @@ import { NotificationService } from '../../../core/services/notification.service
 import { AnnouncerService } from '../../../core/services/announcer.service';
 import { PwaService } from '../../../core/services/pwa.service';
 import { AnalyticsService } from '../../../core/services/analytics.service';
+import { RowSharingService } from '../../../core/services/row-sharing.service';
 import { ShareDialogComponent, ShareDialogData } from '../sharing/share-dialog.component';
 import { MAX_BULK_SHARE, Transaction } from '../../../models';
 import {
@@ -1477,6 +1478,36 @@ describe('TransactionListComponent desktop table width floor', () => {
   });
 });
 
+/** How long a case waits for the sharing code before it fails on that rather than on its own timeout. */
+const SHARING_LOAD_BOUND_MS = 2_000;
+
+/**
+ * Records each load of the sharing code RowSharingService starts from now on
+ * (its dynamic import of LedgerShareService), and returns a wait that ends
+ * once every load recorded so far has arrived. A case waits on the load
+ * itself rather than a count of turns: the first case to load the code waits
+ * on the module's fetch, which no zone tracks, and on a loaded machine that
+ * outlasts any fixed count. A load still out after SHARING_LOAD_BOUND_MS
+ * fails an expectation that says so. Call it once the component is created.
+ */
+function recordSharingLoads(): () => Promise<void> {
+  // The loader is private; the spy only records what it returns.
+  const sharing = TestBed.inject(RowSharingService) as unknown as {
+    loadLedger: (failed: () => string) => Promise<unknown>;
+  };
+  const loads = spyOn(sharing, 'loadLedger').and.callThrough();
+  return async () => {
+    let bound: ReturnType<typeof setTimeout> | undefined;
+    const outOfTime = new Promise<'still loading'>(resolve => {
+      bound = setTimeout(() => resolve('still loading'), SHARING_LOAD_BOUND_MS);
+    });
+    const arrived = Promise.all(loads.calls.all().map(call => call.returnValue)).then(() => 'arrived' as const);
+    const outcome = await Promise.race([arrived, outOfTime]);
+    clearTimeout(bound);
+    expect(outcome).withContext('the sharing code each share run loads').toBe('arrived');
+  };
+}
+
 /**
  * The row menu's door to sharing, on both views. The memberships come from
  * the account's own index (FirestoreService stands in for it); the shares
@@ -1493,6 +1524,7 @@ describe('TransactionListComponent sharing', () => {
   let desktop: boolean;
   let online: ReturnType<typeof signal<boolean>>;
   let analytics: jasmine.SpyObj<AnalyticsService>;
+  let sharingLoaded: () => Promise<void>;
 
   const joined = Timestamp.fromMillis(1_000);
   const HOME = { id: 'h1', name: 'Home', role: 'owner', since: joined, joinedAt: joined };
@@ -1567,14 +1599,16 @@ describe('TransactionListComponent sharing', () => {
     }).compileComponents();
 
     fixture = TestBed.createComponent(TransactionListComponent);
+    sharingLoaded = recordSharingLoads();
     fixture.componentRef.setInput('transactions', txns);
     fixture.detectChanges();
   }
 
-  /** Lets the lazily loaded sharing code resolve and its calls settle. */
+  /** Waits for the sharing code a share run loads (recordSharingLoads), then for the run's calls to settle. */
   async function settle(): Promise<void> {
     await fixture.whenStable();
-    for (let i = 0; i < 5; i++) await new Promise(resolve => setTimeout(resolve));
+    await sharingLoaded();
+    await fixture.whenStable();
     fixture.detectChanges();
   }
 
@@ -1992,6 +2026,7 @@ describe('TransactionListComponent select mode', () => {
   let edited: jasmine.Spy;
   let labels: Record<string, string>;
   let analytics: jasmine.SpyObj<AnalyticsService>;
+  let sharingLoaded: () => Promise<void>;
 
   const joined = Timestamp.fromMillis(1_000);
   const HOME = { id: 'h1', name: 'Home', role: 'owner', since: joined, joinedAt: joined };
@@ -2044,6 +2079,7 @@ describe('TransactionListComponent select mode', () => {
     }).compileComponents();
 
     fixture = TestBed.createComponent(TransactionListComponent);
+    sharingLoaded = recordSharingLoads();
     host = fixture.nativeElement as HTMLElement;
     document.body.appendChild(host);
     fixture.componentInstance.edit.subscribe(edited);
@@ -2051,14 +2087,11 @@ describe('TransactionListComponent select mode', () => {
     fixture.detectChanges();
   }
 
-  /**
-   * Lets the lazily loaded sharing code resolve and its calls settle. The
-   * first test to load it waits on the module's fetch, which no zone tracks,
-   * so this waits in real time rather than a count of turns.
-   */
+  /** Waits for the sharing code a share run loads (recordSharingLoads), then for the run's calls to settle. */
   async function settle(): Promise<void> {
     await fixture.whenStable();
-    for (let i = 0; i < 10; i++) await new Promise(resolve => setTimeout(resolve, 10));
+    await sharingLoaded();
+    await fixture.whenStable();
     fixture.detectChanges();
   }
 
