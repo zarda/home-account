@@ -387,10 +387,29 @@ export class FileDropzoneComponent implements OnDestroy {
   removeFile(file: File, event: Event): void {
     event.stopPropagation();
 
+    // The remove pressed goes with its row, and a focused button taken out
+    // of the page drops focus to the page itself; the last file's remove
+    // takes the whole list with it. So focus goes on to the remove of the
+    // row that takes this one's place, else of the row before it, and to
+    // Browse, back with the empty zone, once nothing is left: the review
+    // card hands a removed row's focus on the same way, and a click hands it
+    // on too, as a click on an arrow does. Nothing is announced: the remove
+    // that takes focus reads the file now in that place. The neighbour is
+    // found while it is still beside the file, and its row by its new place.
+    const listed = this.selectedFiles();
+    const at = listed.indexOf(file);
+    const neighbour = at < 0 ? undefined : (listed[at + 1] ?? listed[at - 1]);
+
     this.revokePreview(file);
 
     this.selectedFiles.update(files => files.filter(f => f !== file));
     this.filesSelected.emit(this.selectedFiles());
+
+    focusWhenRendered(
+      this.focus,
+      ...(neighbour ? [`[data-row="${this.selectedFiles().indexOf(neighbour)}"] .remove-btn`] : []),
+      '.browse-btn',
+    );
   }
 
   // The arrows move a photo among the photos: it swaps rows with the photo
