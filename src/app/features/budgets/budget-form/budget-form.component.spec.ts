@@ -465,6 +465,7 @@ describe('BudgetFormComponent', () => {
 
     it('should reset isSubmitting on error', async () => {
       mockBudgetService.createBudget.and.returnValue(Promise.reject(new Error('Failed')));
+      spyOn(console, 'error');
 
       component.form.patchValue({
         name: 'Test Budget',
@@ -475,6 +476,7 @@ describe('BudgetFormComponent', () => {
       await component.onSubmit();
 
       expect(component.isSubmitting()).toBe(false);
+      expect(console.error).toHaveBeenCalledWith('[BudgetForm] Save failed:', jasmine.any(Error));
     });
 
     it('should include startDate in createBudget when provided', async () => {
