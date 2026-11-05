@@ -2650,10 +2650,18 @@ the app's own language — with the warning glyph in place of the calendar one
 and no caret: it opens a modal picker and says so on `aria-haspopup="dialog"`,
 while the currency chip beside it is the one that wears a caret for its menu.
 The question chip *Dated Aug 14, 2026 — keep it?* sits in the card's extras,
-bordered amber; hover the flag or the chip's Keep half and the reason reads
-*This receipt is dated Aug 14, 2026, not today. A wrong day files it where you
-will not see it — keep it, or pick another day.* Below the card the hint
-*Check 1 date before continuing* stands where Continue is disabled.
+bordered amber; hover the flag and the reason reads *This receipt is dated
+Aug 14, 2026, not today. A wrong day files it where you will not see it —
+keep it, or pick another day.* Hover the chip's Keep half and its tooltip
+reads *Dated Aug 14, 2026 — keep it?*, the chip's own words, and then the
+same two sentences: the button's whole name. The button carries no
+`aria-describedby`: the CDK adds none for a tooltip that says what the name
+says. The name used to open with the reason and end in *Keep Aug 14, 2026*,
+so a speech-input user saying the words on the chip did not reach it;
+before that, the tooltip showed the reason alone and the button was
+described by it, so a screen reader heard the reason twice. Below the card
+the hint *Check 1 date before continuing* stands where Continue is
+disabled.
 
 Tap **Keep**: the chip goes, the date button turns green and swaps the glyph
 for a check, its name now leading with *Date checked*, the hint goes, and
@@ -3921,7 +3929,10 @@ open filter panel.
 
 ### 30. The tab strips scroll
 
-`/budgets` (three tabs) and `/reports` (five) at the pane's own 375px width.
+`/budgets` (three tabs) and `/reports` (five) at the pane's own 375px width
+where the pane is that narrow. Where the pane is wider, as the 1024px pane
+of the emulator runs of journeys 111 to 116 was, 375px is an emulated
+width, set before a full load and read back from `innerWidth`.
 Pointer input stalls under emulation ([Panes and viewports](#panes-and-viewports)),
 so the scroll itself is set by script; the keys are real and are sent from the
 focused tab, because Material's keydown listener sits on the label container
@@ -3939,10 +3950,68 @@ header carries no pagination class; the header's own `transform` reads `none`,
 so nothing is being paged. `scrollbar-width` is `thin`, not `none`.
 
 **Pass — it scrolls, and a selection is revealed.** Setting `scrollLeft = 200`
-on budgets lands at 183.5, the strip's own maximum — it really is a scroller
-with a real end. Selecting the last tab (Goals) brings it into view, and a
-click on the last tab after scrolling to the end leaves it in view rather than
-snapping back to 0. On reports, selecting Forecast reveals it at 405.5.
+on budgets stops at the strip's own maximum, `scrollWidth - clientWidth`
+within a pixel (183.5 when this journey was written, 65 in the second run of
+journeys 111 to 116) — it really is a scroller with a real end. Selecting the
+last tab (Goals) brings it into view, and a click on the last tab after
+scrolling to the end leaves it in view rather than snapping back to 0. On
+reports, selecting Forecast reveals it at 405.5.
+
+**Pass — a late count leaves the tab in view.** A full load of
+`/budgets?tab=goals`, with the pane in view. The strip opens on Goals; the
+Budgets tab's count, which widens the first tab, comes with the first
+snapshot and can land after the strip has opened. As soon as the strip
+shows, read the page's own scroll,
+`[scrollY, document.querySelector('.main-container').scrollTop]`, and once
+the count shows:
+
+```js
+const strip = document.querySelector('.mat-mdc-tab-label-container');
+const room = strip.getBoundingClientRect();
+const goals = strip.querySelectorAll('.mat-mdc-tab-labels > .mat-mdc-tab')[2].getBoundingClientRect();
+[strip.scrollLeft, strip.scrollWidth - strip.clientWidth,
+  goals.left >= room.left - 1 && goals.right <= room.right + 1,
+  [scrollY, document.querySelector('.main-container').scrollTop]];
+```
+
+**Pass:** the third value `true`, and the first within a pixel of the
+second: Goals, the last tab, is whole, and the strip rests at its end. The
+last, the page's own scroll, equals the read before the count: the reveal
+moves the strip and never the page. With the strip in view at the top of a
+fresh load, that shows only that nothing moved; the case it guards, a
+count landing while the reader is down the page, is the directive's spec's,
+`tab-strip-scroll.directive.spec.ts`, *never moves the page around the
+strip to reveal a tab*. The second run of journeys 111 to 116 met the late
+count in its sweep at 375px, before *fix(ui): a tab strip keeps its tab in
+view when the labels widen or the strip narrows after it opens*, and read
+25.5 of 65, Goals painted as *G*: the landing reveal ran once, before the
+count. The strip now watches its labels and its own width with a
+ResizeObserver and reveals that tab again, unless the reader has scrolled
+the strip since. A hidden pane runs no ResizeObserver callbacks
+([Panes and viewports](#panes-and-viewports)), so there the count lands and
+nothing moves the strip, which reads exactly like the defect.
+Where the pane cannot be shown, flush `app-budgets` as
+[In a hidden pane](#in-a-hidden-pane) says, reveal the tab by script, and
+read again:
+
+```js
+const d = ng.getDirectives(document.querySelector('mat-tab-group')).find(x => 'revealed' in x);
+d.reveal(d.revealed.index);
+```
+
+That is state only, diagnostic-grade, as the fit-text flush is, and it
+needs the development build, whose `ng` it is; `reveal` and `revealed` are
+private, TypeScript's word, which the running page does not enforce. It
+cannot judge this Pass: it calls the reveal by hand, and what this Pass
+reads is the ResizeObserver calling it once the count lands, which a
+hidden pane never runs. So a run in a hidden pane records the Pass
+unjudged, as the third and fourth runs of journeys 111 to 116 did, and does
+not count the fallback's read as a pass. `budgets.overflow.spec.ts` holds
+the real path, *keeps the tab a ?tab= link names in view when the Budgets
+count arrives after the strip opened*. The fix's other half, the strip
+narrowing after it opens, has no Pass here:
+`tab-strip-scroll.directive.spec.ts`, *keeps the landing tab whole when the
+strip narrows*, holds it.
 
 **Pass — the keyboard.** Four `ArrowRight` presses from the focused tab move
 focus 1 → 4, each landing tab inside the strip's box, with `scrollLeft`
