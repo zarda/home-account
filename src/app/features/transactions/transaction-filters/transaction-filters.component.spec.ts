@@ -931,6 +931,73 @@ describe('TransactionFiltersComponent', () => {
       }));
     }
 
+    /**
+     * The panel scrolls down once its rows outgrow it, never sideways. A
+     * row's remove is its last item, flush with the panel's end, and
+     * Material centres a 48 px touch target on the 40 px button, 4 px past
+     * it on every side: past the panel's end, which then scrolled 4 px, over
+     * the end of its own row's apply, and up over the bottom of the remove
+     * above it, so a tap there removed the wrong search. Read at the 712 px
+     * host a 1024 px pane gives (a 686 px panel) and at the 336 px a 375 px
+     * phone gives: the 312 px grid the filter-date cases read, and the
+     * filter panel's 12 px padding on each side. A scroll width or height
+     * sees only what reaches past a box's end or bottom, so each touch
+     * target is also read against its row on every side. The headings are
+     * raw keys here, one unbroken word each and part of the panel's scroll
+     * width, so the face is pinned.
+     */
+    it('keeps each 40px suggestion remove and its touch target on its own row, and the panel never scrolls sideways', fakeAsync(() => {
+      mockSearchHistory.savedSearches.set([
+        savedSearch('s1', 'utilities', { label: 'Bills' }),
+        savedSearch('s2', 'gym'),
+      ]);
+      mockSearchHistory.recentSearches.set([savedSearch('r1', 'starbucks')]);
+      const { input, root } = renderExpanded();
+      tick();
+      input.dispatchEvent(new Event('focus'));
+      fixture.detectChanges();
+
+      const panel = root.querySelector<HTMLElement>('.search-suggestions');
+      expect(panel).withContext('the suggestions panel').not.toBeNull();
+      const rows = Array.from(panel!.querySelectorAll<HTMLElement>('.suggestion-row'));
+      expect(rows.length).withContext('two saved rows and one recent').toBe(3);
+
+      root.style.display = 'block';
+      pinFieldFace();
+      for (const width of [712, 336]) {
+        root.style.width = `${width}px`;
+        const at = `a ${width} px host`;
+        expect(panel!.scrollWidth)
+          .withContext(`${at}: the panel's scroll width against its client width, px`)
+          .toBeLessThanOrEqual(panel!.clientWidth);
+        rows.forEach((row, i) => {
+          const shown = `${at}: row ${i + 1}`;
+          const remove = row.querySelector('.suggestion-remove')!;
+          const box = remove.getBoundingClientRect();
+          expect([box.width, box.height]).withContext(`${shown}'s remove, px`).toEqual([40, 40]);
+          expect(row.scrollWidth)
+            .withContext(`${shown}'s scroll width against its client width, px`)
+            .toBeLessThanOrEqual(row.clientWidth);
+          expect(row.scrollHeight)
+            .withContext(`${shown}'s scroll height against its client height, px`)
+            .toBeLessThanOrEqual(row.clientHeight);
+          const own = row.getBoundingClientRect();
+          const apply = row.querySelector('.suggestion-apply')!.getBoundingClientRect();
+          const target = remove.querySelector('.mat-mdc-button-touch-target')!.getBoundingClientRect();
+          const room: readonly [string, number][] = [
+            ["top, inside the row's", target.top - own.top],
+            ["bottom, inside the row's", own.bottom - target.bottom],
+            ["start, clear of the apply's end", target.left - apply.right],
+            ["end, inside the row's", own.right - target.right],
+          ];
+          for (const [edge, px] of room) {
+            expect(px).withContext(`${shown}'s remove, its touch target's ${edge}, px`).toBeGreaterThanOrEqual(-0.5);
+          }
+        });
+      }
+      flush();
+    }));
+
     it('moves focus into the panel on ArrowDown', fakeAsync(() => {
       mockSearchHistory.recentSearches.set([savedSearch('r1', 'starbucks')]);
       const { input, root } = renderExpanded();
