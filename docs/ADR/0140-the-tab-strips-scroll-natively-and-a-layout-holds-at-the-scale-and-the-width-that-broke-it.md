@@ -257,6 +257,11 @@ round a number up will reach for `rem` again.
   will scroll the nearest *vertical* ancestor too, so a `?tab=` deep link on a
   short viewport can move the page under the reader. A horizontal-only reveal
   would be safer.
+  *Closed by*
+  [0187](0187-repeated-controls-name-their-item-the-upload-area-has-one-button-and-numbers-photos-among-photos-resting-text-is-a-token-sentences-end-in-the-readers-stop-and-a-spec-that-expects-nothing-fails.md):
+  a reveal writes the strip's own `scrollLeft` and nothing else, so bringing
+  a tab into view never moves the page, and a case in
+  `tab-strip-scroll.directive.spec.ts` holds the page still.
 - **The directive silently owns `disablePagination`.** A page that writes
   `[disablePagination]="false"` on an opted-in group would fight it, and
   nothing says so but a clause in the doc comment.

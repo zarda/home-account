@@ -1,6 +1,27 @@
 # 88. The smoke harness owns the noise it makes
 
-**Status:** Accepted, implemented · **Date:** 2026-08-31 · **Issues:** #355
+**Status:** Accepted, implemented; amended by
+[0187](0187-repeated-controls-name-their-item-the-upload-area-has-one-button-and-numbers-photos-among-photos-resting-text-is-a-token-sentences-end-in-the-readers-stop-and-a-spec-that-expects-nothing-fails.md)
+· **Date:** 2026-08-31 · **Issues:** #355
+
+**Amended by
+[0187](0187-repeated-controls-name-their-item-the-upload-area-has-one-button-and-numbers-photos-among-photos-resting-text-is-a-token-sentences-end-in-the-readers-stop-and-a-spec-that-expects-nothing-fails.md).**
+The helper stands as decided below, and every file that needs it still calls
+it for itself, at module scope. What changes is who needs it. This record
+names every smoke file that imports `@angular/fire`; a unit spec that reaches
+a zone-wrapped call outside any injector prints the one-time advisory too,
+and ten do: `firestore.service.spec.ts`, which already called it, for
+`aggregateFieldEqual()`, `doc()`, `sum()`, `writeBatch()` and its
+`afterAll`'s `deleteApp()`; eight that reach `deleteField()`, in the spec, in
+the service under test or in both, `auth.service.spec.ts`,
+`goal.service.spec.ts`, `household.service.spec.ts`,
+`household-plans.service.spec.ts`, `provider-key.service.spec.ts`,
+`recurring.service.spec.ts`, `search-answer-history.service.spec.ts` and
+`transaction.service.spec.ts`; and `data-management.component.spec.ts`, whose
+component calls `terminate()`. Each calls it now, and the helper's header
+names them. `test:dates`, which runs the recurring and household-plans specs
+without `firestore.service.spec.ts`, printed the advisory in both zones and
+prints none.
 
 ## Context
 

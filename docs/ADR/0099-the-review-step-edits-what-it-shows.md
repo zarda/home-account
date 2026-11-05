@@ -238,6 +238,11 @@ dismissed be rebuilt from the mark. Notes open through a `notesOpen` set and a
   terminator-aware join strips the CJK stop correctly and then appends an
   ASCII one. One locale-aware joiner shared by the card's `withReason` and the
   form's `verifyFieldTooltip` would close it.
+  *Closed by
+  [0187](0187-repeated-controls-name-their-item-the-upload-area-has-one-button-and-numbers-photos-among-photos-resting-text-is-a-token-sentences-end-in-the-readers-stop-and-a-spec-that-expects-nothing-fails.md):
+  `joinSentences` takes the caller's translator and joins in the catalog's
+  `common.sentenceSeparator`, a `。` in ja and tc, for the card's names, the
+  form's verify text, the wizard's round notice and the dropzone's alert.*
 - **The question chip's Change button opens the same dialog and does not say
   so.** `aria-haspopup="dialog"` is on the date button only.
 - **`currencyChipLabel` and `currencyOfferLabel` still join with a bare
