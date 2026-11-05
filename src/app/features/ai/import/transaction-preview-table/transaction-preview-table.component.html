@@ -314,7 +314,7 @@
                  button opens the same picker the date button does. -->
             @if (showsDateChip(row)) {
               <span class="extra-chip date-check">
-                <button type="button" class="extra-accept" [attr.aria-label]="keepDateLabel(row)" [matTooltip]="dateTooltip(row)" matTooltipPosition="above" (click)="keepDate(row)">
+                <button type="button" class="extra-accept" [attr.aria-label]="keepDateLabel(row)" [matTooltip]="keepDateLabel(row)" matTooltipPosition="above" (click)="keepDate(row)">
                   <mat-icon aria-hidden="true">event</mat-icon>
                   <span class="extra-text">{{ dateChipText(row) }}</span>
                 </button>
@@ -486,7 +486,7 @@
             }
             @if (row.currencySuggestion) {
               <span class="extra-chip currency-offer">
-                <button type="button" class="extra-accept" [attr.aria-label]="currencyOfferLabel(row)" [matTooltip]="currencyOfferReason(row)" matTooltipPosition="above" (click)="acceptCurrencySuggestion(row)">
+                <button type="button" class="extra-accept" [attr.aria-label]="currencyOfferLabel(row)" [matTooltip]="currencyOfferLabel(row)" matTooltipPosition="above" (click)="acceptCurrencySuggestion(row)">
                   <mat-icon aria-hidden="true">public</mat-icon>
                   <span class="extra-text">{{ currencyOfferText(row) }}</span>
                 </button>

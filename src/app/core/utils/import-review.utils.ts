@@ -375,7 +375,8 @@ export function fieldDoubtSentence(
  * already drifted apart. The callers:
  * - the review card's accessible names for five controls: the currency chip,
  *   the offered currency's accept button, the date chip, the keep-date button
- *   and the type toggle;
+ *   and the type toggle (the accept and keep-date buttons' tooltips are
+ *   their names too);
  * - the transaction form's verify-field text, one string that is both the
  *   flag's tooltip and its accessible name, and its type segments' names;
  * - the import wizard's notice for a confirm round, visible text as well as

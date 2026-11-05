@@ -885,7 +885,13 @@ export class TransactionPreviewTableComponent implements AfterViewInit {
     return offer ? this.reasonLabel(offer.reason) : '';
   }
 
-  /** The accept button's name says what it does and why; the visible text alone says neither fully. */
+  /**
+   * The accept button's name says what it does and why; the visible text
+   * alone says neither fully. Its tooltip shows this whole name: MatTooltip
+   * has the CDK describe its host by any message that is not the host's
+   * whole aria-label, so a tooltip of the reason alone was read again after
+   * the name.
+   */
   currencyOfferLabel(row: CategorizedImportTransaction): string {
     const code = row.currencySuggestion?.code ?? '';
     return joinSentences(
@@ -1054,7 +1060,11 @@ export class TransactionPreviewTableComponent implements AfterViewInit {
       : this.translationService.t('import.dateNotTodayKeep', { date: this.formattedDate(row) });
   }
 
-  /** The keep button's name says why the row is asked and what it keeps; the visible text says neither fully. */
+  /**
+   * The keep button's name says why the row is asked and what it keeps; the
+   * visible text says neither fully. Its tooltip shows this whole name, as
+   * currencyOfferLabel's does, so a screen reader reads the reason once.
+   */
   keepDateLabel(row: CategorizedImportTransaction): string {
     return joinSentences(
       this.t,
