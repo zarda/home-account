@@ -1542,6 +1542,57 @@ describe('TransactionFiltersComponent', () => {
     }));
   });
 
+  // Karma serves none of the app's fonts, so each platform measures in its
+  // own fallback. The Linux runner's is DejaVu Sans, which Verdana matches
+  // to within a few pixels. Material's fields take their face from the
+  // --mat-sys tokens rather than from the host. The width cases below pin it.
+  function pinFieldFace(): void {
+    const host = fixture.nativeElement as HTMLElement;
+    const face = "Verdana, 'DejaVu Sans', sans-serif";
+    host.style.fontFamily = face;
+    for (const token of ['--mat-sys-body-large-font', '--mat-sys-body-small-font', '--mat-sys-label-large-font']) {
+      host.style.setProperty(token, face);
+    }
+  }
+
+  /** Constrains the component's host so the grid inside the panel's padding is `width` px wide. */
+  function layOutGrid(width: number): HTMLElement {
+    const host = fixture.nativeElement as HTMLElement;
+    const panel = getComputedStyle(host.querySelector('.filter-panel')!);
+    host.style.width = `${width + parseFloat(panel.paddingInlineStart) + parseFloat(panel.paddingInlineEnd)}px`;
+    const grid = host.querySelector<HTMLElement>('.filter-grid')!;
+    expect(grid.getBoundingClientRect().width).withContext('the grid width, px').toBeCloseTo(width, 0);
+    return grid;
+  }
+
+  function gridColumns(grid: HTMLElement): number {
+    return getComputedStyle(grid).gridTemplateColumns.split(' ').length;
+  }
+
+  /**
+   * Lays the grid out at the narrowest width that still sets two fields side
+   * by side, where each track is at its floor, and returns that width. It is
+   * searched for rather than worked out from the floor, since tracks stretch
+   * to fill whatever width they are given and a floor too small would pass at
+   * any width computed from the right one.
+   */
+  function layOutNarrowestTwoColumnGrid(): number {
+    const SEARCH_FROM_PX = 400;
+    const SEARCH_DOWN_TO_PX = 200;
+    expect(gridColumns(layOutGrid(SEARCH_FROM_PX)))
+      .withContext(`columns in a ${SEARCH_FROM_PX} px grid, where the search starts`)
+      .toBe(2);
+    let width = SEARCH_FROM_PX;
+    while (width > SEARCH_DOWN_TO_PX && gridColumns(layOutGrid(width - 1)) === 2) {
+      width--;
+    }
+    expect(gridColumns(layOutGrid(width - 1)))
+      .withContext(`columns in a ${width - 1} px grid, the widest that no longer holds two`)
+      .toBe(1);
+    expect(gridColumns(layOutGrid(width))).withContext(`columns in a ${width} px grid, 1 px wider`).toBe(2);
+    return width;
+  }
+
   // Material caps an outlined select's notch at the field's width less 60 px,
   // the room a resting label leaves beside the arrow, and lifts the cap only
   // under a class its form field no longer sets. A floated label sits on the
@@ -1566,15 +1617,7 @@ describe('TransactionFiltersComponent', () => {
     /** Renders at a pinned width and face, lets ngModel hand each select its value, then settles the label's float. */
     function render(): void {
       const host = fixture.nativeElement as HTMLElement;
-      // Karma serves none of the app's fonts, so each platform measures in its
-      // own fallback. The Linux runner's is DejaVu Sans, which Verdana matches
-      // to within a few pixels. Material's fields take their face from the
-      // --mat-sys tokens rather than from the host.
-      const face = "Verdana, 'DejaVu Sans', sans-serif";
-      host.style.fontFamily = face;
-      for (const token of ['--mat-sys-body-large-font', '--mat-sys-body-small-font', '--mat-sys-label-large-font']) {
-        host.style.setProperty(token, face);
-      }
+      pinFieldFace();
       component.expanded.set(true);
       fixture.detectChanges();
       for (const each of Array.from(host.querySelectorAll<HTMLElement>('.filter-grid mat-form-field'))) {
@@ -1669,10 +1712,6 @@ describe('TransactionFiltersComponent', () => {
   // them out at every pane.
   describe('a filter date beside its calendar button', () => {
     const GRID_WIDTHS_PX = [702, 312, 257] as const;
-    // Karma serves none of the app's fonts, so the face is pinned as in the
-    // narrow-select cases above: the Linux runner's DejaVu Sans has Verdana's
-    // digit widths, and Material's fields read their face from the tokens.
-    const FACE = "Verdana, 'DejaVu Sans', sans-serif";
 
     // 12 October 2026 as each of the reader's settings shows it. A two-digit
     // month and day, so every one is ten characters: eight digits and two
@@ -1690,10 +1729,7 @@ describe('TransactionFiltersComponent', () => {
     /** Opens the panel on 12 October 2026 to 12 October 2026, then lets ngModel hand each date input its value. */
     function render(): void {
       host().style.display = 'block';
-      host().style.fontFamily = FACE;
-      for (const token of ['--mat-sys-body-large-font', '--mat-sys-body-small-font', '--mat-sys-label-large-font']) {
-        host().style.setProperty(token, FACE);
-      }
+      pinFieldFace();
       const filters: TransactionFilters = { startDate: new Date(2026, 9, 12), endDate: new Date(2026, 9, 12) };
       component.presetFilters = filters;
       component.ngOnChanges({ presetFilters: new SimpleChange(undefined, filters, false) });
@@ -1715,15 +1751,6 @@ describe('TransactionFiltersComponent', () => {
       fixture.detectChanges();
     }
 
-    /** Constrains the component's host so the grid inside the panel's padding is `width` px wide. */
-    function layOut(width: number): HTMLElement {
-      const panel = getComputedStyle(host().querySelector('.filter-panel')!);
-      host().style.width = `${width + parseFloat(panel.paddingInlineStart) + parseFloat(panel.paddingInlineEnd)}px`;
-      const grid = host().querySelector<HTMLElement>('.filter-grid')!;
-      expect(grid.getBoundingClientRect().width).withContext('the grid width, px').toBeCloseTo(width, 0);
-      return grid;
-    }
-
     function dateInputs(): HTMLInputElement[] {
       const inputs = Array.from(host().querySelectorAll<HTMLInputElement>('.filter-grid input.mat-datepicker-input'));
       expect(inputs.length).withContext('the From and To inputs').toBe(2);
@@ -1732,10 +1759,6 @@ describe('TransactionFiltersComponent', () => {
 
     function wrapperOf(element: Element): HTMLElement {
       return element.closest('mat-form-field')!.querySelector<HTMLElement>('.mat-mdc-text-field-wrapper')!;
-    }
-
-    function columnsOf(grid: HTMLElement): number {
-      return getComputedStyle(grid).gridTemplateColumns.split(' ').length;
     }
 
     /** What a date field needs, read off the page: its start padding, its calendar button and ten digits of the input's own font. */
@@ -1821,7 +1844,7 @@ describe('TransactionFiltersComponent', () => {
       for (const rendering of RENDERINGS) {
         readAs(rendering);
         for (const width of GRID_WIDTHS_PX) {
-          layOut(width);
+          layOutGrid(width);
           dateInputs().forEach((input, index) => {
             const which = `${index === 0 ? 'From' : 'To'}, ${rendering.name}, in a ${width} px grid`;
             expect(input.value).withContext(`${which}: the date shown`).toBe(rendering.shown);
@@ -1836,7 +1859,7 @@ describe('TransactionFiltersComponent', () => {
 
     it("gives a date field's end padding to its date, as Material does beside an icon suffix", fakeAsync(() => {
       render();
-      layOut(GRID_WIDTHS_PX[0]);
+      layOutGrid(GRID_WIDTHS_PX[0]);
 
       for (const input of dateInputs()) {
         const wrapper = getComputedStyle(wrapperOf(input));
@@ -1848,7 +1871,7 @@ describe('TransactionFiltersComponent', () => {
     // Pin: the compact padding stays on every field without a button.
     it('keeps the end padding of a compact field with no calendar button (pin)', fakeAsync(() => {
       render();
-      layOut(GRID_WIDTHS_PX[0]);
+      layOutGrid(GRID_WIDTHS_PX[0]);
 
       const minAmount = Array.from(host().querySelectorAll('.filter-grid mat-form-field'))
         .find(each => each.querySelector('mat-label')?.textContent?.trim() === 'Min Amount');
@@ -1865,9 +1888,9 @@ describe('TransactionFiltersComponent', () => {
     // bounds the floor only from far below; the next case lays one out at it.
     it('lays a 702 px grid out in more than one column, no field narrower than a date needs (pin)', fakeAsync(() => {
       render();
-      const grid = layOut(GRID_WIDTHS_PX[0]);
+      const grid = layOutGrid(GRID_WIDTHS_PX[0]);
 
-      expect(columnsOf(grid)).withContext('columns in a 702 px grid').toBeGreaterThan(1);
+      expect(gridColumns(grid)).withContext('columns in a 702 px grid').toBeGreaterThan(1);
 
       const need = dateFieldNeedPx(dateInputs()[0]);
       for (const field of Array.from(grid.querySelectorAll('mat-form-field'))) {
@@ -1880,28 +1903,11 @@ describe('TransactionFiltersComponent', () => {
 
     // Pin: the narrowest grid that still sets two fields side by side lays
     // each track out at its floor, so it is where 56 px and 10ch are put to
-    // the test. The step is searched for rather than worked out from the
-    // floor, since tracks stretch to fill whatever width they are given and
-    // a floor too small would pass at any width computed from the right one.
-    // Every digit of the pinned face is as wide as any other, so each
-    // rendering is as wide as any date with its two separators.
+    // the test. Every digit of the pinned face is as wide as any other, so
+    // each rendering is as wide as any date with its two separators.
     it('shows the whole of a date in every rendering in the narrowest grid that holds two columns (pin)', fakeAsync(() => {
-      const SEARCH_FROM_PX = 400;
-      const SEARCH_DOWN_TO_PX = 200;
       render();
-
-      expect(columnsOf(layOut(SEARCH_FROM_PX)))
-        .withContext(`columns in a ${SEARCH_FROM_PX} px grid, where the search starts`)
-        .toBe(2);
-      let width = SEARCH_FROM_PX;
-      while (width > SEARCH_DOWN_TO_PX && columnsOf(layOut(width - 1)) === 2) {
-        width--;
-      }
-      expect(columnsOf(layOut(width - 1)))
-        .withContext(`columns in a ${width - 1} px grid, the widest that no longer holds two`)
-        .toBe(1);
-      const grid = layOut(width);
-      expect(columnsOf(grid)).withContext(`columns in a ${width} px grid, 1 px wider`).toBe(2);
+      const width = layOutNarrowestTwoColumnGrid();
 
       const need = dateFieldNeedPx(dateInputs()[0]);
       for (const rendering of RENDERINGS) {
@@ -1919,6 +1925,87 @@ describe('TransactionFiltersComponent', () => {
         });
       }
     }));
+  });
+
+  // The Tags field's hint shows once the field has focus, on an input's one
+  // line, so it cannot wrap: it has to fit the room its input gives it. That
+  // room is the input's content box as far as its field's infix reaches.
+  // Material sets a chip input at 150 px or wider, so in a track under 174 px
+  // the input runs past the infix, over the field's end padding and outline.
+  // The widths are the grid's own, as in the date cases above: 312 px, read on
+  // a 375 px phone, and 944 px, what a 1280 px pane leaves it (1280 less the
+  // docked 256 px sidebar, an 8 px scrollbar, the page's two 24 px gutters and
+  // the panel's two 12 px). Verdana's digits are wider than the app's own
+  // face's, so in the pinned face 312 px holds one column where the phone
+  // showed two; the narrowest grid that holds two is that phone's layout at
+  // its tightest, and no track is narrower.
+  describe("the Tags field's hint", () => {
+    const GRID_WIDTHS_PX = [312, 944] as const;
+    const host = () => fixture.nativeElement as HTMLElement;
+
+    /** Opens the panel in a language, with the face pinned, and returns the Tags input. */
+    function render(l: SupportedLocale): HTMLInputElement {
+      mockTranslationService.t.and.callFake(catalogTranslator(l));
+      // The translate pipe memoises on the locale and the catalog version.
+      locale.set(l);
+      TestBed.inject(TranslationService).translationsVersion.update(version => version + 1);
+      host().style.display = 'block';
+      pinFieldFace();
+      component.expanded.set(true);
+      fixture.detectChanges();
+      flush();
+      fixture.detectChanges();
+      settleAnimations(document);
+      const input = host().querySelector<HTMLInputElement>('.tags-field input.mat-mdc-chip-input');
+      expect(input).withContext('the Tags input').not.toBeNull();
+      return input!;
+    }
+
+    /** The hint's width, px, on one line in the input's own font. */
+    function hintWidthPx(input: HTMLInputElement): number {
+      const style = getComputedStyle(input);
+      const probe = document.createElement('span');
+      probe.style.cssText = 'position: absolute; visibility: hidden; white-space: pre';
+      probe.style.font = style.font;
+      probe.style.letterSpacing = style.letterSpacing;
+      probe.textContent = input.placeholder;
+      input.parentElement!.appendChild(probe);
+      const width = probe.getBoundingClientRect().width;
+      probe.remove();
+      return width;
+    }
+
+    /** Where the hint is drawn, px: the input's content box, as far as its field's infix reaches. */
+    function roomPx(input: HTMLInputElement): number {
+      const style = getComputedStyle(input);
+      const box = input.getBoundingClientRect();
+      const start = box.left + parseFloat(style.borderLeftWidth) + parseFloat(style.paddingLeft);
+      const end = Math.min(
+        box.right - parseFloat(style.borderRightWidth) - parseFloat(style.paddingRight),
+        input.closest('.mat-mdc-form-field-infix')!.getBoundingClientRect().right
+      );
+      return end - start;
+    }
+
+    for (const l of ['en', 'ja', 'tc'] as const) {
+      it(`fits its input on a 375 px phone, in a 1280 px pane and in the narrowest two-column grid, in ${l}`, fakeAsync(() => {
+        const input = render(l);
+        expect(input.placeholder)
+          .withContext("the hint, in the catalog's words")
+          .toBe(catalogTranslator(l, { strict: true })('transactions.tagsPlaceholderShort'));
+        const hint = hintWidthPx(input);
+        expect(hint).withContext('the hint, px').toBeGreaterThan(0);
+
+        for (const width of [...GRID_WIDTHS_PX, layOutNarrowestTwoColumnGrid()]) {
+          layOutGrid(width);
+          const room = roomPx(input);
+          expect(room).withContext(`in a ${width} px grid: the room, px`).toBeGreaterThan(0);
+          expect(hint)
+            .withContext(`in a ${width} px grid: "${input.placeholder}", px, against its room`)
+            .toBeLessThanOrEqual(room);
+        }
+      }));
+    }
   });
 
   describe('grid tracks (#450)', () => {

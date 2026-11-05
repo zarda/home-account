@@ -4047,6 +4047,71 @@ describe('TransactionFormComponent, through its own template', () => {
     });
   });
 
+  // The Tags field's hint shows once the field has focus, on its input's one
+  // line, so it cannot wrap: it has to fit the input's content box. The field
+  // takes its whole row of the dialog's content. QuickAddService and the
+  // transactions page open the form 500 px wide with a 95vw cap, which the
+  // dialog sets on its pane and so outranks Material's small-screen cap of
+  // 100vw less 32 px: 356.25 px on a 375 px phone. Under 480 px the content
+  // pads 16 px a side, which leaves the field 324.25 px. Karma's window is
+  // wider than that, so the host is laid out to give the field its phone
+  // width. The face is pinned as docs/testing.md *Karma serves no fonts* says.
+  describe("the Tags field's hint", () => {
+    const PHONE_FIELD_PX = 375 * 0.95 - 2 * 16;
+    const FACE = "Verdana, 'DejaVu Sans', sans-serif";
+
+    /** The hint's width, px, on one line in the input's own font. */
+    function hintWidthPx(input: HTMLInputElement): number {
+      const style = getComputedStyle(input);
+      const probe = document.createElement('span');
+      probe.style.cssText = 'position: absolute; visibility: hidden; white-space: pre';
+      probe.style.font = style.font;
+      probe.style.letterSpacing = style.letterSpacing;
+      probe.textContent = input.placeholder;
+      input.parentElement!.appendChild(probe);
+      const width = probe.getBoundingClientRect().width;
+      probe.remove();
+      return width;
+    }
+
+    for (const l of ['en', 'ja', 'tc'] as const) {
+      it(`fits its input on a 375 px phone, in ${l}`, () => {
+        TestBed.overrideProvider(TranslationService, { useValue: catalogTranslationStub(l) });
+        const words = catalogTranslator(l, { strict: true });
+        render();
+        el().style.display = 'block';
+        el().style.fontFamily = FACE;
+        for (const token of ['--mat-sys-body-large-font', '--mat-sys-body-small-font', '--mat-sys-label-large-font']) {
+          el().style.setProperty(token, FACE);
+        }
+        settleAnimations(document);
+
+        const field = el().querySelector<HTMLElement>('mat-form-field:has(mat-chip-grid)');
+        const input = field?.querySelector<HTMLInputElement>('input.mat-mdc-chip-input') ?? null;
+        expect(input).withContext('the Tags input').not.toBeNull();
+        if (!field || !input) return;
+        // Whatever Karma's window leaves around the field, the field gets the
+        // width the phone's dialog gives it.
+        const chrome = el().getBoundingClientRect().width - field.getBoundingClientRect().width;
+        el().style.width = `${PHONE_FIELD_PX + chrome}px`;
+        expect(field.getBoundingClientRect().width).withContext('the field, px').toBeCloseTo(PHONE_FIELD_PX, 1);
+
+        expect(input.placeholder)
+          .withContext("the hint, in the catalog's words")
+          .toBe(words('transactions.tagsPlaceholderShort'));
+        const hint = hintWidthPx(input);
+        expect(hint).withContext('the hint, px').toBeGreaterThan(0);
+        // Where the hint is drawn: the input's content box.
+        const style = getComputedStyle(input);
+        const room = input.getBoundingClientRect().width
+          - parseFloat(style.borderLeftWidth) - parseFloat(style.paddingLeft)
+          - parseFloat(style.paddingRight) - parseFloat(style.borderRightWidth);
+        expect(room).withContext('the room, px').toBeGreaterThan(0);
+        expect(hint).withContext(`"${input.placeholder}", px, against its room`).toBeLessThanOrEqual(room);
+      });
+    }
+  });
+
   /**
    * In edit mode the queued strip and the stored strip show at once, each
    * stamping its controls once per image, so each names its image by the
