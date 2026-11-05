@@ -24,6 +24,7 @@ import {
   paintedBackground,
   paintedColor,
   placeholderWidthPx,
+  pressKey,
   provideAppDatepickerForTests,
   provideNoMotion,
   ratio,
@@ -1209,6 +1210,303 @@ describe('TransactionFiltersComponent', () => {
       expect(root.querySelector('.filter-panel')).withContext('the panel the second click closes').toBeNull();
       expect(toggle.getAttribute('aria-expanded')).withContext('after a second click').toBe('false');
     });
+  });
+
+  /**
+   * Clear all, a suggestion applied from the keyboard and the save-search
+   * box each take the control holding focus off the page, and focus fell to
+   * the page with it. Clear all hands focus to the filter toggle, which
+   * stays, heads the panel and then reads Filters with no count; a
+   * suggestion leaves it in the search box it fills; and the box hands it
+   * back to Save search, which opened it, or to the search box once an
+   * emptied query has taken Save search away too. A press focuses its button
+   * first, as a key or Chrome's pointer does, and focus is read after the
+   * render hooks the press asks for.
+   */
+  describe('focus after Clear all, a suggestion or the save-search box takes the pressed control away (real template)', () => {
+    const root = () => fixture.nativeElement as HTMLElement;
+
+    /** The render a press asks for, then its render hooks, where a focus request lands. */
+    function render(): void {
+      fixture.detectChanges();
+      TestBed.tick();
+    }
+
+    function find<T extends HTMLElement>(selector: string, what: string): T {
+      const found = root().querySelector<T>(selector);
+      expect(found).withContext(what).not.toBeNull();
+      return found!;
+    }
+
+    /** A scripted click focuses nothing, so a press is focus() then click(), as a key or Chrome's pointer gives one. */
+    function press(button: HTMLButtonElement): void {
+      button.focus();
+      expect(document.activeElement).withContext('the button, focused before the press').toBe(button);
+      button.click();
+      render();
+    }
+
+    /** The panel open over `query`, and the Save search beside it. */
+    function openOver(query: string): HTMLButtonElement {
+      // filters is a plain object, so it is set before the signal that renders it.
+      component.filters.searchQuery = query;
+      component.expanded.set(true);
+      render();
+      return find<HTMLButtonElement>('.save-search-button', 'Save search, beside a query');
+    }
+
+    /** The open box's Save and Cancel, in that order. */
+    function rowButtons(): HTMLButtonElement[] {
+      const buttons = Array.from(root().querySelectorAll<HTMLButtonElement>('.save-search-row button'));
+      expect(buttons.length).withContext("the row's Save and Cancel").toBe(2);
+      return buttons;
+    }
+
+    /** A key as the box's own listener reads it, cancelable as a real keydown is. */
+    function keydown(box: HTMLInputElement, init: KeyboardEventInit): KeyboardEvent {
+      const event = new KeyboardEvent('keydown', { cancelable: true, ...init });
+      box.dispatchEvent(event);
+      render();
+      return event;
+    }
+
+    it('hands focus to the filter toggle when Clear all clears the last filter', () => {
+      component.expanded.set(true);
+      render();
+      // Today sets a start and an end date: two filters, so Clear all shows.
+      find<HTMLButtonElement>('.quick-btn', 'Today').click();
+      render();
+
+      press(find<HTMLButtonElement>('.clear-btn', 'Clear all, with two filters set'));
+
+      expect(root().querySelector('.clear-btn')).withContext('Clear all, with nothing left to clear').toBeNull();
+      expect(root().querySelector('.filter-panel')).withContext('the panel, still open').not.toBeNull();
+      expect(document.activeElement)
+        .withContext('focus, after Clear all')
+        .toBe(find('.filter-toggle', 'the filter toggle'));
+    });
+
+    /**
+     * A held Enter's repeats go to whatever holds focus by then, and a
+     * focused button presses itself on each. Focus handed on from the control
+     * pressed had the next repeat press the control it landed on: the filter
+     * toggle folded and unfolded the panel Clear all left open, and Save
+     * search opened the box a close had just shut.
+     */
+    describe('an Enter held down through the hand-off', () => {
+      function clearAllByEnter(): HTMLButtonElement {
+        component.expanded.set(true);
+        render();
+        find<HTMLButtonElement>('.quick-btn', 'Today').click();
+        render();
+        const clear = find<HTMLButtonElement>('.clear-btn', 'Clear all, with two filters set');
+        clear.focus();
+        pressKey(clear, 'Enter');
+        render();
+        const toggle = find<HTMLButtonElement>('.filter-toggle', 'the filter toggle');
+        expect(document.activeElement).withContext('focus, after Clear all').toBe(toggle);
+        return toggle;
+      }
+
+      it('keeps the panel open through the repeats of an Enter held down on Clear all', () => {
+        const toggle = clearAllByEnter();
+
+        for (const n of [1, 2, 3]) {
+          const repeat = pressKey(document.activeElement!, 'Enter', { repeat: true });
+          render();
+          expect(repeat.defaultPrevented).withContext(`repeat ${n}, cancelled`).toBeTrue();
+          expect(root().querySelector('.filter-panel')).withContext(`the panel, after repeat ${n}`).not.toBeNull();
+          // A held Space's repeat presses nothing itself, but it arms the
+          // button it reaches for the keyup that ends the hold.
+          expect(pressKey(document.activeElement!, ' ', { repeat: true }).defaultPrevented)
+            .withContext(`a held Space's repeat ${n}, cancelled`)
+            .toBeTrue();
+        }
+        expect(toggle.getAttribute('aria-expanded')).withContext('the toggle, after the repeats').toBe('true');
+      });
+
+      // A pin. Mutation: the guard never lets go, so it cancels a fresh Enter
+      // as it does a repeat.
+      it('closes the panel on a fresh Enter on the toggle once the Enter held on Clear all is let go (pin)', () => {
+        const toggle = clearAllByEnter();
+        toggle.dispatchEvent(new KeyboardEvent('keyup', { key: 'Enter', bubbles: true }));
+
+        const fresh = pressKey(toggle, 'Enter');
+        render();
+
+        expect(fresh.defaultPrevented).withContext('a fresh Enter, cancelled').toBeFalse();
+        expect(root().querySelector('.filter-panel')).withContext('the panel, after a fresh Enter').toBeNull();
+      });
+
+      // A pin. Mutation: the guard stands until the component goes, so every
+      // held key's repeats on the page are lost after one hand-off.
+      it('lets a held key repeat again once the Enter held on Clear all is let go (pin)', () => {
+        const toggle = clearAllByEnter();
+        toggle.dispatchEvent(new KeyboardEvent('keyup', { key: 'Enter', bubbles: true }));
+
+        const later = pressKey(toggle, ' ', { repeat: true });
+
+        expect(later.defaultPrevented).withContext('a repeat after the key is let go').toBeFalse();
+      });
+
+      const heldCloses = [
+        { where: 'in the box', key: (box: HTMLInputElement): HTMLElement => box, saves: 1 },
+        { where: "on the row's Save", key: (): HTMLElement => rowButtons()[0], saves: 1 },
+        { where: "on the row's Cancel", key: (): HTMLElement => rowButtons()[1], saves: 0 },
+      ] as const;
+      for (const { where, key, saves } of heldCloses) {
+        it(`keeps the box shut through the repeats of an Enter held down ${where}`, fakeAsync(() => {
+          const bookmark = openOver('utilities');
+          press(bookmark);
+          flush(); // NgModel hands the box its value a microtask after it renders
+          const held = key(find<HTMLInputElement>('.save-label-input', 'the save-search box'));
+          held.focus();
+          pressKey(held, 'Enter');
+          render();
+          flush();
+          expect(root().querySelector('.save-search-row')).withContext(`the box, after an Enter ${where}`).toBeNull();
+          expect(document.activeElement).withContext(`focus, after an Enter ${where}`).toBe(bookmark);
+
+          for (const n of [1, 2, 3]) {
+            const repeat = pressKey(document.activeElement!, 'Enter', { repeat: true });
+            render();
+            flush();
+            expect(repeat.defaultPrevented).withContext(`repeat ${n}, cancelled`).toBeTrue();
+            expect(root().querySelector('.save-search-row')).withContext(`the box, after repeat ${n}`).toBeNull();
+          }
+          expect(mockSearchHistory.saveSearch).withContext('saves').toHaveBeenCalledTimes(saves);
+          flush();
+        }));
+      }
+    });
+
+    // ngOnInit clears the filters itself under showAll, on load, where no
+    // press took focus anywhere and none may move.
+    it('leaves focus where it is when the panel clears itself to show every transaction (pin)', fakeAsync(() => {
+      const elsewhere = document.body.appendChild(document.createElement('button'));
+      try {
+        elsewhere.focus();
+        const shown = TestBed.createComponent(TransactionFiltersComponent);
+        const clear = spyOn(shown.componentInstance, 'clearFilters').and.callThrough();
+        shown.componentInstance.showAll = true;
+        shown.detectChanges();
+        tick(); // ngOnInit's start, a timeout
+        shown.detectChanges();
+        TestBed.tick();
+
+        expect(clear).withContext('the showAll start').toHaveBeenCalled();
+        expect(document.activeElement).withContext('focus, after the panel cleared itself').toBe(elsewhere);
+      } finally {
+        elsewhere.remove();
+      }
+    }));
+
+    it('keeps focus in the search box once a suggestion reached by ArrowDown applies', fakeAsync(() => {
+      mockSearchHistory.recentSearches.set([savedSearch('r1', 'starbucks')]);
+      component.expanded.set(true);
+      render();
+      const search = find<HTMLInputElement>('.search-input', 'the search box');
+      search.focus();
+      search.dispatchEvent(new Event('focus'));
+      render();
+      search.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown' }));
+      const apply = find<HTMLButtonElement>('.suggestion-apply', 'the suggestion');
+      expect(document.activeElement).withContext('focus, on the suggestion').toBe(apply);
+
+      // Enter on a focused button clicks it. A scripted click fires no
+      // mousedown, so the row's preventDefault keeps nothing, as for Enter.
+      apply.click();
+      render();
+
+      expect(component.filters.searchQuery).withContext('the query the suggestion applies').toBe('starbucks');
+      expect(root().querySelector('.search-suggestions')).withContext('the suggestions, once one applies').toBeNull();
+      expect(document.activeElement).withContext('focus, once the suggestion applies').toBe(search);
+      flush();
+    }));
+
+    const enter = (box: HTMLInputElement) => {
+      keydown(box, { key: 'Enter' });
+    };
+    const closes: readonly {
+      how: string;
+      /** What the box holds before the close: a typed name, or null for the query it opened with. */
+      typed: string | null;
+      close: (box: HTMLInputElement) => void;
+      saved: readonly [query: string, label: string] | null;
+    }[] = [
+      { how: 'Enter in the box', typed: 'Bills', close: enter, saved: ['utilities', 'Bills'] },
+      { how: 'Enter in the box, its suggested name kept', typed: null, close: enter, saved: ['utilities', 'utilities'] },
+      // An emptied name saves under the query.
+      { how: 'Enter in the box, its name emptied', typed: '', close: enter, saved: ['utilities', 'utilities'] },
+      { how: "the row's Save", typed: 'Bills', close: () => press(rowButtons()[0]), saved: ['utilities', 'Bills'] },
+      { how: "the row's Cancel", typed: 'Bills', close: () => press(rowButtons()[1]), saved: null },
+    ];
+    for (const { how, typed, close, saved } of closes) {
+      it(`gives focus back to Save search once ${how} closes the box`, fakeAsync(() => {
+        const bookmark = openOver('utilities');
+        press(bookmark);
+        flush(); // NgModel hands the box its value a microtask after it renders
+        const box = find<HTMLInputElement>('.save-label-input', 'the save-search box');
+        box.focus(); // where a click into the box leaves focus, so the case reads the close alone
+        expect(document.activeElement).withContext('the box, focused before the close').toBe(box);
+        if (typed === null) {
+          expect(box.value).withContext('the box, holding the query as its name').toBe('utilities');
+        } else {
+          box.value = typed;
+          box.dispatchEvent(new Event('input'));
+        }
+
+        close(box);
+
+        expect(root().querySelector('.save-search-row')).withContext(`the box, after ${how}`).toBeNull();
+        if (saved) expect(mockSearchHistory.saveSearch).toHaveBeenCalledOnceWith(...saved);
+        else expect(mockSearchHistory.saveSearch).not.toHaveBeenCalled();
+        expect(document.activeElement).withContext(`focus, after ${how}`).toBe(bookmark);
+        flush();
+      }));
+    }
+
+    // The search box's focus opens its suggestions under an empty query: the
+    // reader was just in that box, and the suggestions are what it offers.
+    it('gives focus to the search box, which opens its suggestions, once Cancel closes the box over an emptied query', fakeAsync(() => {
+      mockSearchHistory.recentSearches.set([savedSearch('r1', 'gym')]);
+      press(openOver('utilities'));
+      flush();
+      const search = find<HTMLInputElement>('.search-input', 'the search box');
+      search.focus();
+      search.value = '';
+      search.dispatchEvent(new Event('input'));
+      render();
+      expect(root().querySelector('.save-search-button')).withContext('Save search, with no query to save').toBeNull();
+
+      press(rowButtons()[1]);
+      fixture.detectChanges();
+
+      expect(root().querySelector('.save-search-row')).withContext('the box, after Cancel').toBeNull();
+      expect(document.activeElement).withContext('focus, after Cancel').toBe(search);
+      expect(root().querySelector('.search-suggestions'))
+        .withContext('the suggestions, under the emptied search box')
+        .not.toBeNull();
+      flush(); // the search box's typing debounce
+    }));
+
+    // A button presses itself on Enter's keypress, which goes to whatever
+    // holds focus once the keydown is done, unless the keydown was cancelled.
+    // The Enter that saves hands focus to Save search, so it is cancelled.
+    it('cancels the Enter that saves, and leaves an Enter that ends a composition to the IME', fakeAsync(() => {
+      press(openOver('utilities'));
+      flush();
+      const box = find<HTMLInputElement>('.save-label-input', 'the save-search box');
+
+      const composing = keydown(box, { key: 'Enter', isComposing: true });
+      expect(mockSearchHistory.saveSearch).withContext('a save, on an Enter that ends a composition').not.toHaveBeenCalled();
+      expect(composing.defaultPrevented).withContext('an Enter that ends a composition, cancelled').toBeFalse();
+
+      const plain = keydown(box, { key: 'Enter' });
+      expect(mockSearchHistory.saveSearch).withContext('a save, on a plain Enter').toHaveBeenCalledTimes(1);
+      expect(plain.defaultPrevented).withContext('the Enter that saves, cancelled').toBeTrue();
+      flush();
+    }));
   });
 
   describe('output events', () => {
