@@ -16,3 +16,4 @@ export * from './placeholder-width';
 export * from './style-rules';
 export * from './no-motion';
 export * from './app-datepicker.testing';
+export * from './frames';

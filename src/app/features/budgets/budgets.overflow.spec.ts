@@ -1,5 +1,5 @@
 import { ComponentFixture, TestBed } from '@angular/core/testing';
-import { Component, NO_ERRORS_SCHEMA, signal } from '@angular/core';
+import { Component, NO_ERRORS_SCHEMA, WritableSignal, signal } from '@angular/core';
 import { MatDialog } from '@angular/material/dialog';
 import { ActivatedRoute, convertToParamMap } from '@angular/router';
 import { of } from 'rxjs';
@@ -14,7 +14,7 @@ import { TranslationService } from '../../core/services/translation.service';
 import { NotificationService } from '../../core/services/notification.service';
 import { AccessibilityService } from '../../core/services/accessibility.service';
 import { Budget } from '../../models';
-import { createBudget, provideNoMotion } from '../../core/services/testing';
+import { afterTwoFrames, createBudget, provideNoMotion } from '../../core/services/testing';
 
 /**
  * The budgets tab strip, which holds more than it can show.
@@ -53,11 +53,12 @@ describe('overflow guard: the budgets tab strip', () => {
 
   /**
    * `selectedTabIndex` is a plain field read once at construction, so the
-   * param has to be in place before the component exists.
+   * param has to be in place before the component exists. Resolves to the
+   * budgets the page reads, so a case can land the snapshot later.
    */
-  async function setUp(tab?: string): Promise<void> {
+  async function setUp(tab?: string, budgets: Budget[] = [createBudget()]): Promise<WritableSignal<Budget[]>> {
     const budgetService = {
-      budgets: signal<Budget[]>([createBudget()]),
+      budgets: signal<Budget[]>(budgets),
       getBudgets: jasmine.createSpy('getBudgets').and.returnValue(of([])),
       deleteBudget: jasmine.createSpy('deleteBudget').and.resolveTo(undefined),
     };
@@ -110,6 +111,7 @@ describe('overflow guard: the budgets tab strip', () => {
     document.body.appendChild(host);
     fixture.detectChanges();
     await fixture.whenStable();
+    return budgetService.budgets;
   }
 
   afterEach(() => {
@@ -129,6 +131,26 @@ describe('overflow guard: the budgets tab strip', () => {
     expect(strip.scrollWidth)
       .withContext(`${BUDGET_TABS.length} tabs in ${PHONE_PAGE_WIDTH_PX}px: scrollWidth vs clientWidth`)
       .toBeGreaterThan(strip.clientWidth + 1);
+  }
+
+  /**
+   * The Goals tab, wholly in view because the strip scrolled to it. The rect
+   * on its own proves nothing: Material's pagination puts the same tab in
+   * view by translating the list, leaving the scroller at rest.
+   */
+  function expectGoalsInView(when: string): void {
+    expect(container().scrollLeft)
+      .withContext(`the strip's scroll offset ${when}`)
+      .toBeGreaterThan(0);
+
+    const strip = container().getBoundingClientRect();
+    const tab = tabs()[BUDGET_TABS.indexOf('goals')].getBoundingClientRect();
+    expect(tab.x)
+      .withContext(`the "${BUDGET_LABELS['budget.goals']}" tab: start edge vs the scroller's, ${when}`)
+      .toBeGreaterThanOrEqual(strip.x - 1);
+    expect(tab.x + tab.width)
+      .withContext(`the "${BUDGET_LABELS['budget.goals']}" tab: end edge vs the scroller's, ${when}`)
+      .toBeLessThanOrEqual(strip.x + strip.width + 1);
   }
 
   it('never falls back to the pagination chevrons', async () => {
@@ -163,21 +185,32 @@ describe('overflow guard: the budgets tab strip', () => {
   it('opens on the tab a ?tab= link names, in view', async () => {
     await setUp('goals');
     expectStripOverflows();
+    expectGoalsInView('after opening on the third tab');
+  });
 
-    const index = BUDGET_TABS.indexOf('goals');
-    // The rect on its own proves nothing: Material's pagination puts the same
-    // tab in view by translating the list, leaving the scroller at rest.
-    expect(container().scrollLeft)
-      .withContext("the strip's scroll offset after opening on the third tab")
-      .toBeGreaterThan(0);
+  it('keeps the tab a ?tab= link names in view when the Budgets count arrives after the strip opened', async () => {
+    const budgets = await setUp('goals', []);
+    // The landing reveal and the strip's observer are render hooks.
+    TestBed.tick();
+    await afterTwoFrames();
+    expect(host.querySelector('.tab-badge'))
+      .withContext('the Budgets count, before the snapshot')
+      .toBeNull();
+    expectStripOverflows();
+    expectGoalsInView('on landing, before the count');
+    const before = container().scrollWidth;
 
-    const strip = container().getBoundingClientRect();
-    const tab = tabs()[index].getBoundingClientRect();
-    expect(tab.x)
-      .withContext(`the "${BUDGET_LABELS['budget.goals']}" tab: start edge vs the scroller's`)
-      .toBeGreaterThanOrEqual(strip.x - 1);
-    expect(tab.x + tab.width)
-      .withContext(`the "${BUDGET_LABELS['budget.goals']}" tab: end edge vs the scroller's`)
-      .toBeLessThanOrEqual(strip.x + strip.width + 1);
+    budgets.set([createBudget()]);
+    fixture.detectChanges();
+    await afterTwoFrames();
+
+    expect(host.querySelector('.tab-badge'))
+      .withContext('the Budgets count, once the snapshot is in')
+      .not.toBeNull();
+    expect(container().scrollWidth)
+      .withContext("the strip's content, once the count widened the first tab")
+      .toBeGreaterThan(before);
+    expectStripOverflows();
+    expectGoalsInView('after the Budgets count arrived');
   });
 });

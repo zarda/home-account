@@ -19,6 +19,7 @@ import { ThemeService } from '../../../../core/services/theme.service';
 import {
   AUDIT_SCHEMES,
   GLYPH_PROBE_COLOURS,
+  afterTwoFrames,
   catalogTranslationStub,
   chooseOption,
   createTranslationStub,
@@ -317,7 +318,7 @@ describe('HouseholdBudgetDialogComponent', () => {
       const saving = component.submit();
       fixture.detectChanges();
       // Focus fixup runs as the page next renders.
-      await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+      await afterTwoFrames();
       expect(document.activeElement).withContext('while the save is on its way').toBe(saveButton);
 
       refuse(new HouseholdError('household.errors.refused'));
