@@ -175,6 +175,8 @@
     "minAmount": "最小額",
     "maxAmount": "最大額",
     "clearAll": "すべてクリア",
+    "filtersToggle": "フィルター",
+    "filtersToggleActive": "フィルター（{{active}}件を適用中）",
     "searchPlaceholder": "取引を検索...",
     "savedSearches": "保存した検索",
     "recentSearches": "最近の検索",

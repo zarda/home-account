@@ -175,6 +175,8 @@
     "minAmount": "最小金額",
     "maxAmount": "最大金額",
     "clearAll": "清除全部",
+    "filtersToggle": "篩選條件",
+    "filtersToggleActive": "篩選條件（已套用 {{active}} 項）",
     "searchPlaceholder": "搜尋交易...",
     "savedSearches": "已儲存的搜尋",
     "recentSearches": "最近的搜尋",

@@ -178,6 +178,8 @@
     "minAmount": "Min $",
     "maxAmount": "Max $",
     "clearAll": "Clear all",
+    "filtersToggle": "Filters",
+    "filtersToggleActive": "Filters, {{active}} active",
     "searchPlaceholder": "Search transactions...",
     "savedSearches": "Saved searches",
     "recentSearches": "Recent searches",

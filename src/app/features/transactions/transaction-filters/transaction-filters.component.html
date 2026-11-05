@@ -85,15 +85,21 @@
       ></mat-datepicker>
     </div>
 
-    <!-- Filter Toggle -->
+    <!-- Filter Toggle: named by what it opens, and by how many filters are set
+         when any are. The badge is aria-hidden because the name already says
+         its number. -->
     <button
       class="filter-toggle"
       [class.has-filters]="activeFilterCount() > 0"
+      [attr.aria-label]="activeFilterCount() > 0
+        ? ('transactions.filtersToggleActive' | translate: { active: activeFilterCount() })
+        : ('transactions.filtersToggle' | translate)"
+      [attr.aria-expanded]="expanded()"
       (click)="expanded.set(!expanded())"
     >
       <mat-icon>tune</mat-icon>
       @if (activeFilterCount() > 0) {
-        <span class="filter-badge">{{ activeFilterCount() }}</span>
+        <span class="filter-badge" aria-hidden="true">{{ activeFilterCount() }}</span>
       }
     </button>
   </div>
