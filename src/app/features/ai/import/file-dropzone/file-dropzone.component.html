@@ -79,6 +79,7 @@
                  a row that is no photo is never dragged and keeps its place. -->
             <div
               class="file-item"
+              [attr.data-row]="$index"
               [class.image-file]="isImageFile(file)"
               [class.reorderable]="isImageFile(file) && hasMultipleImages()"
               cdkDrag
@@ -111,6 +112,7 @@
                 <div class="reorder-controls">
                   <button
                     mat-icon-button
+                    data-move="up"
                     (click)="moveFileUp(file, $event)"
                     [disabled]="photoNumber(file) === 1"
                     class="reorder-btn"
@@ -120,6 +122,7 @@
                   </button>
                   <button
                     mat-icon-button
+                    data-move="down"
                     (click)="moveFileDown(file, $event)"
                     [disabled]="photoNumber(file) === photoCount()"
                     class="reorder-btn"

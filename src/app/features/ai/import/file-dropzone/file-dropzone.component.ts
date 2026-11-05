@@ -30,6 +30,7 @@ import { TranslationService } from '../../../../core/services/translation.servic
 import { LocaleFormatService } from '../../../../core/services/locale-format.service';
 import { looksLikeImageFile } from '../../../../core/utils/file.utils';
 import { joinSentences } from '../../../../core/utils/import-review.utils';
+import { ImportFocusContext, focusWhenRendered } from '../import-focus';
 
 /**
  * A file the zone, or a gate upstream, refused: its name as the disk spells
@@ -75,6 +76,11 @@ export class FileDropzoneComponent implements OnDestroy {
   private host = inject<ElementRef<HTMLElement>>(ElementRef);
   private injector = inject(Injector);
   private destroyRef = inject(DestroyRef);
+  private readonly focus: ImportFocusContext = {
+    host: this.host.nativeElement,
+    injector: this.injector,
+    destroyRef: this.destroyRef,
+  };
 
   @Input() acceptedTypes = '.csv,.pdf,.png,.jpg,.jpeg,.webp,.json';
   @Input() maxFileSize = IMPORT_FILE_MAX_BYTES;
@@ -413,6 +419,20 @@ export class FileDropzoneComponent implements OnDestroy {
     [moved[from], moved[to]] = [moved[to], moved[from]];
     this.selectedFiles.set(moved);
     this.filesSelected.emit(moved);
+
+    // The pressed arrow is disabled once its photo reaches that end, and a
+    // disabled button drops focus; a row the swap takes out of the page and
+    // puts back drops it too. So focus is put back on the moved photo's row,
+    // now at `to`: on the arrow pressed while the photo can still go that
+    // way, on its other arrow once it cannot.
+    const [pressed, other] = step === -1 ? ['up', 'down'] : ['down', 'up'];
+    const row = `[data-row="${to}"]`;
+    focusWhenRendered(
+      this.focus,
+      `${row} [data-move="${pressed}"]:enabled`,
+      `${row} [data-move="${other}"]:enabled`,
+      `${row} .remove-btn`,
+    );
   }
 
   // CDK sorts every row the dragged photo passes, a CSV's too, and no
