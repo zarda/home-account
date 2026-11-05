@@ -23,19 +23,36 @@ import {
   catalogTranslator,
   chooseOption,
   eachOptionState,
+  expectOneRule,
   iconBox,
   iconSquare,
   paintedBackground,
   paintedColor,
   ratio,
+  rulesUnder,
   runAxe,
   settleAnimations,
   summarizeViolations,
   textLines,
+  underRule,
   withScheme,
   withTheme,
   provideNoMotion,
 } from '../../../core/services/testing';
+
+/**
+ * Karma serves no fonts (docs/testing.md), so the width cases pin the face the
+ * overflow specs pin. Material's fields and buttons take theirs from the
+ * --mat-sys tokens rather than from the host.
+ */
+const FACE = "Verdana, 'DejaVu Sans', sans-serif";
+
+function pinFace(host: HTMLElement): void {
+  host.style.fontFamily = FACE;
+  for (const token of ['--mat-sys-body-large-font', '--mat-sys-body-small-font', '--mat-sys-label-large-font']) {
+    host.style.setProperty(token, FACE);
+  }
+}
 
 describe('BudgetFormComponent', () => {
   let component: BudgetFormComponent;
@@ -813,7 +830,6 @@ describe('BudgetFormComponent', () => {
    * The face is pinned as docs/testing.md *Karma serves no fonts* says.
    */
   describe('the Save button while it saves (real template)', () => {
-    const FACE = "Verdana, 'DejaVu Sans', sans-serif";
     let appOrder: HTMLStyleElement;
 
     beforeEach(async () => {
@@ -834,10 +850,7 @@ describe('BudgetFormComponent', () => {
         fixture = TestBed.createComponent(BudgetFormComponent);
         component = fixture.componentInstance;
         const host = fixture.nativeElement as HTMLElement;
-        host.style.fontFamily = FACE;
-        for (const token of ['--mat-sys-body-large-font', '--mat-sys-body-small-font', '--mat-sys-label-large-font']) {
-          host.style.setProperty(token, FACE);
-        }
+        pinFace(host);
         fixture.detectChanges();
         component.isSubmitting.set(true);
         fixture.detectChanges();
@@ -850,5 +863,117 @@ describe('BudgetFormComponent', () => {
         expect(save.getBoundingClientRect().height).withContext('Save, px').toBe(40);
       });
     }
+  });
+
+  /**
+   * Budget Period and Start Date share a row. On a 375 px phone the dialog is
+   * its 95vw maxWidth, 356 px, and the two fields halved the row: the start
+   * date's resting label was cut, with an ellipsis, and ran under the
+   * calendar button, which paints over it (the browser run, in en, ja and
+   * tc). Below the phone breakpoint the two stack, each taking the whole row.
+   *
+   * That rule is a viewport query and Karma's window is 756 px, so the phone
+   * cases lay its declarations on the rendered row and measure what they
+   * leave, as the import wizard's step headers do: they prove what the rule
+   * declares, and a 375 px window in a browser proves the cascade. From
+   * 600 px up, where the dialog is its own 480 px, no rule applies and the two
+   * keep their row. The face is pinned as docs/testing.md *Karma serves no
+   * fonts* says.
+   */
+  describe('the period and the start date (real template)', () => {
+    const PHONE = 'max-width: 599.98px';
+    /** The dialog in a 375 px window: its 95vw maxWidth. */
+    const PHONE_DIALOG_PX = 356;
+    /** The dialog's own width, which it keeps wherever 95vw is wider. */
+    const DESKTOP_DIALOG_PX = 480;
+    const LOCALES: readonly SupportedLocale[] = ['en', 'ja', 'tc'];
+
+    const el = () => fixture.nativeElement as HTMLElement;
+    const fieldOf = (control: string) =>
+      el().querySelector(`[formcontrolname="${control}"]`)?.closest<HTMLElement>('mat-form-field') ?? null;
+    /** The row the phone rule styles, found by the rule's own selector. */
+    const rows = () => Array.from(el().querySelectorAll<HTMLElement>('.period-row'));
+
+    /** The rules under the phone query that lay out the row. */
+    const phoneRowRules = () => rulesUnder(PHONE, /\.period-row(?![\w-])/);
+
+    /**
+     * The add form as wide as its dialog, the face pinned. Material's dialog
+     * stylesheet, which displays the content as a block, loads only with a
+     * dialog; without it the content is inline, its 24 px padding never
+     * reaches the row, and the row is the dialog's width rather than its
+     * content box's (308 px at 375).
+     */
+    async function renderAt(widthPx: number, locale: SupportedLocale): Promise<void> {
+      await renderOnDialogSurface(catalogTranslator(locale));
+      const host = el();
+      host.style.width = `${widthPx}px`;
+      host.querySelector<HTMLElement>('mat-dialog-content')?.style.setProperty('display', 'block');
+      pinFace(host);
+      fixture.detectChanges();
+      settleAnimations(document);
+    }
+
+    /** The start date's resting label, as drawn: all its words in its box, and none of them under the calendar button. */
+    function expectLabelWholeAndClear(locale: SupportedLocale, context: string): void {
+      const field = fieldOf('startDate');
+      const label = field?.querySelector<HTMLElement>('.mdc-floating-label') ?? null;
+      const toggle = field?.querySelector<HTMLElement>('mat-datepicker-toggle button') ?? null;
+      expect(label).withContext(`${context}: the label`).not.toBeNull();
+      expect(toggle).withContext(`${context}: the calendar button`).not.toBeNull();
+      if (!label || !toggle) return;
+      expect(label.textContent?.trim())
+        .withContext(`${context}: the label's words`)
+        .toBe(catalogTranslator(locale, { strict: true })('budget.startDateOptional'));
+      expect(label.classList).withContext(`${context}: the label rests`).not.toContain('mdc-floating-label--float-above');
+      expect(label.clientWidth).withContext(`${context}: the label's box, px`).toBeGreaterThan(0);
+      expect(label.scrollWidth)
+        .withContext(`${context}: the label's words, px, against its box`)
+        .toBeLessThanOrEqual(label.clientWidth);
+      const words = label.getBoundingClientRect();
+      const button = toggle.getBoundingClientRect();
+      const across = Math.min(words.right, button.right) - Math.max(words.left, button.left);
+      const down = Math.min(words.bottom, button.bottom) - Math.max(words.top, button.top);
+      expect(across > 0 && down > 0 ? across : 0)
+        .withContext(`${context}: px of the label under the calendar button`)
+        .toBe(0);
+    }
+
+    it('finds the phone rule for the row, so the phone cases read something', async () => {
+      await renderAt(PHONE_DIALOG_PX, 'en');
+      expectOneRule(phoneRowRules());
+      const [row] = rows();
+      expect(rows().length).withContext('the row the phone rule styles').toBe(1);
+      expect(row?.contains(fieldOf('period'))).withContext('the period in that row').toBeTrue();
+      expect(row?.contains(fieldOf('startDate'))).withContext('the start date in that row').toBeTrue();
+    });
+
+    for (const locale of LOCALES) {
+      it(`stacks the two and keeps the start date's label whole and clear of its calendar button at 375 px, in ${locale}`, async () => {
+        await renderAt(PHONE_DIALOG_PX, locale);
+        await underRule(phoneRowRules()[0], rows(), 'the phone rule for the period row', () => {
+          const [row] = rows();
+          const period = fieldOf('period')?.getBoundingClientRect();
+          const start = fieldOf('startDate')?.getBoundingClientRect();
+          expect(row && period && start).withContext('the row and its two fields').toBeTruthy();
+          if (!row || !period || !start) return;
+          expect(start.top).withContext(`${locale}: the start date's top, px, against the period's bottom`).toBeGreaterThanOrEqual(period.bottom - 0.5);
+          expect(period.width).withContext(`${locale}: the period's width, px, against the row's`).toBeCloseTo(row.clientWidth, 0);
+          expect(start.width).withContext(`${locale}: the start date's width, px, against the row's`).toBeCloseTo(row.clientWidth, 0);
+          expectLabelWholeAndClear(locale, `${locale} at 375 px`);
+        });
+      });
+    }
+
+    it(`keeps the period and the start date side by side in a desktop's ${DESKTOP_DIALOG_PX} px dialog (pin)`, async () => {
+      await renderAt(DESKTOP_DIALOG_PX, 'en');
+      expect(matchMedia(`(${PHONE})`).matches).withContext('the window is wider than a phone').toBeFalse();
+      const period = fieldOf('period')?.getBoundingClientRect();
+      const start = fieldOf('startDate')?.getBoundingClientRect();
+      expect(period && start).withContext('the two fields').toBeTruthy();
+      if (!period || !start) return;
+      expect(Math.abs(start.top - period.top)).withContext("the start date's top, px, from the period's").toBeLessThanOrEqual(0.5);
+      expect(start.left).withContext("the start date's left, px, against the period's right").toBeGreaterThanOrEqual(period.right);
+    });
   });
 });
