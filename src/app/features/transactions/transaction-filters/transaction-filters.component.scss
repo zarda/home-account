@@ -96,7 +96,11 @@
   overflow-wrap: anywhere;
 }
 
+// 40px, the touch target included: Material's own is 48, which would reach
+// past the panel's end, scrolling it sideways, over the end of the row's
+// apply, and into the rows above and below.
 .suggestion-remove {
+  --mat-icon-button-touch-target-size: 40px;
   flex-shrink: 0;
 }
 
