@@ -1083,6 +1083,65 @@ describe('TransactionFiltersComponent', () => {
     });
   });
 
+  /**
+   * The filter toggle shows an icon and, while any filter is set, a badge
+   * with how many. Its name says what it opens in the reader's language, and
+   * how many filters are set when any are, so the badge's number is not the
+   * whole name; and it says whether the panel is open.
+   */
+  describe('the filter toggle (real template)', () => {
+    function toggleIn(root: HTMLElement): HTMLButtonElement {
+      const toggle = root.querySelector<HTMLButtonElement>('.filter-toggle');
+      expect(toggle).withContext('the filter toggle').not.toBeNull();
+      return toggle!;
+    }
+
+    for (const l of ['en', 'ja', 'tc'] as const) {
+      it(`is named by the filters it opens, and how many are set, in ${l}`, () => {
+        const t = catalogTranslator(l, { strict: true });
+        mockTranslationService.t.and.callFake(catalogTranslator(l));
+        // The translate pipe memoises on the locale and the catalog version;
+        // the bump is what a catalog's arrival does, so en is read again too.
+        locale.set(l);
+        TestBed.inject(TranslationService).translationsVersion.update(version => version + 1);
+        fixture.detectChanges();
+        const root = fixture.nativeElement as HTMLElement;
+        const toggle = toggleIn(root);
+
+        expect(accessibleName(toggle)).withContext('no filter set').toBe(t('transactions.filtersToggle'));
+
+        // Today sets a start and an end date: two filters.
+        root.querySelector<HTMLButtonElement>('.quick-btn')!.click();
+        fixture.detectChanges();
+        expect(component.activeFilterCount()).withContext('the filters Today sets').toBe(2);
+        expect(accessibleName(toggle))
+          .withContext('two filters set')
+          .toBe(t('transactions.filtersToggleActive', { active: 2 }));
+        const badge = toggle.querySelector('.filter-badge');
+        expect(badge?.textContent?.trim()).withContext('the badge still shows the number').toBe('2');
+        expect(badge?.getAttribute('aria-hidden'))
+          .withContext('the badge, whose number the name already reads')
+          .toBe('true');
+      });
+    }
+
+    it('says whether the panel is open, before and after a click', () => {
+      const root = fixture.nativeElement as HTMLElement;
+      const toggle = toggleIn(root);
+      expect(toggle.getAttribute('aria-expanded')).withContext('before a click').toBe('false');
+
+      toggle.click();
+      fixture.detectChanges();
+      expect(root.querySelector('.filter-panel')).withContext('the panel the click opens').not.toBeNull();
+      expect(toggle.getAttribute('aria-expanded')).withContext('after a click').toBe('true');
+
+      toggle.click();
+      fixture.detectChanges();
+      expect(root.querySelector('.filter-panel')).withContext('the panel the second click closes').toBeNull();
+      expect(toggle.getAttribute('aria-expanded')).withContext('after a second click').toBe('false');
+    });
+  });
+
   describe('output events', () => {
     it('should emit filtersChanged with clean filters', () => {
       spyOn(component.filtersChanged, 'emit');
