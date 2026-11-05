@@ -2507,7 +2507,7 @@ nothing, so whatever holds or frees it below is this journey's own doing.
 tag**, on any row worth at least two of its currency's minor units — ¥2 on a
 yen row, $0.02 on a dollar one; below that the trigger is not offered at
 all, since no figure would leave both halves above the floor. Tap it → the
-field opens in its place, empty, placeholder *Amount for the new row*, with
+field opens in its place, empty, placeholder *Split amount*, with
 the caret in it → type `179`, a third of the printed ¥538 → Enter → two
 cards. The original now reads *-¥359*, and directly under it stands the
 part at *-¥179* with its description editor already open and the caret in

@@ -1371,7 +1371,7 @@
     "splitRow": "分割",
     "splitRowLabel": "{{description}}を2つの行に分割",
     "splitAmountRefused": "{{minimum}}以上、この行の金額より小さい金額を入力してください",
-    "splitAmount": "新しい行の金額",
+    "splitAmount": "分割する金額",
     "splitAmountLabel": "{{description}}から分割する金額",
     "mergeInto": "結合…",
     "mergeIntoLabel": "{{description}}を別の行に結合",

@@ -1506,7 +1506,7 @@
     "splitRow": "Split",
     "splitRowLabel": "Split {{description}} into two rows",
     "splitAmountRefused": "Enter an amount smaller than the row's — at least {{minimum}}",
-    "splitAmount": "Amount for the new row",
+    "splitAmount": "Split amount",
     "splitAmountLabel": "Amount to split off {{description}}",
     "mergeInto": "Merge into…",
     "mergeIntoLabel": "Merge {{description}} into another row",
