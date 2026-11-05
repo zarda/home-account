@@ -23,18 +23,15 @@ import {
   catalogTranslator,
   chooseOption,
   eachOptionState,
-  expectOneRule,
   iconBox,
   iconSquare,
   paintedBackground,
   paintedColor,
   ratio,
-  rulesUnder,
   runAxe,
   settleAnimations,
   summarizeViolations,
   textLines,
-  underRule,
   withScheme,
   withTheme,
   provideNoMotion,
@@ -868,22 +865,19 @@ describe('BudgetFormComponent', () => {
   });
 
   /**
-   * Budget Period and Start Date share a row. On a 375 px phone the dialog is
-   * its 95vw maxWidth, 356 px, and the two fields halved the row: the start
-   * date's resting label was cut, with an ellipsis, and ran under the
-   * calendar button, which paints over it (the browser run, in en, ja and
-   * tc). Below the phone breakpoint the two stack, each taking the whole row.
-   *
-   * That rule is a viewport query and Karma's window is 756 px, so the phone
-   * cases lay its declarations on the rendered row and measure what they
-   * leave, as the import wizard's step headers do: they prove what the rule
-   * declares, and a 375 px window in a browser proves the cascade. From
-   * 600 px up, where the dialog is its own 480 px, no rule applies and the two
-   * keep their row. The face is pinned as docs/testing.md *Karma serves no
-   * fonts* says.
+   * Budget Period and Start Date share a row while each half can hold the
+   * start date's resting label beside its calendar button, and wrap, each
+   * taking the whole row, once it cannot (budget-form.component.scss). The
+   * row reads its own room, not the window, so the cases size the host as
+   * the dialog is sized and read the live layout. On a 375 px phone the
+   * dialog is its 95vw maxWidth, 356 px, and halved, the start date's label
+   * was cut, with an ellipsis, and ran under the calendar button, which
+   * paints over it (the browser run, in en, ja and tc). Wherever 95vw is
+   * wider, from a window of about 505 px, the dialog is its own 480 px, a
+   * 432 px row at the default text size, where the two keep their row. The
+   * face is pinned as docs/testing.md *Karma serves no fonts* says.
    */
   describe('the period and the start date (real template)', () => {
-    const PHONE = 'max-width: 599.98px';
     /** The dialog in a 375 px window: its 95vw maxWidth. */
     const PHONE_DIALOG_PX = 356;
     /** The dialog's own width, which it keeps wherever 95vw is wider. */
@@ -893,11 +887,8 @@ describe('BudgetFormComponent', () => {
     const el = () => fixture.nativeElement as HTMLElement;
     const fieldOf = (control: string) =>
       el().querySelector(`[formcontrolname="${control}"]`)?.closest<HTMLElement>('mat-form-field') ?? null;
-    /** The row the phone rule styles, found by the rule's own selector. */
+    /** The period row. */
     const rows = () => Array.from(el().querySelectorAll<HTMLElement>('.period-row'));
-
-    /** The rules under the phone query that lay out the row. */
-    const phoneRowRules = () => rulesUnder(PHONE, /\.period-row(?![\w-])/);
 
     /**
      * The add form as wide as its dialog, the face pinned. Material's dialog
@@ -941,35 +932,23 @@ describe('BudgetFormComponent', () => {
         .toBe(0);
     }
 
-    it('finds the phone rule for the row, so the phone cases read something', async () => {
-      await renderAt(PHONE_DIALOG_PX, 'en');
-      expectOneRule(phoneRowRules());
-      const [row] = rows();
-      expect(rows().length).withContext('the row the phone rule styles').toBe(1);
-      expect(row?.contains(fieldOf('period'))).withContext('the period in that row').toBeTrue();
-      expect(row?.contains(fieldOf('startDate'))).withContext('the start date in that row').toBeTrue();
-    });
-
     for (const locale of LOCALES) {
       it(`stacks the two and keeps the start date's label whole and clear of its calendar button at 375 px, in ${locale}`, async () => {
         await renderAt(PHONE_DIALOG_PX, locale);
-        await underRule(phoneRowRules()[0], rows(), 'the phone rule for the period row', () => {
-          const [row] = rows();
-          const period = fieldOf('period')?.getBoundingClientRect();
-          const start = fieldOf('startDate')?.getBoundingClientRect();
-          expect(row && period && start).withContext('the row and its two fields').toBeTruthy();
-          if (!row || !period || !start) return;
-          expect(start.top).withContext(`${locale}: the start date's top, px, against the period's bottom`).toBeGreaterThanOrEqual(period.bottom - 0.5);
-          expect(period.width).withContext(`${locale}: the period's width, px, against the row's`).toBeCloseTo(row.clientWidth, 0);
-          expect(start.width).withContext(`${locale}: the start date's width, px, against the row's`).toBeCloseTo(row.clientWidth, 0);
-          expectLabelWholeAndClear(locale, `${locale} at 375 px`);
-        });
+        const [row] = rows();
+        const period = fieldOf('period')?.getBoundingClientRect();
+        const start = fieldOf('startDate')?.getBoundingClientRect();
+        expect(row && period && start).withContext('the row and its two fields').toBeTruthy();
+        if (!row || !period || !start) return;
+        expect(start.top).withContext(`${locale}: the start date's top, px, against the period's bottom`).toBeGreaterThanOrEqual(period.bottom - 0.5);
+        expect(period.width).withContext(`${locale}: the period's width, px, against the row's`).toBeCloseTo(row.clientWidth, 0);
+        expect(start.width).withContext(`${locale}: the start date's width, px, against the row's`).toBeCloseTo(row.clientWidth, 0);
+        expectLabelWholeAndClear(locale, `${locale} at 375 px`);
       });
     }
 
     it(`keeps the period and the start date side by side in a desktop's ${DESKTOP_DIALOG_PX} px dialog (pin)`, async () => {
       await renderAt(DESKTOP_DIALOG_PX, 'en');
-      expect(matchMedia(`(${PHONE})`).matches).withContext('the window is wider than a phone').toBeFalse();
       const period = fieldOf('period')?.getBoundingClientRect();
       const start = fieldOf('startDate')?.getBoundingClientRect();
       expect(period && start).withContext('the two fields').toBeTruthy();
