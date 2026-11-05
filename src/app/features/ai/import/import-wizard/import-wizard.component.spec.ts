@@ -4589,7 +4589,49 @@ describe('ImportWizardComponent', () => {
             }
           });
         });
+
+        // With photos picked the zone's title is gone, and the previews'
+        // heading follows the page's h1 with none between, so it is an h2,
+        // as the title is.
+        it(`keeps the previews' heading one level under the page's heading in the ${scheme} scheme`, async () => {
+          expect(uploadStep()?.querySelector('.image-previews')).withContext('the previews stand').not.toBeNull();
+          expect(uploadStep()?.querySelector('app-file-dropzone .title')).withContext('the zone\'s title is gone').toBeNull();
+
+          await withScheme(TestBed.inject(ThemeService), scheme, async () => {
+            realFixture.detectChanges();
+            await expectHeadingsInOrder();
+          });
+        });
       }
+    });
+
+    // The zone's title and the previews' heading went from h3 to h2 with
+    // nothing redrawn: each keeps the size, weight, line height and margins
+    // it was drawn with as an h3, read off the h3s. A pin. Mutations: the
+    // zone's .title rule written h3.title; the previews' rule left on
+    // .image-previews h3.
+    it('draws the zone\'s title and the previews\' heading as they were drawn as h3s', () => {
+      const drawn = (heading: Element | null | undefined) => {
+        expect(heading).withContext('the heading').toBeTruthy();
+        if (!heading) return undefined;
+        const style = getComputedStyle(heading);
+        return {
+          fontSize: style.fontSize,
+          fontWeight: style.fontWeight,
+          lineHeight: style.lineHeight,
+          margin: [style.marginTop, style.marginRight, style.marginBottom, style.marginLeft].join(' '),
+        };
+      };
+
+      expect(drawn(uploadStep()?.querySelector('app-file-dropzone .title')))
+        .withContext('the zone\'s title')
+        .toEqual({ fontSize: '18px', fontWeight: '600', lineHeight: '27px', margin: '0px 0px 0px 0px' });
+
+      drop(photo('a.png'), photo('b.png'));
+
+      expect(drawn(uploadStep()?.querySelector('.image-previews h2')))
+        .withContext('the previews\' heading')
+        .toEqual({ fontSize: '14px', fontWeight: '500', lineHeight: '21px', margin: '0px 0px 12px 0px' });
     });
 
     // The review step with everything that can stand around its rows: the
