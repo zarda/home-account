@@ -600,6 +600,24 @@ describe('FileDropzoneComponent, through its own template', () => {
   const all = (selector: string) => Array.from(el().querySelectorAll(selector)) as HTMLElement[];
   /** The hidden input whose own click is the picker. */
   const fileInput = () => el().querySelector('input[type="file"]') as HTMLInputElement;
+  const rowNames = () => all('.file-name').map(n => n.textContent?.trim());
+  /** The up and down arrows of the row at `row`, in that order. */
+  const arrows = (row: number) =>
+    Array.from(all('.file-item')[row]?.querySelectorAll<HTMLButtonElement>('.reorder-btn') ?? []);
+
+  /**
+   * The key as the browser delivers it to a focused button: its keydown
+   * bubbles out through the zone first, and the button then presses itself
+   * (on Enter's keypress, on Space's keyup) unless something on the way
+   * cancelled that keydown. A synthetic keydown presses nothing, so the
+   * press is the button's own click.
+   */
+  function press(button: HTMLElement, key: 'Enter' | ' '): KeyboardEvent {
+    const keydown = new KeyboardEvent('keydown', { key, bubbles: true, cancelable: true });
+    button.dispatchEvent(keydown);
+    if (!keydown.defaultPrevented) button.click();
+    return keydown;
+  }
 
   beforeEach(async () => {
     await TestBed.configureTestingModule({
@@ -680,23 +698,10 @@ describe('FileDropzoneComponent, through its own template', () => {
       picker = spyOn(fileInput(), 'click');
     });
 
-    /**
-     * The key as the browser delivers it: its keydown bubbles out through the
-     * zone first, and Browse then presses itself (on Enter's keypress, on
-     * Space's keyup) unless something on the way cancelled that keydown. A
-     * synthetic keydown presses nothing, so the press is Browse's own click.
-     */
-    function press(key: 'Enter' | ' '): KeyboardEvent {
-      const keydown = new KeyboardEvent('keydown', { key, bubbles: true, cancelable: true });
-      browse.dispatchEvent(keydown);
-      if (!keydown.defaultPrevented) browse.click();
-      return keydown;
-    }
-
     // The zone's own keydown handler opened the picker, and then Browse's
     // press opened it again: one Enter, two requests.
     it('opens the picker once for Enter', () => {
-      const keydown = press('Enter');
+      const keydown = press(browse, 'Enter');
       expect(picker).withContext('picker requests').toHaveBeenCalledTimes(1);
       expect(keydown.defaultPrevented).withContext('the key left to Browse').toBeFalse();
     });
@@ -704,7 +709,7 @@ describe('FileDropzoneComponent, through its own template', () => {
     // The zone cancelled Space on its way out and opened the picker itself,
     // so Browse never pressed: the key was the zone's, not the button's.
     it('opens the picker once for Space, through Browse\'s own press', () => {
-      const keydown = press(' ');
+      const keydown = press(browse, ' ');
       expect(picker).withContext('picker requests').toHaveBeenCalledTimes(1);
       expect(keydown.defaultPrevented).withContext('the key left to Browse').toBeFalse();
     });
@@ -947,10 +952,6 @@ describe('FileDropzoneComponent, through its own template', () => {
   // zone lists them, so the badges are the order they are read in.
   describe('a pick that mixes photos and a CSV', () => {
     const badges = () => all('.image-number').map(n => n.textContent?.trim());
-    const rowNames = () => all('.file-name').map(n => n.textContent?.trim());
-    /** The up and down arrows of the row at `row`, in that order. */
-    const arrows = (row: number) =>
-      Array.from(all('.file-item')[row]?.querySelectorAll<HTMLButtonElement>('.reorder-btn') ?? []);
 
     it('with a CSV first, the badges read 1 and 2 and the first photo\'s up arrow is disabled', () => {
       fixture.detectChanges();
@@ -1103,6 +1104,108 @@ describe('FileDropzoneComponent, through its own template', () => {
         ]);
       });
     }
+  });
+
+  // An arrow is disabled once its photo reaches that end of the list, and a
+  // disabled button cannot hold focus: a keyboard user who moved a photo to
+  // either end was left on the page itself, and with two photos every move
+  // ends at an end. Focus stays with the moved photo: on the arrow pressed
+  // while the photo can still go that way, on its other arrow once it cannot.
+  describe('focus after a photo moves', () => {
+    /**
+     * Enter on a focused arrow, then the render the move asks for and its
+     * render hooks. A pointer click on a button focuses it before it presses
+     * too, so `key` absent is that click.
+     */
+    function move(arrow: HTMLButtonElement | undefined, key?: 'Enter'): void {
+      expect(arrow).withContext('the arrow pressed').toBeDefined();
+      if (!arrow) return;
+      arrow.focus();
+      expect(document.activeElement).withContext('the arrow, focused before the press').toBe(arrow);
+      if (key) press(arrow, key);
+      else arrow.click();
+      fixture.detectChanges();
+      TestBed.tick();
+    }
+
+    const focusedName = () =>
+      document.activeElement instanceof HTMLButtonElement ? accessibleName(document.activeElement) : null;
+
+    it('hands focus to Move up when Enter moves a photo to the last place', () => {
+      fixture.detectChanges();
+      dropFiles([imageFile('first.png'), imageFile('second.png')]);
+
+      move(arrows(0)[1], 'Enter');
+
+      expect(rowNames()).withContext('the rows, first moved down').toEqual(['second.png', 'first.png']);
+      const [up, down] = arrows(1);
+      expect(down?.disabled).withContext('the moved photo\'s down arrow').toBeTrue();
+      expect(document.activeElement).withContext('focus, on the moved photo\'s up arrow').toBe(up ?? null);
+      expect(focusedName()).withContext('the focused control\'s name')
+        .toBe('import.movePhotoUpLabel:{"position":2,"name":"first.png"}');
+    });
+
+    it('hands focus to Move down when Enter moves a photo to the first place', () => {
+      fixture.detectChanges();
+      dropFiles([imageFile('first.png'), imageFile('second.png')]);
+
+      move(arrows(1)[0], 'Enter');
+
+      expect(rowNames()).withContext('the rows, second moved up').toEqual(['second.png', 'first.png']);
+      const [up, down] = arrows(0);
+      expect(up?.disabled).withContext('the moved photo\'s up arrow').toBeTrue();
+      expect(document.activeElement).withContext('focus, on the moved photo\'s down arrow').toBe(down ?? null);
+      expect(focusedName()).withContext('the focused control\'s name')
+        .toBe('import.movePhotoDownLabel:{"position":1,"name":"second.png"}');
+    });
+
+    // A pin. Mutation: the moved photo's other arrow asked for before the one pressed.
+    it('keeps focus on Move down while the photo can still go down', () => {
+      fixture.detectChanges();
+      dropFiles([imageFile('a.png'), imageFile('b.png'), imageFile('c.png')]);
+
+      move(arrows(0)[1], 'Enter');
+
+      expect(rowNames()).withContext('the rows, a moved down').toEqual(['b.png', 'a.png', 'c.png']);
+      const [, down] = arrows(1);
+      expect(down?.disabled).withContext('the moved photo\'s down arrow').toBeFalse();
+      expect(document.activeElement).withContext('focus, on the moved photo\'s down arrow').toBe(down ?? null);
+      expect(focusedName()).withContext('the focused control\'s name')
+        .toBe('import.movePhotoDownLabel:{"position":2,"name":"a.png"}');
+    });
+
+    // @for swaps two neighbouring rows by taking the lower one out of the
+    // page and putting it back above the other, and a button taken out of
+    // the page loses focus: a photo moved up lost it with its arrow enabled.
+    it('keeps focus on Move up while the photo can still go up', () => {
+      fixture.detectChanges();
+      dropFiles([imageFile('a.png'), imageFile('b.png'), imageFile('c.png')]);
+
+      move(arrows(2)[0], 'Enter');
+
+      expect(rowNames()).withContext('the rows, c moved up').toEqual(['a.png', 'c.png', 'b.png']);
+      const [up] = arrows(1);
+      expect(up?.disabled).withContext('the moved photo\'s up arrow').toBeFalse();
+      expect(document.activeElement).withContext('focus, on the moved photo\'s up arrow').toBe(up ?? null);
+      expect(focusedName()).withContext('the focused control\'s name')
+        .toBe('import.movePhotoUpLabel:{"position":2,"name":"c.png"}');
+    });
+
+    // The photo's row is found by its place in the list, a CSV's rows
+    // counted, not by its number among the photos.
+    it('follows a photo a click moves past a CSV to the first place', () => {
+      fixture.detectChanges();
+      dropFiles([imageFile('a.png'), csvFile(), imageFile('b.png')]);
+
+      move(arrows(2)[0]);
+
+      expect(rowNames()).withContext('the rows, b moved up').toEqual(['b.png', 'rows.csv', 'a.png']);
+      const [up, down] = arrows(0);
+      expect(up?.disabled).withContext('the moved photo\'s up arrow').toBeTrue();
+      expect(document.activeElement).withContext('focus, on the moved photo\'s down arrow').toBe(down ?? null);
+      expect(focusedName()).withContext('the focused control\'s name')
+        .toBe('import.movePhotoDownLabel:{"position":1,"name":"b.png"}');
+    });
   });
 
   it('shows the error banner when a dropped file is refused', () => {
@@ -1482,9 +1585,9 @@ describe('FileDropzoneComponent, through its own template', () => {
 
       const row = all('.file-item')[0];
       const info = box(row, '.file-info');
-      const arrows = box(row, '.reorder-controls');
+      const controls = box(row, '.reorder-controls');
       expect(getComputedStyle(row).display).withContext('the row').toBe('flex');
-      expect(arrows.top < info.bottom && arrows.bottom > info.top)
+      expect(controls.top < info.bottom && controls.bottom > info.top)
         .withContext('the arrows beside the name').toBeTrue();
     });
 
@@ -1675,8 +1778,8 @@ describe('FileDropzoneComponent, through its own template', () => {
       const [first, second] = all('.file-item');
       const icon = (control: Element | null | undefined) => control?.querySelector<HTMLElement>('mat-icon') ?? null;
       const contrast = (glyph: HTMLElement) => ratio(paintedColor(glyph), paintedBackground(glyph));
-      const [firstUp, firstDown] = Array.from(first.querySelectorAll<HTMLButtonElement>('.reorder-btn'));
-      const [secondUp, secondDown] = Array.from(second.querySelectorAll<HTMLButtonElement>('.reorder-btn'));
+      const [firstUp, firstDown] = arrows(0);
+      const [secondUp, secondDown] = arrows(1);
       expect([firstUp?.disabled, firstDown?.disabled, secondUp?.disabled, secondDown?.disabled])
         .withContext('the arrows with nowhere to move')
         .toEqual([true, false, false, true]);
