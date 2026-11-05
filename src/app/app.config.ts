@@ -25,10 +25,10 @@ import {
 import { FirebaseStorage, provideStorage, getStorage, connectStorageEmulator } from '@angular/fire/storage';
 import { provideRemoteConfig, getRemoteConfig } from '@angular/fire/remote-config';
 import { provideAnalytics, initializeAnalytics, setConsent } from '@angular/fire/analytics';
-import { MAT_DIALOG_DEFAULT_OPTIONS } from '@angular/material/dialog';
 import { Directionality } from '@angular/cdk/bidi';
 import { provideAppCharts } from './core/config/chart.config';
 import { provideAppDatepicker } from './core/config/datepicker.config';
+import { provideAppDialogs } from './core/config/dialog.config';
 import { provideHttpClient } from '@angular/common/http';
 import { Capacitor } from '@capacitor/core';
 
@@ -477,18 +477,7 @@ export const appConfig: ApplicationConfig = {
     // docs/analytics.md.
     provideAppAnalytics(),
     provideAppCharts(),
-    {
-      // One dialog sizing default: a comfortable width that always leaves
-      // a 16px gutter, so a fixed width like 400/500px can never overflow a
-      // 360px phone. Per-open width overrides this but keeps the maxWidth.
-      provide: MAT_DIALOG_DEFAULT_OPTIONS,
-      useValue: {
-        width: 'min(480px, calc(100vw - 32px))',
-        maxWidth: 'calc(100vw - 32px)',
-        autoFocus: 'first-tabbable',
-        restoreFocus: true,
-      },
-    },
+    provideAppDialogs(),
     { provide: LOCALE_ID, useFactory: appLocaleIdFactory },
     // Everything in Material and the CDK asks for Directionality; handing them
     // the app's own instance is what lets a locale switch reach components
