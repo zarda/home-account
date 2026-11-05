@@ -11,7 +11,7 @@ import { ReceiptTranslationService } from '../../../core/services/receipt-transl
 import { TranslationService } from '../../../core/services/translation.service';
 import { NoteTranslation } from '../../../core/services/llm-provider.interface';
 import { createTransaction } from '../../../core/services/testing/test-data';
-import { provideNoMotion } from '../../../core/services/testing';
+import { catalogTranslator, provideNoMotion } from '../../../core/services/testing';
 import { Transaction } from '../../../models';
 
 describe('ReceiptViewerDialogComponent', () => {
@@ -122,6 +122,50 @@ describe('ReceiptViewerDialogComponent', () => {
     expect(query('img.receipt-image')?.getAttribute('alt'))
       .toBe('receiptImages.imageNumber|{"index":1,"total":2}');
     expect(query('.viewer-subtitle')?.textContent).toContain('Family Mart');
+  });
+
+  describe('its subtitle, read in the catalog\'s words', () => {
+    const t = catalogTranslator('en', { strict: true });
+
+    beforeEach(() => {
+      (TestBed.inject(TranslationService) as jasmine.SpyObj<TranslationService>).t.and.callFake(t);
+    });
+
+    function subtitleFor(description: string): string | undefined {
+      open({ transaction: createTransaction({ description, receiptUrls: [FIRST] }) });
+      return query('.viewer-subtitle')?.textContent?.trim();
+    }
+
+    it('names a transaction with no description by the words the list names it with', () => {
+      expect(subtitleFor('')).withContext('an empty description').toBe(t('transactions.untitledRow'));
+      expect(subtitleFor('   ')).withContext('a blank description').toBe(t('transactions.untitledRow'));
+    });
+
+    // A pin. Mutation: the subtitle reading the untitled words whatever the
+    // description (a titled one would read them too).
+    it('still names a titled transaction by its description (pin)', () => {
+      expect(subtitleFor('Family Mart')).toBe('Family Mart');
+    });
+
+    // The template calls transactionName(), and the service's t reads its
+    // catalog signal, so a language switch made while the viewer is open
+    // redraws the subtitle. This stub's t reads a locale signal as the
+    // service's reads its catalog. A pin. Mutation: the name read once, into
+    // a field, when the viewer opens.
+    it('follows a language switch made while the viewer is open (pin)', () => {
+      const locale = signal<'en' | 'ja'>('en');
+      (TestBed.inject(TranslationService) as jasmine.SpyObj<TranslationService>).t.and.callFake(
+        (key: string, params?: Record<string, string | number>) => catalogTranslator(locale(), { strict: true })(key, params),
+      );
+      expect(subtitleFor('')).withContext('in en').toBe(t('transactions.untitledRow'));
+
+      locale.set('ja');
+      fixture.detectChanges();
+
+      expect(query('.viewer-subtitle')?.textContent?.trim())
+        .withContext('in ja, with the viewer still open')
+        .toBe(catalogTranslator('ja', { strict: true })('transactions.untitledRow'));
+    });
   });
 
   it('opens on the slot it was asked for, which is not the index of that number', () => {
