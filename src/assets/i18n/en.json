@@ -228,7 +228,7 @@
     "chipNewCategory": "New this month: {{category}}",
     "chipTopCategory": "Top: {{category}}",
     "tags": "Tags (Optional)",
-    "tagsPlaceholder": "Add a tag and press Enter",
+    "tagsPlaceholderShort": "Enter to add",
     "removeTag": "Remove tag {{tag}}",
     "tagFilterHint": "Shows only transactions carrying every selected tag",
     "location": "Location (Optional)",

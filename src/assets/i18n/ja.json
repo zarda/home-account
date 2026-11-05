@@ -222,7 +222,7 @@
     "chipNewCategory": "今月新規: {{category}}",
     "chipTopCategory": "最多: {{category}}",
     "tags": "タグ（任意）",
-    "tagsPlaceholder": "タグを入力して Enter を押してください",
+    "tagsPlaceholderShort": "Enter で追加",
     "removeTag": "タグ {{tag}} を削除",
     "tagFilterHint": "選択したすべてのタグが付いた取引のみ表示します",
     "location": "場所（任意）",

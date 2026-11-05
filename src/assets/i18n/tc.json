@@ -222,7 +222,7 @@
     "chipNewCategory": "本月新增: {{category}}",
     "chipTopCategory": "最高: {{category}}",
     "tags": "標籤（選填）",
-    "tagsPlaceholder": "輸入標籤後按 Enter",
+    "tagsPlaceholderShort": "按 Enter 新增",
     "removeTag": "移除標籤 {{tag}}",
     "tagFilterHint": "只顯示帶有所有所選標籤的交易",
     "location": "地點（選填）",

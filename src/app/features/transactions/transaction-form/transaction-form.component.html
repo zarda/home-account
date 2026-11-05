@@ -414,7 +414,10 @@
         </div>
       }
 
-      <!-- Tags (Optional) -->
+      <!-- Tags (Optional). The hint is the short one the filter panel reads: an
+           input's one line cannot wrap, and a phone's dialog leaves the field less
+           room than a full sentence takes in ja (docs/ui-overflow.md, "a shorter
+           word, not a smaller one"). -->
       <mat-form-field appearance="outline" class="full-width">
         <mat-label>{{ 'transactions.tags' | translate }}</mat-label>
         <mat-chip-grid #tagGrid [attr.aria-label]="'transactions.tags' | translate">
@@ -431,7 +434,7 @@
             </mat-chip-row>
           }
           <input
-            [placeholder]="'transactions.tagsPlaceholder' | translate"
+            [placeholder]="'transactions.tagsPlaceholderShort' | translate"
             [matChipInputFor]="tagGrid"
             [matChipInputSeparatorKeyCodes]="tagSeparatorKeys"
             (matChipInputTokenEnd)="addTag($event)"

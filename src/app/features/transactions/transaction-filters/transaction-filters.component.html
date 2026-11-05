@@ -310,7 +310,10 @@
           </mat-form-field>
         }
 
-        <!-- Tags: rows must carry every selected tag -->
+        <!-- Tags: rows must carry every selected tag. The hint is the short one, as on
+             the transaction form: an input's one line cannot wrap, and a track can be
+             as narrow as the grid's floor (docs/ui-overflow.md, "a shorter word, not a
+             smaller one"). -->
         <mat-form-field
           appearance="outline"
           class="compact-field tags-field"
@@ -331,7 +334,7 @@
               </mat-chip-row>
             }
             <input
-              [placeholder]="'transactions.tagsPlaceholder' | translate"
+              [placeholder]="'transactions.tagsPlaceholderShort' | translate"
               [matChipInputFor]="tagFilterGrid"
               [matChipInputSeparatorKeyCodes]="tagSeparatorKeys"
               (matChipInputTokenEnd)="addTagFilter($event)"
