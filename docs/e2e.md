@@ -213,12 +213,14 @@ stale `.angular/cache`, or a server started before the checkout switched,
 shows yesterday's app with today's confidence.
 
 **2. The running bundle names the expected project.** Fetch every script the
-page actually loaded and read the project id out of it:
+page actually loaded and read the project id out of it. The test is on the
+path, since `ng serve` loads its dependencies with a `?v=` query: a test on
+the whole URL skipped about a hundred of the emulator venue's scripts.
 
 ```js
 const ids = new Set();
 for (const entry of performance.getEntriesByType('resource')) {
-  if (!entry.name.endsWith('.js')) continue;
+  if (!new URL(entry.name).pathname.endsWith('.js')) continue;
   const body = await fetch(entry.name).then(r => r.text());
   const matches = body.matchAll(/projectId:\s*['"]([^'"]+)['"]/g);
   for (const m of matches) ids.add(m[1]);
@@ -246,7 +248,7 @@ should reference the chunk.
 ```js
 const chunk = 'chunk-XXXXXXXX.js';  // the name from the 404
 const sources = ['/index.html', ...performance.getEntriesByType('resource')
-  .map(e => e.name).filter(n => n.endsWith('.js'))];
+  .map(e => e.name).filter(n => new URL(n).pathname.endsWith('.js'))];
 const hits = [];
 for (const url of sources) {
   const body = await fetch(url).then(r => r.text());
@@ -1944,7 +1946,7 @@ emulator would not load (check 2).
    ```js
    const live = [];
    for (const entry of performance.getEntriesByType('resource')) {
-     if (!entry.name.endsWith('.js')) continue;
+     if (!new URL(entry.name).pathname.endsWith('.js')) continue;
      if ((await fetch(entry.name).then(r => r.text())).includes('home-accounter')) live.push(entry.name);
    }
    live;  // []
@@ -1989,7 +1991,31 @@ emulator would not load (check 2).
    a production cache under a demo session, the mix check 2 exists to prevent;
    a later check found that project's Firestore keys in `localStorage` too.
    Journey 74 uses a second origin, `http://127.0.0.1:4300`: clean it the
-   same way before signing anyone in there.
+   same way before signing anyone in there. An origin that kept an earlier
+   run's session logs one error on its first load, a 400, since the fresh
+   emulators no longer know that account. The Auth SDK checks a kept session
+   as it boots, and the 400 comes from whichever endpoint it asks: the token
+   endpoint of `securetoken.googleapis.com` where the kept token has expired
+   and is refreshed, or `identitytoolkit.googleapis.com`'s `accounts:lookup`
+   where it is still live and is looked up. The second run of journeys 111
+   to 116 met the token endpoint's 400 and their third run the lookup's,
+   one error either way. An origin that kept no session logs none: the
+   fourth run's origin held no session record, so its first load landed
+   signed out on `/login` and asked neither endpoint. The console therefore
+   holds none or one such error once the origin is clean, and neither is a
+   finding; start check 3's count after this clean.
+
+   The reload boots the app signed out, and that boot opens four databases
+   again, `firebase-heartbeat-database`, `firebaseLocalStorageDb`,
+   `homeaccount-offline-queue` and `homeaccount-share-intake`, writes
+   `home-account.exchangeRates` back and registers the share-target worker
+   again. It can also open the Firestore database and write its
+   `firestore_online_state_` key: in its pre-flight, the third run of
+   journeys 111 to 116 read both gone after this reload, and in its
+   teardown, which cleared a signed-in page with the same script and
+   reloaded, it read both back. Either is a clean origin: neither
+   `localStorage` nor `firebaseLocalStorageDb` holds a session, and nothing
+   is named for `home-accounter`.
 
 ### Signing in a seeded account
 
@@ -2342,10 +2368,34 @@ in the page's memory and in that one entry, and it goes with them.
 
 ### Teardown
 
-Close the tabs on both origins, stop the 4300 server and the emulators —
-nothing is imported or exported, so they keep nothing — delete the sessions
-file, the note of journey 85's test PIN where one was kept, and the emulator
-log, and run the ports check again: it prints nothing.
+Leave the app first, and then clear each origin the run used,
+`http://localhost:4300` and, where journey 74 ran, `http://127.0.0.1:4300`,
+with pre-flight check 8's script, so no session outlives the emulators that
+issued it. Move one tab of each origin to a static file of it, such as
+`/assets/i18n/en.json`, which boots nothing, close or move every other tab
+of the app there, and run the script on the static page. A delete waits
+while a page holds its database open, and a running app writes its keys
+back: the fourth run of journeys 111 to 116 cleared a signed-in page and
+then moved its tab, and the static page still listed the Firestore
+database and held its `firestore_online_state_` key, until a second pass
+there read every store empty. The delete also makes Firestore end itself
+under a running page, and on `/dashboard`, whose five live reads have no
+error path, that logs five `[GlobalErrorHandler] FirebaseError: Firestore
+shutting down` errors
+([ADR 0187](ADR/0187-repeated-controls-name-their-item-the-upload-area-has-one-button-and-numbers-photos-among-photos-resting-text-is-a-token-sentences-end-in-the-readers-stop-and-a-spec-that-expects-nothing-fails.md)'s
+*Known gaps*); a static page has nothing to end. Nor reload the app to
+leave it: check 8 reloads because a sign-in follows, and here a reload
+boots the app again, signed out, and that boot opens its databases and
+writes its keys back. Cookies are out of scope: one set on `localhost` is
+shared by every port on it, and the session is not kept in one. Close the
+tabs, stop the 4300 server and the emulators — nothing is imported or
+exported, so they keep nothing — delete the sessions file, the note of
+journey 85's test PIN where one was kept, and the emulator log, and run the
+ports check again, both of pre-flight check 1's commands: they print
+nothing. Emulators started with their output left to firebase-tools,
+rather than sent to check 4's log, write `firebase-debug.log` and
+`firestore-debug.log` into the checkout's root instead; a clean stop
+removes the first, and the second is deleted here. Both are gitignored.
 
 ## The journeys
 
@@ -9570,7 +9620,18 @@ past the rules.
    rest 1px from centre, each box 40px, at 1280 and at 375px.
 5. **In Japanese.** Settings → Profile → **Language** → 日本語, as journey
    93's step 3 does. Load `/transactions`, open the panel, flush the page,
-   and step 1's read. **Pass:** `['種類', 'すべて', true, true]`,
+   and step 1's read. In a hidden pane one flush of `app-transactions` left
+   every select empty and its label resting in the second run; await a
+   microtask, then flush `app-transaction-filters` as well:
+
+   ```js
+   await Promise.resolve();
+   ng.applyChanges(ng.getComponent(document.querySelector('app-transactions')));
+   ng.applyChanges(ng.getComponent(document.querySelector('app-transaction-filters')));
+   'flushed';
+   ```
+
+   **Pass:** `['種類', 'すべて', true, true]`,
    `['カテゴリ', 'すべて', true, true]`, `['通貨', 'すべて', true, true]`,
    `['国', 'すべて', true, true]` and `['目標', 'すべて', true, true]`.
    Shot: `100-filters-all-ja.png`. Then **Language** → **English** the same
@@ -9638,7 +9699,9 @@ await ng.getComponent(document.querySelector('app-header')).authService
 'written';
 ```
 
-or through the Settings controls themselves. `authService` is private,
+or through the Settings controls themselves. Where a later journey names
+this call with an argument, `{ language: 'ja' }` say, pass that argument
+alone: the stored date format stays as it is. `authService` is private,
 TypeScript's word, which the running page does not enforce, as journey 14
 says. Read what the account holds, past the rules, with:
 
