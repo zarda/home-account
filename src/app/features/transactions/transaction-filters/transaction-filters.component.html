@@ -203,7 +203,7 @@
             mat-icon-button
             type="button"
             [attr.aria-label]="'common.cancel' | translate"
-            (click)="saveMode.set(false)"
+            (click)="closeSaveMode()"
           >
             <mat-icon>close</mat-icon>
           </button>
@@ -344,7 +344,7 @@
       </div>
 
       @if (activeFilterCount() > 0) {
-        <button class="clear-btn" (click)="clearFilters()">
+        <button class="clear-btn" (click)="clearAll()">
           <mat-icon>clear</mat-icon>
           {{ 'transactions.clearAll' | translate }}
         </button>

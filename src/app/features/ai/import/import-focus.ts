@@ -1,6 +1,6 @@
 import { DestroyRef, Injector, afterNextRender } from '@angular/core';
 
-/** What an import component needs to move focus within its own markup. */
+/** What a component needs to move focus within its own markup. */
 export interface ImportFocusContext {
   host: HTMLElement;
   injector: Injector;
