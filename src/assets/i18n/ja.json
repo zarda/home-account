@@ -152,6 +152,7 @@
     "deleteTransaction": "取引を削除",
     "deleteConfirm": "この取引を削除してもよろしいですか？",
     "deleteConfirmMessage": "「{{description}}」を削除してもよろしいですか？この操作は取り消せません。",
+    "deleteUntitledMessage": "この名前のない取引を削除してもよろしいですか？この操作は取り消せません。",
     "noTransactions": "取引が見つかりません",
     "adjustFilters": "フィルターを調整するか、新しい取引を追加してください",
     "loading": "取引を読み込み中...",
@@ -254,6 +255,7 @@
     "rowLabel": "{{description}}、{{amount}}、{{date}}",
     "untitledRow": "名前のない取引",
     "deleteSplitPartMessage": "「{{description}}」のこの部分を削除しますか？他の部分はそのまま残ります。",
+    "deleteUntitledSplitPartMessage": "分割した買い物のこの名前のない部分を削除しますか？他の部分はそのまま残ります。",
     "share": {
       "label": "共有先",
       "hint": "世帯のメンバーには種類、金額と通貨、日付、説明、カテゴリが表示されます。メモ、レシート、タグ、場所は表示されません。",
@@ -270,7 +272,9 @@
       "stop": "共有をやめる",
       "stopTitle": "{{names}}との共有をやめますか？",
       "stopMessage": "「{{description}}」は表示されなくなり、その世帯の目標にも含まれなくなります。",
+      "stopUntitledMessage": "この名前のない取引は表示されなくなり、その世帯の目標にも含まれなくなります。",
       "stopMessageOffline": "オフラインです。デバイスが再接続するまで「{{description}}」は表示されたままです。再接続後に取り除かれ、その世帯の目標にも含まれなくなります。",
+      "stopUntitledMessageOffline": "オフラインです。デバイスが再接続するまでこの名前のない取引は表示されたままです。再接続後に取り除かれ、その世帯の目標にも含まれなくなります。",
       "title": "世帯と共有"
     },
     "select": {

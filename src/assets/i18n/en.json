@@ -155,6 +155,7 @@
     "deleteTransaction": "Delete Transaction",
     "deleteConfirm": "Are you sure you want to delete this transaction?",
     "deleteConfirmMessage": "Are you sure you want to delete \"{{description}}\"? This action cannot be undone.",
+    "deleteUntitledMessage": "Are you sure you want to delete this untitled transaction? This action cannot be undone.",
     "noTransactions": "No transactions found",
     "adjustFilters": "Try adjusting your filters or add a new transaction",
     "loading": "Loading transactions...",
@@ -263,6 +264,7 @@
     "rowLabel": "{{description}}, {{amount}}, {{date}}",
     "untitledRow": "an untitled transaction",
     "deleteSplitPartMessage": "Delete this part of \"{{description}}\"? Its other parts stay.",
+    "deleteUntitledSplitPartMessage": "Delete this untitled part of a split purchase? Its other parts stay.",
     "share": {
       "label": "Shared with",
       "hint": "Household members see the type, amount and currency, date, description and category, never the note, receipts, tags or place.",
@@ -279,7 +281,9 @@
       "stop": "Stop sharing",
       "stopTitle": "Stop sharing with {{names}}?",
       "stopMessage": "They'll no longer see \"{{description}}\", and none of their goals will count it.",
+      "stopUntitledMessage": "They'll no longer see this untitled transaction, and none of their goals will count it.",
       "stopMessageOffline": "You're offline: they'll keep seeing \"{{description}}\" until your device reconnects. Then it's taken out, and none of their goals will count it.",
+      "stopUntitledMessageOffline": "You're offline: they'll keep seeing this untitled transaction until your device reconnects. Then it's taken out, and none of their goals will count it.",
       "title": "Share with households"
     },
     "select": {

@@ -62,9 +62,8 @@ import { AnalyticsService } from '../../../core/services/analytics.service';
 import { PwaService } from '../../../core/services/pwa.service';
 import { AnnouncerService } from '../../../core/services/announcer.service';
 import { ShareTarget, landedKinds, shareChange } from '../../../core/utils/share-change.utils';
-import { transactionDisplayName } from '../../../core/utils/transaction-display.utils';
+import { isUntitled, quotedTransactionName, transactionDisplayName } from '../../../core/utils/transaction-display.utils';
 import { openReceiptViewer } from '../receipt-viewer/receipt-viewer-dialog.component';
-import { quotedTransactionName } from '../../../core/utils/transaction-display.utils';
 import { TranslatePipe } from '../../../shared/pipes/translate.pipe';
 import { LocationLabelPipe } from '../../../shared/pipes/location-label.pipe';
 import { AmountDisplayComponent } from '../../../shared/components/amount-display/amount-display.component';
@@ -455,7 +454,6 @@ export class TransactionListComponent {
     const names = this.sharedNames(transaction);
     const change = shareChange(normalizeShares(transaction.sharedWith), [], targets.map(target => target.householdId));
     if (!names || change.unshare.length === 0) return;
-    const row = { description: transaction.description };
     this.dialog
       .open<ConfirmDialogComponent, ConfirmDialogData, boolean>(ConfirmDialogComponent, {
         width: '400px',
@@ -464,9 +462,7 @@ export class TransactionListComponent {
           title: this.translationService.t('transactions.share.stopTitle', {
             names: names.join(this.translationService.t('transactions.share.separator')),
           }),
-          message: this.pwa.isOnline()
-            ? this.translationService.t('transactions.share.stopMessage', row)
-            : this.translationService.t('transactions.share.stopMessageOffline', row),
+          message: this.stopSharingMessage(transaction),
           confirmLabel: this.translationService.t('transactions.share.stop'),
           cancelLabel: this.translationService.t('common.cancel'),
           icon: 'group_remove',
@@ -476,6 +472,24 @@ export class TransactionListComponent {
       .subscribe(confirmed => {
         if (confirmed) void this.rowSharing.apply(transaction.id, change, targets).then(outcome => this.reportShares(outcome));
       });
+  }
+
+  /**
+   * What a stop-sharing confirm says the household loses, online or
+   * offline. A row with a description is quoted by it; an untitled row is
+   * "this untitled transaction", since the catalog's words for one, in
+   * quotes, would read as the row's own name.
+   */
+  private stopSharingMessage(transaction: Transaction): string {
+    const online = this.pwa.isOnline();
+    if (isUntitled(transaction.description)) {
+      return this.translationService.t(
+        online ? 'transactions.share.stopUntitledMessage' : 'transactions.share.stopUntitledMessageOffline'
+      );
+    }
+    return this.translationService.t(online ? 'transactions.share.stopMessage' : 'transactions.share.stopMessageOffline', {
+      description: this.transactionName(transaction),
+    });
   }
 
   private reportShares({ landed }: ShareOutcome): void {
@@ -675,8 +689,11 @@ export class TransactionListComponent {
    * The transaction every control on a row names (its menu trigger, its
    * checkbox, its note and receipt buttons): its description, or the
    * catalog's words for an untitled one, through the one rule every control
-   * that names its transaction reads. The template reads it, which is why it
-   * is protected.
+   * that names its transaction reads. The delete and stop-sharing confirms
+   * quote it only when it has a description (isUntitled); an untitled row's
+   * confirm has a sentence of its own. The note and share dialogs are handed
+   * the description as stored and name it by the same rule themselves. The
+   * template reads it, which is why it is protected.
    */
   protected transactionName(transaction: Transaction): string {
     return transactionDisplayName(transaction.description, key => this.translationService.t(key));
@@ -704,14 +721,23 @@ export class TransactionListComponent {
   confirmDelete(transaction: Transaction): void {
     // A split part deletes just that row — the group is never queried, so
     // the confirm can only say so because the field rides the row itself.
-    const messageKey = transaction.splitGroupId
-      ? 'transactions.deleteSplitPartMessage'
-      : 'transactions.deleteConfirmMessage';
+    // A row with a description is quoted by it; an untitled one is asked
+    // about as "this untitled transaction", or a split part as "this untitled
+    // part", never as the catalog's words for one in quotes, which would read
+    // as its name.
+    const part = !!transaction.splitGroupId;
+    const message = isUntitled(transaction.description)
+      ? this.translationService.t(
+          part ? 'transactions.deleteUntitledSplitPartMessage' : 'transactions.deleteUntitledMessage'
+        )
+      : this.translationService.t(part ? 'transactions.deleteSplitPartMessage' : 'transactions.deleteConfirmMessage', {
+          description: this.transactionName(transaction),
+        });
     const dialogRef = this.dialog.open(ConfirmDialogComponent, {
       width: '400px',
       data: {
         title: this.translationService.t('transactions.deleteTransaction'),
-        message: this.translationService.t(messageKey, { description: transaction.description }),
+        message,
         confirmLabel: this.translationService.t('common.delete'),
         cancelLabel: this.translationService.t('common.cancel'),
         confirmColor: 'warn',

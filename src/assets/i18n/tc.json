@@ -152,6 +152,7 @@
     "deleteTransaction": "刪除交易",
     "deleteConfirm": "確定要刪除這筆交易嗎？",
     "deleteConfirmMessage": "確定要刪除「{{description}}」嗎？此操作無法復原。",
+    "deleteUntitledMessage": "確定要刪除這筆未命名的交易嗎？此操作無法復原。",
     "noTransactions": "沒有找到交易紀錄",
     "adjustFilters": "請調整篩選條件或新增交易",
     "loading": "載入交易中...",
@@ -254,6 +255,7 @@
     "rowLabel": "{{description}}，{{amount}}，{{date}}",
     "untitledRow": "未命名的交易",
     "deleteSplitPartMessage": "要刪除「{{description}}」的這個部分嗎？其他部分會保留。",
+    "deleteUntitledSplitPartMessage": "要刪除分拆消費中這個未命名的部分嗎？其他部分會保留。",
     "share": {
       "label": "分享給",
       "hint": "家庭成員會看到類型、金額與貨幣、日期、說明和類別，不會看到備註、收據、標籤或地點。",
@@ -270,7 +272,9 @@
       "stop": "停止分享",
       "stopTitle": "要停止分享給{{names}}嗎？",
       "stopMessage": "對方將不再看到「{{description}}」，其家庭目標也不再計入它。",
+      "stopUntitledMessage": "對方將不再看到這筆未命名的交易，其家庭目標也不再計入它。",
       "stopMessageOffline": "目前離線：在裝置重新連線前，對方仍會看到「{{description}}」。重新連線後便會移除，其家庭目標也不再計入它。",
+      "stopUntitledMessageOffline": "目前離線：在裝置重新連線前，對方仍會看到這筆未命名的交易。重新連線後便會移除，其家庭目標也不再計入它。",
       "title": "分享給家庭"
     },
     "select": {
