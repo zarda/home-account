@@ -50,6 +50,9 @@ import {
 /** An account in no household: its index, as the share controls read it, is empty. */
 const NO_HOUSEHOLDS = { subscribeToCollection: () => of([]) };
 
+/** Quotation marks a sentence puts round a name: straight, curly and corner. */
+const QUOTES = /["“”「」『』]/;
+
 // Signal-based stand-in for the page-provided window source.
 function createMockWindowSource() {
   const fetchingEdge = signal<'next' | 'prev' | null>(null);
@@ -667,6 +670,30 @@ describe('TransactionListComponent desktop note doors', () => {
     fixture.detectChanges();
   }
 
+  /**
+   * The confirm the row menu's Delete opened, as the dialog was asked for it.
+   * A closed menu's panel stays in the DOM until a later task, so the newest
+   * panel's Delete is the one this row's menu opened: call it once per row,
+   * in row order, and never reopen an earlier row.
+   */
+  function deleteConfirm(row: number): ConfirmDialogData {
+    dialog.open.calls.reset();
+    openActionsMenu(row);
+    const item = Array.from(
+      document.querySelectorAll<HTMLElement>('.mat-mdc-menu-panel .menu-item-destructive')
+    ).at(-1);
+    expect(item).withContext('the menu route to Delete').toBeDefined();
+    item!.click();
+    fixture.detectChanges();
+    expect(dialog.open).toHaveBeenCalledOnceWith(ConfirmDialogComponent, jasmine.any(Object));
+    return (dialog.open.calls.mostRecent().args[1] as { data: ConfirmDialogData }).data;
+  }
+
+  /** Has the list speak a locale from its catalog, from the next translation on. */
+  function speak(locale: 'en' | 'ja' | 'tc'): void {
+    (TestBed.inject(TranslationService) as jasmine.SpyObj<TranslationService>).t.and.callFake(catalogTranslator(locale));
+  }
+
   beforeEach(async () => {
     const currency = jasmine.createSpyObj('CurrencyService', ['formatCurrency', 'amountInBase']);
     currency.amountInBase.and.callFake(
@@ -865,6 +892,69 @@ describe('TransactionListComponent desktop note doors', () => {
         t('transactions.viewReceiptFor', { description: banana }),
         t('transactions.viewReceiptFor', { description: nameless }),
       ]);
+    });
+  }
+
+  // A row with a description is quoted by its delete confirm, trimmed, in
+  // every locale: a split part by the part's own description.
+  for (const locale of ['en', 'ja', 'tc'] as const) {
+    it(`quotes a titled row's description in its delete confirm in ${locale}`, () => {
+      const say = catalogTranslator(locale, { strict: true });
+      dialog.open.and.returnValue({ afterClosed: () => of(false) } as never);
+      speak(locale);
+      const part = createTransaction({ id: 'd', amount: 2, description: ' Groceries  ', splitGroupId: 'group-1' });
+      fixture = TestBed.createComponent(TransactionListComponent);
+      fixture.componentRef.setInput('transactions', [withNote, part]);
+      fixture.detectChanges();
+
+      expect(deleteConfirm(0).message).toBe(say('transactions.deleteConfirmMessage', { description: 'Banana' }));
+      expect(deleteConfirm(1).message).toBe(say('transactions.deleteSplitPartMessage', { description: 'Groceries' }));
+    });
+  }
+
+  // The note a row opens is handed the description as stored and names the
+  // row itself, as its buttons do, so the name follows a language switch
+  // made while the note is open (note-dialog.component.spec.ts). Its delete
+  // confirm, a sentence that quotes a titled row's description, asks about
+  // this untitled transaction instead, since the catalog's words in quotes
+  // would read as the row's own name.
+  for (const blank of ['', '   ']) {
+    describe(`a row whose description is ${JSON.stringify(blank)}`, () => {
+      const untitled = createTransaction({ id: 'c', amount: 5, description: blank, note: 'no idea what this was' });
+      const part = createTransaction({ id: 'd', amount: 2, description: blank, splitGroupId: 'group-1' });
+
+      beforeEach(() => {
+        speak('en');
+        dialog.open.and.returnValue({ afterClosed: () => of(false) } as never);
+        fixture = TestBed.createComponent(TransactionListComponent);
+        fixture.componentRef.setInput('transactions', [untitled, part]);
+        fixture.detectChanges();
+      });
+
+      it('hands its note dialog the description as stored, for the dialog to name in the language it is read in', () => {
+        noteButton()!.click();
+
+        expect(dialog.open).toHaveBeenCalledWith(
+          NoteDialogComponent,
+          jasmine.objectContaining({ data: { note: 'no idea what this was', description: blank } })
+        );
+      });
+
+      // The menu was rendered in en; the confirm is read in the locale when
+      // Delete is clicked, and Delete is found by its class, not its words.
+      for (const locale of ['en', 'ja', 'tc'] as const) {
+        it(`asks in its delete confirm in ${locale} about this untitled transaction, quoting nothing`, () => {
+          const say = catalogTranslator(locale, { strict: true });
+          speak(locale);
+
+          const whole = deleteConfirm(0).message;
+          const piece = deleteConfirm(1).message;
+
+          expect(whole).toBe(say('transactions.deleteUntitledMessage'));
+          expect(piece).toBe(say('transactions.deleteUntitledSplitPartMessage'));
+          expect([whole, piece].filter(message => QUOTES.test(message))).toEqual([]);
+        });
+      }
     });
   }
 });
@@ -1651,6 +1741,86 @@ describe('TransactionListComponent sharing', () => {
       expect(stopConfirm().message).toBe('transactions.share.stopMessageOffline:{"description":"Banana"}');
       expect(ledger.unshare).toHaveBeenCalledOnceWith(['a'], 'h1');
     });
+
+    /**
+     * Renders the list in a locale with one shared row, the only row whose
+     * menu a case opens: a closed menu's panel stays in the DOM until a later
+     * task, so a second row's lookup would find the first row's items.
+     */
+    async function renderOneRow(locale: 'en' | 'ja' | 'tc', description: string): Promise<void> {
+      TestBed.overrideProvider(TranslationService, { useValue: { t: catalogTranslator(locale) } });
+      dialog.open.and.returnValue({ afterClosed: () => of(undefined) } as never);
+      await render();
+      fixture.componentRef.setInput('transactions', [
+        createTransaction({ id: 'u', amount: 5, description, sharedWith: ['households/h1'] }),
+      ]);
+      fixture.detectChanges();
+    }
+
+    /** The message the one row's Stop sharing confirm opened with, found by its words in the locale. */
+    function stopMessage(say: (key: string) => string): string {
+      dialog.open.calls.reset();
+      openRowMenu(0);
+      const item = menuItems().find(each => each.textContent!.includes(say('transactions.share.stop')));
+      expect(item).withContext('the menu route to Stop sharing').toBeDefined();
+      item!.click();
+      return stopConfirm().message;
+    }
+
+    // The share dialog is handed the row's description as stored and names it
+    // itself, by the rule its menu reads, so the name follows a language
+    // switch made while the dialog is open (share-dialog.component.spec.ts).
+    // Its stop-sharing confirms, sentences that quote a titled row's
+    // description, say this untitled transaction instead, unquoted, since
+    // the catalog's words in quotes would read as the row's own name.
+    for (const blank of ['', '   ']) {
+      for (const locale of ['en', 'ja', 'tc'] as const) {
+        it(`hands its share dialog the description ${JSON.stringify(blank)} as stored, and asks about this untitled transaction in its stop-sharing confirms in ${locale}`, async () => {
+          const say = catalogTranslator(locale, { strict: true });
+          await renderOneRow(locale, blank);
+
+          openRowMenu(0);
+          const share = menuItems().find(each => each.textContent!.includes(say('transactions.share.menu')));
+          expect(share).withContext('the menu route to Share').toBeDefined();
+          share!.click();
+          expect(dialog.open).toHaveBeenCalledWith(
+            ShareDialogComponent,
+            jasmine.objectContaining({
+              data: {
+                description: blank,
+                targets: [{ householdId: 'h1', name: 'Home' }, { householdId: 'h2', name: 'Office' }],
+                shared: ['h1'],
+              },
+            })
+          );
+
+          const untitledOnline = stopMessage(say);
+          online.set(false);
+          const untitledOffline = stopMessage(say);
+
+          expect(untitledOnline).withContext('online').toBe(say('transactions.share.stopUntitledMessage'));
+          expect(untitledOffline).withContext('offline').toBe(say('transactions.share.stopUntitledMessageOffline'));
+          expect([untitledOnline, untitledOffline].filter(message => QUOTES.test(message))).toEqual([]);
+        });
+      }
+    }
+
+    // A row with a description is quoted by both confirms, trimmed.
+    for (const locale of ['en', 'ja', 'tc'] as const) {
+      it(`quotes a titled row's description in its stop-sharing confirms in ${locale}`, async () => {
+        const say = catalogTranslator(locale, { strict: true });
+        await renderOneRow(locale, ' Banana ');
+
+        const titledOnline = stopMessage(say);
+        online.set(false);
+        const titledOffline = stopMessage(say);
+
+        expect(titledOnline).withContext('online').toBe(say('transactions.share.stopMessage', { description: 'Banana' }));
+        expect(titledOffline)
+          .withContext('offline')
+          .toBe(say('transactions.share.stopMessageOffline', { description: 'Banana' }));
+      });
+    }
 
     /**
      * One event per kind the menu's change went through for, however many

@@ -4,7 +4,12 @@ import { MAT_DIALOG_DATA, MatDialogRef } from '@angular/material/dialog';
 import { ShareDialogComponent, ShareDialogData } from './share-dialog.component';
 import { PwaService } from '../../../core/services/pwa.service';
 import { TranslationService } from '../../../core/services/translation.service';
-import { createTranslationStub, provideNoMotion } from '../../../core/services/testing';
+import {
+  type TranslationStub,
+  catalogTranslator,
+  createTranslationStub,
+  provideNoMotion,
+} from '../../../core/services/testing';
 
 describe('ShareDialogComponent', () => {
   let fixture: ComponentFixture<ShareDialogComponent>;
@@ -195,5 +200,73 @@ describe('ShareDialogComponent', () => {
       expect(goalNote()?.textContent?.trim()).toBe('transactions.select.unshareGoalLink');
       expect(shareNote()).toBeNull();
     });
+
+    // A pin. Mutation: the line reading the row's rule in every mode, so a
+    // blank count sentence would read as an untitled row.
+    it("keeps the caller's words for many rows, never the untitled stand-in (pin)", () => {
+      render({ description: '', shared: [], mode: 'share' });
+
+      expect(root().querySelector('.share-row')?.textContent?.trim()).toBe('');
+    });
+  });
+
+  // The line above the households names one row as the list's rows do, from
+  // the description it is handed as stored, so an untitled row reads the
+  // catalog's words for one.
+  describe("its row line, read in the catalog's words", () => {
+    let locale: ReturnType<typeof signal<'en' | 'ja'>>;
+    let translation: TranslationStub;
+
+    const say = (language: 'en' | 'ja') => catalogTranslator(language, { strict: true });
+    const rowLine = () => root().querySelector('.share-row')?.textContent?.trim();
+
+    beforeEach(() => {
+      locale = signal<'en' | 'ja'>('en');
+      // This stub's t reads a locale signal as the service's reads its catalog.
+      translation = createTranslationStub({ t: (key, params) => catalogTranslator(locale())(key, params) });
+      TestBed.overrideProvider(TranslationService, { useValue: translation });
+    });
+
+    /** Switches the stub as the service's setLocale does: the catalog, its version, then the locale. */
+    function switchTo(next: 'ja'): void {
+      locale.set(next);
+      translation.translationsVersion.update(version => version + 1);
+      translation.currentLocale.set(next);
+      fixture.detectChanges();
+    }
+
+    for (const blank of ['', '   ']) {
+      it(`names a row whose description is ${JSON.stringify(blank)} by the list's words`, () => {
+        render({ description: blank });
+
+        expect(rowLine()).toBe(say('en')('transactions.untitledRow'));
+      });
+    }
+
+    // A pin. Mutation: the line reading the untitled words whatever the
+    // description (a titled row would read them too).
+    it('still names a titled row by its description (pin)', () => {
+      render({ description: 'Dinner' });
+
+      expect(rowLine()).toBe('Dinner');
+    });
+
+    // The template calls transactionName(), and the service's t reads its
+    // catalog signal, so a language switch made while the dialog is open
+    // redraws the line under the header the pipe redraws. A pin. Mutation:
+    // the name read once, into a field, when the dialog opens.
+    for (const blank of ['', '   ']) {
+      it(`follows a language switch made while the dialog is open, for ${JSON.stringify(blank)} (pin)`, () => {
+        render({ description: blank });
+        expect(rowLine()).withContext('in en').toBe(say('en')('transactions.untitledRow'));
+
+        switchTo('ja');
+
+        expect(root().querySelector('.dialog-header-text')?.textContent)
+          .withContext('the header, which the pipe redraws')
+          .toContain(say('ja')('transactions.share.title'));
+        expect(rowLine()).withContext('in ja, with the dialog still open').toBe(say('ja')('transactions.untitledRow'));
+      });
+    }
   });
 });
