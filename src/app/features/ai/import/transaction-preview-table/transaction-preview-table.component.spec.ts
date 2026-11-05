@@ -19,12 +19,13 @@ import { LocaleFormatService } from '../../../../core/services/locale-format.ser
 import { NotificationService } from '../../../../core/services/notification.service';
 import { AnnouncerService } from '../../../../core/services/announcer.service';
 import { toCreateTransactionDTO } from '../../../../core/utils/import-dto.utils';
-import { blankImportRow, needsDateAnswer } from '../../../../core/utils/import-review.utils';
+import { blankImportRow, joinSentences, needsDateAnswer } from '../../../../core/utils/import-review.utils';
 import { UNRESOLVED_CATEGORY_CONFIDENCE } from '../../../../core/utils/categorization.utils';
 import { createCategory } from '../../../../core/services/testing/test-data';
 import {
   AUDIT_SCHEMES,
   GLYPH_PROBE_COLOURS,
+  accessibleDescription,
   accessibleName,
   catalogTranslator,
   channels,
@@ -1467,6 +1468,50 @@ describe('TransactionPreviewTableComponent, the offer chip through its own templ
   });
 
   /**
+   * Lets a tooltip's description land before a case reads it. MatTooltip
+   * hands its message to the CDK's AriaDescriber in an afterNextRender write,
+   * and the describer points the host's aria-describedby at it unless the
+   * message is the host's whole aria-label. fixture.detectChanges() runs no
+   * render hook itself, and the zone's own tick at its end runs them only
+   * when no microtask is pending, so this ticks the app, then settles the
+   * view as settle() does.
+   */
+  async function settleDescriptions(): Promise<void> {
+    TestBed.tick();
+    await settle();
+  }
+
+  /** The tooltip a rendered element hosts. */
+  const tooltipOn = (host: Element): MatTooltip =>
+    fixture.debugElement.query(debug => debug.nativeElement === host).injector.get(MatTooltip);
+
+  for (const l of ['en', 'ja'] as const) {
+    it(`shows the offered currency's whole name as its tooltip, so a screen reader reads its reason once, in ${l}`, async () => {
+      // The name is what the press does, then why it is offered. A tooltip
+      // of the reason alone is not the whole name, so the CDK described the
+      // button by it, and the reason was read again after the name.
+      const words = catalogTranslator(l, { strict: true });
+      spyOn(TestBed.inject(TranslationService), 't').and.callFake(catalogTranslator(l));
+      component.transactions = [makeRow({ currencySuggestion: { code: 'KRW', country: 'KR', reason: 'receipt' } })];
+      component.categories = [];
+      fixture.detectChanges();
+      await settleDescriptions();
+
+      const accept = fixture.nativeElement.querySelector('.currency-offer .extra-accept') as HTMLElement | null;
+      expect(accept).withContext('the offer renders').not.toBeNull();
+      if (!accept) return;
+      const name = joinSentences(
+        words,
+        words('import.acceptCurrencySuggestion', { currency: 'KRW' }),
+        words('import.currencyReasonReceipt'),
+      );
+      expect(accessibleName(accept)).withContext('the action, then the reason').toBe(name);
+      expect(tooltipOn(accept).message).withContext('a pointer or keyboard focus shows both').toBe(name);
+      expect(accessibleDescription(accept)).withContext('nothing the name read is read again').toBe('');
+    });
+  }
+
+  /**
    * MatIcon sets aria-hidden="true" on itself at construction unless the
    * template carries a *literal* aria-hidden attribute — a bound
    * [attr.aria-hidden] does not count (HostAttributeToken reads the static
@@ -1848,6 +1893,37 @@ describe('TransactionPreviewTableComponent, the offer chip through its own templ
       expect(dateButton().getAttribute('aria-label')).not.toContain('. ');
       expect(dateButton().getAttribute('aria-label')).toBe(`${reason}${ja('import.changeDate', { date })}`);
     });
+
+    for (const l of ['en', 'ja'] as const) {
+      it(`shows the keep button's whole name as its tooltip, so a screen reader reads its reason once, in ${l}`, async () => {
+        // The name is why the row is asked, then the day Keep keeps. A
+        // tooltip of the reason alone is not the whole name, so the CDK
+        // described the button by it and the reason was read twice. Both
+        // reasons a row is asked: an assumed date, and a receipt dated
+        // another day, one long past so that no run straddles today.
+        const words = catalogTranslator(l, { strict: true });
+        spyOn(TestBed.inject(TranslationService), 't').and.callFake(catalogTranslator(l));
+        const assumed = makeRow({ id: 'assumed', dateAssumed: true });
+        const old = makeRow({ id: 'old' });
+        render([assumed, old], ['old']);
+        await settleDescriptions();
+
+        const asked = [
+          { row: assumed, reason: words('import.dateAssumedTooltip') },
+          { row: old, reason: words('import.dateNotTodayTooltip', { date: formatted(old) }) },
+        ];
+        for (const { row, reason } of asked) {
+          const keep = fixture.nativeElement
+            .querySelector(`[data-row-id="${row.id}"] .date-check .extra-accept`) as HTMLElement | null;
+          expect(keep).withContext(`${row.id}: the row is asked`).not.toBeNull();
+          if (!keep) continue;
+          const name = joinSentences(words, reason, words('import.keepDate', { date: formatted(row) }));
+          expect(accessibleName(keep)).withContext(`${row.id}: the reason, then the day it keeps`).toBe(name);
+          expect(tooltipOn(keep).message).withContext(`${row.id}: a pointer or keyboard focus shows both`).toBe(name);
+          expect(accessibleDescription(keep)).withContext(`${row.id}: nothing the name read is read again`).toBe('');
+        }
+      });
+    }
 
     it('renders the question only while the row carries the mark', () => {
       render([makeRow({ id: 'marked', dateAssumed: true }), makeRow({ id: 'unmarked' })]);
@@ -3135,6 +3211,59 @@ describe('TransactionPreviewTableComponent, the offer chip through its own templ
         .withContext('the question renders on the row now')
         .not.toBeNull();
     });
+  });
+
+  /**
+   * The rule the keep button and the offer broke, over every tooltip on a
+   * card that a screen reader reaches. The CDK describes a host by any
+   * tooltip that is not its whole aria-label, so a tooltip saying one
+   * sentence of its name had that sentence read twice. A tooltip on an
+   * aria-hidden icon (the date, currency and type flags) is left out: its
+   * button's name carries the sentence, and nothing reads the icon.
+   */
+  describe('a tooltip a reader reaches on the card', () => {
+    for (const l of ['en', 'ja'] as const) {
+      it(`says its control's whole name, so no description repeats the name, in ${l}`, async () => {
+        spyOn(TestBed.inject(TranslationService), 't').and.callFake(catalogTranslator(l));
+        component.transactions = [
+          makeRow({ id: 'assumed', dateAssumed: true }),
+          makeRow({ id: 'doubted', fieldConfidence: { amount: 0.2, date: 0.2 } }),
+          makeRow({
+            id: 'offer',
+            currencyFellBack: true,
+            currencySuggestion: { code: 'KRW', country: 'KR', reason: 'receipt' },
+          }),
+          makeRow({ id: 'duplicate', isDuplicate: true, duplicateOf: 'stored-1', selected: false, fieldConfidence: { type: 0.3 } }),
+        ];
+        component.categories = [];
+        component.dateAttentionIds = new Set(['doubted']);
+        fixture.detectChanges();
+        await settleDescriptions();
+
+        const hosts = fixture.debugElement.queryAll(By.directive(MatTooltip));
+        const reached = hosts.filter(debug => !(debug.nativeElement as Element).closest('[aria-hidden="true"]'));
+        expect(hosts.length - reached.length)
+          .withContext('the doubted date, the fallen-back currency and the doubted type, each on a hidden icon')
+          .toBe(3);
+        expect(reached.length)
+          .withContext("two keeps, the doubted amount, the offer, the overrule and each card's category grade")
+          .toBe(9);
+        const repeated = reached
+          .map(debug => {
+            const host = debug.nativeElement as Element;
+            return {
+              row: host.closest('[data-row-id]')?.getAttribute('data-row-id'),
+              tooltip: debug.injector.get(MatTooltip).message,
+              name: accessibleName(host),
+              description: accessibleDescription(host),
+            };
+          })
+          .filter(read => read.tooltip !== read.name || read.description !== '');
+        expect(repeated)
+          .withContext("a tooltip that is not its control's whole name, or a description read after the name")
+          .toEqual([]);
+      });
+    }
   });
 
   /**
