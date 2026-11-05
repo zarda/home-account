@@ -27,7 +27,8 @@ import {
   AUDIT_SCHEMES,
   MockAuthService,
   channels,
-  expectContrastScored,
+  expectEachContrastScored,
+  type ContrastPart,
   expectOneRule,
   expectPainted,
   paintedBackground,
@@ -4457,8 +4458,8 @@ describe('ImportWizardComponent', () => {
           });
         });
 
-        // Each part is swept on its own (expectContrastScored), so its pass
-        // can only come from its own text. A pin. Mutations:
+        // Each part's pass is read back to it (expectEachContrastScored), so
+        // it can only come from the part's own text. A pin. Mutations:
         // .dropzone-content given visibility: hidden, which leaves the step's
         // pass holding the rule; the step's upload-step class dropped, so no
         // step is found to score.
@@ -4486,16 +4487,13 @@ describe('ImportWizardComponent', () => {
               expect(elements.length).withContext(`.file-type ${i + 1}'s glyph, hidden`).toBeGreaterThan(0);
             }
             await withInlineStyle(held.flat(), 'visibility: hidden', async () => {
-              for (const [i, type] of types.entries()) {
-                await expectContrastScored(type, `.file-type ${i + 1}`);
-              }
+              await expectEachContrastScored(types.map((type, i) => [type, `.file-type ${i + 1}`] as const));
             });
-            for (const part of ['.title', '.hint', '.browse-btn .mdc-button__label']) {
+            await expectEachContrastScored(['.title', '.hint', '.browse-btn .mdc-button__label'].flatMap(part => {
               const node = step.querySelector(`app-file-dropzone ${part}`);
               expect(node).withContext(part).toBeTruthy();
-              if (!node) continue;
-              await expectContrastScored(node, part);
-            }
+              return node ? [[node, part] as const] : [];
+            }));
           });
         });
 
@@ -4564,8 +4562,8 @@ describe('ImportWizardComponent', () => {
           });
         });
 
-        // Each part's words are swept on their own (expectContrastScored), so
-        // the pass can only come from them, not from a glyph beside them.
+        // Each part's pass is read back to its words (expectEachContrastScored),
+        // so it can only come from them, not from a glyph beside them.
         // Left out: the chips, whose background axe reports as overlapped
         // (bgOverlap) and leaves unscored, and the previews' captions, which
         // sit on the photo and are held at AA over white paper under
@@ -4580,13 +4578,11 @@ describe('ImportWizardComponent', () => {
 
           await withScheme(TestBed.inject(ThemeService), scheme, async () => {
             realFixture.detectChanges();
-            for (const part of PICKED_PARTS) {
+            await expectEachContrastScored(PICKED_PARTS.flatMap(part => {
               const nodes = [...step.querySelectorAll(part)];
               expect(nodes.length).withContext(`${part} is on the step`).toBeGreaterThan(0);
-              for (const [i, node] of nodes.entries()) {
-                await expectContrastScored(node, `${part} ${i + 1}`);
-              }
-            }
+              return nodes.map((node, i) => [node, `${part} ${i + 1}`] as const);
+            }));
           });
         });
 
@@ -4716,8 +4712,8 @@ describe('ImportWizardComponent', () => {
           });
         });
 
-        // Each of the step's word-holders is swept on its own
-        // (expectContrastScored), so its pass can only come from its own
+        // Each of the step's word-holders has its pass read back to it
+        // (expectEachContrastScored), so the pass can only come from its own
         // words, and each notice's and hint's are read as painted. A
         // notice's own pass would not do: its glyph holds the rule by
         // itself. Each selector must find its words, so no loop can run
@@ -4734,22 +4730,22 @@ describe('ImportWizardComponent', () => {
           await withScheme(TestBed.inject(ThemeService), scheme, async () => {
             realFixture.detectChanges();
             await withEveryCardShown(step, async () => {
+              const parts: ContrastPart[] = [];
               for (const [part, words] of NOTICES_AND_HINTS) {
                 const paragraphs = [...step.querySelectorAll(words)];
                 expect(paragraphs.length).withContext(`${words} is on the step`).toBeGreaterThan(0);
                 for (const [i, paragraph] of paragraphs.entries()) {
                   const label = `${scheme} ${part}, paragraph ${i + 1}`;
-                  await expectContrastScored(paragraph, label);
+                  parts.push([paragraph, label]);
                   expectPainted(paragraph, '--text-secondary', label);
                 }
               }
               for (const words of OTHER_WORDS) {
                 const nodes = [...step.querySelectorAll(words)];
                 expect(nodes.length).withContext(`${words} is on the step`).toBeGreaterThan(0);
-                for (const [i, node] of nodes.entries()) {
-                  await expectContrastScored(node, `${scheme} ${words} ${i + 1}`);
-                }
+                parts.push(...nodes.map((node, i) => [node, `${scheme} ${words} ${i + 1}`] as const));
               }
+              await expectEachContrastScored(parts);
             });
           });
         });

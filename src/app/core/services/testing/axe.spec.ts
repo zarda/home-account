@@ -11,7 +11,9 @@ import {
   accessibleName,
   auditInView,
   axeOptions,
+  contrastUnscored,
   expectContrastScored,
+  expectEachContrastScored,
   runAxe,
   standOnThePage,
   summarizeViolations,
@@ -147,17 +149,25 @@ class OutOfBandFixtureComponent {}
 })
 class BelowBodyFixtureComponent {}
 
-/** Words on a fill of their own, clearing AA whichever scheme the host is in. */
+/** Two parts whose words clear AA, and one whose words are not drawn. */
 @Component({
-  selector: 'app-axe-pair-fixture',
+  selector: 'app-axe-parts-fixture',
   standalone: true,
   changeDetection: ChangeDetectionStrategy.OnPush,
-  template: '<p class="pair">Total</p>',
+  template: `
+    <div class="parts">
+      <p class="first">Total</p>
+      <p class="second">Paid</p>
+      <p class="undrawn">Due</p>
+    </div>
+  `,
   styles: `
-    .pair { margin: 0; color: #000000; background: #ffffff; }
+    .parts { background: #ffffff; }
+    p { margin: 0; color: #000000; }
+    .undrawn { visibility: hidden; }
   `,
 })
-class PairFixtureComponent {}
+class PartsFixtureComponent {}
 
 /** A pair that clears AA in the light theme and fails it in the dark one. */
 @Component({
@@ -237,25 +247,49 @@ describe('the axe harness', () => {
     expect(axeOptions().rules?.['color-contrast']).toBeUndefined();
   });
 
-  // expectContrastScored reads one rule's result, so it runs that rule
-  // alone. A sweep calls it once per node, and with the whole wcag2a/wcag2aa
-  // pass per node a sweep of fifteen outlasted jasmine's five seconds on a
-  // loaded full run.
-  it('scores contrast with color-contrast alone, keeping the shared pass\'s result types', async () => {
-    TestBed.configureTestingModule({ imports: [PairFixtureComponent] });
-    const fixture = TestBed.createComponent(PairFixtureComponent);
+  // A contrast sweep reads one rule's result, so it runs that rule alone,
+  // and once for all its parts: run once per node, with the whole
+  // wcag2a/wcag2aa pass a sweep of fifteen outlasted jasmine's five seconds on
+  // a loaded full run, and with the one rule a sweep of twenty did once
+  // coverage was on. Each part's nodes are kept, with their elements, so
+  // each pass is read back to the part that holds it.
+  it('scores every part with color-contrast alone, in one run that keeps each node\'s element', async () => {
+    TestBed.configureTestingModule({ imports: [PartsFixtureComponent] });
+    const fixture = TestBed.createComponent(PartsFixtureComponent);
     fixture.detectChanges();
+    const host = fixture.nativeElement as HTMLElement;
     const run = spyOn(axe, 'run').and.callThrough();
 
-    await expectContrastScored((fixture.nativeElement as HTMLElement).querySelector('.pair') as HTMLElement, 'the pair');
+    await expectEachContrastScored([
+      [host.querySelector('.first') as HTMLElement, 'the first'],
+      [host.querySelector('.second') as HTMLElement, 'the second'],
+    ]);
 
-    expect(run).toHaveBeenCalledTimes(1);
+    expect(run).withContext('one run for both parts').toHaveBeenCalledTimes(1);
     // Typed by axe.run's last overload, the callback form, which returns void.
     const results = await (run.calls.mostRecent().returnValue as unknown as Promise<AxeResults>);
     expect([...results.passes, ...results.violations, ...results.incomplete, ...results.inapplicable].map(r => r.id))
       .withContext('the rules the pass ran')
       .toEqual(['color-contrast']);
-    expect(results.toolOptions.resultTypes).withContext('its result types').toEqual(axeOptions().resultTypes);
+    expect(results.passes[0]?.nodes.map(node => node.element?.className))
+      .withContext('every passed node, with its element')
+      .toEqual(['first', 'second']);
+  });
+
+  // A pass is read back to the part whose element holds it, so a part whose
+  // own words are not drawn is reported though the part beside it passed in
+  // the same run. A pin. Mutation: a part's pass read from every node of
+  // the rule's passes, not only those inside its element.
+  it('reports a part none of whose own words passed, though the part beside it did', async () => {
+    TestBed.configureTestingModule({ imports: [PartsFixtureComponent] });
+    const fixture = TestBed.createComponent(PartsFixtureComponent);
+    fixture.detectChanges();
+    const host = fixture.nativeElement as HTMLElement;
+
+    expect(await contrastUnscored([
+      [host.querySelector('.first') as HTMLElement, 'the first'],
+      [host.querySelector('.undrawn') as HTMLElement, 'the undrawn words'],
+    ])).toEqual(['the undrawn words: no pass of its own']);
   });
 
   describe('motion', () => {
@@ -364,6 +398,9 @@ describe('the axe harness', () => {
       expect((left?.nodes[0]?.any[0]?.data as { messageKey?: string } | undefined)?.messageKey)
         .withContext('with no fill, why it was left incomplete')
         .toBe('elmPartiallyObscured');
+      expect(await contrastUnscored([[words, 'the words with no fill']]))
+        .withContext('a sweep that meets them says why')
+        .toEqual(['the words with no fill: no pass of its own, left incomplete: elmPartiallyObscured']);
 
       standOnThePage(host);
       expect(getComputedStyle(host).backgroundColor)

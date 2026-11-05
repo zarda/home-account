@@ -156,42 +156,80 @@ export function runAxe(element: Element): Promise<AxeResults> {
  * The shared pass cut to `color-contrast`. A `rule` runOnly runs the rules it
  * names whatever `enabled` flag the `rules` map gives them, but axe still reads
  * a running rule's check options from that map, so the map is kept whole.
+ * Every node that passed or was left incomplete is kept, each with its
+ * element, so a result can be read back to the part that holds it.
  */
 function contrastOptions(): RunOptions {
-  return { ...axeOptions(), runOnly: { type: 'rule', values: ['color-contrast'] } };
+  return {
+    ...axeOptions(),
+    runOnly: { type: 'rule', values: ['color-contrast'] },
+    resultTypes: ['passes', 'incomplete'],
+    elementRef: true,
+  };
+}
+
+/** One element to score for contrast, and the label a failure names it by. */
+export type ContrastPart = readonly [element: Element, label: string];
+
+/**
+ * Runs `color-contrast` once over every part's element and gives, for each
+ * part none of whose text passed, its label and, when axe left the rule
+ * `incomplete` there, why. An empty list means every part was scored.
+ *
+ * A part's pass is a node of the rule's passes inside its element (the
+ * element itself or a descendant), so a part is not held by the text of
+ * another part, nor by text around it.
+ */
+export async function contrastUnscored(parts: readonly ContrastPart[]): Promise<string[]> {
+  const [first] = parts;
+  if (!first) return [];
+  settleAnimations(first[0].ownerDocument);
+  const results = await axe.run({ include: parts.map(([element]) => element) }, contrastOptions());
+  const inside = (element: Element, kind: Result[]) =>
+    kind
+      .find(result => result.id === 'color-contrast')
+      ?.nodes.filter(node => node.element !== undefined && element.contains(node.element)) ?? [];
+  return parts.flatMap(([element, label]) => {
+    if (inside(element, results.passes).length > 0) return [];
+    const left = inside(element, results.incomplete)[0];
+    const why = left ? `, left incomplete: ${(left.any[0]?.data as { messageKey?: string } | undefined)?.messageKey ?? left.failureSummary ?? 'no reason given'}` : '';
+    return [`${label}: no pass of its own${why}`];
+  });
 }
 
 /**
- * Runs `color-contrast` alone over `el` and expects it among the passes:
- * axe measured text inside `el` and found it clears AA. `label` names `el`
- * in a failure, which also says why axe left the rule `incomplete` when it
- * did.
+ * Runs `color-contrast` once over every part and expects each among the
+ * passes: axe measured text inside the part's element and found it clears AA.
+ * Each failure names its part by its label and says why axe left the rule
+ * `incomplete` there when it did.
  *
- * Only a pass scoped to the element proves that element was scored.
- * `axeOptions` keeps every violation but one pass node per rule, so a pass
- * over a whole step holds `color-contrast` as soon as any one node there
- * clears it (over the upload step, the hidden file input), whether or not
- * the words in question were measured. Run over `el`, the pass can only come
- * from inside it. Point it at what holds the words, apart from any glyph
+ * Only a pass inside the part proves that part was scored. `axeOptions`
+ * keeps every violation but one pass node per rule, so a pass over a whole
+ * step holds `color-contrast` as soon as any one node there clears it (over
+ * the upload step, the hidden file input), whether or not the words in
+ * question were measured. Read back to the part, the pass can only come from
+ * inside it. Point each part at what holds the words, apart from any glyph
  * beside them: Karma serves no icon font, so axe reads a ligature as text,
- * and a glyph's pass would hold the rule by itself.
+ * and a glyph's pass would hold the part by itself.
  *
- * The one rule, because a sweep calls this once per node and reads nothing
- * else: the shared pass runs every wcag2a/wcag2aa rule over each, and a sweep
- * of fifteen nodes outlasted jasmine's five seconds on a loaded full run. The
- * others cannot change this rule's verdicts. Each rule scores its own nodes,
- * and the one shared cache whose value depends on who fills it, a node's
- * background colour (kept with whatever text-shadow bound its first caller
- * passed), has one other caller, `link-in-text-block`, which axe runs after
- * this rule.
+ * One run for the whole sweep, with the one rule, because a run's cost is
+ * mostly axe walking the page: run once per node, a sweep of twenty
+ * outlasted jasmine's five seconds on a loaded full run with coverage, as a
+ * sweep of fifteen did with the whole wcag2a/wcag2aa pass per node. The
+ * other rules cannot change this rule's verdicts. Each rule scores its own
+ * nodes, and the one shared cache whose value depends on who fills it, a
+ * node's background colour (kept with whatever text-shadow bound its first
+ * caller passed), has one other caller, `link-in-text-block`, which axe runs
+ * after this rule.
  */
+export async function expectEachContrastScored(parts: readonly ContrastPart[]): Promise<void> {
+  expect(parts.length).withContext('the parts to score').toBeGreaterThan(0);
+  expect(await contrastUnscored(parts)).withContext('the parts with no pass of their own').toEqual([]);
+}
+
+/** {@link expectEachContrastScored} for one element. */
 export async function expectContrastScored(el: Element, label: string): Promise<void> {
-  const results = await runSettled(el, contrastOptions());
-  const left = results.incomplete.find(result => result.id === 'color-contrast');
-  const why = left ? `, left incomplete: ${left.nodes[0]?.any[0]?.data?.messageKey ?? left.description}` : '';
-  expect(results.passes.map(result => result.id))
-    .withContext(`${label}'s own pass${why}`)
-    .toContain('color-contrast');
+  await expectEachContrastScored([[el, label]]);
 }
 
 /**
