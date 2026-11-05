@@ -1,5 +1,20 @@
+@use 'breakpoints' as bp;
+
 // Header chrome lives in app-dialog-header; no fixed min-width here so the
 // dialog respects the global maxWidth on narrow phones.
+
+// Budget Period and Start Date share a row. In a 375px window the dialog is
+// its 95vw maxWidth, a 308px content box, so each field was 146px: the start
+// date's label was cut to 122px and ran 32px under the calendar button
+// (25px in ja, 32px in tc). On a phone the two stack, each taking the whole
+// row, as the recurring and transaction forms stack their paired fields.
+// Encapsulated, this outranks the row's flex and gap utilities.
+@include bp.mobile {
+  .period-row {
+    flex-direction: column;
+    gap: 0;
+  }
+}
 
 // Material's dialog container draws the actions row's top border in
 // transparent, from a stylesheet that lands after styles.scss; this rule
