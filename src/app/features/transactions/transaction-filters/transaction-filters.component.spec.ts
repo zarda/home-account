@@ -1440,6 +1440,7 @@ describe('TransactionFiltersComponent', () => {
       { how: 'Enter in the box, its name emptied', typed: '', close: enter, saved: ['utilities', 'utilities'] },
       { how: "the row's Save", typed: 'Bills', close: () => press(rowButtons()[0]), saved: ['utilities', 'Bills'] },
       { how: "the row's Cancel", typed: 'Bills', close: () => press(rowButtons()[1]), saved: null },
+      { how: 'Escape in the box', typed: 'Bills', close: box => keydown(box, { key: 'Escape' }), saved: null },
     ];
     for (const { how, typed, close, saved } of closes) {
       it(`gives focus back to Save search once ${how} closes the box`, fakeAsync(() => {
@@ -1507,6 +1508,131 @@ describe('TransactionFiltersComponent', () => {
       expect(plain.defaultPrevented).withContext('the Enter that saves, cancelled').toBeTrue();
       flush();
     }));
+
+    /**
+     * Save search opens a box whose one job is the name, so focus goes into
+     * it, with the query it offers as the name selected: a typed name
+     * replaces it, and Enter alone keeps it. Escape closes the box, unless it
+     * ends a composition, which is the IME's.
+     */
+    describe('the save-search box, as it opens', () => {
+      it('takes focus, its suggested name selected', fakeAsync(() => {
+        press(openOver('utilities'));
+        flush(); // NgModel hands the box its value a microtask after it renders
+        fixture.detectChanges();
+        const box = find<HTMLInputElement>('.save-label-input', 'the save-search box');
+
+        expect(document.activeElement).withContext('focus, as the box opens').toBe(box);
+        expect(box.value).withContext('the box, holding the query as its name').toBe('utilities');
+        expect([box.selectionStart, box.selectionEnd])
+          .withContext('the selection, over the whole name')
+          .toEqual([0, 'utilities'.length]);
+      }));
+
+      it('takes a typed name in place of its suggested one, and saves under it', fakeAsync(() => {
+        const bookmark = openOver('utilities');
+        press(bookmark);
+        flush();
+        const box = find<HTMLInputElement>('.save-label-input', 'the save-search box');
+
+        // The browser's own typing: into whatever holds focus, over whatever is selected there.
+        document.execCommand('insertText', false, 'Bills');
+        expect(box.value).withContext('the box, after typing').toBe('Bills');
+        keydown(box, { key: 'Enter' });
+
+        expect(mockSearchHistory.saveSearch).toHaveBeenCalledOnceWith('utilities', 'Bills');
+        expect(document.activeElement).withContext('focus, after Enter').toBe(bookmark);
+        flush();
+      }));
+
+      it('stays open through an Escape that ends a composition, and closes on a plain one', fakeAsync(() => {
+        press(openOver('utilities'));
+        flush();
+        const box = find<HTMLInputElement>('.save-label-input', 'the save-search box');
+
+        keydown(box, { key: 'Escape', isComposing: true });
+        expect(root().querySelector('.save-search-row'))
+          .withContext('the box, after an Escape that ends a composition')
+          .not.toBeNull();
+
+        keydown(box, { key: 'Escape' });
+        expect(root().querySelector('.save-search-row')).withContext('the box, after a plain Escape').toBeNull();
+        flush();
+      }));
+
+      // A tap focuses nothing in WebKit, so a second tap on Save search finds
+      // focus still in the box it takes away, as a scripted click does here.
+      it('gives focus back to Save search once a second press on it closes the box, focus still in the box', fakeAsync(() => {
+        const bookmark = openOver('utilities');
+        press(bookmark);
+        flush();
+        const box = find<HTMLInputElement>('.save-label-input', 'the save-search box');
+        expect(document.activeElement).withContext('the box, focused before the second press').toBe(box);
+
+        bookmark.click();
+        render();
+
+        expect(root().querySelector('.save-search-row')).withContext('the box, after the second press').toBeNull();
+        expect(mockSearchHistory.saveSearch).not.toHaveBeenCalled();
+        expect(document.activeElement).withContext('focus, after the second press').toBe(bookmark);
+        flush();
+      }));
+
+      // The press that closes the box hands focus to Save search itself, so
+      // a held Enter's next repeat pressed it and opened the box again.
+      it('stays shut through the repeats of an Enter held down on Save search to close the box', fakeAsync(() => {
+        const bookmark = openOver('utilities');
+        press(bookmark);
+        flush();
+        bookmark.focus(); // where Shift+Tab from the box lands
+
+        pressKey(bookmark, 'Enter');
+        render();
+        flush();
+        expect(root().querySelector('.save-search-row')).withContext('the box, after the press that closes it').toBeNull();
+
+        for (const n of [1, 2, 3]) {
+          const repeat = pressKey(document.activeElement!, 'Enter', { repeat: true });
+          render();
+          flush();
+          expect(repeat.defaultPrevented).withContext(`repeat ${n}, cancelled`).toBeTrue();
+          expect(root().querySelector('.save-search-row')).withContext(`the box, after repeat ${n}`).toBeNull();
+        }
+        expect(document.activeElement).withContext('focus, after the repeats').toBe(bookmark);
+        expect(mockSearchHistory.saveSearch).not.toHaveBeenCalled();
+      }));
+
+      // A pin. Mutation: a fresh keydown leaves the guard standing, so a key
+      // held in the box after a tap opened it types once and no more.
+      it('lets a key held in the box repeat after a tap opened it (pin)', fakeAsync(() => {
+        press(openOver('utilities'));
+        flush();
+        const box = find<HTMLInputElement>('.save-label-input', 'the save-search box');
+
+        keydown(box, { key: ' ' });
+        const held = keydown(box, { key: ' ', repeat: true });
+
+        expect(held.defaultPrevented).withContext('a held Space typed in the box').toBeFalse();
+        flush();
+      }));
+
+      // A held Enter on Save search opens the box, and its repeats then reach
+      // the box, which holds focus by then. A repeat that saved would hand
+      // focus back to Save search, whose next repeat opens the box again, for
+      // as long as the key is held. focusWhenRendered drops them, since the
+      // press that opened the box handed focus into it.
+      it('saves nothing on the repeat of an Enter held down from Save search', fakeAsync(() => {
+        press(openOver('utilities'));
+        flush();
+        const box = find<HTMLInputElement>('.save-label-input', 'the save-search box');
+
+        keydown(box, { key: 'Enter', repeat: true });
+
+        expect(mockSearchHistory.saveSearch).withContext("a save, on a held Enter's repeat").not.toHaveBeenCalled();
+        expect(root().querySelector('.save-search-row')).withContext('the box, after the repeat').not.toBeNull();
+        flush();
+      }));
+    });
   });
 
   describe('output events', () => {
