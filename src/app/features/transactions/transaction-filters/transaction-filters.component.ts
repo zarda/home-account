@@ -1,4 +1,4 @@
-import { AfterViewInit, ChangeDetectionStrategy, ChangeDetectorRef, Component, DestroyRef, ElementRef, EventEmitter, Injector, Input, OnChanges, OnDestroy, OnInit, Output, SimpleChanges, ViewChild, computed, inject, input, signal } from '@angular/core';
+import { AfterViewInit, ChangeDetectionStrategy, ChangeDetectorRef, Component, DestroyRef, ElementRef, EventEmitter, Injector, Input, OnChanges, OnDestroy, OnInit, Output, SimpleChanges, ViewChild, afterNextRender, computed, inject, input, signal } from '@angular/core';
 
 import { COMMA, ENTER } from '@angular/cdk/keycodes';
 import { FormsModule } from '@angular/forms';
@@ -255,11 +255,20 @@ export class TransactionFiltersComponent implements OnInit, OnChanges, OnDestroy
   // Saving hands focus to Save search, and a button presses itself on the
   // keypress that follows Enter's keydown to whatever holds focus by then,
   // so the Enter that saves is cancelled. One that ends a composition is the
-  // IME's and stays as it is.
+  // IME's and stays as it is. A held Enter's repeats never reach the box:
+  // focusWhenRendered drops them wherever the press that opened it handed
+  // focus.
   onSaveLabelEnter(event: Event): void {
     if (isImeComposition(event)) return;
     event.preventDefault();
     this.confirmSaveSearch();
+  }
+
+  // Escape closes the box onto Save search; one that ends a composition is
+  // the IME's.
+  onSaveLabelEscape(event: Event): void {
+    if (isImeComposition(event)) return;
+    this.closeSaveMode();
   }
 
   // A keystroke in either amount box. Leaving the box commits straight away
@@ -379,11 +388,39 @@ export class TransactionFiltersComponent implements OnInit, OnChanges, OnDestroy
     void this.searchHistory.deleteSearch(item.id);
   }
 
+  // Save search opens a box whose one job is the name, so focus goes into it,
+  // with the query it offers as the name selected. A second press closes it
+  // as Cancel does: a tap focuses nothing in WebKit, so focus is still in the
+  // box that press takes away.
   toggleSaveMode(): void {
-    this.saveMode.update(open => !open);
     if (this.saveMode()) {
-      this.saveLabel = this.filters.searchQuery ?? '';
+      this.closeSaveMode();
+      return;
     }
+    this.saveMode.set(true);
+    this.saveLabel = this.filters.searchQuery ?? '';
+    focusWhenRendered(this.focus, '.save-label-input');
+    this.selectSaveLabel();
+  }
+
+  /**
+   * Selects the name the box opens with, so a typed name replaces it and
+   * Enter alone keeps it. NgModel hands the box that name a microtask after
+   * the render that made the box, and its write puts the caret at the end, so
+   * a selection made in the render hook itself would be undone. The selection
+   * waits for a microtask queued after NgModel's, by which time the box holds
+   * the focus focusWhenRendered gave it.
+   */
+  private selectSaveLabel(): void {
+    if (this.focus.destroyRef.destroyed) return;
+    afterNextRender(
+      () => {
+        void Promise.resolve().then(() => {
+          this.focus.host.querySelector<HTMLInputElement>('.save-label-input')?.select();
+        });
+      },
+      { injector: this.focus.injector }
+    );
   }
 
   confirmSaveSearch(): void {

@@ -190,6 +190,7 @@
             [placeholder]="'transactions.searchLabelPlaceholder' | translate"
             [(ngModel)]="saveLabel"
             (keydown.enter)="onSaveLabelEnter($event)"
+            (keydown.escape)="onSaveLabelEscape($event)"
           >
           <button
             mat-icon-button
