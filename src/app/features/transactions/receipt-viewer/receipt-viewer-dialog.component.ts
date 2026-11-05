@@ -17,6 +17,8 @@ import { MatIconModule } from '@angular/material/icon';
 
 import { NoteTranslation } from '../../../core/services/llm-provider.interface';
 import { ReceiptTranslationService } from '../../../core/services/receipt-translation.service';
+import { TranslationService } from '../../../core/services/translation.service';
+import { transactionDisplayName } from '../../../core/utils/transaction-display.utils';
 import { DialogHeaderComponent } from '../../../shared/components/dialog-header/dialog-header.component';
 import { LoadingSpinnerComponent } from '../../../shared/components/loading-spinner/loading-spinner.component';
 import { TranslatePipe } from '../../../shared/pipes/translate.pipe';
@@ -95,6 +97,7 @@ export function openReceiptViewer(
 export class ReceiptViewerDialogComponent {
   private dialogRef = inject(MatDialogRef<ReceiptViewerDialogComponent>);
   private receiptTranslation = inject(ReceiptTranslationService);
+  private translationService = inject(TranslationService);
   private injector = inject(Injector);
   private destroyRef = inject(DestroyRef);
   private host = inject(ElementRef<HTMLElement>);
@@ -128,6 +131,18 @@ export class ReceiptViewerDialogComponent {
 
   /** Whether any configured provider could read a photo at all. */
   readonly available = this.receiptTranslation.available;
+
+  /**
+   * The transaction the subtitle names: its description, or the catalog's
+   * words for an untitled one, through the rule the list's rows name it by.
+   * The viewer reads it itself rather than taking a name from its caller,
+   * because three doors open it (the list, the form and the receipt
+   * manager). The template calls it, so it follows a language switch made
+   * while the viewer is open.
+   */
+  protected transactionName(): string {
+    return transactionDisplayName(this.data.transaction.description, key => this.translationService.t(key));
+  }
 
   /** What the held Translate and Retry buttons point their description at. */
   readonly hintId = `receipt-translation-hint-${++hintSeq}`;

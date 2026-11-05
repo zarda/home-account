@@ -2,7 +2,7 @@
 
 <mat-dialog-content class="viewer-content">
   @if (current(); as image) {
-    <p class="viewer-subtitle">{{ data.transaction.description }}</p>
+    <p class="viewer-subtitle">{{ transactionName() }}</p>
 
     <img
       class="receipt-image"

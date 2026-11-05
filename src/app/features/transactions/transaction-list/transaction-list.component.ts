@@ -686,14 +686,17 @@ export class TransactionListComponent {
   }
 
   /**
-   * The transaction every control on a row names (its menu trigger, its
-   * checkbox, its note and receipt buttons): its description, or the
-   * catalog's words for an untitled one, through the one rule every control
-   * that names its transaction reads. The delete and stop-sharing confirms
-   * quote it only when it has a description (isUntitled); an untitled row's
-   * confirm has a sentence of its own. The note and share dialogs are handed
-   * the description as stored and name it by the same rule themselves. The
-   * template reads it, which is why it is protected.
+   * The transaction a row's menu trigger and checkbox name: its
+   * description, or the catalog's words for an untitled one, through the
+   * one rule every control that names its transaction reads. Its note and
+   * receipt buttons name it the same way, in the reader's own quotation
+   * marks (quotedName). The delete and stop-sharing confirms quote it only
+   * when it has a description (isUntitled); an untitled row's confirm has a
+   * sentence of its own. The note and share dialogs are handed the
+   * description as stored, and the receipt viewer the transaction; each
+   * names it by the same rule in its own template, so the name follows a
+   * language switch made while it is open. The template reads it, which is
+   * why it is protected.
    */
   protected transactionName(transaction: Transaction): string {
     return transactionDisplayName(transaction.description, key => this.translationService.t(key));
