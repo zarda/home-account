@@ -4531,7 +4531,7 @@ describe('ImportWizardComponent', () => {
         'app-file-dropzone .file-item .file-type-label',
         'app-file-dropzone .add-more-btn .mdc-button__label',
         'app-file-dropzone .error-banner .error-message',
-        '.image-previews h3',
+        '.image-previews h2',
         '.step-actions .action-button .mdc-button__label',
       ] as const;
 
