@@ -13,7 +13,7 @@ import { AuthService } from '../../../core/services/auth.service';
 import { SupportedLocale, TranslationService } from '../../../core/services/translation.service';
 import { NotificationService } from '../../../core/services/notification.service';
 import { ThemeService } from '../../../core/services/theme.service';
-import { Budget, Category, User } from '../../../models';
+import { Budget, Category, DEFAULT_FONT_SCALE, FONT_SCALES, User } from '../../../models';
 import { of } from 'rxjs';
 import {
   AUDIT_SCHEMES,
@@ -22,11 +22,13 @@ import {
   accessibleName,
   catalogTranslator,
   chooseOption,
+  contentWidthPx,
   eachOptionState,
   iconBox,
   iconSquare,
   paintedBackground,
   paintedColor,
+  placeholderWidthPx,
   ratio,
   runAxe,
   settleAnimations,
@@ -874,30 +876,58 @@ describe('BudgetFormComponent', () => {
    * was cut, with an ellipsis, and ran under the calendar button, which
    * paints over it (the browser run, in en, ja and tc). Wherever 95vw is
    * wider, from a window of about 505 px, the dialog is its own 480 px, a
-   * 432 px row at the default text size, where the two keep their row. The
-   * face is pinned as docs/testing.md *Karma serves no fonts* says.
+   * 432 px row at the default text size, where the two keep their row.
+   *
+   * The account's text size is set on the root before the form renders, as
+   * AccessibilityService sets it, and Karma loads styles.scss, whose html
+   * rule reads it: at Large and Extra large the 480 px dialog's row is 424.8
+   * and 417.6 px. Halved, the browser run found the label 31.6 px under the
+   * button at Extra large in en, 7.6 in ja and 29.2 in tc, and ja's hint,
+   * 166 px, in a 138 px room. The face is pinned as docs/testing.md *Karma
+   * serves no fonts* says. en is wider in Verdana than in the app's PT Sans,
+   * so the default-size 480 px case reads en's layout alone; ja's and tc's
+   * glyphs are an em in any face, so for them the case reads the label and
+   * the hint as well.
    */
   describe('the period and the start date (real template)', () => {
     /** The dialog in a 375 px window: its 95vw maxWidth. */
     const PHONE_DIALOG_PX = 356;
     /** The dialog's own width, which it keeps wherever 95vw is wider. */
     const DESKTOP_DIALOG_PX = 480;
+    /**
+     * No window opens the dialog this wide. At Extra large its row, 497.6 px,
+     * holds two halves of a basis in px alone (2 × 208 + 20.8 = 436.8), but a
+     * 238.4 px half leaves en's label, 197.7 px in PT Sans, 182.4 px beside
+     * the button: the basis has to grow with the text.
+     */
+    const WIDE_HOST_PX = 560;
+    const EXTRA_LARGE = 1.3;
+    /** Settings' Large and Extra large. */
+    const LARGER_SCALES = FONT_SCALES.filter((scale) => scale > DEFAULT_FONT_SCALE);
     const LOCALES: readonly SupportedLocale[] = ['en', 'ja', 'tc'];
+    /** The locales whose label and hint the default-size case can read in Karma's face. */
+    const READ_AT_DEFAULT: readonly SupportedLocale[] = ['ja', 'tc'];
 
     const el = () => fixture.nativeElement as HTMLElement;
     const fieldOf = (control: string) =>
       el().querySelector(`[formcontrolname="${control}"]`)?.closest<HTMLElement>('mat-form-field') ?? null;
     /** The period row. */
     const rows = () => Array.from(el().querySelectorAll<HTMLElement>('.period-row'));
+    /** The root's font, px, which every rem in the row resolves against. */
+    const rootFontPx = () => parseFloat(getComputedStyle(document.documentElement).fontSize);
+
+    afterEach(() => document.documentElement.style.removeProperty('--app-font-scale'));
 
     /**
-     * The add form as wide as its dialog, the face pinned. Material's dialog
-     * stylesheet, which displays the content as a block, loads only with a
-     * dialog; without it the content is inline, its 24 px padding never
-     * reaches the row, and the row is the dialog's width rather than its
-     * content box's (308 px at 375).
+     * The add form as wide as its dialog, the face pinned, and the account's
+     * text size, when given, on the root first. Material's dialog stylesheet,
+     * which displays the content as a block, loads only with a dialog;
+     * without it the content is inline, its 24 px padding never reaches the
+     * row, and the row is the dialog's width rather than its content box's
+     * (308 px at 375).
      */
-    async function renderAt(widthPx: number, locale: SupportedLocale): Promise<void> {
+    async function renderAt(widthPx: number, locale: SupportedLocale, scale?: number): Promise<void> {
+      if (scale !== undefined) document.documentElement.style.setProperty('--app-font-scale', String(scale));
       await renderOnDialogSurface(catalogTranslator(locale));
       const host = el();
       host.style.width = `${widthPx}px`;
@@ -932,29 +962,73 @@ describe('BudgetFormComponent', () => {
         .toBe(0);
     }
 
+    /** The start date's hint, on its one line inside the input's content box. */
+    function expectPlaceholderWhole(locale: SupportedLocale, context: string): void {
+      const input = fieldOf('startDate')?.querySelector<HTMLInputElement>('input') ?? null;
+      expect(input).withContext(`${context}: the input`).not.toBeNull();
+      if (!input) return;
+      expect(input.placeholder)
+        .withContext(`${context}: the hint's words`)
+        .toBe(catalogTranslator(locale, { strict: true })('budget.useDefault'));
+      const room = contentWidthPx(input);
+      expect(room).withContext(`${context}: the input's room, px`).toBeGreaterThan(0);
+      expect(placeholderWidthPx(input))
+        .withContext(`${context}: "${input.placeholder}", px, against its room`)
+        .toBeLessThanOrEqual(room);
+    }
+
+    /** The two stacked and abutting, each the row's width, the label whole and clear, the hint whole. */
+    function expectStacked(locale: SupportedLocale, context: string): void {
+      const [row] = rows();
+      const period = fieldOf('period')?.getBoundingClientRect();
+      const start = fieldOf('startDate')?.getBoundingClientRect();
+      expect(row && period && start).withContext(`${context}: the row and its two fields`).toBeTruthy();
+      if (!row || !period || !start) return;
+      const across = row.getBoundingClientRect().width; // not clientWidth, which rounds 417.6
+      expect(start.top)
+        .withContext(`${context}: the start date's top, px, against the period's bottom`)
+        .toBeGreaterThanOrEqual(period.bottom - 0.5);
+      expect(start.top - period.bottom).withContext(`${context}: px between the two`).toBeCloseTo(0, 0);
+      expect(period.width).withContext(`${context}: the period's width, px, against the row's`).toBeCloseTo(across, 1);
+      expect(start.width).withContext(`${context}: the start date's width, px, against the row's`).toBeCloseTo(across, 1);
+      expectLabelWholeAndClear(locale, context);
+      expectPlaceholderWhole(locale, context);
+    }
+
     for (const locale of LOCALES) {
-      it(`stacks the two and keeps the start date's label whole and clear of its calendar button at 375 px, in ${locale}`, async () => {
+      it(`stacks the two in a phone's ${PHONE_DIALOG_PX} px dialog, the start date's label whole and clear of its calendar button, in ${locale}`, async () => {
         await renderAt(PHONE_DIALOG_PX, locale);
-        const [row] = rows();
+        expectStacked(locale, `${locale} at 375 px`);
+      });
+
+      for (const scale of LARGER_SCALES) {
+        it(`stacks the two in a desktop's ${DESKTOP_DIALOG_PX} px dialog at text size ${scale}, the start date's label whole and clear of its calendar button, in ${locale}`, async () => {
+          await renderAt(DESKTOP_DIALOG_PX, locale, scale);
+          expect(rootFontPx()).withContext("the root font, px, at the account's text size").toBeCloseTo(16 * scale, 1);
+          expectStacked(locale, `${locale} at ${scale}`);
+        });
+      }
+
+      const reads = READ_AT_DEFAULT.includes(locale);
+      it(`keeps the period and the start date side by side in a desktop's ${DESKTOP_DIALOG_PX} px dialog at the default text size${reads ? ", the start date's label and hint whole" : ''}, in ${locale} (pin)`, async () => {
+        await renderAt(DESKTOP_DIALOG_PX, locale);
+        expect(rootFontPx()).withContext('the root font, px, at the default text size').toBe(16);
         const period = fieldOf('period')?.getBoundingClientRect();
         const start = fieldOf('startDate')?.getBoundingClientRect();
-        expect(row && period && start).withContext('the row and its two fields').toBeTruthy();
-        if (!row || !period || !start) return;
-        expect(start.top).withContext(`${locale}: the start date's top, px, against the period's bottom`).toBeGreaterThanOrEqual(period.bottom - 0.5);
-        expect(period.width).withContext(`${locale}: the period's width, px, against the row's`).toBeCloseTo(row.clientWidth, 0);
-        expect(start.width).withContext(`${locale}: the start date's width, px, against the row's`).toBeCloseTo(row.clientWidth, 0);
-        expectLabelWholeAndClear(locale, `${locale} at 375 px`);
+        expect(period && start).withContext('the two fields').toBeTruthy();
+        if (!period || !start) return;
+        expect(Math.abs(start.top - period.top)).withContext("the start date's top, px, from the period's").toBeLessThanOrEqual(0.5);
+        expect(start.left).withContext("the start date's left, px, against the period's right").toBeGreaterThanOrEqual(period.right);
+        if (!reads) return;
+        expectLabelWholeAndClear(locale, `${locale} at ${DESKTOP_DIALOG_PX} px`);
+        expectPlaceholderWhole(locale, `${locale} at ${DESKTOP_DIALOG_PX} px`);
       });
     }
 
-    it(`keeps the period and the start date side by side in a desktop's ${DESKTOP_DIALOG_PX} px dialog (pin)`, async () => {
-      await renderAt(DESKTOP_DIALOG_PX, 'en');
-      const period = fieldOf('period')?.getBoundingClientRect();
-      const start = fieldOf('startDate')?.getBoundingClientRect();
-      expect(period && start).withContext('the two fields').toBeTruthy();
-      if (!period || !start) return;
-      expect(Math.abs(start.top - period.top)).withContext("the start date's top, px, from the period's").toBeLessThanOrEqual(0.5);
-      expect(start.left).withContext("the start date's left, px, against the period's right").toBeGreaterThanOrEqual(period.right);
+    it(`stacks the two in a ${WIDE_HOST_PX} px host at text size ${EXTRA_LARGE}, the basis growing with the text, in en`, async () => {
+      await renderAt(WIDE_HOST_PX, 'en', EXTRA_LARGE);
+      expect(rootFontPx()).withContext("the root font, px, at the account's text size").toBeCloseTo(16 * EXTRA_LARGE, 1);
+      expectStacked('en', `en in a ${WIDE_HOST_PX} px host at ${EXTRA_LARGE}`);
     });
   });
 });
