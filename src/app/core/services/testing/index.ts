@@ -11,6 +11,7 @@ export * from './painted-contrast';
 export * from './option-states';
 export * from './icon-box';
 export * from './text-lines';
+export * from './placeholder-width';
 export * from './style-rules';
 export * from './no-motion';
 export * from './app-datepicker.testing';

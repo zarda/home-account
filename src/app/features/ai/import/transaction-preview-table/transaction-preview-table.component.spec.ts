@@ -28,10 +28,12 @@ import {
   accessibleName,
   catalogTranslator,
   channels,
+  contentWidthPx,
   echoTranslation,
   hoverValue,
   paintedBackground,
   paintedColor,
+  placeholderWidthPx,
   ratio,
   runAxe,
   settleAnimations,
@@ -4081,6 +4083,61 @@ describe('TransactionPreviewTableComponent, the offer chip through its own templ
 
       expect(emitted.length).toBe(0);
       expect(splitInput('txn1')).withContext('still editing').not.toBeNull();
+    });
+
+    // The placeholder is the field's only visible hint, and it sits on the
+    // input's one line, so it cannot wrap: wider than the input's content
+    // box, it is cut where the box ends. The field's name carries the full
+    // words, so the hint may say less than the name, never be cut
+    // (docs/ui-overflow.md, a shorter word). The host widths are what each
+    // pane leaves the table: 311 px on a 375 px phone (the shell's and the
+    // wizard's 16 px gutters each side), and 864 px in a 1280 px pane (the
+    // wizard's 960 px cap less its own 24 px padding and the stepper
+    // content's 24 px, each side). The face is pinned as docs/testing.md
+    // *Karma serves no fonts* says. The ja and tc cases are pins: their old
+    // hints already fitted. Mutation: .split-input's inline-size at 4.5em.
+    describe("the split field's hint", () => {
+      const HOST_WIDTHS_PX = [
+        { pane: 375, host: 311 },
+        { pane: 1280, host: 864 },
+      ] as const;
+      const FACE = "Verdana, 'DejaVu Sans', sans-serif";
+      const host = () => fixture.nativeElement as HTMLElement;
+
+      for (const l of ['en', 'ja', 'tc'] as const) {
+        it(`fits its input on a 375 px phone and in a 1280 px pane, in ${l}${l === 'en' ? '' : ' (pin)'}`, () => {
+          const words = catalogTranslator(l, { strict: true });
+          spyOn(TestBed.inject(TranslationService), 't').and.callFake(catalogTranslator(l));
+          host().style.display = 'block';
+          host().style.fontFamily = FACE;
+          for (const token of ['--mat-sys-body-large-font', '--mat-sys-body-small-font', '--mat-sys-label-large-font']) {
+            host().style.setProperty(token, FACE);
+          }
+          render([makeRow({ id: 'txn1', description: 'Coffee Shop', amount: 5400 })]);
+          splitTrigger('txn1')!.click();
+          fixture.detectChanges();
+          settleAnimations(document);
+
+          const input = splitInput('txn1');
+          expect(input).withContext('the split field').not.toBeNull();
+          if (!input) return;
+          expect(input.placeholder).withContext("the hint, in the catalog's words").toBe(words('import.splitAmount'));
+          expect(accessibleName(input))
+            .withContext('the name, which carries the full words')
+            .toBe(words('import.splitAmountLabel', { description: 'Coffee Shop' }));
+          const hint = placeholderWidthPx(input);
+          expect(hint).withContext('the hint, px').toBeGreaterThan(0);
+
+          for (const { pane, host: width } of HOST_WIDTHS_PX) {
+            host().style.width = `${width}px`;
+            const room = contentWidthPx(input);
+            expect(room).withContext(`in a ${pane} px pane: the room, px`).toBeGreaterThan(0);
+            expect(hint)
+              .withContext(`in a ${pane} px pane: "${input.placeholder}", px, against its room`)
+              .toBeLessThanOrEqual(room);
+          }
+        });
+      }
     });
   });
 

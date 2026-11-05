@@ -19,9 +19,11 @@ import {
   catalogTranslator,
   channels,
   chooseOption,
+  contentWidthPx,
   hoverValue,
   paintedBackground,
   paintedColor,
+  placeholderWidthPx,
   provideAppDatepickerForTests,
   provideNoMotion,
   ratio,
@@ -1961,31 +1963,8 @@ describe('TransactionFiltersComponent', () => {
       return input!;
     }
 
-    /** The hint's width, px, on one line in the input's own font. */
-    function hintWidthPx(input: HTMLInputElement): number {
-      const style = getComputedStyle(input);
-      const probe = document.createElement('span');
-      probe.style.cssText = 'position: absolute; visibility: hidden; white-space: pre';
-      probe.style.font = style.font;
-      probe.style.letterSpacing = style.letterSpacing;
-      probe.textContent = input.placeholder;
-      input.parentElement!.appendChild(probe);
-      const width = probe.getBoundingClientRect().width;
-      probe.remove();
-      return width;
-    }
-
     /** Where the hint is drawn, px: the input's content box, as far as its field's infix reaches. */
-    function roomPx(input: HTMLInputElement): number {
-      const style = getComputedStyle(input);
-      const box = input.getBoundingClientRect();
-      const start = box.left + parseFloat(style.borderLeftWidth) + parseFloat(style.paddingLeft);
-      const end = Math.min(
-        box.right - parseFloat(style.borderRightWidth) - parseFloat(style.paddingRight),
-        input.closest('.mat-mdc-form-field-infix')!.getBoundingClientRect().right
-      );
-      return end - start;
-    }
+    const roomPx = (input: HTMLInputElement) => contentWidthPx(input, input.closest('.mat-mdc-form-field-infix')!);
 
     for (const l of ['en', 'ja', 'tc'] as const) {
       it(`fits its input on a 375 px phone, in a 1280 px pane and in the narrowest two-column grid, in ${l}`, fakeAsync(() => {
@@ -1993,7 +1972,7 @@ describe('TransactionFiltersComponent', () => {
         expect(input.placeholder)
           .withContext("the hint, in the catalog's words")
           .toBe(catalogTranslator(l, { strict: true })('transactions.tagsPlaceholderShort'));
-        const hint = hintWidthPx(input);
+        const hint = placeholderWidthPx(input);
         expect(hint).withContext('the hint, px').toBeGreaterThan(0);
 
         for (const width of [...GRID_WIDTHS_PX, layOutNarrowestTwoColumnGrid()]) {

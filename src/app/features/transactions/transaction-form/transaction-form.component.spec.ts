@@ -62,6 +62,7 @@ import {
   catalogTranslationStub,
   channels,
   chooseOption,
+  contentWidthPx,
   createTransaction,
   createCategory,
   catalogTranslator,
@@ -72,6 +73,7 @@ import {
   hoverValue,
   paintedBackground,
   paintedColor,
+  placeholderWidthPx,
   ratio,
   settleAnimations,
   withScheme,
@@ -4060,20 +4062,6 @@ describe('TransactionFormComponent, through its own template', () => {
     const PHONE_FIELD_PX = 375 * 0.95 - 2 * 16;
     const FACE = "Verdana, 'DejaVu Sans', sans-serif";
 
-    /** The hint's width, px, on one line in the input's own font. */
-    function hintWidthPx(input: HTMLInputElement): number {
-      const style = getComputedStyle(input);
-      const probe = document.createElement('span');
-      probe.style.cssText = 'position: absolute; visibility: hidden; white-space: pre';
-      probe.style.font = style.font;
-      probe.style.letterSpacing = style.letterSpacing;
-      probe.textContent = input.placeholder;
-      input.parentElement!.appendChild(probe);
-      const width = probe.getBoundingClientRect().width;
-      probe.remove();
-      return width;
-    }
-
     for (const l of ['en', 'ja', 'tc'] as const) {
       it(`fits its input on a 375 px phone, in ${l}`, () => {
         TestBed.overrideProvider(TranslationService, { useValue: catalogTranslationStub(l) });
@@ -4099,13 +4087,10 @@ describe('TransactionFormComponent, through its own template', () => {
         expect(input.placeholder)
           .withContext("the hint, in the catalog's words")
           .toBe(words('transactions.tagsPlaceholderShort'));
-        const hint = hintWidthPx(input);
+        const hint = placeholderWidthPx(input);
         expect(hint).withContext('the hint, px').toBeGreaterThan(0);
         // Where the hint is drawn: the input's content box.
-        const style = getComputedStyle(input);
-        const room = input.getBoundingClientRect().width
-          - parseFloat(style.borderLeftWidth) - parseFloat(style.paddingLeft)
-          - parseFloat(style.paddingRight) - parseFloat(style.borderRightWidth);
+        const room = contentWidthPx(input);
         expect(room).withContext('the room, px').toBeGreaterThan(0);
         expect(hint).withContext(`"${input.placeholder}", px, against its room`).toBeLessThanOrEqual(room);
       });
