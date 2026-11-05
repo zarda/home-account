@@ -1017,11 +1017,13 @@ both unreadable collapsed onto today and the second was deselected as a
 within-batch twin of the first. An edit to a row's date, amount, type or
 description now sends that row back through the check, against both the ledger
 and the rest of the batch; a verdict can be overruled per row from the badge's
-**Not a duplicate — import it**, and Import waits while a re-check is in
-flight. A check that cannot reach history keeps the standing verdict and says
-so once, rather than leaving a flag standing with no explanation. Currency,
-notes, category, tags and the rule link are not detection inputs and change
-nothing. Every duplicate verdict needs the two rows on the same side: a
+close button, named and tooltipped *Not a duplicate — import {description}*
+for its row
+([ADR 0187](ADR/0187-repeated-controls-name-their-item-the-upload-area-has-one-button-and-numbers-photos-among-photos-resting-text-is-a-token-sentences-end-in-the-readers-stop-and-a-spec-that-expects-nothing-fails.md)),
+and Import waits while a re-check is in flight. A check that cannot reach
+history keeps the standing verdict and says so once, rather than leaving a
+flag standing with no explanation. Currency, notes, category, tags and the
+rule link are not detection inputs and change nothing. Every duplicate verdict needs the two rows on the same side: a
 purchase and its refund, returned the day it was bought, share a merchant,
 an amount and a date, and are two transactions. The exact verdict — same day, same amount,
 similar description — once ignored the type, so such a refund was skipped as

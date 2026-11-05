@@ -258,8 +258,11 @@ the rules do not apply to, left behind.
 
 The Insights tab detects charge patterns nobody declared — same merchant,
 same-ish amount, regular gap (`recurring-pattern.utils.ts`, rendered as the
-"looks recurring" list). Each detected group carries a **Track as recurring**
-action that opens the create dialog prefilled from the group; saving creates
+"looks recurring" list). Each detected group carries an action that tracks
+it as recurring: a glyph button named for its group, *Track {name} as
+recurring*, whose tooltip reads *Track as recurring*
+([ADR 0187](ADR/0187-repeated-controls-name-their-item-the-upload-area-has-one-button-and-numbers-photos-among-photos-resting-text-is-a-token-sentences-end-in-the-readers-stop-and-a-spec-that-expects-nothing-fails.md)).
+It opens the create dialog prefilled from the group; saving creates
 an ordinary rule through the normal path. It is deliberately not a one-tap
 create: the amount is the group's median in the base currency and the label
 is the most recent raw description — the detector's guesses, corrected in the

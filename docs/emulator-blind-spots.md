@@ -428,19 +428,45 @@ what that can honestly mean:
   scroller. axe counts a node under a fixed ancestor as offscreen once its
   top reaches the viewport's bottom, and skips an offscreen node outright:
   it appears in no result at all, not even `incomplete`. (A node in plain
-  flow, by contrast, is scored at any depth, which is why the fold fixture
-  in `axe.spec.ts` wraps its pair in a fixed scroller.) `auditInView(node)`
-  in `core/services/testing/axe.ts` answers it for one node at a time: it
-  scrolls the node to the middle of the scroller, instantly, waits a frame,
-  and audits only if the whole node lies between the 64px header and the
-  frame's bottom, since a part under the header reads as overlapped and a
-  part past the bottom is skipped. The scroller runs from behind the header,
-  so a centred node keeps its top clear of the header only while it is at
-  most about 285px tall; a taller card is audited as its parts. The
-  walkthrough audits five nodes this way: the spending chart's legend list
-  and the Budget Progress widget on `/dashboard`, the overview on `/budgets`
-  (256px), the rules grid on the Recurring tab, and Upcoming Bills once a
-  rule exists. Everything else that starts below the frame is never scored.
+  flow, by contrast, is scored at any depth where a fill stands behind it,
+  its own, as the fold fixture's pair in `axe.spec.ts` has, or its host's,
+  as `standOnThePage` paints it; that is why the fixture wraps its pair in a
+  fixed scroller. Below body's box, text with no fill behind it is left
+  `incomplete` instead, as [testing.md](testing.md#karmas-frame-is-413-px-tall)
+  says.) `auditInView(node)` in `core/services/testing/axe.ts` answers it
+  for one node at a time: it scrolls the node to the middle of the scroller,
+  instantly, waits a frame, and audits only if the whole node lies between
+  the 64px header and the frame's bottom, since a part under the header
+  reads as overlapped and a part past the bottom is skipped. The scroller
+  runs from behind the header, so a centred node keeps its top clear of the
+  header only while it is at most about 285px tall; a taller card is audited
+  as its parts. The walkthrough audits thirteen nodes this way: the spending
+  chart's legend list and the Budget Progress widget on `/dashboard`, the
+  filter grid on `/transactions`, the overview on `/budgets` (256px), the
+  Forecast tab's header and summary on `/reports` once a rule exists, the
+  rules grid on the Recurring tab, Upcoming Bills once a rule exists, the
+  goal card's header, progress, items and note on the Goals tab, and the
+  upload area's contents on `/import/file`. Everything else that starts
+  below the frame is never scored. Two of them are reached in a way a reader
+  would not expect:
+  - **`/import/file` is audited by `.dropzone-content`, not the zone.** The
+    zone, once centred, spans 356px, 28 to 384px, 7px more than the band
+    from under the 64px header to the frame's 413px bottom, so an in-view
+    pass over it throws. Its padding makes the difference, and its contents
+    hold every word and Browse.
+  - **The Goals tab is opened from the dashboard, not from the Recurring
+    tab.** `BudgetsComponent` reads `?tab=` once, as it is built, and the
+    router reuses the page from `/budgets?tab=recurring`, so a second visit
+    stayed on Recurring. The walkthrough writes a goal with every part its
+    card draws (a target date, linked money beside its contributions, two
+    items with one done, and a note) through the client, so the rules check
+    its shape, sweeps it after Upcoming, and deletes it in a `finally`, so
+    the pages after it read what they read before.
+
+  With a 0.4 fade laid on the words of each part, every new in-view audit
+  failed in both schemes, and the page passes missed the goal card's status,
+  items and note and the zone's hint, all below the fold
+  ([ADR 0187](ADR/0187-repeated-controls-name-their-item-the-upload-area-has-one-button-and-numbers-photos-among-photos-resting-text-is-a-token-sentences-end-in-the-readers-stop-and-a-spec-that-expects-nothing-fails.md)).
   In the run that measured it, every page pass started from the top of the
   page, and these started below the frame: on `/dashboard`'s first visit,
   Recent Transactions (521px), the spending chart's card around its legend
@@ -505,10 +531,14 @@ dark until it was read by hand
 
 And it sweeps only the routes the walkthrough visits: `/dashboard` (its top,
 then the legend and the Budget Progress widget in view, and Upcoming Bills
-once a rule exists), `/transactions`, `/budgets` (its Budgets tab with the
+once a rule exists), `/transactions` (with its filter grid in view),
+`/budgets` (its Budgets tab with the
 overview in view, then its Recurring tab with an active rule and a paused
-one, in the walkthrough's orange category, the rules grid in view),
-`/reports` (its first tab), `/settings`, `/data`, `/household`
+one, in the walkthrough's orange category, the rules grid in view, then its
+Goals tab with the goal card's parts in view), `/reports` (its first tab,
+then its Forecast tab's header and summary in view once a rule exists),
+`/settings`, `/data`, `/import/file` (its empty upload step, with the upload
+area's contents in view), `/household`
 (its setup state, then its member view: the walkthrough's account forms two
 households through the service, shares one seeded row into the one shown
 and is shown one pending invite, so the shared row, the plans section's
@@ -518,12 +548,26 @@ plans cards are swept too; and the switcher's open panel, which renders in
 the overlay container outside the routed element, is audited on its own)
 and `/about`.
 **`/login` is opened by the redirect case and never audited, and `/lock`,
-`/ai`, `/search-history`, `/import/file` and `/import/history` are never
-visited** — nothing here says anything about their accessibility. Nor does
+`/ai`, `/search-history` and `/import/history` are never visited** — nothing
+here says anything about their accessibility. `/import/file` is visited with
+nothing picked: the wizard's upload step with photos picked, its review step
+and its step headers under the phone rule are swept by the wizard's own spec
+([accessibility.md](accessibility.md#what-is-tested)). Nor does
 the walkthrough open a dialog, a category select or a menu: the switcher's
 panel is the only overlay it audits, so the category pickers, the import
 review's category menu and the category dialog are held by their component
-specs alone. `wcag22aa` is left out on purpose: its headline rule,
+specs alone. A dialog's role and name are held the same way, by
+`dialog.config.spec.ts` and `dialog-header.component.spec.ts`, and a pass
+over an open dialog would not have found what the second browser run read:
+no axe rule asks a container to carry the `dialog` role, and none reads a
+name for a word too many, such as the *Close* every dialog drawn with the
+shared header ended on
+([accessibility.md](accessibility.md#a-dialog-is-named-by-its-title-alone)).
+Nor does any rule read where focus goes once a dialog closes: the third
+browser run found it falling to the page after a confirm a row's menu
+opened was cancelled, and `dialog.config.spec.ts` and
+`transaction-list.component.spec.ts` hold its return to the menu's button.
+`wcag22aa` is left out on purpose: its headline rule,
 `target-size`, measures the 800×600 headless viewport rather than the markup
 on a mobile-first layout, and the 40px hit boxes are pinned by the component
 specs at the widths they were designed for.
@@ -774,7 +818,7 @@ top-level `node_modules/@firebase/firestore` (4.16.0, from `firebase`
 | An interleaving the server cannot be asked for | the orderings driven by hand, with the read replaced by a promise the spec resolves | `auth.service.spec.ts` |
 | A fixture asserting a shape no producer emits | nothing local — the producing call site is read by hand, and the driven browser pass is what meets the real one | [e2e.md](e2e.md), above |
 | A tightened rule meeting data that already exists | a live owner-scoped read before the rule ships, and the clause written inside the `touched()` guard so a legacy row stays editable | above, [ADR 0146](ADR/0146-an-icon-that-carries-a-label-is-not-hidden-and-a-category-id-is-never-empty.md) |
-| An accessibility defect nobody wrote a spec for | an axe-core pass inside `expectPage`, over every route the walkthrough opens, in both schemes forced through `ThemeService`, at 756px with unserved i18n; above the frame's fold, plus five cards scrolled into view | `app.smoke.spec.ts`, `core/services/testing/axe.ts`, above |
+| An accessibility defect nobody wrote a spec for | an axe-core pass inside `expectPage`, over every route the walkthrough opens, in both schemes forced through `ThemeService`, at 756px with unserved i18n; above the frame's fold, plus thirteen nodes scrolled into view | `app.smoke.spec.ts`, `core/services/testing/axe.ts`, above |
 | A commit refused after the emulator's 2 s lock wait | the smoke lanes run through a ticker that keeps the emulator's lock waiters awake; a case that holds a goal with a refused commit fails with the ticker off | `scripts/emulator-ticker.mjs`, `household-plans.service.smoke.spec.ts`, above |
 | An SDK assertion from a CPU-starved run | nothing: re-run on an idle machine; the signature (`c050` hanging the suite, or `ca9` then `b815`) tells it apart | above |
 

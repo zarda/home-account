@@ -48,7 +48,13 @@ too. A floor in `rem` grows with the account's own font scale — the very
 thing it exists to resist — so at Extra-large (1.3) a `7rem` description floor
 consumed a 243px budget that had not moved, and the four-digit amount beside
 it wrapped. Mixing the two units is the defect; either budget and floor are
-both scale-relative, or neither is.
+both scale-relative, or neither is. A size that holds text beside chrome
+drawn in px is the one place both units meet in one value, each term in the
+unit of what it measures: the household plan dialog's currency field is
+`calc(60px + 5rem)` wide, Material's 60px arrow reserve and the room its
+floated label needs, and each field of the budget dialog's period row has a
+basis of `calc(9.5rem + 56px)`, the start date's label, and its 16px inset
+and 40px calendar button.
 
 **In a wrapping row, write `flex: 1 1 0`, not `flex: 1 1 auto`.** Declaring the
 minimum is not enough on its own, and this is the part that is easy to get
@@ -70,6 +76,17 @@ The floor is what the zero basis is clamped up to, so it is still the only
 number line-collection sees. `transaction-row.component.scss` shipped the first
 of these and put its category tile alone on a line whenever a description ran
 long.
+
+A definite basis is not `auto` either, and it can be the number that decides
+where the line breaks. The budget dialog's period and start date share a row
+while each half holds its `1 1 calc(9.5rem + 56px)`: two of them and the 1rem
+gap are 432px at the default text size, the 480px dialog's row exactly, so
+they wrap in any narrower dialog and from Large (1.15) up, wherever it opens.
+It replaced a viewport rule that stacked them below 600px, which a text size
+never moved: in a 1024px window at Extra large the start date's label ran
+31.6px under its calendar button in en (the second browser run). With
+`min-width: 0`, a field alone on its line still shrinks to the row, as
+household setup's `.name-field` (`1 1 16rem`) does.
 
 **A `max-width` cap and a zero basis do different jobs, and a growing item may
 need both.** The zero basis decides where the line breaks; `max-width` binds
@@ -294,6 +311,22 @@ ships a 48px `.mat-mdc-button-touch-target` span of its own, so an overhang
 on one of those is belt-and-braces rather than the fix. A plain `<button>`
 wrapped around a bare `mat-icon` has no target at all, and measures the
 icon's own em box — which is where this earns its keep.
+
+**Material's touch target reaches past its button.** That 48px span is
+centred on a 40px icon button, 4px past it on every side, and it counts
+toward its container's overflow. An icon button flush with the end of a
+scroll container scrolls it 4px sideways, and its span reaches over the
+neighbour at its start and into the rows above and below. The filter
+panel's search suggestions, with a remove at the end of every row, read a
+`scrollWidth` of 690 in a 686px panel at a 1024px pane and drew a scrollbar
+under their last row (the second browser run).
+`--mat-icon-button-touch-target-size: 40px` on the button holds the span to
+the button's own box, as it already did on the household plans and
+overview, and now does on the suggestions' removes: the third browser run
+read the panel's `scrollWidth` as 686 in 686 at a 1024px pane and 309 in
+309 at 375px, each remove's touch target 40px square on its button and
+inside its row. No other scroll container that holds an icon button has
+been checked for it.
 
 **Material clips a floated select label to keep its arrow's room.** An
 outlined select's notch, the gap in the top border its floated label sits in,
@@ -537,7 +570,7 @@ the header, so the active tab's underline rests on the line and the bar sits
 below it in its gutter. A group that has not opted in keeps Material's
 behaviour.
 
-Two things that will bite the next one:
+Three things that will bite the next one:
 
 - **`disablePagination` alone makes it worse.** It takes the chevrons away and
   leaves `overflow: hidden`, so the later tabs become unreachable by any
@@ -548,6 +581,25 @@ Two things that will bite the next one:
   reveal called from that subscription is undone immediately; queue it in a
   microtask and it lands after. The first selection is silent altogether, so
   the landing tab is revealed from `afterNextRender` instead.
+- **The landing reveal is not the last word.** It measures the labels as
+  the first render left them, and they move after it: the Budgets tab's
+  count arrives with the first snapshot, a font or a catalog lands late, the
+  phone turns. A `?tab=goals` link at 375px opened with Goals cut to its
+  first letter, the strip scrolled 25.5 of the 65px it could scroll (the
+  second browser run). One `ResizeObserver` on the label row and the strip
+  reveals the last revealed tab again, not the selected one, since the arrow
+  keys move focus without selecting. It leaves the strip alone once the
+  reader has moved it: every reveal records the offset it left, compared
+  after the browser's own clamp, and a strip with no box reports a zero
+  width and is skipped. A reveal writes the strip's `scrollLeft` alone,
+  because `scrollIntoView` moves `.main-container` around it too, and a
+  reveal can now follow a badge that lands while the reader is down the page
+  ([ADR 0187](ADR/0187-repeated-controls-name-their-item-the-upload-area-has-one-button-and-numbers-photos-among-photos-resting-text-is-a-token-sentences-end-in-the-readers-stop-and-a-spec-that-expects-nothing-fails.md),
+  which closes ADR 0140's gap *The reveal can scroll the page*). No
+  browser run has read the later reveal yet: the third drove a hidden pane,
+  which delivers no `ResizeObserver` callbacks
+  ([e2e.md](e2e.md#panes-and-viewports)), so the directive's spec and
+  `budgets.overflow.spec.ts` are what hold it.
 
 Prose does not get this treatment. A description behind a horizontal scrubber
 means scrolling sideways to read what you bought — 689px of it, measured on the
@@ -579,8 +631,8 @@ swipe keeps a non-gesture route — the pinned menu.
 | `shared/truncation-guard.spec.ts` | the two things a deleted truncation is replaced by: text wraps inside its box without shoving its neighbour out, and a label that cannot wrap scales while its control survives |
 | cases in `budget-progress.component.spec.ts`, *a budget row at the rail width (real template)* | the dashboard's Budget Progress card in its 160px row (the rail at 1024), with the fonts pinned: a name too long for the row wraps inside it, never ellipsized, with the glyph and the percentage on its first line; a word that fits the row only once the period word moves down (*Subscriptions*) stays whole on one line while the period word drops below it; the amounts wrap at their spaces, inside the row |
 | `scripts/check-truncation.mjs` | G3 across the whole source — a `text-overflow` declaration, and Tailwind's `truncate`/`text-ellipsis` as an `@apply` token, a template class or a host `class` — `npm run truncation:check`, after its `--self-test` |
-| `shared/directives/tab-strip-scroll.directive.spec.ts` | the strip mechanics on a 300px host: no chevrons on an overflowing strip, a label container that really scrolls, a newly selected tab brought into view, the tab the arrow keys walk to kept in view, and a clicked tab staying put after the reader scrolled to it — the case Material's focus reset breaks |
-| `features/budgets/budgets.overflow.spec.ts`, `features/reports/reports.overflow.spec.ts` | the two opted-in pages: the chevrons never appear, and a `?tab=` deep link opens on its tab already in view |
+| `shared/directives/tab-strip-scroll.directive.spec.ts` | the strip mechanics on a 300px host: no chevrons on an overflowing strip, a label container that really scrolls, a newly selected tab brought into view, the tab the arrow keys walk to kept in view, and a clicked tab staying put after the reader scrolled to it — the case Material's focus reset breaks. And, under *when the labels change after the strip opens*, with the labels pinned to Verdana: the landing tab kept whole when a label before it widens, when the strip narrows, when the strip widens past its labels and narrows again, and when a label widens while the strip has no box; a tab the reader picked kept whole the same way; a strip the reader scrolled left where they left it; the tab the keys walked to kept in view rather than the selected one; the page around the strip never moved by a reveal; and the label row's observer let go when the strip is destroyed |
+| `features/budgets/budgets.overflow.spec.ts`, `features/reports/reports.overflow.spec.ts` | the two opted-in pages: the chevrons never appear, and a `?tab=` deep link opens on its tab already in view. On the budgets page at 343px, Goals is in view on landing and stays in view when the Budgets count arrives after the strip opened and widens the first tab |
 | `features/reports/<name>/<name>.overflow.spec.ts` for category-breakdown, monthly-comparison and spending-analysis, `features/settings/profile-settings/profile-settings.overflow.spec.ts`, and cases in `ai-settings-page.component.spec.ts` and `transaction-filters.component.spec.ts` | G2 as rendered: the column count of each repaired grid. Karma's window is 756px, so the three whose rules start at 768px or 1024px cannot be read as layout — those pin the repaired *declaration* through the CSSOM instead, where an invalid value serialises as an empty string. The filter grid's tracks now follow its width, so its case reads more than one column, which shows the declaration parses; the floor each track keeps, a date whole beside its calendar button, is pinned by the same file's *a filter date beside its calendar button*, which also reads the stylesheet for any media rule that would set the tracks |
 | cases in `import-wizard.component.spec.ts`, *the step headers under the phone rule* | a viewport rule no window of Karma's reaches, laid on the nodes it styles: the 599.98px rule that clips the wizard's step labels is found in the CSSOM with the shared `styleRules()` helper (`core/services/testing/style-rules.ts`, every style rule of the page's sheets in order, each with its innermost media condition), and its declarations are written inline on the rendered labels, then measured and swept — each step header as wide as the same header with its label at `display: none`, each label at most 1px, and axe over the tab list in both schemes finding nothing. Inline declarations skip the cascade, so the case proves what the rule declares; a 375px browser window is what proves the cascade ([accessibility.md](accessibility.md)) |
 | `scripts/check-grid-tracks.mjs` | both halves of G2 across the whole source — the nested `minmax()` and a bare `fr` track with no floor — `npm run grid:check` |
@@ -594,6 +646,8 @@ swipe keeps a non-gesture route — the pinned menu.
 | cases in `transaction-form.component.spec.ts`, *keeps the toggle group and the checked segment's label where they stood when the type flag appears*, in the 500px dialog and at a 375px phone | the form's income/expense toggle with the fonts pinned, in the 500px dialog's column (24px padding) and in a 375px phone's 356px one (the form's own 16px phone padding, with no scrollbar, so a 324px column): the group at its 320px cap, and the group and the checked segment's label at the same left edge and width before and after the scan's type flag appears, with the flag drawn inside the group. The flag takes the trend icon's 24px box in the checked segment rather than standing beside the group, which at 375px fills the real dialog's 316px column, its content 348px beside the 8px scrollbar the spec's column does not draw (journey 104), and leaves no room for it. Karma's window is 756px, so the phone case sets the column and the padding inline; the dialog itself at 375px is journey 104's to measure |
 | cases in `import-history.component.spec.ts`, *keeps every tile of a record with photo counters inside the card at 343px* | an Import History card at 343px, #451's narrowest reported width, with the fonts pinned and every label its key, an unbroken run: a record carrying duplicates and both photo counters draws six tiles, the card does not scroll sideways, and every tile, its caption and its figure stay inside the card and the tile. The caption breaks anywhere (`overflow-wrap: anywhere`) and is centred over its figure. The two type tiles are not in this case; journey 107 reads every tile at 375px |
 | cases in `file-dropzone.component.spec.ts`, *at a phone's width* | the upload area's rows in a 303px zone, the width the wizard leaves at 375px beside an 8px scrollbar, with the fonts pinned: a row of a multi-image pick keeps its name a column of at least 100px on at most two lines, its size and type inside that column, its arrows, remove button and handle clear of the column and inside the row, and its buttons on screen in the order Tab reaches them; a lone photo's row, and a 600px zone's rows, keep their one line. The rule is a container query on the list (`container: file-list / inline-size`), which below a 400px list puts the arrows and the remove button on a second line under the name, the handle beside the name, so the narrow host reaches it; the 480px viewport query that trims the row's padding and preview does not, so the case measures the harder row, a 113px column against 129px on a phone. iOS 15's WebView has no container queries: there the row keeps its one line, with the name in a narrow column, and only the size and type's wrap, which sits outside the query, still holds. The line count is read in the pinned face; the browser's PT Sans can take one line where Verdana takes two, while the column's width does not depend on the font ([ADR 0186](ADR/0186-a-date-stops-at-a-currency-sign-and-a-line-break-a-total-read-past-an-aside-or-under-a-count-is-flagged-and-a-shared-file-lands-in-the-upload-area.md), where the browser run found it) |
+| cases in `budget-form.component.spec.ts`, *the period and the start date (real template)*, in `transaction-preview-table.component.spec.ts`, *the split field's hint*, and in `transaction-filters.component.spec.ts` and `transaction-form.component.spec.ts`, *the Tags field's hint* | three squeezes the browser runs found, each read in en, ja and tc with the fonts pinned: the budget dialog's period and start date, which wrap on their row's own room, read live with the host sized as the dialog is and the account's text size on the root, so in a phone's 356px dialog, and in the 480px desktop dialog at Large and Extra large, they stack, each as wide as the row with no gap between them, with the start date's label whole and none of it under its calendar button and its hint whole, while the 480px dialog at the default size keeps them side by side and a 560px host at Extra large still stacks them in en, which holds the basis's `rem` term; the review card's split hint on one line inside its 7em input, in a phone's 311px table and a 1280px window's 864px; and the Tags hint inside the room its input has, in the filter grid at 312px, at 944px and in the narrowest grid that keeps two columns, and in the form at 375px. A placeholder cannot wrap and its input's `scrollWidth` does not count it, so the hints are measured by the shared `placeholderWidthPx` against the room `contentWidthPx` reads (`core/services/testing/placeholder-width.ts`). What no case can read: at the default size in the 480px dialog, en's label meets the calendar button's box, 152.1px of words in PT Sans in the 152px its basis gives them, and Verdana sets it wider, so only a browser's reading holds it, and the third browser run read it, side by side in 1024px and 540px windows, as a 0.1px meet with the button's box, 7.9px clear of its glyph; on a 320px phone at Extra large, en's label stays about 12px under the button even stacked, its field too narrow for it; and the transaction and recurring forms' `.amount-row` still stacks on a `max-width: 480px` viewport rule that ignores the text size ([ADR 0187](ADR/0187-repeated-controls-name-their-item-the-upload-area-has-one-button-and-numbers-photos-among-photos-resting-text-is-a-token-sentences-end-in-the-readers-stop-and-a-spec-that-expects-nothing-fails.md), where the browser runs found them) |
+| cases in `transaction-filters.component.spec.ts`, *keeps each 40px suggestion remove and its touch target on its own row, and the panel never scrolls sideways* | the search box's saved and recent searches as rendered, two saved rows and one recent, with the face pinned, in the 712px host a 1024px pane gives (a 686px panel, whose `scrollWidth` the second browser run read as 690) and the 336px host a 375px phone gives: the panel's `scrollWidth` within its `clientWidth`, each row's scroll box within its client box both ways, each remove 40px square, and each remove's `.mat-mdc-button-touch-target` inside its row at the top, the bottom and the end, and clear of the row's apply at the start. Material's 48px touch target, centred on the remove at the panel's end, had scrolled the panel 4px (G4) |
 | `docs/ui-audit/tools/capture-overflow.mjs` | five pages × seven widths × (en, ja, faked insets), run before/after a layout change |
 
 Every row but the harness runs in CI: the unit specs through `test:ci`, the
@@ -612,7 +666,8 @@ the container keeps its `min-height` and nothing else. The 500px holds below
 the breakpoint too, down to about 526px, where 95vw falls under it; there
 the doors' own `maxWidth: '95vw'` decides — 304px on a 320px screen, which
 leaves a 256px content box — rather than the global dialog default
-(`min(480px, calc(100vw - 32px))`), whose width the doors replace
+(`min(480px, calc(100vw - 32px))`, from `provideAppDialogs()` in
+`core/config/dialog.config.ts`), whose width the doors replace
 ([ADR 0185](ADR/0185-a-refund-is-asked-about-at-every-door-and-a-category-follows-its-rows-side-there-and-back.md),
 where the browser run found it). The 768px query is a viewport query and Karma's
 window is 756px, so no rendered spec can apply it: the camera dialog's row in the

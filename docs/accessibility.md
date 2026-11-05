@@ -98,15 +98,35 @@ wizard's four step labels give way to their numbered circles, since the
 labels truncated past reading there. Each step header is a `role="tab"` named
 by its label and, while the import is written, by the lock in it
 ([ADR 0149](ADR/0149-the-review-step-says-what-it-changed.md)). So the labels
-are clipped in place (`position: absolute`, a 1px box,
-`clip-path: inset(50%)`, the stat card's shape) rather than taken out with
-`display: none`, which left four unnamed tabs. The rule is a viewport query
-Karma's window cannot reach, so `import-wizard.component.spec.ts` (*the step
-headers under the phone rule*) reads its declarations from the stylesheet,
-lays them on the rendered labels and sweeps the tab list with axe, in both
-schemes. That proves what the rule declares; a 375px browser window is what
-proves the cascade
+are clipped in place rather than taken out with `display: none`, which left
+four unnamed tabs. The rule is a viewport query Karma's window cannot reach,
+so `import-wizard.component.spec.ts` (*the step headers under the phone
+rule*) reads its declarations from the stylesheet, lays them on the rendered
+labels and sweeps the tab list with axe, in both schemes. That proves what
+the rule declares; a 375px browser window is what proves the cascade
 ([ADR 0186](ADR/0186-a-date-stops-at-a-currency-sign-and-a-line-break-a-total-read-past-an-aside-or-under-a-count-is-flagged-and-a-shared-file-lands-in-the-upload-area.md)).
+Settings' Sign out had the same shape on a card below 480px, where it shows
+its icon alone: its label, the button's only name, was taken out with
+`display: none`, and is clipped now (`settings.component.spec.ts`, *Sign out
+under the phone rule*).
+
+Every such clip is one mixin, `visually-hidden` in `src/theme/_a11y.scss`,
+which a stylesheet reaches with `@use 'a11y'` through the `src/theme`
+include path: an absolutely positioned 1px box with `min-width: 0`,
+`overflow: hidden`, `clip-path: inset(50%)` and `white-space: nowrap`. Its
+insets stay auto, so the box sits where its text stood and the caller's
+container needs no position of its own. The wizard's step labels, Sign out,
+the stat card's `.delta-sr`, the transaction list's select column header
+(`.select-header-label`) and the onboarding dialog's step sentence
+(`.step-sentence`) all use it, and no Tailwind `sr-only` is left under
+`src/`, not even in a comment: Tailwind reads every `.html` and `.ts` under
+`src/` for class names, comments included, and a spec comment that named
+the utility built it into the global stylesheet, about 140 bytes of it. A
+pin in the list's and the onboarding dialog's specs reads the mixin's
+`clip-path`, a box of 1px or less, and the words still in the name, so the
+utility, whose `clip: rect(…)` leaves `clip-path` at `none`, fails it; a
+copy of the mixin's declarations written by hand would pass
+([ADR 0187](ADR/0187-repeated-controls-name-their-item-the-upload-area-has-one-button-and-numbers-photos-among-photos-resting-text-is-a-token-sentences-end-in-the-readers-stop-and-a-spec-that-expects-nothing-fails.md)).
 
 **A row's checkbox is named for its row.** Each review card row's checkbox is
 named *Select {description}*, and a row with no description yet *Select an
@@ -116,6 +136,100 @@ bound through the toggle's `[aria-label]` input, the one spelling that reaches
 the checkbox Material renders inside: Material clears the host's own
 `aria-label` and `aria-labelledby`, so `[attr.aria-label]` names nothing
 ([ADR 0186](ADR/0186-a-date-stops-at-a-currency-sign-and-a-line-break-a-total-read-past-an-aside-or-under-a-count-is-flagged-and-a-shared-file-lands-in-the-upload-area.md)).
+
+**A toggle is named on the control a screen reader lands on.** `mat-slider`
+takes no name input and forwards nothing to its thumbs, so the budget form's
+alert slider is named on its thumb: the label's words sit in a
+`<span id="threshold-label">` of their own, beside the `: ` and the value,
+and the `<input matSliderThumb>` carries `aria-labelledby="threshold-label"`.
+The name, *Alert when spending reaches*, holds no figure, since the thumb
+speaks its own `aria-valuetext`. The AI page's Auto sync switch is named by
+the words beside it: the span carries `id="auto-sync-label"` and the
+`mat-slide-toggle` `aria-labelledby="auto-sync-label"`, which Material hands
+to the `role="switch"` button inside, as the dashboard layout settings' card
+toggles do. axe cannot tell an unnamed Material switch from a named one
+(Known gaps), so the AI page's spec reads the name first, and takes
+Material's empty `<label for>` out before its axe pass.
+
+**A control stamped once per item names its item.** A list of buttons that
+all say *Delete* cannot be told apart by ear, nor can the rows they act on.
+Each per-item control's name carries the item's own slot, read from what its
+row shows
+([ADR 0187](ADR/0187-repeated-controls-name-their-item-the-upload-area-has-one-button-and-numbers-photos-among-photos-resting-text-is-a-token-sentences-end-in-the-readers-stop-and-a-spec-that-expects-nothing-fails.md)):
+
+| Where | Named by | For instance |
+|---|---|---|
+| The review card's fields and its three buttons | the row's description, in 「」 in tc, or *an untitled row*, never quoted (`announceDescription`) | *Amount of {description}*, *Not a duplicate — import {description}*, *Remove the suggested location from {description}* |
+| A receipt image's controls | its number, the one its thumbnail's alt says, and the transaction where the list holds several | *Move image {index} up* in the camera, *Remove image {index} of {description}* in the receipt manager, *Remove new image {index}* and *Remove stored image {index}* on the transaction form |
+| The upload area's rows | a photo's number among the photos, or a file's among the other files, and its name | *Move photo 2 (image.jpg) up*, *Remove file 1 (rows.csv)* (below) |
+| About's feedback list | the entry's place and its category | *Delete feedback {position} ({category})* |
+| The saved answers, in the search history and the search dialog | the question and the date the row shows | *Delete {query} ({date})*, *Pin {query} ({date})* |
+| The goal form's items | the item's place, since its name is a field being typed | *Delete item {position}* |
+| The goal card's Edit and Delete | the goal's name | *Edit {name}*, *Delete {name}* |
+| The recurring groups | the group's label | *Track {name} as recurring*, *Show transactions for {name}* |
+| The filter panel's suggestions | the saved search's label or else its query, and the recent query | *Remove saved search {name}*, *Remove recent search {query}* |
+| The transaction list's note and receipt buttons | the transaction's display name, in 「」 in tc when it is the description (`quotedTransactionName`) | *View note for {description}*, *View receipt for {description}* |
+| The household overview's goal button, on one's own shared rows | the transaction's display name | *Count toward a goal: {name}* |
+
+A transaction with no description is *an untitled transaction* wherever a
+control or a dialog names it, through `transactionDisplayName(description, t)`
+(`core/utils/transaction-display.utils.ts`): the list's row checkboxes and
+menu triggers, the note and share dialogs, the receipt viewer's subtitle,
+the transaction row's own button and the household overview's goal button.
+Each dialog reads it in its own template, so the name follows a language
+switch made while the dialog is open. The list's note and receipt
+buttons and the receipt manager's image controls read it through
+`quotedTransactionName`, since tc quotes the transaction in their names: a
+description goes in the reader's own quotation marks, `common.quotedName`
+(none in en and ja, 「」 in tc), and the stand-in goes bare, so a blank
+row's note button reads *查看未命名的交易的備註*. A sentence that quotes a
+description in every catalog never quotes those words, which in quotes read
+as the row's own name: the list's delete and stop-sharing confirms ask
+instead about *this untitled transaction*, or a split part's delete about
+*this untitled part of a split purchase*, from keys of their own chosen by
+`isUntitled(description)`, the test the display name reads
+([i18n.md](i18n.md#a-transaction-with-no-description)). `i18n:check` fails a
+translated slot filled with a description read straight off a value, and
+`translation-keys.spec.ts` a key that quotes `{{description}}` itself unless
+it is listed with why its caller never hands it a stand-in. A toggle button
+keeps its name while its state changes: the two pin buttons read one key,
+and `aria-pressed` alone says whether the answer is pinned. ja puts the item
+before の or quotes it in 「」 with the verb last; tc quotes it and puts the
+verb first. A field commits on Enter or blur, never per keystroke, so a
+description being typed does not rename the field it is typed into. Each
+name is pinned in en, ja and tc in a describe that renders the real
+template, read by axe's own name computation (`accessibleName`,
+[testing.md](testing.md#shared-stubs)) against the catalog's words, but for
+the review card's: its spec reads them through the echo stub, as keys and
+parameters, and in tc through tc's catalog, a titled row's in 「」 and a
+blank row's by the stand-in with no quotation mark (*every field and button
+on a card names its row*).
+
+**A tooltip on a named control says its whole name, or nothing the name
+says.** The CDK describes a tooltip's host by the tooltip's text, through
+`aria-describedby`, unless that text is the host's whole `aria-label`. The
+review card's keep-date button and the accept button of its offered currency
+showed the reason alone as their tooltips, words their joined names already
+read, so a screen reader heard the reason twice and a sighted reader saw
+part of the name. Both tooltips now show the whole name and describe
+nothing. Each name opens with the words its chip shows, *Dated {date} —
+keep it?* or *Looks like {country} — use {currency}?*, and then says why the
+row is asked, so a speech-input user reaches the button by the words they
+see (WCAG 2.5.3). They used to open with the reason and end in *Keep
+{date}*, or read *Use {currency} for this row* before the reason, words the
+chip never showed. The transaction form's offer was always named by its own
+text, which holds its reason. The duplicate overrule reads one key with one
+set of parameters for its name and its tooltip; the amount flag and each
+category grade's dot carry a tooltip equal to their `aria-label`; and the
+date, currency and type flags sit on hidden icons inside the controls whose
+names carry their sentences. `transaction-preview-table.component.spec.ts`
+(*a tooltip a reader reaches on the card*) walks every tooltip on the card
+that a reader reaches and holds each to its control's whole name with an
+empty description, in en and ja, and *a chip that asks is named first by
+the words it shows* holds the keep-date and offer names, in en, ja and tc,
+to open with their chips' words and then read the reason whole, with no
+stop after the question's mark
+([ADR 0187](ADR/0187-repeated-controls-name-their-item-the-upload-area-has-one-button-and-numbers-photos-among-photos-resting-text-is-a-token-sentences-end-in-the-readers-stop-and-a-spec-that-expects-nothing-fails.md)).
 
 ### A progress indicator is named, or hidden inside the control that names it
 
@@ -174,20 +288,45 @@ npm run icon-labels:check
   `role="tab"` control and the tab stop — and so is a hidden icon inside a
   control that takes focus and names itself, as both type flags are
   ([ADR 0185](ADR/0185-a-refund-is-asked-about-at-every-door-and-a-category-follows-its-rows-side-there-and-back.md));
-- a control stamped once per item in its own template — under an `@for`,
-  `*ngFor`, `*cdkVirtualFor` or a table's cell or row definition — does not
-  take its whole name from one catalog key with no parameters, bound or
-  interpolated, which gives every copy the same name. A key given parameters
-  has a slot for the item; whether what fills it tells the items apart is a
-  reading question, which is why the upload area's buttons name a file by its
-  place as well as its name. A repeated status (a row's spinner) may say the
-  same of every item, and a menu button the fourth rule reports is reported
-  there. What it found when it landed and was left unfixed is frozen in
-  `ITEMLESS_FROZEN` by file, key and how many controls carry that key there:
-  27 rows over 28 controls in eleven templates. A hit no row names fails, and
-  so does a row whose count is not the tally, while a control that only moves
-  changes nothing
-  ([ADR 0186](ADR/0186-a-date-stops-at-a-currency-sign-and-a-line-break-a-total-read-past-an-aside-or-under-a-count-is-flagged-and-a-shared-file-lands-in-the-upload-area.md));
+- a control stamped once per item does not take its whole name from one
+  catalog key with no parameters, bound or interpolated, which gives every
+  copy the same name. A ternary between two such keys, piped once after it,
+  `(cond ? 'a' : 'b') | translate`, or in each branch, the last with its
+  parentheses or without (`cond ? ('a' | translate) : 'b' | translate`), is
+  one of them and is reported with both its keys: every copy gets one of two
+  names, neither of which says which item it acts on. A key given parameters,
+  on either branch or on the pipe after a ternary, has a slot for the item;
+  whether what fills it tells the items apart is a reading question, which is
+  why the upload area's buttons name a photo by its number as well as its
+  name. A repeated status (a row's spinner) may say the same of every item,
+  and a menu button the fourth rule reports is reported there
+  ([ADR 0186](ADR/0186-a-date-stops-at-a-currency-sign-and-a-line-break-a-total-read-past-an-aside-or-under-a-count-is-flagged-and-a-shared-file-lands-in-the-upload-area.md)).
+  "Once per item" is read two ways, as the fourth rule reads a menu
+  trigger: inside the template, an `@for` or an element under a repeating
+  structural directive; and across templates, a component another template
+  stamps that way, so the goal card's Edit and Delete are repeated although
+  nothing repeats in the card's own template (`scanItemlessAcross`, the run's
+  own path). One reading is held apart: an `@case` under an `@switch` whose
+  subject is the nearest `@for`'s own item renders for the one item that
+  matches it, so it lifts that repeat, inside the template and across it.
+  The dashboard stamps its cards that way, and the insights card's Refresh
+  is one button on the page. What two or more of the switch's cases reach
+  still repeats, a component's selector or a control under one bare key
+  alike, whether a case writes it or reaches it through a component it
+  stamps, at any depth (`heldApartAcross`): the card menu, written into all
+  five cards, stays repeated, and so does the empty state, which four of
+  the cards stamp. An `@default`, an `@switch` on something the item holds and
+  an outer `@for` around the switch still repeat. Only this rule holds cases
+  apart; the fourth, fifth, seventh and eighth read as before. Its freeze,
+  `ITEMLESS_FROZEN`, is empty and stays so, as
+  [ADR 0151](ADR/0151-the-frozen-accessibility-findings-are-fixed-and-the-freezes-stay-empty.md)
+  keeps an emptied freeze: the 28 controls it froze when it landed all name
+  their item now, and a new hit fails. The run reads *Checked the controls
+  stamped once per item across 103 template(s): 0 take their name from a key
+  with no parameters, 0 frozen by name; 14 template(s) belong to a component
+  another template stamps once per item*, 14 where the fourth rule counts 19,
+  since the five dashboard cards are lifted by their `@case`
+  ([ADR 0187](ADR/0187-repeated-controls-name-their-item-the-upload-area-has-one-button-and-numbers-photos-among-photos-resting-text-is-a-token-sentences-end-in-the-readers-stop-and-a-spec-that-expects-nothing-fails.md));
 - each id a literal `aria-labelledby`, `aria-describedby`, `aria-controls`,
   `aria-owns` or `for` lists is declared by a literal `id` in the same
   template, before or after the reference. A dangling one resolves to
@@ -200,12 +339,18 @@ npm run icon-labels:check
   interpolation or a bound input (`[aria-label]`, `[aria-labelledby]`), so
   the control it renders inside itself is named. `[attr.aria-label]` does not
   count, since Material clears it on the host, and neither does a
-  `mat-icon`, which hides itself. A `mat-slider` named on its host names each
-  thumb as well, since it forwards no name to them. Two are frozen in
-  `UNNAMED_FROZEN`, a list of its own in the shape of the sixth rule's rows,
-  with the tag as the key: the budget form's alert-threshold slider and the
-  AI page's Auto sync switch
+  `mat-icon`, which hides itself
   ([ADR 0186](ADR/0186-a-date-stops-at-a-currency-sign-and-a-line-break-a-total-read-past-an-aside-or-under-a-count-is-flagged-and-a-shared-file-lands-in-the-upload-area.md)).
+  A `mat-slider` is read by its thumbs, whatever its host carries, since it
+  forwards no name to them: each `matSliderThumb`, `matSliderStartThumb` or
+  `matSliderEndThumb` input carries `aria-label` or `aria-labelledby` with a
+  value, as a literal, an interpolation or a binding, `[attr.aria-label]` and
+  `[attr.aria-labelledby]` included, since a thumb is the input itself. Its
+  freeze, `UNNAMED_FROZEN`, is empty and stays so: the slider and the switch
+  it froze are named. The run reads *Checked 19 checkbox, slide toggle and
+  radio button tag(s) and 1 slider(s) across 103 template(s): 0 hand their
+  control no name, 0 frozen by name*
+  ([ADR 0187](ADR/0187-repeated-controls-name-their-item-the-upload-area-has-one-button-and-numbers-photos-among-photos-resting-text-is-a-token-sentences-end-in-the-readers-stop-and-a-spec-that-expects-nothing-fails.md)).
 
 It reads the markup, so it cannot tell a useful label from a useless one, nor
 whether the control a hidden indicator sits in really announces the state;
@@ -214,18 +359,64 @@ attribute. Nor can it see a block that holds an option's icon beside other
 nodes, which Angular projects whole into the label, or a menu button's name
 built in TypeScript, nor a tooltip a directive's host binding adds, and a
 literal `tabindex="-1"` passes the fifth rule although Tab skips it. The sixth
-cannot see a name built in TypeScript, a ternary between two bare keys, a
-name taken from `aria-labelledby` or from the control's text, or a control
-repeated only by its parent's repeat: the goal card's edit and delete
-buttons, stamped once per goal by the goals page, are neither guarded nor
-frozen. The seventh cannot see a reference or an id set in TypeScript or by a
-host binding, a bound or interpolated one, an id declared twice or once per
-item, which leaves a reference ambiguous rather than empty, or whether the
-element named holds any text. The eighth cannot see a name set in TypeScript
-or by a host binding, text projected inside an element hidden from a screen
-reader, which counts there and names nothing, text only one branch of a
-block renders, or whether the name says anything. The script's header lists
-the rest.
+cannot see a name built in TypeScript, a ternary nested in another or with a
+branch that is not a quoted key, a label wrapped whole in parentheses or a
+branch in doubled parentheses, a name taken from `aria-labelledby` or from
+the control's own text, a component stamped through an outlet or a dialog,
+or a selector or key that two switches on the same item each reach in one
+case: its tally counts the cases of one switch. The seventh cannot see a
+reference or an id set in TypeScript or by a host binding, a bound or
+interpolated one, an id declared twice or once per item, which leaves a
+reference ambiguous rather than empty, or whether the element named holds
+any text. The eighth cannot see a name set in TypeScript or by a host
+binding, text projected inside an element hidden from a screen reader, which
+counts there and names nothing, text only one branch of a block renders, or
+whether the name says anything. The script's header lists the rest.
+
+### A dialog is named by its title alone
+
+Material names a dialog by its `mat-dialog-title`, through the container's
+`aria-labelledby`, and `aria-labelledby` takes every word under the element
+it names. The shared header, `app-dialog-header`, which 19 dialogs draw, held
+its close button inside that `h2`, so each dialog was named for its title
+and *Close*: *Note Close*, *メモ 閉じる*, *備註 關閉*, and a headings list
+read the same words. The header's row is a `div` now. The `h2` holds the
+title and any glyph beside it, which `mat-icon` hides, and the close button
+stands beside the `h2`, so the dialog is named by the title's words. The
+confirm, the currency code and the AI search dialogs write their own
+titles, which hold words and, in the AI search, an `aria-hidden` glyph, and
+no control.
+
+And each one is a `dialog`. `MatDialog.open` spreads
+`MAT_DIALOG_DEFAULT_OPTIONS` in place of Material's own defaults, not over
+them, and the app's options named only the sizing and the two focus
+settings, so no dialog carried a role or `aria-modal`.
+`provideAppDialogs()` (`core/config/dialog.config.ts`) starts from
+`new MatDialogConfig()` and changes three keys: the width, the max width,
+and the focus trap's timing. Focus moves into a dialog as it renders rather
+than after its 150ms entrance, so keys typed straight after the press that
+opened it reach the dialog, not the page behind. The old options gave the
+app that trap by leaving the key out; it is kept now on purpose.
+
+A dialog a menu's entry opened gives focus back to the menu's button when
+it closes. The dialog returns focus to what held it as it opened, and that
+is the entry, which has left the page with its menu by then, so focus fell
+to the page: cancelling a row's Delete from its menu left a keyboard user
+at the top (the third browser run). `provideAppDialogs()` carries the rule,
+`returnFocusPastTheMenu`, beside its options: once the dialog has gone,
+focus left on the page goes to the button whose `aria-controls` named the
+menu. Focus the dialog could put back stays where it went, as where a dialog
+was told where to return it, and the return carries the close's own origin,
+a keyboard focus after Escape and a mouse focus after a click on the
+backdrop, as the CDK's own restore would; that is read from the CDK, and no
+spec pins it. A datepicker a menu's entry opens is no dialog, and still
+drops focus that way (*Known gaps*).
+
+Pinned in `dialog-header.component.spec.ts`, `dialog.config.spec.ts`,
+`app.config.spec.ts` and, for the menu's button,
+`transaction-list.component.spec.ts` (*What is tested*); no gate reads what
+a title holds (*Known gaps*)
+([ADR 0187](ADR/0187-repeated-controls-name-their-item-the-upload-area-has-one-button-and-numbers-photos-among-photos-resting-text-is-a-token-sentences-end-in-the-readers-stop-and-a-spec-that-expects-nothing-fails.md)).
 
 ## A transaction row is a button beside its controls
 
@@ -252,7 +443,61 @@ for assistive technology.
   name, so on a split part the button points at the split badge with
   `aria-describedby`.
 - **The ring is drawn on the row**, inset, through
-  `.transaction-row:has(.row-activate:focus-visible)`.
+  `.transaction-row:has(.row-activate:focus-visible)`, which
+  `a11y.frame-ring` in `src/theme/_a11y.scss` writes for the row, the
+  upload area and the filter panel's two pills round their text boxes
+  alike, clearing the control's own ring.
+
+## The filter panel hands focus on when its controls go
+
+A focused control that its own handler takes off the page drops focus to the
+page, and a keyboard user starts again from the top. The transaction filters
+had three such places
+([ADR 0187](ADR/0187-repeated-controls-name-their-item-the-upload-area-has-one-button-and-numbers-photos-among-photos-resting-text-is-a-token-sentences-end-in-the-readers-stop-and-a-spec-that-expects-nothing-fails.md)):
+
+- **Clear all** goes once nothing is left to clear. Focus goes to the filter
+  toggle, which stays, heads the panel it opened and then reads *Filters*
+  with no count; not to the search box, whose focus opens the recent
+  searches under it. The panel clearing itself on load, to show every
+  transaction, moves no focus.
+- **A suggestion applied from the keyboard**, reached by ArrowDown and
+  pressed with Enter, goes with the panel that held it. Focus goes back to
+  the search box, where a pointer tap had left it all along.
+- **The save-search box** takes focus as it opens, with the query it offers
+  as the name selected, so a typed name replaces it and Enter alone keeps
+  it. Enter, the box's Save or Cancel, Escape, or a second press on Save
+  search closes it, and focus goes back to Save search. Once an emptied
+  query has taken Save search away too, there is nothing to save, so only
+  Cancel and Escape close it, and focus goes to the search box, whose focus
+  opens its suggestions, as it does under any empty query. The second press
+  closes it the way Cancel does because a tap focuses nothing in WebKit
+  (Safari and the iOS app), so focus would still be in the box the press
+  takes away. An Enter or an Escape that ends an IME composition is the
+  IME's. The Enter that saves is cancelled, since its keypress would
+  otherwise press Save search, which holds focus by then. Save search says
+  with `aria-expanded` whether the box is open, as the filter toggle does,
+  and the box's own button is named *Save* (`common.save`): while the box
+  was open, both read *Save search*, and the first closes the box unsaved
+  (the third browser run). A voice command for Save search still closes the
+  open box unsaved, as a disclosure does.
+
+Each goes through `focusWhenRendered` (`features/ai/import/import-focus.ts`),
+the helper the upload area's photo moves and file removes use. A held
+Enter presses once: the helper drops the repeats of Enter and Space held
+across a hand-off until the key is let go or pressed afresh, so no repeat
+folds the panel Clear all left open or opens the box a close has just shut.
+A held Enter on the filter toggle itself still opens and closes the panel
+on every repeat, as any toggle does. Each text box's pill draws the ring
+while the box has focus (a text box matches `:focus-visible` on a click as
+on a key), 2px solid `--color-primary` at a −2px offset and 3px under high
+contrast, through `a11y.frame-ring`, since the box's own `outline: none`
+outranks the app's ring and a focused box showed only its caret. Pinned in
+`transaction-filters.component.spec.ts` by the describe *focus after Clear
+all, a suggestion or the save-search box takes the pressed control away
+(real template)* and its nested *an Enter held down through the hand-off*,
+*the save-search box, as it opens* and *Save search and the box it opens,
+told apart*, and by *the two text boxes' ring (real template)*. A
+suggestion's own remove still drops focus (*Known gaps*).
 
 ## Announcements
 
@@ -356,23 +601,108 @@ failed-upload part does in en and ja, the set-aside part in ja.
 
 A row with no description yet is named *an untitled row*: the slot sits inside
 a sentence, so it takes a noun phrase rather than the edit trigger's *Add a
-description*. Picking a country is not announced — the menu it was picked from
-is where the user is looking. A failed row's reason stands on its card as
+description*. The stand-in is never quoted: tc puts a filled row's
+description in 「」 through `common.quotedName`, and the stand-in bare, so a
+blank row's removal is announced as *已移除未命名的項目*. Picking a country
+is not announced — the menu it was picked from is where the user is
+looking. A failed row's reason stands on its card as
 `role="note"` rather than an alert: it happened during the write, before that
 render, and interrupts nothing.
 
-### A file on the upload area is named by its place and its name
+### The upload area has one button
 
-Each row on the import upload area names its buttons by the file they act
-on: *Remove file 2 (image.jpg)*, *Move file 2 (image.jpg) up* and *down*
-(`import.removeFileLabel`, `import.moveFileUpLabel`,
-`import.moveFileDownLabel`). The place comes first because two photos from an
-iPhone are both `image.jpg`, and it is the number the photo badge shows. Every
-row used to read *Remove*, *Move up* and *Move down*, so neither the buttons
-nor the rows could be told apart by ear. A list of one reads the same way
-(*Remove file 1 (statement.csv)*). Pinned in `file-dropzone.component.spec.ts`
-by "names each row's remove and move buttons by the file's place and name"
-and "renames a row's buttons when its file moves"; the sixth
+The import upload area, empty, is a frame with one native button inside it,
+**Browse Files**, in the transaction row's shape
+([ADR 0151](ADR/0151-the-frozen-accessibility-findings-are-fixed-and-the-freezes-stay-empty.md)).
+The `.dropzone` carries no role, no tab stop, no `aria-label` and no key
+handler. As a `role="button"` wrapped round Browse it made Browse, the hint
+and the file types its presentational children (axe's
+`nested-interactive`), gave the keyboard two stops that did one thing,
+opened the picker twice on Enter and kept Space from Browse
+([ADR 0187](ADR/0187-repeated-controls-name-their-item-the-upload-area-has-one-button-and-numbers-photos-among-photos-resting-text-is-a-token-sentences-end-in-the-readers-stop-and-a-spec-that-expects-nothing-fails.md)).
+
+- **Browse is the one keyboard route.** Tab meets one stop on the empty
+  zone, and Enter or Space opens the picker once, as a native button does.
+  Browse is named by its own words and described by the hint, *Supports
+  CSV, PDF, images, and JSON backups*, through `aria-describedby` and the
+  zone's own `hintId` (`dropzone-hint-<n>`, from a module-level counter), so
+  it never reads another zone's hint. The title, *Drop files here or click
+  to upload*, is only a heading, an `h2` one level under the page's `h1`.
+- **A pointer click on the empty zone opens the picker once.** The
+  component's host answers it (`onZoneClick`), as the transaction row's
+  host does, and asks the hidden input once when three guards pass: nothing
+  is picked, the click landed inside the `.dropzone`, and it came from no
+  button, link or input inside the zone. The input guard is why one click
+  asks once: the picker is the input's own click, which bubbles back out
+  through the zone. Once a file is listed, adding more is the work of **Add
+  more files**, and a click on the rows opens nothing; nor does a click on
+  the refusal banner.
+- **The ring goes round the zone.** The zone is never `:focus-visible`
+  itself, so `a11y.frame-ring('.dropzone', '.browse-btn', 2px)`
+  (`src/theme/_a11y.scss`) draws `.dropzone:has(.browse-btn:focus-visible)`
+  2px solid `--color-primary` at a 2px offset, 3px under high contrast, and
+  clears Browse's own ring, so one ring shows. The transaction row's ring
+  comes from the same mixin at −2px.
+- **The Data page's backup upload area stays one `role="button"`.** Nothing
+  inside it is a control, so it nests none. Its hidden input sits just
+  before the area rather than inside it, so a press or a click asks the
+  input once, and Space's keydown is cancelled before the area asks, so the
+  page does not scroll under it.
+
+Pinned in `file-dropzone.component.spec.ts` by "offers Browse as the empty
+zone's one control, described by the hint", "keeps one tab stop on the empty
+zone, Browse", the cases under *a key pressed on Browse*, "asks the input
+once a click, though the input's own click bubbles back out through the
+zone", "opens nothing from the refusal banner" and "rings the zone while
+Browse has keyboard focus, 3px under high contrast, and clears Browse's
+own". The wizard's spec sweeps the empty step with axe and finds nothing in
+either scheme (*What is tested*).
+
+### A photo on the upload area is named by its number among the photos
+
+Each row names its buttons by the file they act on, and a photo by its
+number among the photos, the number its badge shows: *Remove photo 2
+(image.jpg)*, *Move photo 2 (image.jpg) up* and *down*
+(`import.removePhotoLabel`, `import.movePhotoUpLabel`,
+`import.movePhotoDownLabel`). The number comes first because two photos from
+an iPhone are both `image.jpg`. A file that is no photo is numbered among the
+other files and is only ever removed, *Remove file 1 (rows.csv)*
+(`import.removeFileLabel`), so `[rows.csv, image.jpg, rows.csv]` reads
+*Remove file 1*, *Remove photo 1* and *Remove file 2*. ja and tc count a
+photo with 枚目 and 張, a file with 番目 and 個. A screen reader hears the
+number a sighted reader sees
+([ADR 0187](ADR/0187-repeated-controls-name-their-item-the-upload-area-has-one-button-and-numbers-photos-among-photos-resting-text-is-a-token-sentences-end-in-the-readers-stop-and-a-spec-that-expects-nothing-fails.md),
+which amends ADR 0186's place-and-name rule).
+
+In a pick that mixes photos and a CSV, the files keep the order they were
+picked in, and the photos are numbered among themselves in place. The
+badges, the arrows and the drag handles stand once two photos are listed. An
+arrow steps past a row that is no photo and swaps the two photos: in
+`[a, csv, b]`, b's up arrow gives `[b, csv, a]`. Up is disabled at photo 1
+and down at the last photo. A row that is no photo is never dragged, and a
+drop is remapped so that only the photos' rows change. The wizard hands the
+reader the photos in badge order.
+
+A move that lands a photo at either end used to drop keyboard focus to the
+page, since the pressed arrow is disabled there. Focus follows the moved
+photo to its new row: the arrow pressed, while the photo can still go that
+way, else its other arrow, else its remove (`focusWhenRendered`,
+`features/ai/import/import-focus.ts`). A drag moves no focus. A remove
+takes its own button off the page, and the last file's takes the list with
+it, so focus goes to the remove of the row that takes the removed file's
+place, else of the row before it, and to Browse once the list is empty,
+after a click as after a key. Nothing is announced: the remove that takes
+focus reads the file now in that place. An Enter held down moves a photo one
+place, or removes one file. Each repeat used to press the control focus had
+moved to, so a held Enter on an arrow sent the photo to one end and back,
+and one on a remove emptied the list and then opened the picker from
+Browse; `focusWhenRendered` now drops the repeats where focus lands until
+the key is let go or pressed afresh.
+
+Pinned in `file-dropzone.component.spec.ts` by "names each row's remove and
+move buttons by the file's place and name", "renames a row's buttons when its
+file moves", and the cases under *a pick that mixes photos and a CSV*,
+*focus after a photo moves* and *focus after a row is removed*; the sixth
 `icon-labels:check` rule holds the class (*Accessible names come from the
 catalog*).
 
@@ -392,27 +722,32 @@ another app that the share gate turned away is named in the same banner, with
 two sentences of the gate's own, *{name} is empty* and *{name} is a backup:
 pick it here to import it* ([share-import.md](share-import.md)). The banner is
 `role="alert"`, because the refusal answers the pick, the drop or the share
-the user just made, and its icon is decorative (`aria-hidden="true"`). It
-used to have no role, so a refused file was silent to a screen reader: to
-someone who could not see the banner, the pick seemed to have done nothing.
+the user just made, and its icon is decorative (`aria-hidden="true"`); the
+icon reads in the message's own `--color-error-text` (*A glyph at rest is
+not faded under its bar*). It used to have no role, so a refused file was
+silent to a screen reader: to someone who could not see the banner, the pick
+seemed to have done nothing.
 
 Several refusals share the one alert, one sentence a file, joined by the
 reader's own stop, `common.sentenceSeparator`: a Latin stop and a space in
-en, 。 alone in ja and tc. None of the four sentences ends in a stop of its
-own in any catalog, so none is doubled (pinned in "the sentences its alert
-joins", with the rendered "joins the files it refuses with the reader's own
-stop"). A share's refusals follow any the user's own pick left standing.
+en, 。 alone in ja and tc. The alert joins them through `joinSentences`, the
+import area's one way to join two sentences
+([i18n.md](i18n.md#two-sentences-joined)). None of the four sentences ends in
+a stop of its own in any catalog, so none is given up or doubled (pinned in
+"the sentences its alert joins", with the rendered "joins the files it
+refuses with the reader's own stop"). A share's refusals follow any the
+user's own pick left standing.
 
-The banner sits below the zone, not inside it. The zone itself is the
-`role="button"` that opens the file picker, and ARIA gives a button
+The banner sits below the zone, not inside it. The zone was once the
+`role="button"` that opened the file picker, and ARIA gives a button
 presentational children, so an alert inside one is kept only where a browser
-chooses to keep it. Chrome does; WebKit, which the iOS app runs in, was not
-checked. The drag handlers moved out to a frame around the zone and the
-banner, so a file dropped on the banner still lands, and a click on the
-banner no longer opens the picker. Pinned in
+chooses to keep it; no `role="button"` stands in the upload area now (*The
+upload area has one button*). The drag handlers sit on a frame around the
+zone and the banner, so a file dropped on the banner still lands, and a
+click on the banner opens nothing. Pinned in
 `file-dropzone.component.spec.ts` by "announces an oversized file it
-refuses", which also checks that the banner has no `role="button"` ancestor,
-and "takes a file dropped on the refusal banner".
+refuses", which also checks that no `role="button"` stands anywhere in the
+upload area, and "takes a file dropped on the refusal banner".
 
 Below the zone, the banner can land under the fold: on a 768px-tall window
 the zone fills the first screen, so a sighted user who dropped a file saw
@@ -778,6 +1113,13 @@ in light and 8.34:1 in dark, where at 70% it read 3.2:1. The bar is text's
 each ligature as 16 to 18px text and holds it to 4.5:1, and the transaction
 form's and the confirm dialog's specs already held their glyphs there
 ([ADR 0186](ADR/0186-a-date-stops-at-a-currency-sign-and-a-line-break-a-total-read-past-an-aside-or-under-a-count-is-flagged-and-a-shared-file-lands-in-the-upload-area.md)).
+For the same reason the upload area's refusal banner paints its glyph in
+the message's own `--color-error-text`, as the review notices' glyphs take
+`--color-warning-text`: 5.24:1 in light and 11.41:1 in dark on the banner's
+10% error tint, where `--color-error` read 3.04:1 in light. It is
+`contrast:check`'s `--color-error-text` row on `--surface-card` that names
+it, beside the message, and no longer the 3:1 row above
+([ADR 0187](ADR/0187-repeated-controls-name-their-item-the-upload-area-has-one-button-and-numbers-photos-among-photos-resting-text-is-a-token-sentences-end-in-the-readers-stop-and-a-spec-that-expects-nothing-fails.md)).
 
 **Material is coloured through its tokens.** A host `color` or a utility on
 a Material element mostly paints nothing. Material colours a menu item's
@@ -858,7 +1200,11 @@ code (a host binding, `Renderer2`, a custom property bound as
 template and measures what is painted, in both themes, through
 `core/services/testing/painted-contrast.ts`. `paintedColor` and
 `paintedBackground` composite translucent fills and faded ancestors, and
-`ratio` scores the pair. `withTheme` stamps one theme class for a token
+`ratio` scores the pair. `tokenValue` reads what a token computes to under
+the palette on `<html>`, and `expectPainted(node, token, label)` holds a
+node to being painted in that token at 4.5:1 or a floor it names;
+`inPalette` runs a check under each of `PALETTES`, the four rendered modes.
+`withTheme` stamps one theme class for a token
 probe; anything that reads `ThemeService.effectiveTheme()` is driven
 through the service instead, with `withScheme` from `axe.ts`. `hoverValue`
 reads a `:hover` rule from the CSSOM, because Karma cannot hover. Read the
@@ -868,6 +1214,131 @@ border of `.mdc-linear-progress__bar-inner`. `theme-aliases.spec.ts` holds
 every alias to its token in all four modes. [testing.md](testing.md#colour-as-painted)
 has the helpers in full, and how a spec puts a select's options or a menu's
 items into each state it measures.
+
+### Resting text is a token, and a resting fade fails
+
+**Check:**
+
+```bash
+npm run opacity:check
+```
+
+Secondary text reads in `--text-muted` at full strength, never in the
+colour around it faded with `opacity`. A fade is measured by nothing:
+`contrast:check` scores tokens, not what an `opacity` makes of them. Nor can
+high contrast reach one: it strengthens the muted token, `#374151` in light
+and `#e5e7eb` in dark, and a faded line was never in it. Eleven lines rested
+that way, at 0.7, 0.75 or 0.8, and each is now
+`color: var(--text-muted)` with no opacity
+([ADR 0187](ADR/0187-repeated-controls-name-their-item-the-upload-area-has-one-button-and-numbers-photos-among-photos-resting-text-is-a-token-sentences-end-in-the-readers-stop-and-a-spec-that-expects-nothing-fails.md)):
+
+| Component | Lines |
+|---|---|
+| The goal card (`goal-progress-card.component.scss`) | `.goal-date`, whose 14px `event` glyph takes its colour, `.target`, `.linked-breakdown`, `.status`, `.items-count`, `.item-amount` and `.goal-note` |
+| The forecast (`forecast.component.scss`) | `.forecast-note`, `.forecast-bucket-note` and `.rate-caption` |
+| The Goals tab (`goals.component.scss`) | `.goals-hint` |
+
+`.status.reached-note` reads in the card's own colour (`color: inherit`):
+reaching the goal is the card's news. In light, dark and each under high
+contrast, the muted lines paint 6.82, 7.27, 9.30 and 13.86 to 1 on the
+card's surface and the Goals hint 6.93, 7.94, 9.45 and 15.13 on the page.
+Each component's real-template describe holds every line, over `PALETTES`,
+to a computed opacity of `'1'`, the colour `tokenValue('--text-muted')` and
+4.5:1 as painted (`expectPainted`); the goal card's glyph is held to 4.5:1
+too, since axe reads a ligature as text.
+
+`scripts/check-opacity.mjs` keeps a fade off resting text, by
+[ADR 0145](ADR/0145-a-class-found-by-reading-becomes-a-gate.md)'s rule: a
+resting fade is readable from one file. It runs in CI's *Check resting
+opacity* step.
+
+- **What fails.** A stylesheet `opacity` between 0 and 1, as a number or a
+  percentage (`0.7`, `.7`, `70%`, with or without `!important`), and a
+  Tailwind `opacity-NN` below 100, an arbitrary `opacity-[…]` or the
+  arbitrary property `[opacity:…]`, in an `.html` template, an inline
+  `template:` or a stylesheet's `@apply`. `opacity: 0` and `opacity: 1`
+  pass: hidden and full strength are how a reveal starts and ends. `:hover`
+  and `@media` exempt nothing, and `hover:opacity-80` fails as `:hover`
+  does.
+- **Only a state that ends is exempt.** A declaration in a `@keyframes`
+  frame no fill mode holds, prefixed or not, where a pulse is motion and the
+  reduced-motion switches end it; under `:disabled` or `[disabled]`, where a
+  control owes no contrast (WCAG 1.4.3) and the fade tells it from a live
+  one; and in CDK's four moving drag states, `.cdk-drag-preview`,
+  `.cdk-drag-placeholder`, `.cdk-drag-animating` and `.cdk-drag-dragging`.
+  `.cdk-drag-handle`, `.cdk-drag-disabled` and a bare `.cdk-drag` sit on an
+  item at rest and exempt nothing. A state named inside `:not(…)` or
+  `:has(…)` is not the subject's own, so `&:hover:not(:disabled)` fails. A
+  utility, `[opacity:…]` among them, is exempt only under a `disabled:` or
+  `group-disabled:` variant.
+- **A frame an animation holds does not end.** The `to` frame, or `from` in
+  reverse (`reverse` or `alternate-reverse`), of an animation a rule runs
+  with a `forwards` or `both` fill fails like a resting fade: the element
+  rests on it, and the reduced-motion switches cut the run to 0.01ms and
+  leave the fill mode, so the frame holds from the first paint. A rule's
+  `animation-fill-mode` and `animation-direction` longhands join each
+  animation the rule names, so a shorthand's fill beside a direction
+  longhand, and a shorthand's direction beside a fill longhand, both count.
+  A quoted name counts, as do the `-webkit-` forms and the keywords in any
+  case. A `from` frame that `both` holds only through a delay passes.
+- **A state sits on the faded element or on one around it.** A compound
+  joined to the next by `+` or `~` is a sibling, so `.a:disabled + .hint`
+  and `.a:disabled ~ .hint` fail, as `.row:has(:disabled) .hint` and
+  `peer-disabled:opacity-60` do, while `button:disabled .label` and
+  `button:disabled > .icon` pass. A label beside its control
+  (`input:disabled + label`) fails like a hint, since the gate cannot tell
+  the two apart; it takes `--text-disabled`, not a fade or an `ALLOWED` row.
+- **How it reads a stylesheet.** Each declaration is read with every
+  selector above it, nested blocks included, since an exempt state almost
+  always sits a level above its `opacity` line. The levels resolve as Sass
+  resolves them, `&` standing for the level above and a selector with no
+  `&` sitting under it, so `.a:disabled { & + .hint {…} }` fades the hint. A
+  declaration is exempt only when every selector its levels resolve to is in
+  a state that ends, and the arms of an `:is(…)` or `:where(…)` count as a
+  list: `.a:disabled, .b` still fades `.b`, and `.a:is(:disabled, :hover)`
+  still fades `.a:hover`.
+- **What it reads.** Every `.scss`, `.css` and `.html` under `src`, and
+  every `template:` and `styles:` string, quoted or in backticks, in a
+  non-spec file that declares a `@Component`, a second component's
+  included; a `template:` in a comment is not read. A `${…}` is blanked in a
+  `styles:` string only: a `template:` string keeps its substitutions, and
+  a class picked inside one is read.
+- **`ALLOWED` and its ratchet.** One row: the sign-in card's tagline at
+  `opacity-80` over the translucent glass card, a colour chosen for the fade
+  that `login.component.spec.ts` measures through it at every stop of the
+  gradient behind the card, in both themes. A row's count must match its
+  file's exactly, so a new fade fails, and so does a repair left off the
+  table.
+- **What it cannot see**: a `[style.opacity]` or `[ngStyle]` binding, a
+  static `style="opacity: …"` attribute, and an opacity set from TypeScript;
+  `filter: opacity()` and alpha inside a colour; an opacity that is not a
+  literal (`var(--x)`, a Sass variable, a `calc()`), in a declaration,
+  `opacity-[…]` or `[opacity:…]` alike; the SVG paint opacities; whether
+  the faded element holds any text; a keyframe declared in another file,
+  that is, a global `@keyframes` (in `src/styles.scss`, or in a component
+  with `ViewEncapsulation.None`) run from another stylesheet, or one a Sass
+  partial or mixin brings in, since Angular scopes a component's keyframes
+  to it under the default emulated encapsulation, which every component
+  here keeps, and `src/styles.scss` and the partials declare none; a fill
+  mode or a direction set in a rule that does not itself name the
+  animation; the order and comma position of a rule's animation
+  declarations, so a later `animation-direction: normal`, a shorthand
+  written after a direction longhand, or a `normal, reverse` list beside two
+  animations moves the held frame unseen; a paused animation, which rests on
+  its first frame; an `alternate` or `alternate-reverse` run held after an
+  even number of iterations; a `template:` that is not a string literal (a
+  constant, or the strings of a concatenation after its first); and a spec's
+  host template. Its mask for an unquoted `url(` runs before comments are
+  blanked, so in a comment holding one whose `)` lies past the comment's
+  `*/` on the same line, the `*/` is blanked with it and a fade between the
+  two is read as comment: `/* url(x */ .a { opacity: .5; } /* ) */` passes.
+  The tree holds no such line.
+
+The run reads *Checked 105 stylesheets and 104 templates, inline ones
+included, for resting fades (1 recorded)*; its self-test has 150 cases. Of
+the 24 fractional `opacity` declarations the stylesheets held before the
+change, the 13 left are all exempt: four keyframe frames, three disabled
+controls and six drag states.
 
 ## What is tested
 
@@ -914,7 +1385,14 @@ items into each state it measures.
   has no way to press. Material's header resets the strip's scroll after every
   focus change, so this is the assertion that would fail first if the
   correction were dropped. Both opted-in pages have their own case for a
-  `?tab=` deep link opening on its tab in view.
+  `?tab=` deep link opening on its tab in view. Once the strip has opened,
+  the directive spec's cases under *when the labels change after the strip
+  opens* keep the tab the strip last revealed whole when a label before it
+  widens or the strip narrows, keep the tab the keys walked to rather than
+  the selected one, and leave a strip the reader scrolled where they left
+  it;
+  `budgets.overflow.spec.ts` keeps Goals in view at 343px when the Budgets
+  count arrives after the strip opened.
 - The 40px tap-target floor is measured where the glyph is smaller than the
   target: `transaction-list.component.spec.ts` reads the note button, the
   receipt icon and the row actions trigger — each a 32px (or unsized) glyph box
@@ -927,7 +1405,11 @@ items into each state it measures.
   (`transaction-form.component.spec.ts`), the household overview's
   *Count toward…* button on one's own shared rows
   (`household-overview.component.spec.ts`) and the plans section's controls
-  (`household-plans.component.spec.ts`).
+  (`household-plans.component.spec.ts`). So is each search suggestion's
+  remove in the filter panel (`transaction-filters.component.spec.ts`): a
+  40px button whose touch target is held to its own box, so it neither
+  scrolls the panel sideways nor reaches into the rows around it
+  ([ui-overflow.md](ui-overflow.md#g4--nothing-is-clipped-that-cannot-be-reached-another-way)).
 - `switch-on-choice.directive.spec.ts` pins the household switcher's keys.
   A closed `mat-select` takes an arrow key, Home, End, a page key or a typed
   character as a choice, and on the switcher every choice swaps the page for
@@ -937,20 +1419,83 @@ items into each state it measures.
   moves through its choices without picking. `household.component.spec.ts`
   pins where focus lands after a swap — the view that came in — and that it
   moves only when it was on the switcher or had dropped to the document.
-- Three surfaces of the import wizard the walkthrough never opens are swept
-  with axe (WCAG 2.0 A and AA, axe's `wcag2a` and `wcag2aa` tags,
-  `color-contrast` included) by their component
-  specs, in both schemes. `import-wizard.component.spec.ts` sweeps the upload
-  step with two photos and a refused `run.exe` dropped on the real zone, so
-  the rows, the previews, the receipt-or-statement question and the alert all
-  stand, and checks that the pass scores contrast rather than skipping it;
-  and it sweeps the stepper's tab list under the phone rule's declarations
-  (*A name hidden for room is clipped, never removed*).
+- The import wizard's surfaces are swept with axe (WCAG 2.0 A and AA, axe's
+  `wcag2a` and `wcag2aa` tags, `color-contrast` included) by their component
+  specs, in both schemes. The wizard's sweeps of its steps stand on the
+  page's fill (`standOnThePage`, [testing.md](testing.md#shared-stubs)),
+  since text below Karma's 413px body box is otherwise left unscored; the
+  stepper's tab list needs none, at the top of the wizard, and nor does the
+  review card, whose root paints `--surface-card`.
+  `import-wizard.component.spec.ts` sweeps:
+  - the empty upload step, which finds nothing;
+  - the upload step with two photos and a refused `run.exe` dropped on the
+    real zone, so the rows, the previews, the receipt-or-statement question
+    and the alert all stand;
+  - the review step, landed with both notices, the duplicate warning and
+    both hints on it (`landReviewStep()`), the review list let out to its
+    full height;
+  - and the stepper's tab list under the phone rule's declarations (*A name
+    hidden for room is clipped, never removed*).
+
+  A pass over a whole step keeps one pass node per rule, so the hidden file
+  input alone can hold `color-contrast`. Each word-holder is therefore scored
+  by its own nodes of one contrast run (`expectEachContrastScored`): the
+  title, the hint, each
+  file type with every element inside it hidden, its glyph among them,
+  Browse's label (`.browse-btn .mdc-button__label`), each paragraph of each
+  notice and hint, the header, the warning's title and Back. A case runs
+  axe's best-practice `heading-order` alone over the wizard, empty and with
+  photos picked, and finds the order kept (`expectHeadingsInOrder`).
   `transaction-preview-table.component.spec.ts` sweeps the review card with a
   card of every kind of row — plain, doubted, refund, duplicate, and blank as
   **Add a row** makes one — the list let out to its full height so no card
-  falls outside the container, and checks the same. The review step around
-  the card is not swept.
+  falls outside the container (`withEveryCardShown`), and checks that the
+  pass scores contrast rather than skipping it
+  ([ADR 0187](ADR/0187-repeated-controls-name-their-item-the-upload-area-has-one-button-and-numbers-photos-among-photos-resting-text-is-a-token-sentences-end-in-the-readers-stop-and-a-spec-that-expects-nothing-fails.md)).
+- Every per-item name, the two toggles' names and Sign out's are pinned in
+  en, ja and tc through the real catalogs (`catalogTranslator`), read by
+  `accessibleName`, axe's own name computation, never off `textContent`,
+  but for the review card's per-row names, which its spec reads through the
+  echo stub and, in tc, through tc's catalog. The review card's tooltips are
+  read through the catalogs, in en and ja: under *a tooltip a reader
+  reaches on the card*, each tooltip a reader reaches is its control's whole
+  name, and `accessibleDescription` reads nothing after it. The keep-date
+  and offer names are read in en, ja and tc under *a chip that asks is
+  named first by the words it shows*.
+- The dialogs: `dialog-header.component.spec.ts` opens a dialog drawn with
+  the shared header under the app's options, titled as the note, the
+  receipt viewer and the share dialog are, and reads each dialog's name as
+  its title alone, in en, ja and tc; it also pins the header's row (a short
+  title midway between the start and the close button on a 40px line, a
+  long one wrapping with the close button kept in the row;
+  [testing.md](testing.md#karma-serves-no-fonts)).
+  `dialog.config.spec.ts` holds `provideAppDialogs()` to Material's defaults
+  but its three changes, and a dialog opened under it to the `dialog` role,
+  `aria-modal="false"` and its title's name, with focus inside before its
+  entrance ends. It also opens a dialog from a menu's entry and finds focus
+  on that menu's button once the dialog has gone, beside two pins: a dialog
+  told where to return focus keeps it there, and one no menu opened leaves
+  focus it dropped on the document for the page's own recovery.
+  `transaction-list.component.spec.ts` (*focus after a dialog a row menu
+  opened (real template)*) cancels the second row's Delete confirm from the
+  desktop actions menu and from the phone's trailing menu, and finds focus
+  on that row's menu button, through the shared `pressMenuEntry`
+  ([testing.md](testing.md#one-helper-per-job)). `app.config.spec.ts` holds
+  the app to one set of dialog options, the ones `provideAppDialogs()` gives.
+- Where focus goes once a press takes the pressed control off the page, or
+  disables it, is read as `document.activeElement` after the render the
+  press asks for, in the real template: `file-dropzone.component.spec.ts`
+  under *focus after a photo moves* and *focus after a row is removed*, and
+  `transaction-filters.component.spec.ts` under *focus after Clear all, a
+  suggestion or the save-search box takes the pressed control away (real
+  template)*, which also reads the box's selected name as it opens, a typed
+  name saved in its place and the Enter that saves cancelled (*The filter
+  panel hands focus on when its controls go*). A held Enter is sent as its
+  repeats (`pressKey`), and each repeat after a hand-off presses nothing
+  where focus lands: under the filter panel's nested *an Enter held down
+  through the hand-off* and *the save-search box, as it opens*, under both
+  of the upload area's describes, and on the review card, whose editor opens
+  once for an Enter held down on its trigger and stays open.
 
 ## Known gaps
 
@@ -958,7 +1503,7 @@ items into each state it measures.
   selector express selection visually and have not been; the tab strips are
   audited for reachability and keyboard travel only, not for how selection is
   announced.
-- **The automated pass is a phone audit of eight routes.** `app.smoke.spec.ts`
+- **The automated pass is a phone audit of nine routes.** `app.smoke.spec.ts`
   runs axe-core (WCAG 2.0 A and AA, axe's `wcag2a` and `wcag2aa` tags,
   `color-contrast` included) inside `expectPage`, so every page the
   walkthrough opens is swept, once in each scheme, forced through
@@ -967,42 +1512,46 @@ items into each state it measures.
   [emulator-blind-spots.md](emulator-blind-spots.md): i18n is not served,
   Karma's window is 756px, eight page-level rules are disabled because the run
   is scoped to the routed element, and `color-contrast` scores nothing below
-  the fold of Karma's frame but the five nodes the walkthrough scrolls into
-  view (the next gap). `/login` is opened by the redirect case and never
-  audited; `/lock`, `/ai`, `/search-history`, `/import/file` and
-  `/import/history` are never opened. The import wizard's upload step with
-  photos picked and a refusal standing, its step headers under the phone rule,
-  and the review card with every kind of row are swept by their component
-  specs instead, in both schemes (*What is tested*); the empty upload step and
-  the review step around the card are swept by nothing. Nor does it open a
+  the fold of Karma's frame but the nodes the walkthrough scrolls into view
+  (the next gap). `/login` is opened by the redirect case and never
+  audited; `/lock`, `/ai`, `/search-history` and `/import/history` are never
+  opened. `/import/file` is opened with nothing picked; the import wizard's
+  upload step with photos picked and a refusal standing, its review step, its
+  step headers under the phone rule and the review card with every kind of
+  row are swept by their component specs instead, in both schemes (*What is
+  tested*). Nor does it open a
   dialog, a category select or a menu, so the pickers, the import review's
   category menu and the category dialog are held by their component specs
   alone. axe's `incomplete` results are not read, so a one-character text, or
   a label axe finds overlapped by another element, is scored by no pass.
   Everything outside that is still a hand-written spec, and nothing sweeps for
   the next instance of a class nobody has met.
-- **The axe pass scores only what starts in Karma's frame, and five nodes
-  below it.** Every page renders inside the shell's fixed scroller,
+- **The axe pass scores only what starts in Karma's frame, and thirteen
+  nodes below it.** Every page renders inside the shell's fixed scroller,
   `.main-container`, and axe counts a node under a fixed ancestor as
   offscreen once its top passes the viewport's bottom. An offscreen node is
   skipped outright: it appears in no result, not even `incomplete`. A node
-  in plain flow would be scored at any depth. Karma's frame is 756px wide
-  and 413px tall. `auditInView` (`core/services/testing/axe.ts`) scrolls a
-  node into the band between the header and the frame's bottom before it
-  audits, and the walkthrough uses it, in both schemes, on five nodes: the
-  spending chart's legend list and the Budget Progress widget on
-  `/dashboard`, the overview on `/budgets`, the rules grid on the Recurring
-  tab, with an active rule and a paused one, and Upcoming Bills. Everything
-  else that starts below the frame is never scored. In the run that
-  measured it, that was: on `/dashboard`, Recent Transactions (its top at
-  521px), the chart's card around its legend list and AI Insights; on
-  `/settings`, all but the top of the profile section and every section
-  after it; on `/data`, everything past the first 413px of a page 2687px
-  tall; on `/household`'s member view, the second row of figures, the
-  member chips, the shared rows, the plans and the members; and on
-  `/about`, every card after the first. A node taller than about 285px
-  cannot be centred inside the band, so a tall card is audited as its
-  parts
+  in plain flow is scored at any depth only where a fill stands behind it,
+  its own or one `standOnThePage` paints: below body's box, text with none
+  is left `incomplete` (*Other sweeps may stand below Karma's body*, below).
+  Karma's frame is 756px wide and 413px tall. `auditInView`
+  (`core/services/testing/axe.ts`) scrolls a node into the band between the
+  header and the frame's bottom before it audits, and the walkthrough uses
+  it, in both schemes, on thirteen nodes: the spending chart's legend list
+  and the Budget Progress widget on `/dashboard`, the filter grid on
+  `/transactions`, the overview on `/budgets`, the Forecast tab's header and
+  summary on `/reports`, the rules grid on the Recurring tab, with an active
+  rule and a paused one, Upcoming Bills, the goal card's header, progress,
+  items and note on the Goals tab, and the upload area's contents on
+  `/import/file`. Everything else that starts below the frame is never
+  scored. In the run that measured it, that was: on `/dashboard`, Recent
+  Transactions (its top at 521px), the chart's card around its legend list
+  and AI Insights; on `/settings`, all but the top of the profile section
+  and every section after it; on `/data`, everything past the first 413px of
+  a page 2687px tall; on `/household`'s member view, the second row of
+  figures, the member chips, the shared rows, the plans and the members; and
+  on `/about`, every card after the first. A node taller than about 285px
+  cannot be centred inside the band, so a tall card is audited as its parts
   ([ADR 0169](ADR/0169-a-categorys-colour-is-drawn-through-the-chip-or-a-pipe-that-knows-its-surface-and-the-axe-pass-sweeps-both-themes-below-the-fold.md)).
 - **Contrast is measured for the pairs somebody listed.** `npm run
   contrast:check` scores a hand-written table of the pairs the app actually
@@ -1020,7 +1569,9 @@ items into each state it measures.
   table rows' reasons. The sweep that found ten fill tokens painted as
   foregrounds under their bar, after every gate had passed, was a reading,
   and nothing repeats it. A category's own colour is data; the chip's spec
-  and the pipes' specs hold it. The axe pass is the other half: it measures
+  and the pipes' specs hold it. A token faded with `opacity`, which neither
+  script scores, fails `opacity:check` at rest (*Resting text is a token, and
+  a resting fade fails*). The axe pass is the other half: it measures
   what a rendered page paints.
 - **Nothing sweeps for the next animation CSS cannot reach.** Chart.js and the
   Material tab strips were found by reading the code; a new WAAPI duration or
@@ -1030,38 +1581,59 @@ items into each state it measures.
   the identical file again leaves the text as it was, so there is nothing new
   for the alert to say, though the banner stays on screen and is brought into
   view again.
-- **Some controls repeated per item still share one name.** The sixth
-  `icon-labels:check` rule's 27 frozen rows, 28 controls in eleven templates,
-  still name every copy alike: among them the transaction filters'
-  remove-search buttons, the receipt images' remove buttons, the camera's
-  photo arrows and remove, and nine review-card controls. The goal card's edit
-  and delete, stamped once per goal by the goals page's own repeat, are
-  neither guarded nor frozen, since the rule reads a template's own repeats.
-- **Two toggles name nothing, frozen by the eighth rule.** The budget form's
-  alert-threshold slider carries its `aria-labelledby` on the `mat-slider`
-  host, which names no thumb; the AI page's Auto sync switch has a sibling
-  label it never references.
-- **Settings' Sign out button has no name below 480px.** Its label, the only
-  name it has, is taken out with `display: none` there
-  (`settings.component.scss`), the shape the wizard's step labels had before
-  they were clipped instead.
-- **Two stops join sentences in ja and tc.** Only the dropzone's alert joins
-  with `common.sentenceSeparator`. `joinSentences` still joins with a Latin
-  stop and a space in every language — the review card's names, the form's
-  verify text and the wizard's round notice
-  ([ADR 0099](ADR/0099-the-review-step-edits-what-it-shows.md)'s gap) — and
-  the key is the one a later fold would read.
-- **The empty upload step is likely nested-interactive.** With nothing
-  picked, the dropzone is a `role="button"` around the Browse button, which
-  axe very likely reports; no pass sweeps that state.
-- **In a mixed pick the move arrows and the number badge count every file.**
-  A photo before a CSV keeps an enabled down arrow that swaps it below the
-  CSV, and with a CSV first the photos are numbered 2 and 3.
-- **Faded text outside the import wizard is unmeasured.** The upload area and
-  the wizard hold no other resting fade, but eleven of the 19 `opacity`
-  declarations elsewhere fade resting text, on the goal card, the forecast and
-  the Goals tab, and none is measured; `contrast:check` cannot see opacity
-  ([ADR 0186](ADR/0186-a-date-stops-at-a-currency-sign-and-a-line-break-a-total-read-past-an-aside-or-under-a-count-is-flagged-and-a-shared-file-lands-in-the-upload-area.md)).
+- **Controls repeated per item whose name is their visible text read alike
+  on every copy.** The review card's *Add location*, *Add tag* and *Notes*,
+  the goal card's *Contribute* and *View Transactions*, and the receipt image
+  manager's thumbnails, whose alt is *Receipt image {index} of {total}* in
+  every group. The sixth rule reads a bound name, not a control's own text,
+  so it never saw them. Closing them needs a name with the item's slot on
+  each, and a rule that reads a repeated control's text.
+- **No gate reads a plain button's name.** The transaction filters' toggle
+  had a name only while its badge rendered, inside an `@if`, and
+  `icon-labels:check` has no rule for a `<button>`'s own name: a button whose
+  only text sits inside an `@if` is unnamed in one of its states, and
+  nothing fails it.
+- **The sixth rule's remaining blind spots.** A selector or key that two
+  switches on the same item each reach in one case is counted as rendered
+  once, and a label wrapped whole in parentheses, or a branch in doubled
+  parentheses, is not read (*Accessible names come from the catalog*).
+- **No gate finds sibling controls that share one bare key as their whole
+  name.** The sixth rule reads repeated controls only, and branches of
+  `@if` that never render together make a plain scan of a template unsound.
+  Two sets stand: the transaction form's two *Close* dismissals
+  (`common.close`), on the currency offer and on the scanned position's
+  offer, which can show together, and the AI settings page's three *Remove*
+  buttons (`common.remove`), one in each provider's field, every field
+  labelled *API Key*.
+- **axe cannot find an unnamed Material switch.** Its `button-name` accepts
+  the empty label Material renders, so every axe sweep over a slide toggle
+  passes it named or not. The eighth rule and the `accessibleName` cases are
+  the guard; a per-run option that turns that label check off, passed in the
+  shared `runAxe`, would close it for every sweep.
+- **A CSV slides while a photo is dragged across it.** The drop is remapped
+  after CDK's sort, so the CSV snaps back to its row only on the drop. CDK's
+  drop list offers no sort that skips rows, and a list of photos apart from
+  the other files would give up the order the files were picked in.
+- **The receipt-or-statement chips stay unscored.** axe leaves them
+  `incomplete` for overlapping backgrounds, for a cause not found, and no
+  painted case reads their labels.
+- **Heading order is held on the upload step alone.** axe's `heading-order`
+  is best practice, outside the pass every sweep runs, and only the wizard's
+  two upload-step cases run it, so the weekly recap's `h3` title and the
+  Data page's receipt-images `h3` are unchecked.
+- **Other sweeps may stand below Karma's body.** Only the wizard's three
+  sweeps of its steps (empty, photos picked, the review step), its
+  *colours, as painted* cases and the Goals hint's case call
+  `standOnThePage`; any other sweep of a fixture taller than 413px with no
+  fill of its own may leave its lower text unscored and read clean.
+- **Two older cases read contrast from a pass over a whole card.** The About
+  card's sweep and the review card's *scores the card's contrast rather than
+  skipping it* expect `color-contrast` among the passes of one pass over the
+  card or the whole table, which one node can hold;
+  `expectEachContrastScored` over the parts' words would close them.
+- **Sixteen specs still define their own `expectPainted`, and 23 their own
+  `tokenValue`**, beside the shared ones in `painted-contrast.ts`. New cases
+  use the shared ones; the old fold onto them spec by spec.
 - **Material's own announcements bypass the queue.** A closed single
   `mat-select` whose value an arrow key or typeahead moves calls the CDK
   `LiveAnnouncer` itself with the option's text. The CDK begins every
@@ -1079,6 +1651,105 @@ items into each state it measures.
   not its sentence. A tab stop inside the segment would nest a focusable
   element in a button
   ([ADR 0185](ADR/0185-a-refund-is-asked-about-at-every-door-and-a-category-follows-its-rows-side-there-and-back.md)).
+- **No gate reads what a dialog's title holds.** `aria-labelledby` takes
+  every word under the element it names, so a control inside a
+  `mat-dialog-title` puts its name on the end of the dialog's. The shared
+  header is held by its spec, and the three titles written by hand (the
+  confirm, the currency code, the AI search) hold only words and at most an
+  `aria-hidden` glyph. An `icon-labels:check` rule that fails a control
+  inside `mat-dialog-title` would close it.
+- **The confirm dialog is a `dialog`, not an `alertdialog`,** and its
+  message is not wired as its description. Twenty-eight call sites open it,
+  and no shared opener sets either once.
+- **Most dialog specs run Material's options, not the app's.** Only
+  `dialog.config.spec.ts`, `dialog-header.component.spec.ts` and
+  `transaction-list.component.spec.ts`'s *focus after a dialog a row menu
+  opened (real template)* provide `provideAppDialogs()`; a dialog any other
+  spec opens traps focus only once its entrance ends, where the app's does
+  as it renders, and leaves focus on the page once a menu's entry that
+  opened it has gone, where the app's gives it to the menu's button.
+- **A menu's entry that opens no dialog, or a row that leaves, still drops
+  focus.** The return to a menu's button is the dialogs' rule alone. The
+  transaction filters' *Custom* menu and the period selector open a
+  datepicker from an entry, and the picker gives focus back to that entry,
+  which has left with its menu. A confirmed Delete gives focus to the row's
+  menu button, which then leaves with the row. A dialog closed before its
+  menu has left the page, a submenu's entry and `restoreFocus: false` are
+  outside the rule; the app has none of the three. These were read, not
+  driven.
+- **A tooltip is held to its control's name on the review card alone.**
+  Nothing compares the two anywhere else. The receipt manager's image
+  controls keep their short words as a tooltip (*Remove image* on *Remove
+  image 2 of {description}*), which the CDK reads after the name as a
+  description.
+- **A suggestion's remove pressed from the keyboard still drops focus.** The
+  remove asks Firestore to delete the saved or recent search, and its row
+  goes when the listener reports the delete, after the press has been
+  handled, so nothing is there yet to hand focus on to and it drops to the
+  page with the row.
+- **Material's touch target is held to its button in a few places only.**
+  An icon button's 48px touch target reaches 4px past its 40px box on every
+  side, over any control that close, so a tap near one button's edge can
+  press the one beside it: in the filter panel, each suggestion's remove
+  reached up over the bottom of the remove above it, and a tap there removed
+  the wrong search. The suggestion removes, the household overview's *Count
+  toward…* button and the household plans' edit and delete buttons set
+  `--mat-icon-button-touch-target-size: 40px`, and the header's shortcuts
+  hint takes its dismiss's target away. No other row or scroll container
+  that holds an icon button has been checked for it
+  ([ui-overflow.md](ui-overflow.md#g4--nothing-is-clipped-that-cannot-be-reached-another-way)).
+- **Focus after a pick in the upload area.** A pick made through a focused
+  Browse takes Browse away with the empty zone, and nothing on the pick
+  path asks for focus, so it drops to the page. On WebKit a tap focuses no
+  button, so a tap's remove now puts focus, and Material's focus layer, on
+  the next remove, as a tap on an arrow already did.
+- **A hand-off made outside `import-focus.ts`'s `focusWhenRendered` passes a
+  held key on.** Only that helper (`features/ai/import/import-focus.ts`)
+  drops the repeats of a key held across the move. The household's own
+  `focusWhenRendered`, the private copies four components keep (the
+  dashboard layout settings, a split's parts, the receipt viewer and the
+  note translation lens), and the focus calls the dashboard, its card menu,
+  the transactions page and the list make for themselves let each repeat
+  press the control focus lands on: a held Enter on a dashboard card menu's
+  entry can reopen the menu on its button and press its first entry again.
+  These were read, not driven.
+- **A keyboard-focused Material icon button shows only Material's focus
+  layer.** Material clears its icon buttons' outline, so the app's ring
+  does not reach them, and a focused one is marked by its 12% state layer
+  alone wherever no rule of its own rings it, across the app (the third
+  browser run read it in the filter panel).
+- **The filter panel's two text boxes are named by their placeholders
+  alone,** *Search transactions...* and *Name this search...*, which axe and
+  Chromium both take as a text input's name; a label in other words would
+  break the match between the name and the visible text, and an
+  `aria-label` in the same words would change no name. The save-search box
+  opens holding the query as the search's name, selected, so its
+  placeholder, the only words that say what the box is for, shows only once
+  the box is emptied; a visible label, such as an outlined field's floating
+  one, would show it while the box holds a name, a layout change of its own.
+- **No gate fails an `outline: none` with nothing in its place.** A check
+  that the same selector has a `:focus-visible` rule or an `a11y.frame-ring`
+  include would prove a ring is written, not that it paints, since a
+  selector that outranks it passes too. The tree holds three such
+  declarations besides the mixin's own, each paired: the filter panel's two
+  boxes, through the ring round their pills, which *the two text boxes'
+  ring* reads from the CSSOM, and the review card's notes field, with a
+  `:focus-visible` rule of its own that no spec reads.
+- **Two of the review card's buttons are not named by the words they
+  show.** *Split* in tc shows 分割 and is named 將「{description}」分成兩列, and
+  *Merge into…* in en is named *Merge {description} into another row*: the
+  shown words are not in the name (WCAG 2.5.3). No gate reads it: axe's
+  `label-content-name-mismatch` is experimental and outside the `wcag2a`
+  and `wcag2aa` runs, and Karma serves no fonts, so it would read an icon's
+  ligature as shown text. A card walk that holds each button's shown words,
+  hidden glyphs left out, inside its name in every language would close it.
+- **What the quoting gate cannot follow.** tc quotes a description through
+  `common.quotedName`, but for the seven keys `translation-keys.spec.ts`
+  lists, each with why its caller never hands it a stand-in; any other key
+  that quotes `{{description}}` itself, in any catalog, fails. Nothing
+  checks that reason once it is written, a listed key handed the quoted name
+  would read 「「…」」, and a slot under another name is not read
+  ([i18n.md](i18n.md#a-transaction-with-no-description)).
 - **RTL layout is groundwork only** (#86). Direction follows the locale and the
   physical CSS that remains is frozen per file, but no right-to-left locale
   ships and 97 hits are still unconverted (#445) — see [rtl.md](rtl.md).
