@@ -19,6 +19,7 @@ import {
   hoverValue,
   paintedBackground,
   paintedColor,
+  pressKey,
   provideNoMotion,
   ratio,
   settleAnimations,
@@ -604,19 +605,23 @@ describe('FileDropzoneComponent, through its own template', () => {
   /** The up and down arrows of the row at `row`, in that order. */
   const arrows = (row: number) =>
     Array.from(all('.file-item')[row]?.querySelectorAll<HTMLButtonElement>('.reorder-btn') ?? []);
+  const focusedName = () =>
+    document.activeElement instanceof HTMLButtonElement ? accessibleName(document.activeElement) : null;
 
   /**
-   * The key as the browser delivers it to a focused button: its keydown
-   * bubbles out through the zone first, and the button then presses itself
-   * (on Enter's keypress, on Space's keyup) unless something on the way
-   * cancelled that keydown. A synthetic keydown presses nothing, so the
-   * press is the button's own click.
+   * Enter on a focused button, or with `key` absent a pointer click, which
+   * focuses a button before it presses too; then the render the press asks
+   * for and its render hooks, where a focus request lands.
    */
-  function press(button: HTMLElement, key: 'Enter' | ' '): KeyboardEvent {
-    const keydown = new KeyboardEvent('keydown', { key, bubbles: true, cancelable: true });
-    button.dispatchEvent(keydown);
-    if (!keydown.defaultPrevented) button.click();
-    return keydown;
+  function pressFocused(button: HTMLButtonElement | null | undefined, key?: 'Enter'): void {
+    expect(button).withContext('the button pressed').toBeTruthy();
+    if (!button) return;
+    button.focus();
+    expect(document.activeElement).withContext('the button, focused before the press').toBe(button);
+    if (key) pressKey(button, key);
+    else button.click();
+    fixture.detectChanges();
+    TestBed.tick();
   }
 
   beforeEach(async () => {
@@ -701,7 +706,7 @@ describe('FileDropzoneComponent, through its own template', () => {
     // The zone's own keydown handler opened the picker, and then Browse's
     // press opened it again: one Enter, two requests.
     it('opens the picker once for Enter', () => {
-      const keydown = press(browse, 'Enter');
+      const keydown = pressKey(browse, 'Enter');
       expect(picker).withContext('picker requests').toHaveBeenCalledTimes(1);
       expect(keydown.defaultPrevented).withContext('the key left to Browse').toBeFalse();
     });
@@ -709,7 +714,7 @@ describe('FileDropzoneComponent, through its own template', () => {
     // The zone cancelled Space on its way out and opened the picker itself,
     // so Browse never pressed: the key was the zone's, not the button's.
     it('opens the picker once for Space, through Browse\'s own press', () => {
-      const keydown = press(browse, ' ');
+      const keydown = pressKey(browse, ' ');
       expect(picker).withContext('picker requests').toHaveBeenCalledTimes(1);
       expect(keydown.defaultPrevented).withContext('the key left to Browse').toBeFalse();
     });
@@ -1112,30 +1117,11 @@ describe('FileDropzoneComponent, through its own template', () => {
   // ends at an end. Focus stays with the moved photo: on the arrow pressed
   // while the photo can still go that way, on its other arrow once it cannot.
   describe('focus after a photo moves', () => {
-    /**
-     * Enter on a focused arrow, then the render the move asks for and its
-     * render hooks. A pointer click on a button focuses it before it presses
-     * too, so `key` absent is that click.
-     */
-    function move(arrow: HTMLButtonElement | undefined, key?: 'Enter'): void {
-      expect(arrow).withContext('the arrow pressed').toBeDefined();
-      if (!arrow) return;
-      arrow.focus();
-      expect(document.activeElement).withContext('the arrow, focused before the press').toBe(arrow);
-      if (key) press(arrow, key);
-      else arrow.click();
-      fixture.detectChanges();
-      TestBed.tick();
-    }
-
-    const focusedName = () =>
-      document.activeElement instanceof HTMLButtonElement ? accessibleName(document.activeElement) : null;
-
     it('hands focus to Move up when Enter moves a photo to the last place', () => {
       fixture.detectChanges();
       dropFiles([imageFile('first.png'), imageFile('second.png')]);
 
-      move(arrows(0)[1], 'Enter');
+      pressFocused(arrows(0)[1], 'Enter');
 
       expect(rowNames()).withContext('the rows, first moved down').toEqual(['second.png', 'first.png']);
       const [up, down] = arrows(1);
@@ -1149,7 +1135,7 @@ describe('FileDropzoneComponent, through its own template', () => {
       fixture.detectChanges();
       dropFiles([imageFile('first.png'), imageFile('second.png')]);
 
-      move(arrows(1)[0], 'Enter');
+      pressFocused(arrows(1)[0], 'Enter');
 
       expect(rowNames()).withContext('the rows, second moved up').toEqual(['second.png', 'first.png']);
       const [up, down] = arrows(0);
@@ -1164,7 +1150,7 @@ describe('FileDropzoneComponent, through its own template', () => {
       fixture.detectChanges();
       dropFiles([imageFile('a.png'), imageFile('b.png'), imageFile('c.png')]);
 
-      move(arrows(0)[1], 'Enter');
+      pressFocused(arrows(0)[1], 'Enter');
 
       expect(rowNames()).withContext('the rows, a moved down').toEqual(['b.png', 'a.png', 'c.png']);
       const [, down] = arrows(1);
@@ -1181,7 +1167,7 @@ describe('FileDropzoneComponent, through its own template', () => {
       fixture.detectChanges();
       dropFiles([imageFile('a.png'), imageFile('b.png'), imageFile('c.png')]);
 
-      move(arrows(2)[0], 'Enter');
+      pressFocused(arrows(2)[0], 'Enter');
 
       expect(rowNames()).withContext('the rows, c moved up').toEqual(['a.png', 'c.png', 'b.png']);
       const [up] = arrows(1);
@@ -1197,7 +1183,7 @@ describe('FileDropzoneComponent, through its own template', () => {
       fixture.detectChanges();
       dropFiles([imageFile('a.png'), csvFile(), imageFile('b.png')]);
 
-      move(arrows(2)[0]);
+      pressFocused(arrows(2)[0]);
 
       expect(rowNames()).withContext('the rows, b moved up').toEqual(['b.png', 'rows.csv', 'a.png']);
       const [up, down] = arrows(0);
@@ -1205,6 +1191,114 @@ describe('FileDropzoneComponent, through its own template', () => {
       expect(document.activeElement).withContext('focus, on the moved photo\'s down arrow').toBe(down ?? null);
       expect(focusedName()).withContext('the focused control\'s name')
         .toBe('import.movePhotoDownLabel:{"position":1,"name":"b.png"}');
+    });
+
+    // A held Enter's repeats reach the arrow focus landed on, and a photo at
+    // an end hands focus to its other arrow: each repeat sent it back the
+    // way it came, to one end and back for as long as the key was held.
+    it('moves a photo one place for an Enter held down on its arrow', () => {
+      fixture.detectChanges();
+      dropFiles([imageFile('first.png'), imageFile('second.png')]);
+
+      pressFocused(arrows(1)[0], 'Enter');
+      expect(rowNames()).withContext('the rows, second moved up').toEqual(['second.png', 'first.png']);
+
+      for (const n of [1, 2, 3]) {
+        const repeat = pressKey(document.activeElement!, 'Enter', { repeat: true });
+        fixture.detectChanges();
+        TestBed.tick();
+        expect(repeat.defaultPrevented).withContext(`repeat ${n}, cancelled`).toBeTrue();
+        expect(rowNames()).withContext(`the rows, after repeat ${n}`).toEqual(['second.png', 'first.png']);
+      }
+      expect(focusedName()).withContext('the focused control\'s name')
+        .toBe('import.movePhotoDownLabel:{"position":1,"name":"second.png"}');
+    });
+  });
+
+  // The remove pressed goes with its row, and a focused button taken out of
+  // the page drops focus to the page itself; the last file's remove takes the
+  // whole list with it. Focus goes on to the remove of the row that takes the
+  // removed one's place, else of the row before it, and to Browse, back with
+  // the empty zone, once nothing is left.
+  describe('focus after a row is removed', () => {
+    /** The remove button of the row at `row`, or null once there is no such row. */
+    const removeOf = (row: number) =>
+      all('.file-item')[row]?.querySelector<HTMLButtonElement>('.remove-btn') ?? null;
+
+    it('hands focus to the next row\'s remove when Enter removes a row between two', () => {
+      fixture.detectChanges();
+      dropFiles([imageFile('a.png'), imageFile('b.png'), imageFile('c.png')]);
+
+      pressFocused(removeOf(1), 'Enter');
+
+      expect(rowNames()).withContext('the rows, b removed').toEqual(['a.png', 'c.png']);
+      expect(document.activeElement).withContext('focus, on c\'s remove, in b\'s place').toBe(removeOf(1));
+      expect(focusedName()).withContext('the focused control\'s name')
+        .toBe('import.removePhotoLabel:{"position":2,"name":"c.png"}');
+    });
+
+    // A click moves focus as Enter does, as a click on an arrow does. With
+    // two photos down to one the arrows go, so the row before is reached by
+    // its remove, the one control every row keeps.
+    it('hands focus to the row before when a click removes the last row', () => {
+      fixture.detectChanges();
+      dropFiles([imageFile('a.png'), csvFile(), imageFile('b.png')]);
+
+      pressFocused(removeOf(2));
+
+      expect(rowNames()).withContext('the rows, b removed').toEqual(['a.png', 'rows.csv']);
+      expect(el().querySelector('.reorder-controls')).withContext('one photo left, no arrows').toBeNull();
+      expect(document.activeElement).withContext('focus, on the CSV\'s remove, the row before').toBe(removeOf(1));
+      expect(focusedName()).withContext('the focused control\'s name')
+        .toBe('import.removeFileLabel:{"position":1,"name":"rows.csv"}');
+    });
+
+    it('hands focus to Browse when Enter removes the only file', () => {
+      fixture.detectChanges();
+      dropFiles([csvFile()]);
+
+      pressFocused(removeOf(0), 'Enter');
+
+      expect(all('.file-item').length).withContext('the rows left').toBe(0);
+      const browse = el().querySelector<HTMLButtonElement>('.browse-btn');
+      expect(browse).withContext('Browse, back with the empty zone').not.toBeNull();
+      expect(document.activeElement).withContext('focus, on Browse').toBe(browse);
+      expect(focusedName()).withContext('the focused control\'s name').toBe('import.browseFiles');
+    });
+
+    // A held Enter's repeats reach the remove focus landed on: each removed
+    // the next file, down to Browse, and the next repeat opened the picker.
+    it('removes one file for an Enter held down on a remove', () => {
+      fixture.detectChanges();
+      dropFiles([imageFile('a.png'), imageFile('b.png'), imageFile('c.png')]);
+      const picker = spyOn(fileInput(), 'click');
+
+      pressFocused(removeOf(0), 'Enter');
+      expect(rowNames()).withContext('the rows, a removed').toEqual(['b.png', 'c.png']);
+
+      for (const n of [1, 2, 3]) {
+        const repeat = pressKey(document.activeElement!, 'Enter', { repeat: true });
+        fixture.detectChanges();
+        TestBed.tick();
+        expect(repeat.defaultPrevented).withContext(`repeat ${n}, cancelled`).toBeTrue();
+        expect(rowNames()).withContext(`the rows, after repeat ${n}`).toEqual(['b.png', 'c.png']);
+      }
+      expect(picker).withContext('the picker').not.toHaveBeenCalled();
+      expect(document.activeElement).withContext('focus, on b\'s remove').toBe(removeOf(0));
+    });
+
+    // A pin. Mutation: the held key's guard never lets go, so it cancels a
+    // fresh Enter as it does a repeat.
+    it('removes the next file on a fresh Enter once the held one is let go (pin)', () => {
+      fixture.detectChanges();
+      dropFiles([imageFile('a.png'), imageFile('b.png'), imageFile('c.png')]);
+
+      pressFocused(removeOf(0), 'Enter');
+      document.activeElement!.dispatchEvent(new KeyboardEvent('keyup', { key: 'Enter', bubbles: true }));
+      pressFocused(removeOf(0), 'Enter');
+
+      expect(rowNames()).withContext('the rows, a and then b removed').toEqual(['c.png']);
+      expect(document.activeElement).withContext('focus, on c\'s remove').toBe(removeOf(0));
     });
   });
 
