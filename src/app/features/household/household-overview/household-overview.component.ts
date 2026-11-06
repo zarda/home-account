@@ -26,6 +26,7 @@ import { PwaService } from '../../../core/services/pwa.service';
 import { TranslationService } from '../../../core/services/translation.service';
 import { pinLeadingMinus, snapDisplayZero } from '../../../core/utils/money-display.utils';
 import { DateWindow, clampWindowToNow } from '../../../core/utils/transaction-date.utils';
+import { transactionDisplayName } from '../../../core/utils/transaction-display.utils';
 import {
   Category,
   HouseholdMemberIdentity,
@@ -373,6 +374,17 @@ export class HouseholdOverviewComponent {
       return;
     }
     this.handFocusOn(this.allRows()[firstRevealed]?.key);
+  }
+
+  /**
+   * The row the goal button counts, as its name says it: its description
+   * trimmed, or the catalog's words for an untitled transaction, through the
+   * rule every control that names its transaction reads (ADR 0171). The
+   * template calls it, and the service's t reads its catalog signal, so the
+   * name follows a language switch made while the page is open.
+   */
+  protected transactionName(transaction: Transaction): string {
+    return transactionDisplayName(transaction.description, key => this.translation.t(key));
   }
 
   /**

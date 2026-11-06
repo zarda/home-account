@@ -123,14 +123,15 @@
                 >
                   @if (view.own && goalChoices().length > 0) {
                     <!-- In the row's menu corner. Every row has one, so its
-                         name says which row it counts. -->
+                         name says which row it counts, by the name the
+                         transaction list gives it. -->
                     <button
                       mat-icon-button
                       type="button"
                       class="row-goal-btn"
                       [matMenuTriggerFor]="goalMenu"
                       [matMenuTriggerData]="{ view }"
-                      [attr.aria-label]="'household.overview.countToward' | translate: { name: view.transaction.description }"
+                      [attr.aria-label]="'household.overview.countToward' | translate: { name: transactionName(view.transaction) }"
                     >
                       <mat-icon>flag</mat-icon>
                     </button>
