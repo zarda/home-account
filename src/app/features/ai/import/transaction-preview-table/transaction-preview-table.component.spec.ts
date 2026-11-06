@@ -35,6 +35,7 @@ import {
   paintedBackground,
   paintedColor,
   placeholderWidthPx,
+  pressKey,
   ratio,
   runAxe,
   settleAnimations,
@@ -2420,6 +2421,31 @@ describe('TransactionPreviewTableComponent, the offer chip through its own templ
       type('amount', '99', 'Escape');
       fixture.detectChanges();
       expect(document.activeElement).withContext('after a cancel').toBe(trigger('amount'));
+    });
+
+    // A held Enter's repeats go to the input the press opened, whose Enter
+    // closes it and hands focus back to the trigger, and the next repeat
+    // pressed the trigger: the editor opened and closed for as long as the
+    // key was held.
+    it('opens the editor once for an Enter held down on its trigger, and keeps it open', () => {
+      render(makeRow());
+      const emitted = emissions();
+      const open = trigger('description');
+      open.focus();
+
+      pressKey(open, 'Enter');
+      fixture.detectChanges();
+      TestBed.tick();
+      expect(document.activeElement).withContext('focus, in the editor the press opened').toBe(input('description'));
+
+      for (const n of [1, 2, 3]) {
+        const repeat = pressKey(document.activeElement!, 'Enter', { repeat: true });
+        fixture.detectChanges();
+        TestBed.tick();
+        expect(repeat.defaultPrevented).withContext(`repeat ${n}, cancelled`).toBeTrue();
+        expect(input('description')).withContext(`the editor, after repeat ${n}`).not.toBeNull();
+      }
+      expect(emitted.length).withContext('rows emitted').toBe(0);
     });
 
     it('holds the amount editor open and says why when the figure cannot be read', () => {
