@@ -19,7 +19,7 @@ import { LocaleFormatService } from '../../../../core/services/locale-format.ser
 import { NotificationService } from '../../../../core/services/notification.service';
 import { AnnouncerService } from '../../../../core/services/announcer.service';
 import { toCreateTransactionDTO } from '../../../../core/utils/import-dto.utils';
-import { blankImportRow, needsDateAnswer } from '../../../../core/utils/import-review.utils';
+import { blankImportRow, joinSentences, needsDateAnswer } from '../../../../core/utils/import-review.utils';
 import { UNRESOLVED_CATEGORY_CONFIDENCE } from '../../../../core/utils/categorization.utils';
 import { createCategory } from '../../../../core/services/testing/test-data';
 import {
@@ -3305,6 +3305,57 @@ describe('TransactionPreviewTableComponent, the offer chip through its own templ
         expect(repeated)
           .withContext("a tooltip that is not its control's whole name, or a description read after the name")
           .toEqual([]);
+      });
+    }
+  });
+
+  /**
+   * A speech-input user says what a control shows (WCAG 2.5.3). The two
+   * chips that ask show their question on the accept half, so each name
+   * opens with it, then says why the row is asked, which the chip does not;
+   * the tooltip stays the whole name, so nothing is read twice. The value
+   * triggers beside them (the date chip, the currency chip) keep their mark
+   * first and their value inside the action.
+   */
+  describe('a chip that asks is named first by the words it shows', () => {
+    for (const l of ['en', 'ja', 'tc'] as const) {
+      it(`opens the keep and offer names with the chip's words, then its reason, in ${l}`, async () => {
+        const words = catalogTranslator(l, { strict: true });
+        spyOn(TestBed.inject(TranslationService), 't').and.callFake(catalogTranslator(l));
+        const date = TestBed.inject(LocaleFormatService).formatDate(new Date('2024-01-15'));
+        component.transactions = [
+          makeRow({ id: 'assumed', dateAssumed: true }),
+          makeRow({ id: 'old' }),
+          makeRow({ id: 'doubted', fieldConfidence: { date: 0.2 } }),
+          makeRow({ id: 'offer', currencySuggestion: { code: 'KRW', country: 'KR', reason: 'receipt' } }),
+          makeRow({ id: 'session', currencySuggestion: { code: 'THB', reason: 'session' } }),
+        ];
+        component.categories = [];
+        component.dateAttentionIds = new Set(['old', 'doubted']);
+        fixture.detectChanges();
+        await settleDescriptions();
+
+        const asked = [
+          ['assumed', '.date-check', words('import.dateAssumedTooltip')],
+          ['old', '.date-check', words('import.dateNotTodayTooltip', { date })],
+          ['doubted', '.date-check', words('import.verifyDate', { percent: 20 })],
+          ['offer', '.currency-offer', words('import.currencyReasonReceipt')],
+          ['session', '.currency-offer', words('import.currencyReasonSession')],
+        ] as const;
+        for (const [id, chip, reason] of asked) {
+          const accept = fixture.nativeElement
+            .querySelector(`[data-row-id="${id}"] ${chip} .extra-accept`) as HTMLElement | null;
+          expect(accept).withContext(`${id}: the chip asks`).not.toBeNull();
+          if (!accept) continue;
+          const shown = accept.querySelector('.extra-text')?.textContent?.trim() ?? '';
+          const name = accessibleName(accept);
+          expect(shown).withContext(`${id}: the chip shows its question`).not.toBe('');
+          expect(name.startsWith(shown)).withContext(`${id}: "${name}" opens with "${shown}"`).toBeTrue();
+          expect(name).withContext(`${id}: then the reason, whole`).toBe(joinSentences(words, shown, reason));
+          expect(name).withContext(`${id}: no stop after the question's mark`).not.toMatch(/[?？]\s*[.。]/);
+          expect(tooltipOn(accept).message).withContext(`${id}: the tooltip is the whole name`).toBe(name);
+          expect(accessibleDescription(accept)).withContext(`${id}: nothing the name read is read again`).toBe('');
+        }
       });
     }
   });

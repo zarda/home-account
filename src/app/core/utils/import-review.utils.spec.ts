@@ -547,6 +547,22 @@ describe('import-review.utils', () => {
     it('leaves a lone leading sentence exactly as it is', () => {
       expect(joinSentences(en, 'Dated another day.', '')).toBe('Dated another day.');
     });
+
+    it('keeps a question\'s own mark, and adds only the space the reader\'s stop leaves', () => {
+      // The review card's keep-date and offer buttons open their names with
+      // the question their chips show; a stop after its mark read "keep it?. This".
+      expect(joinSentences(en, 'Dated Jan 15, 2026 — keep it?', 'This receipt is dated Jan 15, 2026, not today.'))
+        .toBe('Dated Jan 15, 2026 — keep it? This receipt is dated Jan 15, 2026, not today.');
+    });
+
+    it('joins a ja or tc question ending in ？ with nothing after its mark', () => {
+      // ja and tc put no space after a sentence, so after the question's own
+      // mark the reader's stop leaves nothing to add.
+      expect(joinSentences(ja, '日付は 2026年1月15日 です — このままにしますか？', 'このレシートの日付は今日ではありません。'))
+        .toBe('日付は 2026年1月15日 です — このままにしますか？このレシートの日付は今日ではありません。');
+      expect(joinSentences(catalogTranslator('tc'), '要改用 KRW 嗎？ ', '從收據上讀到的'))
+        .toBe('要改用 KRW 嗎？從收據上讀到的');
+    });
   });
 
   describe('parseAmountInput', () => {
