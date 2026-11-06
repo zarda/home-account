@@ -889,19 +889,16 @@ export class TransactionPreviewTableComponent implements AfterViewInit {
   }
 
   /**
-   * The accept button's name says what it does and why; the visible text
-   * alone says neither fully. Its tooltip shows this whole name: MatTooltip
-   * has the CDK describe its host by any message that is not the host's
-   * whole aria-label, so a tooltip of the reason alone was read again after
-   * the name.
+   * The accept button's name opens with the question its chip shows, so a
+   * speech-input user who says the words they see reaches it (WCAG 2.5.3),
+   * and then gives the reason, which the chip does not show — the form's
+   * own offer is named by the same two strings, its text. Its tooltip shows
+   * this whole name: MatTooltip has the CDK describe its host by any
+   * message that is not the host's whole aria-label, so a tooltip of the
+   * reason alone was read again after the name.
    */
   currencyOfferLabel(row: CategorizedImportTransaction): string {
-    const code = row.currencySuggestion?.code ?? '';
-    return joinSentences(
-      this.t,
-      this.translationService.t('import.acceptCurrencySuggestion', { currency: code }),
-      this.currencyOfferReason(row)
-    );
+    return joinSentences(this.t, this.currencyOfferText(row), this.currencyOfferReason(row));
   }
 
   private reasonLabel(reason: CurrencySuggestionReason): string {
@@ -1064,16 +1061,14 @@ export class TransactionPreviewTableComponent implements AfterViewInit {
   }
 
   /**
-   * The keep button's name says why the row is asked and what it keeps; the
-   * visible text says neither fully. Its tooltip shows this whole name, as
-   * currencyOfferLabel's does, so a screen reader reads the reason once.
+   * The keep button's name opens with the question its chip shows, so a
+   * speech-input user who says the words they see reaches it (WCAG 2.5.3),
+   * and then says why the row is asked, which the chip does not. Its
+   * tooltip shows this whole name, as currencyOfferLabel's does, so a
+   * screen reader reads the reason once.
    */
   keepDateLabel(row: CategorizedImportTransaction): string {
-    return joinSentences(
-      this.t,
-      this.dateTooltip(row),
-      this.translationService.t('import.keepDate', { date: this.formattedDate(row) })
-    );
+    return joinSentences(this.t, this.dateChipText(row), this.dateTooltip(row));
   }
 
   /**

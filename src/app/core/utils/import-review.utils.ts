@@ -368,6 +368,12 @@ export function fieldDoubtSentence(
  * nobody doubts has no reason to lead with, a round that lost no photo has no
  * photo sentence — and an empty half adds nothing.
  *
+ * A lead that asks keeps its own mark — "?" in en, "？" in ja and tc — and
+ * the join adds only what the reader's stop leaves after its own: a space
+ * in en, nothing in ja and tc. The review card's keep-date and offer
+ * buttons open their names with the question their chips show, which a
+ * stop after the mark would read "keep it?. This receipt" or "か？。この".
+ *
  * `t` is the caller's translator, as `fieldDoubtSentence` takes it, so the
  * stop is the language the page is in when the line is written.
  *
@@ -375,8 +381,8 @@ export function fieldDoubtSentence(
  * already drifted apart. The callers:
  * - the review card's accessible names for five controls: the currency chip,
  *   the offered currency's accept button, the date chip, the keep-date button
- *   and the type toggle (the accept and keep-date buttons' tooltips are
- *   their names too);
+ *   and the type toggle (the accept and keep-date buttons' names open with
+ *   their chips' questions, and their tooltips are their names too);
  * - the transaction form's verify-field text, one string that is both the
  *   flag's tooltip and its accessible name, and its type segments' names;
  * - the import wizard's notice for a confirm round, visible text as well as
@@ -392,7 +398,8 @@ export function joinSentences(
 ): string {
   if (!lead) return next;
   if (!next) return lead;
-  return lead.replace(/\s*[.。]?\s*$/, '') + t('common.sentenceSeparator') + next;
+  const separator = t('common.sentenceSeparator');
+  return lead.replace(/\s*[.。]?\s*$/, '') + (/[?？]\s*$/.test(lead) ? separator.replace(/^[.。]/, '') : separator) + next;
 }
 
 /**

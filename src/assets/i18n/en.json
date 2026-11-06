@@ -1460,7 +1460,6 @@
     "dateNotTodayTooltip": "This receipt is dated {{date}}, not today. A wrong day files it where you will not see it — keep it, or pick another day.",
     "dateAssumedKeep": "Date set to today — keep it?",
     "dateNotTodayKeep": "Dated {{date}} — keep it?",
-    "keepDate": "Keep {{date}}",
     "changeDate": "Change date (currently {{date}}) — tap to pick another day",
     "dateReviewed": "Date checked",
     "datesToCheck": {
@@ -1485,7 +1484,6 @@
     "announceLocationRemoved": "Location removed from {{description}}",
     "currencyFromCountry": "Looks like {{country}} — use {{currency}}?",
     "currencySuggested": "Use {{currency}}?",
-    "acceptCurrencySuggestion": "Use {{currency}} for this row",
     "dismissCurrencySuggestion": "Dismiss the currency suggestion for {{description}}",
     "currencyReasonReceipt": "Read off the receipt",
     "currencyReasonSession": "What you chose for your last receipt",

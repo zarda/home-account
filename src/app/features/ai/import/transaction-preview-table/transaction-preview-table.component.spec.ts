@@ -19,7 +19,7 @@ import { LocaleFormatService } from '../../../../core/services/locale-format.ser
 import { NotificationService } from '../../../../core/services/notification.service';
 import { AnnouncerService } from '../../../../core/services/announcer.service';
 import { toCreateTransactionDTO } from '../../../../core/utils/import-dto.utils';
-import { blankImportRow, joinSentences, needsDateAnswer } from '../../../../core/utils/import-review.utils';
+import { blankImportRow, needsDateAnswer } from '../../../../core/utils/import-review.utils';
 import { UNRESOLVED_CATEGORY_CONFIDENCE } from '../../../../core/utils/categorization.utils';
 import { createCategory } from '../../../../core/services/testing/test-data';
 import {
@@ -665,23 +665,26 @@ describe('TransactionPreviewTableComponent', () => {
       expect(component.dateTooltip(row)).toBe('import.verifyDate:{"percent":30}');
     });
 
-    it('names the keep button by the reason and by the date it keeps', () => {
+    it('names the keep button by the question its chip shows, then by the reason', () => {
       const row = makeRow({ dateAssumed: true });
-      expect(component.keepDateLabel(row)).toBe(`import.dateAssumedTooltip. import.keepDate:{"date":"${formatted(row)}"}`);
+      expect(component.keepDateLabel(row)).toBe('import.dateAssumedKeep. import.dateAssumedTooltip');
       expect(component.dateChipText(row)).toBe('import.dateAssumedKeep');
     });
 
-    it('drops the reason\'s own stop before the join adds one', () => {
+    it('drops the reason\'s own stop before the join adds one, and adds none after a question', () => {
       // The three date tooltips are sentences with a terminator of their
       // own — "." in en, "。" in ja and tc — and the join puts the reader's
       // stop between the reason and the action, so a flagged row's name
       // would end its reason "here.. Change" or "。。日付". dateReviewed and
       // the percent wording carry no stop and keep the plain ". " join the
-      // cases above pin; the echoing stub returns bare keys, so these two are
-      // stood in for with real sentences, and the ja one with ja's own stop.
+      // cases above pin; the echoing stub returns bare keys, so these are
+      // stood in for with real sentences, and the ja ones with ja's own
+      // marks. The keep button's name opens with its chip's question, which
+      // keeps its own ？, and ja's stop leaves nothing to add after it.
       const sentences: Record<string, string> = {
         'import.dateAssumedTooltip': 'This row is dated today — keep it or change it here.',
         'import.dateNotTodayTooltip': 'このレシートの日付は今日ではありません。',
+        'import.dateNotTodayKeep': '日付は X です — このままにしますか？',
       };
       spyOn(TestBed.inject(TranslationService), 't').and.callFake(
         (key: string, params?: Record<string, string | number>) => sentences[key] ?? echoTranslation(key, params)
@@ -693,8 +696,12 @@ describe('TransactionPreviewTableComponent', () => {
       sentences['common.sentenceSeparator'] = '。';
       const receipt = makeRow({ id: 'receipt', date: new Date(2026, 5, 1) });
       component.dateAttentionIds = new Set(['receipt']);
+      expect(component.dateChipLabel(receipt))
+        .withContext('the date chip: the reason gives up its 。 before the join adds one')
+        .toBe(`このレシートの日付は今日ではありません。import.changeDate:{"date":"${formatted(receipt)}"}`);
       expect(component.keepDateLabel(receipt))
-        .toBe(`このレシートの日付は今日ではありません。import.keepDate:{"date":"${formatted(receipt)}"}`);
+        .withContext('the keep button: the question keeps its ？ and nothing follows it')
+        .toBe('日付は X です — このままにしますか？このレシートの日付は今日ではありません。');
     });
 
     it('asks a not-today row to keep the day it is dated, and flags its button', () => {
@@ -1226,7 +1233,8 @@ describe('TransactionPreviewTableComponent', () => {
       // (M7): a chip built here reads the same keys the form's own does.
       const row = makeRow({ currencySuggestion: offer });
       expect(component.currencyOfferText(row)).toBe('import.currencyFromCountry:{"country":"South Korea","currency":"KRW"}');
-      expect(component.currencyOfferLabel(row)).toBe('import.acceptCurrencySuggestion:{"currency":"KRW"}. import.currencyReasonReceipt');
+      expect(component.currencyOfferLabel(row))
+        .toBe('import.currencyFromCountry:{"country":"South Korea","currency":"KRW"}. import.currencyReasonReceipt');
       expect(component.currencyOfferText(makeRow({ currencySuggestion: { code: 'THB', reason: 'session' } })))
         .toBe('import.currencySuggested:{"currency":"THB"}');
       expect(component.currencyOfferReason(makeRow({ currencySuggestion: { code: 'THB', reason: 'session' } })))
@@ -1495,9 +1503,11 @@ describe('TransactionPreviewTableComponent, the offer chip through its own templ
 
   for (const l of ['en', 'ja'] as const) {
     it(`shows the offered currency's whole name as its tooltip, so a screen reader reads its reason once, in ${l}`, async () => {
-      // The name is what the press does, then why it is offered. A tooltip
-      // of the reason alone is not the whole name, so the CDK described the
-      // button by it, and the reason was read again after the name.
+      // The name is the question the chip shows, then why it is offered; the
+      // order is held under 'a chip that asks is named first by the words it
+      // shows'. A tooltip of the reason alone is not the whole name, so the
+      // CDK described the button by it, and the reason was read again after
+      // the name.
       const words = catalogTranslator(l, { strict: true });
       spyOn(TestBed.inject(TranslationService), 't').and.callFake(catalogTranslator(l));
       component.transactions = [makeRow({ currencySuggestion: { code: 'KRW', country: 'KR', reason: 'receipt' } })];
@@ -1508,13 +1518,9 @@ describe('TransactionPreviewTableComponent, the offer chip through its own templ
       const accept = fixture.nativeElement.querySelector('.currency-offer .extra-accept') as HTMLElement | null;
       expect(accept).withContext('the offer renders').not.toBeNull();
       if (!accept) return;
-      const name = joinSentences(
-        words,
-        words('import.acceptCurrencySuggestion', { currency: 'KRW' }),
-        words('import.currencyReasonReceipt'),
-      );
-      expect(accessibleName(accept)).withContext('the action, then the reason').toBe(name);
-      expect(tooltipOn(accept).message).withContext('a pointer or keyboard focus shows both').toBe(name);
+      const name = accessibleName(accept);
+      expect(name).withContext('the name says why it is offered').toContain(words('import.currencyReasonReceipt'));
+      expect(tooltipOn(accept).message).withContext('a pointer or keyboard focus shows the whole name').toBe(name);
       expect(accessibleDescription(accept)).withContext('nothing the name read is read again').toBe('');
     });
   }
@@ -1883,10 +1889,12 @@ describe('TransactionPreviewTableComponent, the offer chip through its own templ
       expect(questionChips().length).withContext('attention on: the not-today row is asked too').toBe(2);
     });
 
-    it('names the keep button and the date chip of a ja row dated another day with 。 between their sentences', () => {
-      // ja ends a sentence with 。 and puts no space after it. The not-today
-      // reason ends in its own 。, which the join gives up before adding the
-      // reader's, so the reason and the action read as two ja sentences.
+    it('names the keep button and the date chip of a ja row dated another day in ja\'s own marks: nothing after the keep\'s ？, one 。 after the date chip\'s reason', () => {
+      // ja ends a sentence with 。 and puts no space after it. The keep's
+      // question ends in its own ？, after which the join adds nothing. The
+      // date chip's not-today reason ends in its own 。, which the join gives
+      // up before adding the reader's, so the reason and the action read as
+      // two ja sentences.
       const ja = catalogTranslator('ja');
       spyOn(TestBed.inject(TranslationService), 't').and.callFake(ja);
       const row = makeRow({ id: 'old', date: yesterday() });
@@ -1897,18 +1905,20 @@ describe('TransactionPreviewTableComponent, the offer chip through its own templ
       const keep = fixture.nativeElement.querySelector('.extra-chip.date-check .extra-accept') as HTMLElement | null;
       expect(keep).withContext('the not-today row is asked').not.toBeNull();
       expect(keep?.getAttribute('aria-label')).not.toContain('. ');
-      expect(keep?.getAttribute('aria-label')).toBe(`${reason}${ja('import.keepDate', { date })}`);
+      expect(keep?.getAttribute('aria-label')).not.toContain('？。');
+      expect(keep?.getAttribute('aria-label')).toBe(`${ja('import.dateNotTodayKeep', { date })}${reason}`);
       expect(dateButton().getAttribute('aria-label')).not.toContain('. ');
       expect(dateButton().getAttribute('aria-label')).toBe(`${reason}${ja('import.changeDate', { date })}`);
     });
 
     for (const l of ['en', 'ja'] as const) {
       it(`shows the keep button's whole name as its tooltip, so a screen reader reads its reason once, in ${l}`, async () => {
-        // The name is why the row is asked, then the day Keep keeps. A
-        // tooltip of the reason alone is not the whole name, so the CDK
-        // described the button by it and the reason was read twice. Both
-        // reasons a row is asked: an assumed date, and a receipt dated
-        // another day, one long past so that no run straddles today.
+        // The name is the question the chip shows, then why the row is
+        // asked; the order is held under 'a chip that asks is named first by
+        // the words it shows'. A tooltip of the reason alone was read again
+        // after the name. Both reasons a row is asked: an assumed date, and
+        // a receipt dated another day, one long past so that no run
+        // straddles today.
         const words = catalogTranslator(l, { strict: true });
         spyOn(TestBed.inject(TranslationService), 't').and.callFake(catalogTranslator(l));
         const assumed = makeRow({ id: 'assumed', dateAssumed: true });
@@ -1925,9 +1935,9 @@ describe('TransactionPreviewTableComponent, the offer chip through its own templ
             .querySelector(`[data-row-id="${row.id}"] .date-check .extra-accept`) as HTMLElement | null;
           expect(keep).withContext(`${row.id}: the row is asked`).not.toBeNull();
           if (!keep) continue;
-          const name = joinSentences(words, reason, words('import.keepDate', { date: formatted(row) }));
-          expect(accessibleName(keep)).withContext(`${row.id}: the reason, then the day it keeps`).toBe(name);
-          expect(tooltipOn(keep).message).withContext(`${row.id}: a pointer or keyboard focus shows both`).toBe(name);
+          const name = accessibleName(keep);
+          expect(name).withContext(`${row.id}: the name says why the row is asked`).toContain(reason);
+          expect(tooltipOn(keep).message).withContext(`${row.id}: a pointer or keyboard focus shows the whole name`).toBe(name);
           expect(accessibleDescription(keep)).withContext(`${row.id}: nothing the name read is read again`).toBe('');
         }
       });
@@ -1939,14 +1949,14 @@ describe('TransactionPreviewTableComponent, the offer chip through its own templ
       expect(questionChips().length).toBe(1);
     });
 
-    it('renders the keep button with the reason and the keep wording in its name', () => {
+    it('renders the keep button with the words its chip shows and the reason in its name', () => {
       const row = makeRow({ dateAssumed: true });
       render([row]);
 
       const keep = fixture.nativeElement.querySelector('.extra-chip.date-check .extra-accept') as HTMLElement;
-      // Reason, then action: the name is more than the tooltip, so `toContain`.
+      // The chip's words, then the reason: two parts of one name, so `toContain` each.
       expect(keep.getAttribute('aria-label')).toContain(component.dateAssumedTooltip(row));
-      expect(keep.getAttribute('aria-label')).toContain('import.keepDate');
+      expect(keep.getAttribute('aria-label')).toContain('import.dateAssumedKeep');
     });
 
     it('an implausible row is asked with the implausible wording and wears no verify flag', () => {
