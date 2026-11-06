@@ -20,6 +20,7 @@ import {
   channels,
   chooseOption,
   contentWidthPx,
+  expectOneRule,
   hoverValue,
   paintedBackground,
   paintedColor,
@@ -1685,6 +1686,127 @@ describe('TransactionFiltersComponent', () => {
         }));
       }
     });
+  });
+
+  /**
+   * Each text box is a borderless input inside a pill, and its own
+   * outline: none outranked styles.scss's ring, so a focused box showed its
+   * caret alone. The pill is what a reader sees as the box, so the ring goes
+   * round it while its box has keyboard focus, inset, at the 2px of every
+   * other ring (3px under high contrast, which styles.scss widens by
+   * :focus-visible alone). The box's own ring is cleared, so one ring shows.
+   * The rules are read, as a scripted focus is no reliable :focus-visible.
+   */
+  describe("the two text boxes' ring (real template)", () => {
+    type Pill = 'search-wrapper' | 'save-search-row';
+    const BOX: Record<Pill, string> = { 'search-wrapper': 'search-input', 'save-search-row': 'save-label-input' };
+
+    /** The pill's ring while its box has keyboard focus, plain and under high contrast, and the box's own. */
+    function ringRules(pill: Pill): { plain: CSSStyleRule[]; wide: CSSStyleRule[]; own: CSSStyleRule[] } {
+      const box = BOX[pill];
+      const rules = styleRules()
+        .filter(({ media }) => media === null)
+        .map(({ rule }) => rule);
+      // The pill itself, its own attribute and then :has( at once: a ring
+      // on anything inside it goes round that instead. Angular scopes
+      // nothing inside :has(), so the box in it carries no attribute.
+      const ring = rules.filter(rule =>
+        new RegExp(`(?:^|[\\s,])\\.${pill}\\[_ngcontent-[^\\]]+\\]:has\\(\\.${box}(?:\\[_ngcontent-[^\\]]+\\])?:focus-visible\\)`)
+          .test(rule.selectorText));
+      return {
+        plain: ring.filter(rule => !rule.selectorText.includes('.high-contrast')),
+        wide: ring.filter(rule => rule.selectorText.includes('.high-contrast')),
+        own: rules.filter(rule => new RegExp(`^\\.${box}\\[_ngcontent-[^\\]]+\\]:focus-visible$`).test(rule.selectorText))
+      };
+    }
+
+    /**
+     * How far the pill's widest ring reaches past its edge, px: the ring under
+     * high contrast less its inset, and none while the inset is the deeper.
+     */
+    function ringReach(pill: Pill): number {
+      const { plain, wide } = ringRules(pill);
+      expectOneRule(plain);
+      expectOneRule(wide);
+      // The plain ring is a shorthand whose longhands the CSSOM leaves unread, and its width leads it.
+      const width = Math.max(parseFloat(plain[0]?.style.outline ?? ''), parseFloat(wide[0]?.style.outlineWidth ?? ''));
+      return Math.max(0, width + parseFloat(plain[0]?.style.outlineOffset ?? ''));
+    }
+
+    /** Renders, runs the render hooks a press asks for, lets each select take its value, and settles the labels' float. */
+    function render(): void {
+      fixture.detectChanges();
+      TestBed.tick();
+      flush();
+      fixture.detectChanges();
+      settleAnimations(document);
+    }
+
+    /**
+     * An outlined field floats a filled field's label onto its top border, so
+     * half the label stands above the filter grid's own box. The pill over
+     * the grid ends, its ring included, at or above every floated label's top,
+     * or its fill and its ring run through them.
+     */
+    function expectClearOfFloatedLabels(pill: Pill): void {
+      const host = fixture.nativeElement as HTMLElement;
+      const found = host.querySelector(`.filter-panel > .${pill}`);
+      expect(found).withContext(`the ${pill}`).not.toBeNull();
+      const edge = found!.getBoundingClientRect().bottom + ringReach(pill);
+      const labels = Array.from(host.querySelectorAll<HTMLElement>('.filter-grid .mdc-floating-label--float-above'));
+      // Type and Category read All, so theirs float.
+      expect(labels.length).withContext('floated labels in the grid').toBeGreaterThanOrEqual(2);
+      for (const label of labels) {
+        expect(edge)
+          .withContext(`the ${pill}'s lower edge and its ring's reach, px, against the top of the floated ${label.textContent?.trim()} label`)
+          .toBeLessThanOrEqual(label.getBoundingClientRect().top);
+      }
+    }
+
+    it("rings the search pill and the save-search pill while their box has keyboard focus, inset, 3px under high contrast, and clears each box's own ring", () => {
+      component.expanded.set(true);
+      fixture.detectChanges(); // the real template, its stylesheet in the document
+      for (const pill of ['search-wrapper', 'save-search-row'] as const) {
+        const box = BOX[pill];
+        const { plain, wide, own } = ringRules(pill);
+
+        expectOneRule(plain);
+        // A shorthand holding a var() leaves its longhands unread in the
+        // CSSOM, so the ring is read whole.
+        expect([plain[0]?.style.outline, plain[0]?.style.outlineOffset])
+          .withContext(`the ${pill} ring, then its offset`)
+          .toEqual(['2px solid var(--color-primary)', '-2px']);
+        expectOneRule(wide);
+        expect(wide[0]?.style.outlineWidth).withContext(`the ${pill} ring under high contrast`).toBe('3px');
+        expectOneRule(own);
+        expect(own[0]?.style.outlineStyle).withContext(`the ${box}'s own ring`).toBe('none');
+      }
+    });
+
+    // The two cases below read the labels' boxes, which are text, so each pins the runner's face.
+    it("ends the search pill, its ring included, above the filter grid's floated labels (pin)", fakeAsync(() => {
+      pinFieldFace();
+      component.expanded.set(true);
+      render();
+
+      expect((fixture.nativeElement as HTMLElement).querySelector('.save-search-row'))
+        .withContext('the save-search box, closed')
+        .toBeNull();
+      expectClearOfFloatedLabels('search-wrapper');
+    }));
+
+    it("ends the open save-search pill, its ring included, above the filter grid's floated labels", fakeAsync(() => {
+      pinFieldFace();
+      component.filters.searchQuery = 'utilities';
+      component.expanded.set(true);
+      render();
+      const bookmark = (fixture.nativeElement as HTMLElement).querySelector<HTMLButtonElement>('.save-search-button');
+      expect(bookmark).withContext('Save search, beside a query').not.toBeNull();
+      bookmark!.click();
+      render();
+
+      expectClearOfFloatedLabels('save-search-row');
+    }));
   });
 
   describe('output events', () => {
