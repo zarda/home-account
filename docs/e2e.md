@@ -2742,11 +2742,11 @@ the act of opening one.
 An edit to the date, amount, type or description sends that row back
 through the duplicate check, and so does a currency switch that moves the
 amount. A verdict of *Duplicate* deselects the row and the badge's × (*Not
-a duplicate — import it*) overrules it; a re-check that cannot reach
-history says so once, in a snackbar — *Couldn't re-check for duplicates —
-the earlier verdict stands.* Neither is guaranteed with a one-receipt
-fixture against a real account: they are what to recognise if they
-appear, not part of the pass.
+a duplicate — import* and the row's description) overrules it; a re-check
+that cannot reach history says so once, in a snackbar — *Couldn't re-check
+for duplicates — the earlier verdict stands.* Neither is guaranteed with a
+one-receipt fixture against a real account: they are what to recognise if
+they appear, not part of the pass.
 
 Leave by the review step's **Back**, then the wizard's own back arrow to
 Transactions. The processing step behind the review offers Continue and
