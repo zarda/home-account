@@ -7,7 +7,7 @@ import { MatDialog } from '@angular/material/dialog';
 import { MatTooltip } from '@angular/material/tooltip';
 import { Sort } from '@angular/material/sort';
 import { Timestamp } from '@angular/fire/firestore';
-import { of } from 'rxjs';
+import { firstValueFrom, of } from 'rxjs';
 import { TransactionListComponent } from './transaction-list.component';
 import { TransactionRowComponent } from '../../../shared/components/transaction-row/transaction-row.component';
 import { EmptyStateComponent } from '../../../shared/components/empty-state/empty-state.component';
@@ -30,15 +30,19 @@ import { AnalyticsService } from '../../../core/services/analytics.service';
 import { RowSharingService } from '../../../core/services/row-sharing.service';
 import { ShareDialogComponent, ShareDialogData } from '../sharing/share-dialog.component';
 import { MAX_BULK_SHARE, Transaction } from '../../../models';
+import { provideAppDialogs } from '../../../core/config/dialog.config';
 import {
   accessibleName,
   catalogTranslator,
+  closeEveryDialog,
   createTransaction,
+  createTranslationStub,
   createUser,
   echoTranslation,
   hoverValue,
   paintedBackground,
   paintedColor,
+  pressMenuEntry,
   provideNoMotion,
   ratio,
   runAxe,
@@ -1075,6 +1079,89 @@ describe('TransactionListComponent desktop receipt doors', () => {
 
     expect(editSpy).not.toHaveBeenCalled();
   });
+});
+
+/**
+ * Where focus goes once a dialog a row's menu opened has closed: back to that
+ * row's menu trigger, never to the document. The real MatDialog renders the
+ * confirm under the app's own dialog providers, so the container's restore
+ * runs as it does in the app, and the menu's entry has left the page by the
+ * time the confirm is cancelled. Two rows, so the trigger focus lands on is
+ * the one whose menu was opened, not merely the first on the page.
+ */
+describe('TransactionListComponent focus after a dialog a row menu opened (real template)', () => {
+  let fixture: ComponentFixture<TransactionListComponent>;
+
+  const txns: Transaction[] = [
+    createTransaction({ id: 'a', amount: 30, description: 'Banana' }),
+    createTransaction({ id: 'b', amount: 10, description: 'Apple' }),
+  ];
+
+  for (const [door, desktop, triggerSelector] of [
+    ['the desktop actions menu', true, '.action-btn'],
+    ["the phone's trailing menu", false, '.row-menu-btn'],
+  ] as const) {
+    describe(door, () => {
+      beforeEach(async () => {
+        const currency = jasmine.createSpyObj('CurrencyService', ['formatCurrency', 'amountInBase']);
+        currency.amountInBase.and.callFake(
+          (t: { amount: number; amountInBaseCurrency?: number }) => t.amountInBaseCurrency ?? t.amount
+        );
+        currency.formatCurrency.and.callFake((a: number, c: string) => `${c} ${a}`);
+        const dateFormat = jasmine.createSpyObj('DateFormatService', ['formatDate', 'formatRelativeDate']);
+        dateFormat.formatDate.and.returnValue('date');
+        dateFormat.formatRelativeDate.and.returnValue('rel');
+        const categoryHelper = jasmine.createSpyObj('CategoryHelperService', [
+          'getCategoryName', 'getCategoryIcon', 'getCategoryColor',
+        ]);
+        categoryHelper.getCategoryName.and.returnValue('Cat');
+        categoryHelper.getCategoryIcon.and.returnValue('icon');
+        categoryHelper.getCategoryColor.and.returnValue('#000');
+
+        await TestBed.configureTestingModule({
+          imports: [TransactionListComponent],
+          providers: [
+            { provide: TransactionWindowService, useValue: createMockWindowSource() },
+            { provide: BreakpointObserver, useValue: { observe: () => of({ matches: desktop, breakpoints: {} }) } },
+            { provide: CurrencyService, useValue: currency },
+            { provide: AuthService, useValue: { currentUser: signal(createUser()) } },
+            { provide: DateFormatService, useValue: dateFormat },
+            { provide: CategoryHelperService, useValue: categoryHelper },
+            { provide: TranslationService, useValue: createTranslationStub() },
+            { provide: QuickAddService, useValue: jasmine.createSpyObj('QuickAddService', ['openAddTransaction']) },
+            { provide: FirestoreService, useValue: NO_HOUSEHOLDS },
+            provideAppDialogs(),
+            provideNoMotion(),
+          ],
+        }).compileComponents();
+
+        fixture = TestBed.createComponent(TransactionListComponent);
+        fixture.componentRef.setInput('transactions', txns);
+        fixture.detectChanges();
+      });
+
+      afterEach(closeEveryDialog);
+
+      it("hands focus back to the row's menu trigger when its Delete confirm is cancelled", async () => {
+        const triggers = Array.from((fixture.nativeElement as HTMLElement).querySelectorAll<HTMLElement>(triggerSelector));
+        expect(triggers.length).withContext("each row's menu trigger").toBe(2);
+        const trigger = triggers[1];
+
+        const ref = await pressMenuEntry(fixture, trigger, '.menu-item-destructive');
+        const cancel = document.getElementById(ref.id)?.querySelector<HTMLElement>('mat-dialog-actions button');
+        expect(cancel?.textContent?.trim()).withContext("the confirm's Cancel").toBe('common.cancel');
+        const closed = firstValueFrom(ref.afterClosed());
+        cancel!.click();
+        TestBed.tick();
+
+        expect(await closed).withContext('cancelled').toBeFalse();
+        fixture.detectChanges();
+        expect(document.activeElement)
+          .withContext("focus, on the second row's menu trigger, not the first on the page")
+          .toBe(trigger);
+      });
+    });
+  }
 });
 
 /**

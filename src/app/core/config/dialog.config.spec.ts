@@ -1,15 +1,17 @@
-import { Component } from '@angular/core';
+import { Component, inject, signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import {
   MAT_DIALOG_DEFAULT_OPTIONS,
   MatDialog,
   MatDialogConfig,
   MatDialogContent,
+  MatDialogRef,
   MatDialogTitle,
 } from '@angular/material/dialog';
+import { MatMenuModule } from '@angular/material/menu';
 import { firstValueFrom } from 'rxjs';
 
-import { accessibleName, provideNoMotion } from '../services/testing';
+import { accessibleName, closeEveryDialog, pressMenuEntry, provideNoMotion } from '../services/testing';
 import { provideAppDialogs } from './dialog.config';
 
 @Component({
@@ -20,13 +22,52 @@ import { provideAppDialogs } from './dialog.config';
 })
 class DialogBodyComponent {}
 
-/** Closes every dialog still open and waits until each has left the page. */
-async function closeEveryDialog(): Promise<void> {
-  const dialog = TestBed.inject(MatDialog);
-  const closed = dialog.openDialogs.map(ref => firstValueFrom(ref.afterClosed()));
-  dialog.closeAll();
+/**
+ * A page with two menus, and a button outside either. The first menu is a
+ * decoy, there so that the trigger focus goes back to is the one whose menu
+ * was opened, not the page's first. The second menu's entries open the body,
+ * one of them told to return focus elsewhere. The button opens it too and
+ * leaves the page as it does, as a control a page swaps out would.
+ */
+@Component({
+  selector: 'app-dialog-config-menu-host',
+  imports: [MatMenuModule],
+  template: `<button type="button" class="decoy" [matMenuTriggerFor]="decoy">Sort</button>
+    <mat-menu #decoy="matMenu">
+      <button mat-menu-item type="button">By date</button>
+    </mat-menu>
+    <button type="button" class="opener" [matMenuTriggerFor]="menu">More</button>
+    <button #elsewhere type="button" class="elsewhere">Elsewhere</button>
+    <mat-menu #menu="matMenu">
+      <button mat-menu-item type="button" class="rename" (click)="open()">Rename</button>
+      <button mat-menu-item type="button" class="rename-elsewhere" (click)="open(elsewhere)">
+        Rename elsewhere
+      </button>
+    </mat-menu>
+    @if (!renamedOnce()) {
+      <button type="button" class="rename-once" (click)="openOnce()">Rename once</button>
+    }`,
+})
+class MenuHostComponent {
+  private readonly dialog = inject(MatDialog);
+  readonly renamedOnce = signal(false);
+
+  open(restoreFocus?: HTMLElement): void {
+    this.dialog.open(DialogBodyComponent, restoreFocus ? { restoreFocus } : {});
+  }
+
+  openOnce(): void {
+    this.open();
+    this.renamedOnce.set(true);
+  }
+}
+
+/** Closes one dialog and waits until it has left the page. */
+async function closeIt(ref: MatDialogRef<unknown>): Promise<void> {
+  const closed = firstValueFrom(ref.afterClosed());
+  ref.close();
   TestBed.tick();
-  await Promise.all(closed);
+  await closed;
 }
 
 // MatDialog.open spreads these options in place of `new MatDialogConfig()`,
@@ -89,6 +130,55 @@ describe("a dialog opened under provideAppDialogs (Material's container)", () =>
     expect(pane).withContext('the overlay pane').not.toBeNull();
     expect(pane!.style.width).toBe('720px');
     expect(pane!.style.maxWidth).toBe(gutter.maxWidth);
+  });
+
+  it("hands focus back to the menu's trigger once a dialog its entry opened has gone", async () => {
+    const fixture = TestBed.createComponent(MenuHostComponent);
+    fixture.detectChanges();
+    const opener = fixture.nativeElement.querySelector('.opener') as HTMLElement;
+
+    await closeIt(await pressMenuEntry(fixture, opener, '.rename'));
+
+    expect(document.activeElement)
+      .withContext("focus, on the trigger of the menu that was opened, not the page's first")
+      .toBe(opener);
+  });
+
+  // Pin: proved by having the rule focus the trigger whether or not focus had dropped.
+  it('leaves focus where a dialog an entry opened was told to return it (pin)', async () => {
+    const fixture = TestBed.createComponent(MenuHostComponent);
+    fixture.detectChanges();
+    const opener = fixture.nativeElement.querySelector('.opener') as HTMLElement;
+
+    await closeIt(await pressMenuEntry(fixture, opener, '.rename-elsewhere'));
+
+    expect(document.activeElement)
+      .withContext('focus, where the dialog was told to return it')
+      .toBe(fixture.nativeElement.querySelector('.elsewhere'));
+  });
+
+  // Pin: proved by having the rule take the page's first menu trigger in
+  // place of the one that owns the panel focus was in.
+  it("leaves focus a dialog no menu opened dropped on the document, for the page's own recovery (pin)", async () => {
+    const fixture = TestBed.createComponent(MenuHostComponent);
+    fixture.detectChanges();
+    const once = fixture.nativeElement.querySelector('.rename-once') as HTMLElement;
+
+    once.focus();
+    expect(document.activeElement).withContext('focus, on the button pressed').toBe(once);
+    once.click();
+    fixture.detectChanges();
+    TestBed.tick();
+    const ref = TestBed.inject(MatDialog).openDialogs.at(0);
+    expect(ref).withContext('the dialog the button opened').toBeDefined();
+    await firstValueFrom(ref!.afterOpened());
+    expect(once.isConnected).withContext('the button, gone from the page').toBeFalse();
+    expect(document.getElementById(ref!.id)?.contains(document.activeElement))
+      .withContext('focus, in the dialog')
+      .toBeTrue();
+    await closeIt(ref!);
+
+    expect(document.activeElement).withContext('focus, left on the document').toBe(document.body);
   });
 });
 
