@@ -61,6 +61,7 @@ import { BulkShareKind, RowSharingService, ShareOutcome } from '../../../core/se
 import { AnalyticsService } from '../../../core/services/analytics.service';
 import { PwaService } from '../../../core/services/pwa.service';
 import { AnnouncerService } from '../../../core/services/announcer.service';
+import { focusDropped } from '../../../core/utils/focus.utils';
 import { ShareTarget, landedKinds, shareChange } from '../../../core/utils/share-change.utils';
 import { isUntitled, quotedTransactionName, transactionDisplayName } from '../../../core/utils/transaction-display.utils';
 import { openReceiptViewer } from '../receipt-viewer/receipt-viewer-dialog.component';
@@ -680,8 +681,7 @@ export class TransactionListComponent {
     }
     if (this.destroyRef.destroyed || !this.inSelectMode()) return;
     afterNextRender(() => {
-      const active = document.activeElement;
-      if (!active || active === document.body) this.selectToggle()?.nativeElement.focus();
+      if (focusDropped()) this.selectToggle()?.nativeElement.focus();
     }, { injector: this.injector });
   }
 

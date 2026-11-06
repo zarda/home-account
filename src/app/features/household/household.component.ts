@@ -28,6 +28,7 @@ import { HouseholdLedgerService } from '../../core/services/household-ledger.ser
 import { HouseholdPlansService } from '../../core/services/household-plans.service';
 import type { LedgerShareService } from '../../core/services/ledger-share.service';
 import { PwaService } from '../../core/services/pwa.service';
+import { focusDropped } from '../../core/utils/focus.utils';
 import { addDays, startOfDay } from '../../core/utils/transaction-date.utils';
 import { EmptyStateComponent } from '../../shared/components/empty-state/empty-state.component';
 import { LoadingSpinnerComponent } from '../../shared/components/loading-spinner/loading-spinner.component';
@@ -37,7 +38,7 @@ import { HouseholdMembersComponent } from './household-members/household-members
 import { HouseholdOverviewComponent } from './household-overview/household-overview.component';
 import { HouseholdPlansComponent } from './household-plans/household-plans.component';
 import { HouseholdSetupComponent } from './household-setup/household-setup.component';
-import { FocusContext, HouseholdPageFocus, HouseholdSwap, focusDropped, focusWhenRendered } from './household-focus';
+import { FocusContext, HouseholdPageFocus, HouseholdSwap, focusWhenRendered } from './household-focus';
 import { routedHouseholdId } from './household-route';
 import { SwitchOnChoiceDirective } from './switch-on-choice.directive';
 

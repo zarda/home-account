@@ -30,6 +30,7 @@ import { LocaleFormatService } from '../../core/services/locale-format.service';
 import { PendingFiltersService } from '../../core/services/pending-filters.service';
 import { Transaction, TransactionFilters, Category, baseCurrencyOf } from '../../models';
 import { injectIsMobileViewport } from '../../core/layout/viewport';
+import { focusDropped } from '../../core/utils/focus.utils';
 import { parseDayKey, yearWindow } from '../../core/utils/transaction-date.utils';
 import { pinLeadingMinus, snapDisplayZero } from '../../core/utils/money-display.utils';
 import { FitTextDirective } from '../../shared/directives/fit-text.directive';
@@ -390,8 +391,7 @@ export class TransactionsComponent implements OnInit, OnDestroy {
     // viewer has put it somewhere else meanwhile.
     afterNextRender(
       () => {
-        const active = document.activeElement;
-        if (active && active !== document.body) return;
+        if (!focusDropped()) return;
         this.host.nativeElement
           .querySelector<HTMLElement>('.period-totals-slot, .period-totals-line')
           ?.focus();

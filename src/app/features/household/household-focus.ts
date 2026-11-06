@@ -2,6 +2,7 @@ import { DestroyRef, Injectable, Injector, afterNextRender, effect, signal, untr
 import type { MatDialogRef } from '@angular/material/dialog';
 
 import type { HouseholdStatus } from '../../core/services/household.service';
+import { focusDropped } from '../../core/utils/focus.utils';
 import { sameStamp } from '../../core/utils/household-index.utils';
 import type { Household } from '../../models';
 
@@ -55,12 +56,6 @@ export function closeDialogsOnSwitch(
   destroyRef.onDestroy(() => {
     for (const ref of open.keys()) ref.close();
   });
-}
-
-/** Focus went to the document, as it does when the element holding it is removed. */
-export function focusDropped(): boolean {
-  const active = document.activeElement;
-  return active === null || active === document.body;
 }
 
 /**
