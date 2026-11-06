@@ -122,11 +122,16 @@
           (focus)="onSearchFocus()"
         >
         @if (filters.searchQuery) {
+          <!-- Save search keeps its name and says with aria-expanded whether
+               its box is open, as the filter toggle says it of the panel: a
+               second press closes the box unsaved, as Cancel does. The box's
+               own button is Save. -->
           <button
             mat-icon-button
             type="button"
             class="save-search-button"
             [attr.aria-label]="'transactions.saveSearch' | translate"
+            [attr.aria-expanded]="saveMode()"
             (click)="toggleSaveMode()"
           >
             <mat-icon>bookmark_add</mat-icon>
@@ -195,7 +200,7 @@
           <button
             mat-icon-button
             type="button"
-            [attr.aria-label]="'transactions.saveSearch' | translate"
+            [attr.aria-label]="'common.save' | translate"
             (click)="confirmSaveSearch()"
           >
             <mat-icon>check</mat-icon>
