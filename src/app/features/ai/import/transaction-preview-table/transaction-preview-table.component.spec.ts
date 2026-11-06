@@ -61,6 +61,13 @@ const flipCatalogue = () => [
   createCategory({ id: 'other_income', name: 'categoryNames.otherIncome', type: 'income' }),
 ];
 
+/**
+ * Any quotation mark a catalog writes. None of the card's names or
+ * announcements holds one round the stand-in, which in quotes would read
+ * as the row's name.
+ */
+const QUOTATION_MARKS = /["“”「」『』]/;
+
 describe('TransactionPreviewTableComponent', () => {
   let component: TransactionPreviewTableComponent;
   let fixture: ComponentFixture<TransactionPreviewTableComponent>;
@@ -3294,13 +3301,14 @@ describe('TransactionPreviewTableComponent, the offer chip through its own templ
     };
     const label = (key: string, description: string) => `${key}:${JSON.stringify({ description })}`;
 
-    beforeEach(() => {
+    function render(): void {
       component.transactions = rows.map(([id, description]) => makeRow({ id, description, ...carries }));
       component.categories = [];
       fixture.detectChanges();
-    });
+    }
 
     it('names the overrule, the location\'s remove, the currency dismiss and the notes by the row', () => {
+      render();
       for (const [id, , named] of rows) {
         expect(nameOf(id, '.duplicate-clear')).withContext(`the overrule on the ${id} row`)
           .toBe(label('import.notADuplicate', named));
@@ -3314,6 +3322,7 @@ describe('TransactionPreviewTableComponent, the offer chip through its own templ
     });
 
     it('names each field by the row as it opens, on two rows open at once', () => {
+      render();
       const fields = [
         ['description', 'import.descriptionFieldLabel'],
         ['amount', 'import.amountFieldLabel'],
@@ -3327,6 +3336,56 @@ describe('TransactionPreviewTableComponent, the offer chip through its own templ
         for (const [id, , named] of rows) {
           expect(nameOf(id, '.inline-input')).withContext(`the ${field} field on the ${id} row`).toBe(label(key, named));
         }
+      }
+    });
+
+    // tc quotes a description in 「」 in each of these names, and the stand-in
+    // would read, in quotes, as the row's name: a row with no description is
+    // named by the stand-in bare. The translator is swapped before the first
+    // render, since the pipe memoizes on its key and params.
+    describe('in tc', () => {
+      for (const blank of ['', '   ']) {
+        it(`names a row whose description is ${JSON.stringify(blank)} by the stand-in, unquoted, and a titled row in quotes`, () => {
+          const words = catalogTranslator('tc', { strict: true });
+          spyOn(TestBed.inject(TranslationService), 't').and.callFake(catalogTranslator('tc'));
+          component.transactions = [
+            makeRow({ id: 'titled', description: 'Coffee Shop', ...carries }),
+            makeRow({ id: 'blank', description: blank, ...carries }),
+          ];
+          component.categories = [];
+          fixture.detectChanges();
+          const read = (id: string) => {
+            const names = ['.duplicate-clear', '.extra-country ~ .extra-remove', '.currency-offer .extra-remove', '.notes-input']
+              .map(selector => nameOf(id, selector));
+            for (const field of ['description', 'amount', 'split', 'place', 'tag'] as const) {
+              component.startEdit(component.transactions.find(row => row.id === id)!, field);
+              fixture.detectChanges();
+              names.push(nameOf(id, '.inline-input'));
+            }
+            return names;
+          };
+          const tooltip = (id: string) =>
+            fixture.debugElement.query(By.css(`[data-row-id="${id}"] .duplicate-clear`)).injector.get(MatTooltip).message;
+          const stand = words('import.untitledRow');
+
+          expect(read('titled')).withContext('a titled row keeps its quotes (pin)').toEqual([
+            '不是重複項目 — 匯入「Coffee Shop」',
+            '從「Coffee Shop」移除建議的地點',
+            '關閉「Coffee Shop」的貨幣建議',
+            '「Coffee Shop」的備註',
+            '「Coffee Shop」的說明',
+            '「Coffee Shop」的金額',
+            '要從「Coffee Shop」分出的金額',
+            '「Coffee Shop」的地點名稱',
+            '「Coffee Shop」的新標籤',
+          ]);
+          const names = read('blank');
+          expect(names.filter(name => !name.includes(stand))).withContext('each names it by the stand-in').toEqual([]);
+          expect(names.filter(name => QUOTATION_MARKS.test(name))).withContext('a quotation mark round the stand-in')
+            .toEqual([]);
+          expect(tooltip('blank')).withContext("the overrule's tooltip, which a sighted reader sees, is its name")
+            .toBe(names[0]);
+        });
       }
     });
   });
@@ -4820,6 +4879,22 @@ describe('TransactionPreviewTableComponent, the offer chip through its own templ
         .toBe('import.selectRowLabel:{"description":"import.untitledRow"}');
     });
 
+    // tc quotes the description in 「」, and the stand-in in quotes would read
+    // as the row's name.
+    for (const blank of ['', '   ']) {
+      it(`names a blank row's checkbox in tc by the stand-in, unquoted, for ${JSON.stringify(blank)}, and a filled row's in quotes`, () => {
+        spyOn(TestBed.inject(TranslationService), 't').and.callFake(catalogTranslator('tc'));
+        component.transactions = [makeRow({ id: 'filled' }), makeRow({ id: 'blank', description: blank })];
+        component.categories = [];
+        fixture.detectChanges();
+        const stand = catalogTranslator('tc', { strict: true })('import.untitledRow');
+
+        expect(box('filled')?.getAttribute('aria-label')).withContext('a filled row keeps its quotes (pin)')
+          .toBe('勾選「Coffee Shop」');
+        expect(box('blank')?.getAttribute('aria-label')).toBe(`勾選${stand}`);
+      });
+    }
+
     it('leaves Select all named by its own text', () => {
       component.transactions = [makeRow({ id: 'filled' })];
       component.categories = [];
@@ -4955,6 +5030,31 @@ describe('TransactionPreviewTableComponent, the offer chip through its own templ
 
       expect(open.calls.mostRecent().args[1].data.message)
         .toBe('import.removeRowConfirm:{"description":"import.untitledRow"}');
+    });
+
+    // The question is on screen. tc quotes the description in 「」, and the
+    // stand-in in quotes would read as the row's name.
+    for (const blank of ['', '   ']) {
+      it(`asks in tc about a row whose description is ${JSON.stringify(blank)} by the stand-in, unquoted`, () => {
+        spyOn(TestBed.inject(TranslationService), 't').and.callFake(catalogTranslator('tc'));
+        render([makeRow({ id: 'blank', description: blank, editedOnCard: true })]);
+
+        pressRemove('blank');
+
+        const message = open.calls.mostRecent().args[1].data.message as string;
+        expect(message).toContain(catalogTranslator('tc', { strict: true })('import.untitledRow'));
+        expect(message).withContext('a quotation mark round the stand-in').not.toMatch(QUOTATION_MARKS);
+      });
+    }
+
+    it('asks in tc about a titled row with its description in quotes (pin)', () => {
+      spyOn(TestBed.inject(TranslationService), 't').and.callFake(catalogTranslator('tc'));
+      render([makeRow({ id: 'edited', editedOnCard: true })]);
+
+      pressRemove('edited');
+
+      expect(open.calls.mostRecent().args[1].data.message)
+        .toBe('您對「Coffee Shop」所做的變更將會遺失。若要保留變更但不匯入，請改為取消勾選。');
     });
 
     it('removes the row it asked about even when the row was replaced under its id while the question was open', () => {
@@ -5339,6 +5439,97 @@ describe('TransactionPreviewTableComponent, the offer chip through its own templ
       component.applyCurrencyToSelected('JPY');
 
       expect(mockAnnouncer.announce).toHaveBeenCalledTimes(1);
+    });
+
+    // tc quotes a description in 「」 in each of these, and the stand-in in
+    // quotes would read as the row's name: a row with no description is
+    // announced by the stand-in bare, and a titled one by its description in
+    // quotes, once.
+    describe('in tc', () => {
+      const events: readonly {
+        event: string;
+        row: Partial<CategorizedImportTransaction>;
+        flip?: boolean;
+        act: (row: CategorizedImportTransaction) => void;
+        titled: string;
+      }[] = [
+        {
+          event: 'a row no longer a duplicate',
+          row: { isDuplicate: true, duplicateOf: 'stored-1', selected: false },
+          act: row => component.clearDuplicate(row),
+          titled: '「Coffee Shop」不是重複項目',
+        },
+        {
+          event: 'a filed tag',
+          row: { tags: [] },
+          act: row => {
+            component.startEdit(row, 'tag');
+            component.commitTag(row, { type: 'blur', target: { value: 'lunch' } } as unknown as Event);
+          },
+          titled: '已在「Coffee Shop」新增標籤 lunch',
+        },
+        {
+          event: 'a removed tag',
+          row: { tags: ['lunch'] },
+          act: row => component.removeTag(row, 'lunch'),
+          titled: '已從「Coffee Shop」移除標籤 lunch',
+        },
+        {
+          event: 'a withdrawn country',
+          row: { location: { name: 'Shibuya', country: 'JP' } },
+          act: row => component.setCountry(row, null),
+          titled: '已從「Coffee Shop」移除國家',
+        },
+        {
+          event: 'a removed location',
+          row: { location: { name: 'Shibuya', country: 'JP' } },
+          act: row => component.removeLocation(row),
+          titled: '已從「Coffee Shop」移除地點',
+        },
+        {
+          event: 'a removed row',
+          row: {},
+          act: row => component.removeRow(row),
+          titled: '已移除「Coffee Shop」',
+        },
+        {
+          event: 'a category the type flip moved',
+          row: {},
+          flip: true,
+          act: row => component.toggleType(row),
+          titled: '已將「Coffee Shop」的類別改為其他收入',
+        },
+      ];
+
+      function say(row: CategorizedImportTransaction, flip: boolean, act: (row: CategorizedImportTransaction) => void): string {
+        spyOn(TestBed.inject(TranslationService), 't').and.callFake(catalogTranslator('tc'));
+        component.transactions = [row];
+        component.categories = flip ? flipCatalogue() : [];
+        fixture.detectChanges();
+        act(row);
+        expect(mockAnnouncer.announce).withContext('said once').toHaveBeenCalledTimes(1);
+        return mockAnnouncer.announce.calls.mostRecent().args[0];
+      }
+
+      for (const { event, row, flip = false, act, titled } of events) {
+        it(`announces ${event} on a titled row with its description in quotes (pin)`, () => {
+          expect(say(makeRow(row), flip, act)).toBe(titled);
+        });
+
+        for (const blank of ['', '   ']) {
+          it(`announces ${event} on a row whose description is ${JSON.stringify(blank)} by the stand-in, unquoted`, () => {
+            // A hand-added row is born on the expense catch-all, so its first
+            // flip always moves the category.
+            const blankRow = flip
+              ? { ...blankImportRow('blank', undefined, 'USD'), description: blank }
+              : makeRow({ ...row, description: blank });
+            const said = say(blankRow, flip, act);
+
+            expect(said).toContain(catalogTranslator('tc', { strict: true })('import.untitledRow'));
+            expect(said).withContext('a quotation mark round the stand-in').not.toMatch(QUOTATION_MARKS);
+          });
+        }
+      }
     });
   });
 
