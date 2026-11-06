@@ -1633,6 +1633,58 @@ describe('TransactionFiltersComponent', () => {
         flush();
       }));
     });
+
+    /**
+     * While the box was open, Save search and the box's own button both read
+     * Save search, and the first closes the box unsaved. Save search keeps
+     * its name and says with aria-expanded whether its box is open, as the
+     * filter toggle says it of the panel; the box's own button reads Save.
+     */
+    describe('Save search and the box it opens, told apart', () => {
+      it('says whether its box is open, through a press, a second press and the Enter that saves', fakeAsync(() => {
+        const bookmark = openOver('utilities');
+        expect(bookmark.getAttribute('aria-expanded')).withContext('before a press').toBe('false');
+
+        press(bookmark);
+        flush(); // NgModel hands the box its value a microtask after it renders
+        expect(root().querySelector('.save-search-row')).withContext('the box a press opens').not.toBeNull();
+        expect(bookmark.getAttribute('aria-expanded')).withContext('the box open').toBe('true');
+
+        press(bookmark);
+        expect(root().querySelector('.save-search-row')).withContext('the box a second press closes').toBeNull();
+        expect(bookmark.getAttribute('aria-expanded')).withContext('after a second press').toBe('false');
+
+        press(bookmark);
+        flush();
+        keydown(find<HTMLInputElement>('.save-label-input', 'the box, open again'), { key: 'Enter' });
+        expect(mockSearchHistory.saveSearch).toHaveBeenCalledOnceWith('utilities', 'utilities');
+        expect(bookmark.getAttribute('aria-expanded')).withContext('after the Enter that saves').toBe('false');
+        flush();
+      }));
+
+      for (const l of ['en', 'ja', 'tc'] as const) {
+        it(`names the box's Save apart from Save search, which keeps its name open or closed, in ${l}`, fakeAsync(() => {
+          const t = catalogTranslator(l, { strict: true });
+          mockTranslationService.t.and.callFake(catalogTranslator(l));
+          // The translate pipe memoises on the locale and the catalog version;
+          // the bump is what a catalog's arrival does, so en is read again too.
+          locale.set(l);
+          TestBed.inject(TranslationService).translationsVersion.update(version => version + 1);
+          const bookmark = openOver('utilities');
+          expect(accessibleName(bookmark)).withContext('Save search, the box closed').toBe(t('transactions.saveSearch'));
+
+          press(bookmark);
+          flush();
+          const [save, cancel] = rowButtons();
+          expect(accessibleName(bookmark)).withContext('Save search, the box open').toBe(t('transactions.saveSearch'));
+          expect(accessibleName(save)).withContext("the box's Save").toBe(t('common.save'));
+          expect(accessibleName(cancel)).withContext("the box's Cancel").toBe(t('common.cancel'));
+          expect(new Set([bookmark, save, cancel].map(accessibleName)).size)
+            .withContext('Save search, Save and Cancel, each its own name')
+            .toBe(3);
+        }));
+      }
+    });
   });
 
   describe('output events', () => {
