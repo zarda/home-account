@@ -692,12 +692,15 @@ export class TransactionPreviewTableComponent implements AfterViewInit {
    * every field and button the card stamps once per row: the template reads
    * it, which is why it is protected. The fields commit on Enter or blur,
    * never per keystroke, so a description being typed does not rename the
-   * field it is typed into.
+   * field it is typed into. A filled row's description goes in the reader's
+   * own quotation marks, `common.quotedName` (none in en and ja, 「」 in tc);
+   * the stand-in never does, since in quotes it would read as the row's
+   * name. The keys it fills hold no quotation marks of their own.
    */
   protected announceDescription(row: CategorizedImportTransaction): string {
     return descriptionIsUnfilled(row)
       ? this.translationService.t('import.untitledRow')
-      : row.description;
+      : this.translationService.t('common.quotedName', { name: row.description });
   }
 
   /**

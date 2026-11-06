@@ -4253,7 +4253,7 @@ describe('TransactionPreviewTableComponent, the offer chip through its own templ
           expect(input.placeholder).withContext("the hint, in the catalog's words").toBe(words('import.splitAmount'));
           expect(accessibleName(input))
             .withContext('the name, which carries the full words')
-            .toBe(words('import.splitAmountLabel', { description: 'Coffee Shop' }));
+            .toBe(words('import.splitAmountLabel', { description: words('common.quotedName', { name: 'Coffee Shop' }) }));
           const hint = placeholderWidthPx(input);
           expect(hint).withContext('the hint, px').toBeGreaterThan(0);
 
