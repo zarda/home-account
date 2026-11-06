@@ -160,7 +160,54 @@ describe('translation files', () => {
 
     expect(stale.join(', ')).toBe('', `optional placeholders ${REFERENCE} no longer has`);
   });
+
+  // A key's quotation marks round {{description}} quote whatever its caller
+  // hands the slot, and most callers hand the catalog's words for an
+  // untitled item when the description is blank, which in quotes read as
+  // its name. Such a key holds no marks of its own: its caller hands the
+  // description already quoted (common.quotedName) and the stand-in bare.
+  // Only a sentence whose caller never hands it a stand-in quotes the slot
+  // itself (ADR 0145).
+  for (const { name, tree } of LOCALES) {
+    it(`quotes a description in ${name} only where its caller never hands it a stand-in`, () => {
+      const strays = keysByLocale
+        .get(name)!
+        .filter(key => quotesDescription(leafValue(tree, key)) && !(key in QUOTES_A_REAL_DESCRIPTION));
+
+      expect(strays.join(', ')).toBe('', `keys that quote {{description}} in ${name}`);
+    });
+  }
+
+  // An entry whose key no catalog quotes any more excuses nothing, and it
+  // would go on excusing the next key someone words the same way.
+  it('lists only keys some catalog still quotes a description in', () => {
+    const stale = Object.keys(QUOTES_A_REAL_DESCRIPTION).filter(
+      key => !LOCALES.some(({ tree }) => quotesDescription(leafValue(tree, key)))
+    );
+
+    expect(stale.join(', ')).toBe('', 'keys listed as quoting a description that no catalog quotes');
+  });
 });
+
+/**
+ * The keys that may quote {{description}} themselves, each with why its
+ * caller never hands it a stand-in.
+ */
+const QUOTES_A_REAL_DESCRIPTION: Record<string, string> = {
+  'transactions.deleteConfirmMessage': 'an untitled transaction is asked about by deleteUntitledMessage (isUntitled)',
+  'transactions.deleteSplitPartMessage': 'an untitled part is asked about by deleteUntitledSplitPartMessage (isUntitled)',
+  'transactions.share.stopMessage': 'an untitled transaction is asked about by stopUntitledMessage (isUntitled)',
+  'transactions.share.stopMessageOffline': 'an untitled transaction is asked about by stopUntitledMessageOffline (isUntitled)',
+  'import.splitRowLabel': 'a blank row\'s trigger is named import.splitRow (splitLabel, descriptionIsUnfilled)',
+  'import.mergeIntoLabel': 'the trigger is offered only under canMerge, which refuses a blank row (mergeableRow)',
+  'import.removeRowLabel': 'a blank row\'s trigger is named common.remove (removeLabel, descriptionIsUnfilled)',
+};
+
+/** Whether a value, or any member of a plural one, puts quotation marks round its description. */
+function quotesDescription(value: unknown): boolean {
+  if (isPluralObject(value)) return Object.values(value).some(quotesDescription);
+  return typeof value === 'string' && /["“「『]\{\{description\}\}["”」』]/.test(value);
+}
 
 /**
  * Placeholders a translation may leave out on purpose, with the reason.
