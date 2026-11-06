@@ -492,8 +492,13 @@ textarea::placeholder {
 
 /* Keyboard focus: one visible, token-driven ring app-wide. Material
    components keep their own focus treatment; this covers hand-rolled
-   interactive elements (drawer links, dropzones, custom rows) that
-   previously stripped or never defined an outline. */
+   interactive elements (drawer links, the Data page's backup upload area,
+   custom rows) that previously stripped or never defined an outline. A
+   frame that is no control but holds one, the import upload area round
+   Browse, a transaction row round its button and the filter panel's two
+   pills round their text boxes, is never :focus-visible itself:
+   a11y.frame-ring (src/theme/_a11y.scss) rings the frame instead and
+   clears the control's own ring. */
 :focus-visible {
   outline: 2px solid var(--color-primary);
   outline-offset: 2px;

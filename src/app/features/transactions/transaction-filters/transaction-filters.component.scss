@@ -1,3 +1,5 @@
+@use 'a11y';
+
 .filters-container {
   background: var(--surface-card);
   border-radius: var(--radius-md);
@@ -146,6 +148,17 @@
   color: var(--text-muted);
 }
 
+// Each text box is a borderless input inside a pill, and its outline: none
+// outranks styles.scss's ring, so a focused box would show its caret alone.
+// The pill is what a reader sees as the box, so the ring goes round it while
+// its box matches :focus-visible, which a text box does on a click as well as
+// from the keyboard. The ring is inset, as a transaction row's is:
+// the suggestions open 4px under the search pill, and the filter grid's
+// floated labels stand above the grid into the room the pill leaves it.
+// Save search, Save and Cancel inside the pills keep Material's own focus.
+@include a11y.frame-ring('.search-wrapper', '.search-input', -2px);
+@include a11y.frame-ring('.save-search-row', '.save-label-input', -2px);
+
 // The scrollbar stays. It is the only thing telling the reader that there
 // are more filters off to the right — hidden, the row looks like the whole
 // set. insight-chips and period-selector are the same kind of strip and
@@ -253,7 +266,12 @@
   border-block-start: 1px solid var(--border-primary);
   background: var(--surface-sunken);
 
-  .search-wrapper {
+  // The grid's outlined fields float a filled field's label onto their top
+  // border, half of it above the grid's own box, so whichever pill sits last
+  // over the grid leaves it room: flush on it, the pill's fill and its ring
+  // would run through the labels' tops.
+  .search-wrapper,
+  .save-search-row {
     margin-bottom: 12px;
   }
 }
