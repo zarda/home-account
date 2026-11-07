@@ -41,6 +41,7 @@ import { CategoryService } from '../../../core/services/category.service';
 import { CurrencyService } from '../../../core/services/currency.service';
 import { AuthService } from '../../../core/services/auth.service';
 import { TranslationService } from '../../../core/services/translation.service';
+import { LocaleFormatService } from '../../../core/services/locale-format.service';
 import { AnnouncerService } from '../../../core/services/announcer.service';
 import { AIStrategyService, ProcessingResult, ProcessedTransaction } from '../../../core/services/ai-strategy.service';
 import { AnalyticsService } from '../../../core/services/analytics.service';
@@ -57,16 +58,22 @@ import { Transaction, Category, Goal, User } from '../../../models';
 import {
   AUDIT_SCHEMES,
   GLYPH_PROBE_COLOURS,
+  accessibleName,
+  catalogTranslationStub,
   channels,
   chooseOption,
+  contentWidthPx,
   createTransaction,
   createCategory,
+  catalogTranslator,
   createUser,
   createTranslationStub,
   eachOptionState,
+  echoKey,
   hoverValue,
   paintedBackground,
   paintedColor,
+  placeholderWidthPx,
   ratio,
   settleAnimations,
   withScheme,
@@ -247,7 +254,7 @@ describe('TransactionFormComponent', () => {
     currency.getSupportedCurrencies.and.returnValue([{ code: 'USD', name: 'US Dollar', symbol: '$' }]);
     currency.getCurrencyInfo.and.callFake((code: string) => ({ code, nameKey: code, symbol: code }));
     translation = jasmine.createSpyObj('TranslationService', ['t']);
-    translation.t.and.callFake((k: string) => k);
+    translation.t.and.callFake(echoKey);
 
     await TestBed.configureTestingModule({
       imports: [TransactionFormComponent, ReactiveFormsModule],
@@ -2232,6 +2239,24 @@ describe('TransactionFormComponent', () => {
       expect(component.verifyFieldTooltip('date')).toBe('import.verifyDate. import.dateNotTodayTooltip');
     });
 
+    it('scanReceipt joins the ja doubt and not-today sentences of a scanned date with 。, not the Latin stop', async () => {
+      // ja ends a sentence with 。 and puts no space after it: the flag's one
+      // string, its tooltip and its name alike, joins in the reader's stop.
+      const ja = catalogTranslator('ja');
+      translation.t.and.callFake(ja);
+      const scanned = new Date(2026, 7, 14);
+      strategy.processReceipt.and.resolveTo(scanResult({ date: scanned, fieldConfidence: { date: 0.4 } }));
+      const component = build().componentInstance;
+      await (component as unknown as { scanReceipt: (f: File) => Promise<void> }).scanReceipt(receiptFile());
+
+      const tooltip = component.verifyFieldTooltip('date');
+      expect(tooltip).not.toContain('. ');
+      expect(tooltip).toBe(
+        `${ja('import.verifyDate', { percent: 40 })}。` +
+          ja('import.dateNotTodayTooltip', { date: TestBed.inject(LocaleFormatService).formatDate(scanned) })
+      );
+    });
+
     it('names a doubted type with its own sentence and no percentage', () => {
       // The type's grade is the device reader's policy, not a measurement, so
       // a percentage would report a reading nothing took — as on the review
@@ -3074,6 +3099,9 @@ describe('TransactionFormComponent, through its own template', () => {
   let transactionsSpy: jasmine.SpyObj<TransactionService>;
   let sessionSpy: jasmine.SpyObj<CurrencyChoiceSessionService>;
 
+  // A real data URI: the strips render an <img> for each receipt, and an
+  // invalid URL would log a resource error.
+  const ONE_PIXEL = 'data:image/gif;base64,R0lGODlhAQABAAD/ACwAAAAAAQABAAACADs=';
   const el = () => fixture.nativeElement as HTMLElement;
   const text = (selector: string) => el().querySelector(selector)?.textContent?.trim() ?? null;
   const field = (name: string) =>
@@ -4021,11 +4049,149 @@ describe('TransactionFormComponent, through its own template', () => {
     });
   });
 
+  // The Tags field's hint shows once the field has focus, on its input's one
+  // line, so it cannot wrap: it has to fit the input's content box. The field
+  // takes its whole row of the dialog's content. QuickAddService and the
+  // transactions page open the form 500 px wide with a 95vw cap, which the
+  // dialog sets on its pane and so outranks Material's small-screen cap of
+  // 100vw less 32 px: 356.25 px on a 375 px phone. Under 480 px the content
+  // pads 16 px a side, which leaves the field 324.25 px. Karma's window is
+  // wider than that, so the host is laid out to give the field its phone
+  // width. The face is pinned as docs/testing.md *Karma serves no fonts* says.
+  describe("the Tags field's hint", () => {
+    const PHONE_FIELD_PX = 375 * 0.95 - 2 * 16;
+    const FACE = "Verdana, 'DejaVu Sans', sans-serif";
+
+    for (const l of ['en', 'ja', 'tc'] as const) {
+      it(`fits its input on a 375 px phone, in ${l}`, () => {
+        TestBed.overrideProvider(TranslationService, { useValue: catalogTranslationStub(l) });
+        const words = catalogTranslator(l, { strict: true });
+        render();
+        el().style.display = 'block';
+        el().style.fontFamily = FACE;
+        for (const token of ['--mat-sys-body-large-font', '--mat-sys-body-small-font', '--mat-sys-label-large-font']) {
+          el().style.setProperty(token, FACE);
+        }
+        settleAnimations(document);
+
+        const field = el().querySelector<HTMLElement>('mat-form-field:has(mat-chip-grid)');
+        const input = field?.querySelector<HTMLInputElement>('input.mat-mdc-chip-input') ?? null;
+        expect(input).withContext('the Tags input').not.toBeNull();
+        if (!field || !input) return;
+        // Whatever Karma's window leaves around the field, the field gets the
+        // width the phone's dialog gives it.
+        const chrome = el().getBoundingClientRect().width - field.getBoundingClientRect().width;
+        el().style.width = `${PHONE_FIELD_PX + chrome}px`;
+        expect(field.getBoundingClientRect().width).withContext('the field, px').toBeCloseTo(PHONE_FIELD_PX, 1);
+
+        expect(input.placeholder)
+          .withContext("the hint, in the catalog's words")
+          .toBe(words('transactions.tagsPlaceholderShort'));
+        const hint = placeholderWidthPx(input);
+        expect(hint).withContext('the hint, px').toBeGreaterThan(0);
+        // Where the hint is drawn: the input's content box.
+        const room = contentWidthPx(input);
+        expect(room).withContext('the room, px').toBeGreaterThan(0);
+        expect(hint).withContext(`"${input.placeholder}", px, against its room`).toBeLessThanOrEqual(room);
+      });
+    }
+  });
+
+  /**
+   * In edit mode the queued strip and the stored strip show at once, each
+   * stamping its controls once per image, so each names its image by the
+   * number its thumbnail's alt reads, and by which strip it sits in.
+   */
+  describe('every receipt image control names its image', () => {
+    for (const locale of ['en', 'ja', 'tc'] as const) {
+      it(`in ${locale}`, () => {
+        TestBed.overrideProvider(TranslationService, { useValue: catalogTranslationStub(locale) });
+        const t = catalogTranslator(locale, { strict: true });
+        render({ mode: 'edit', transaction: createTransaction({ description: 'Coffee' }) });
+        // One preview for both: the queued strip keys its rows by the entry.
+        component.pendingReceipts.set(['a.jpg', 'b.jpg'].map(name => ({
+          file: new File(['x'], name, { type: 'image/jpeg' }), preview: ONE_PIXEL,
+        })));
+        // A transaction whose first images were removed: the two left keep
+        // their storage slots, 2 and 5, and are numbered by their place in the
+        // strip, as their alts are, never by their slots.
+        component.storedReceipts.set([{ url: ONE_PIXEL, slot: 2 }, { url: ONE_PIXEL, slot: 5 }]);
+        fixture.detectChanges();
+
+        // Each tile as a reader meets it: the thumbnail's alt, then the names
+        // of its controls, so a name's number sits beside the alt's.
+        const tileNames = (tiles: string, controls: string) =>
+          Array.from(el().querySelectorAll(tiles)).map(tile => [
+            (tile.querySelector('img') as HTMLImageElement).alt,
+            ...Array.from(tile.querySelectorAll(controls)).map(button => accessibleName(button)),
+          ]);
+        const alt = (index: number) => t('receiptImages.imageNumber', { index, total: 2 });
+        expect(tileNames('div.receipt-preview', '.clear-receipt-btn')).withContext('the queued strip').toEqual(
+          [1, 2].map(index => [alt(index), t('receiptImages.removeNewImage', { index })]),
+        );
+        expect(tileNames('.stored-receipt', '.existing-receipt-actions button')).withContext('the stored strip').toEqual(
+          [1, 2].map(index => [
+            alt(index),
+            t('receiptImages.convertStoredImage', { index }),
+            t('receiptImages.removeStoredImage', { index }),
+          ]),
+        );
+      });
+    }
+  });
+
+  /**
+   * The file input is cleared after each pick so the same photo can be picked
+   * again, and a photo's preview is read from its bytes: two picks of one
+   * picture queue two receipts with one preview, so each row is keyed by its
+   * own receipt and never by what it shows.
+   */
+  describe('two queued photos of one picture', () => {
+    it('keep a row each, and a remove takes the row it was asked to', async () => {
+      TestBed.overrideProvider(TranslationService, { useValue: catalogTranslationStub('en') });
+      const t = catalogTranslator('en', { strict: true });
+      // No scan: the strip is the subject, and a scan's reading is not.
+      strategySpy.canProcessNow.and.returnValue(false);
+      const warn = spyOn(console, 'warn');
+      const error = spyOn(console, 'error');
+      render();
+      const pick = async (photo: File) => {
+        await component.onReceiptSelected({ target: { files: [photo], value: '' } } as unknown as Event);
+        fixture.detectChanges();
+      };
+      const tiles = () => Array.from(el().querySelectorAll<HTMLElement>('div.receipt-preview'));
+
+      const picture = new File(['one picture'], 'image.jpg', { type: 'image/jpeg' });
+      await pick(picture);
+      await pick(picture);
+      const [first, second] = component.pendingReceipts();
+      expect(second.preview).withContext('one picture reads to one preview').toBe(first.preview);
+      // A third pick reconciles the strip against the two already shown.
+      await pick(new File(['another picture'], 'other.jpg', { type: 'image/jpeg' }));
+      const before = tiles();
+      expect(before.length).withContext('a row for each pick').toBe(3);
+
+      (before[0].querySelector('.clear-receipt-btn') as HTMLButtonElement).click();
+      fixture.detectChanges();
+
+      // Each row left is the element it was before the remove, so focus and a
+      // reader's place stay with the photo they were on: the first row goes,
+      // and the second, now first, takes the first's number.
+      expect(tiles().map(tile => [
+        before.indexOf(tile),
+        accessibleName(tile.querySelector('.clear-receipt-btn') as HTMLElement),
+      ])).toEqual([
+        [1, t('receiptImages.removeNewImage', { index: 1 })],
+        [2, t('receiptImages.removeNewImage', { index: 2 })],
+      ]);
+      expect(component.pendingReceipts()[0]).withContext('the second receipt is first now').toBe(second);
+      expect(warn.calls.allArgs().map(args => args.join(' '))).withContext('no duplicated track keys').toEqual([]);
+      expect(error).not.toHaveBeenCalled();
+    });
+  });
+
   describe('colours', () => {
     const THEMES = ['light', 'dark'] as const;
-    // A real data URI: the strips render an <img> for each receipt, and an
-    // invalid URL would log a resource error.
-    const ONE_PIXEL = 'data:image/gif;base64,R0lGODlhAQABAAD/ACwAAAAAAQABAAACADs=';
 
     /**
      * The form, painted with the surface Material gives the dialog container

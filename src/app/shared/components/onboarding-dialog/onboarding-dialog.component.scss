@@ -1,3 +1,5 @@
+@use 'a11y';
+
 .onboarding-pane {
   display: flex;
   flex-direction: column;
@@ -59,6 +61,11 @@
   font-size: var(--text-sm);
   color: var(--text-secondary);
   font-variant-numeric: tabular-nums;
+}
+
+// What the status region reads; the glyph beside it is the visual half.
+.step-sentence {
+  @include a11y.visually-hidden;
 }
 
 .actions-spacer {

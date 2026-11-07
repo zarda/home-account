@@ -27,6 +27,7 @@ import { Analytics, AnalyticsSettings, initializeAnalytics, setConsent } from '@
 import { RemoteConfig } from '@angular/fire/remote-config';
 import { DateAdapter } from '@angular/material/core';
 import { MatDatepickerIntl } from '@angular/material/datepicker';
+import { MAT_DIALOG_DEFAULT_OPTIONS, MatDialogConfig } from '@angular/material/dialog';
 import { MatStepperIntl } from '@angular/material/stepper';
 
 import {
@@ -49,6 +50,7 @@ import {
   provideAppRemoteConfig,
   whenBrowserIdle,
 } from './app.config';
+import { provideAppDialogs } from './core/config/dialog.config';
 import { AuthService } from './core/services/auth.service';
 import { PwaService } from './core/services/pwa.service';
 import { LedgerShareService } from './core/services/ledger-share.service';
@@ -465,28 +467,40 @@ describe('provideAppRemoteConfig', () => {
   });
 });
 
+/** One provider as the injector reads it: the token, and the value when it names one. */
+interface ProvidedRecord {
+  provide: unknown;
+  useValue?: unknown;
+}
+
 /**
- * The tokens `providers` provide, however deep they sit: appConfig nests
+ * The providers `providers` hold, however deep they sit: appConfig nests
  * arrays, and provideRouter, provideHttpClient and the rest return
  * EnvironmentProviders, whose provider array is only reachable through the
- * internal field (the reach providerCount uses above).
+ * internal field (the reach providerCount uses above). A class listed bare
+ * provides itself.
  */
-function providedTokens(providers: unknown): unknown[] {
+function providedRecords(providers: unknown): ProvidedRecord[] {
   if (Array.isArray(providers)) {
-    return providers.flatMap(providedTokens);
+    return providers.flatMap(providedRecords);
   }
   if (typeof providers === 'function') {
-    return [providers];
+    return [{ provide: providers }];
   }
   if (providers && typeof providers === 'object') {
     const nested = (providers as { ɵproviders?: unknown }).ɵproviders;
     if (nested) {
-      return providedTokens(nested);
+      return providedRecords(nested);
     }
-    const { provide } = providers as { provide?: unknown };
-    return provide === undefined ? [] : [provide];
+    const record = providers as Partial<ProvidedRecord>;
+    return record.provide === undefined ? [] : [record as ProvidedRecord];
   }
   return [];
+}
+
+/** The tokens `providers` provide, in the order the injector meets them. */
+function providedTokens(providers: unknown): unknown[] {
+  return providedRecords(providers).map(record => record.provide);
 }
 
 describe('appConfig', () => {
@@ -511,6 +525,22 @@ describe('appConfig', () => {
 
     expect(tokens).withContext('the adapter').toContain(DateAdapter);
     expect(tokens).withContext('the labels').toContain(MatDatepickerIntl);
+  });
+
+  // Every MatDialog reads its options from the root, and the root keeps the
+  // last provider of a token: a partial object listed after
+  // provideAppDialogs() would leave every dialog with no role again.
+  it('hands every dialog one set of options, which carries the dialog role', () => {
+    const options = providedRecords(appConfig.providers).filter(record => record.provide === MAT_DIALOG_DEFAULT_OPTIONS);
+
+    expect(options.length).withContext('one provider for the token: the last one would win').toBe(1);
+    expect((options[0]?.useValue as MatDialogConfig | undefined)?.role)
+      .withContext("Material's default, kept")
+      .toBe('dialog');
+    const own = providedRecords([provideAppDialogs()]).find(record => record.provide === MAT_DIALOG_DEFAULT_OPTIONS);
+    expect(options[0]?.useValue)
+      .withContext("the options provideAppDialogs() gives, which its own spec holds to Material's")
+      .toEqual(own?.useValue);
   });
 
   // The stepper's words come from the import wizard's own providers: listing

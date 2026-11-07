@@ -49,6 +49,12 @@
 // and the doubt it carries, from the extraction to the toggle and into the
 // document.
 //
+// The last two cases drop files on the real upload area, as a drag from the
+// desktop does. A CSV dropped on the empty zone is followed into the ledger.
+// A mixed pick has its second photo moved up past the CSV between them, so
+// the photos are read, and their bytes stored, in the order their badges
+// show.
+//
 // Import the Firebase SDK through @angular/fire (not the root `firebase/*`
 // packages) — see app.smoke.spec.ts for why the copies must match.
 //
@@ -78,7 +84,7 @@ import {
   Timestamp,
   Firestore
 } from '@angular/fire/firestore';
-import { getStorage, connectStorageEmulator, Storage } from '@angular/fire/storage';
+import { getStorage, connectStorageEmulator, getBytes, ref, Storage } from '@angular/fire/storage';
 import { ImportWizardComponent } from './import-wizard.component';
 import { AuthService } from '../../../../core/services/auth.service';
 import {
@@ -4584,6 +4590,234 @@ describe('ImportWizardComponent camera handoff (emulator smoke test)', () => {
       harness.fixture.destroy();
       await new Promise(resolve => setTimeout(resolve, 300));
       document.querySelector('.cdk-overlay-container')?.remove();
+    },
+    30000
+  );
+
+  // A drop from the desktop onto the real upload area. The zone is no
+  // control of its own, and the frame around it holds the drag listeners, so
+  // the event is dispatched on the zone and bubbles out to them, as a drop
+  // on the zone does.
+  const dropOnTheZone = (host: HTMLElement, files: readonly File[]): void => {
+    const zone = host.querySelector('app-file-dropzone .dropzone');
+    expect(zone).withContext('the upload area').not.toBeNull();
+    const data = new DataTransfer();
+    files.forEach(file => data.items.add(file));
+    zone!.dispatchEvent(new DragEvent('drop', { bubbles: true, cancelable: true, dataTransfer: data }));
+  };
+
+  it(
+    'a CSV dropped on the empty upload area imports into the ledger',
+    async () => {
+      // A pin written after the fix: with the frame's (drop) binding removed,
+      // the drop reaches no handler, since the host answers a click and never
+      // a drop, and nothing is selected.
+      stubReceiptSeams();
+      // No provider: a CSV needs no reader, and its rows fall to their own
+      // side's catch-all without a model asked.
+      (TestBed.inject(CloudLLMProviderService) as jasmine.SpyObj<CloudLLMProviderService>)
+        .hasAnyCloudProvider.and.returnValue(false);
+      spyOn(TestBed.inject(Router), 'navigate').and.resolveTo(true);
+
+      history.replaceState({}, '');
+      const before = new Set(
+        (await getDocs(collection(firestore, `users/${uid}/transactions`))).docs.map(d => d.id)
+      );
+
+      const fixture = TestBed.createComponent(ImportWizardComponent);
+      fixture.detectChanges();
+      const host = fixture.nativeElement as HTMLElement;
+      const component = fixture.componentInstance;
+      expect(host.querySelector('app-file-dropzone .dropzone-content'))
+        .withContext('the upload area is empty')
+        .not.toBeNull();
+
+      const csv = new File(
+        [
+          'Date,Description,Amount,Type\n' +
+            '2026-10-30,Smoke dropped row one,1234,expense\n' +
+            '2026-10-31,Smoke dropped row two,5678,expense\n'
+        ],
+        'smoke-dropped.csv',
+        { type: 'text/csv' }
+      );
+      dropOnTheZone(host, [csv]);
+      fixture.detectChanges();
+      expect(component.selectedFiles().map(f => f.name))
+        .withContext('the dropped file, selected')
+        .toEqual(['smoke-dropped.csv']);
+
+      await component.processFiles();
+      await until(fixture, () => component.extractedTransactions().length === 2);
+
+      // The stepper is linear with no hand-off; steps 0 and 1 are complete.
+      component.stepper.selectedIndex = 2;
+      fixture.detectChanges();
+      await until(
+        fixture,
+        () => TestBed.inject(CategoryService).categories().length > 0 &&
+          host.querySelectorAll('.transaction-card').length === 2
+      );
+      expect(component.stepper.selectedIndex).toBe(2);
+
+      await component.confirmImport();
+
+      const after = await getDocs(collection(firestore, `users/${uid}/transactions`));
+      const landed = after.docs
+        .filter(d => !before.has(d.id))
+        .map(d => [d.data()['description'], d.data()['amount'], d.data()['type']])
+        .sort((a, b) => String(a[0]).localeCompare(String(b[0])));
+      expect(landed).toEqual([
+        ['Smoke dropped row one', 1234, 'expense'],
+        ['Smoke dropped row two', 5678, 'expense']
+      ]);
+
+      history.replaceState({}, '');
+      fixture.destroy();
+      await new Promise(resolve => setTimeout(resolve, 300));
+    },
+    30000
+  );
+
+  it(
+    'a mixed pick confirms its photos in the order their badges show',
+    async () => {
+      // A pin written after the fix: with the move swapping by list index,
+      // photo 2's up arrow trades rows with the CSV between the photos, the
+      // badges keep their photos, and the photos are read as [a, b].
+      // Dated today, so neither receipt asks about its date before Import.
+      const today = dayKey(new Date());
+      stubReceiptSeams(undefined, [
+        {
+          date: today,
+          dateConfidence: 0.95,
+          description: 'Smoke badge photo one',
+          amount: 410,
+          type: 'expense',
+          currency: 'JPY',
+          imageIndex: 0,
+          confidence: 0.9,
+          receiptId: 1,
+          receiptTotal: 410
+        },
+        {
+          date: today,
+          dateConfidence: 0.95,
+          description: 'Smoke badge photo two',
+          amount: 520,
+          type: 'expense',
+          currency: 'JPY',
+          imageIndex: 1,
+          confidence: 0.9,
+          receiptId: 2,
+          receiptTotal: 520
+        }
+      ]);
+      // Import attaches the photos picked, and the quota check reads Remote
+      // Config, which has no emulator.
+      TestBed.configureTestingModule({
+        providers: [
+          {
+            provide: ReceiptQuotaService,
+            useValue: { canAddImages: async () => true, noteImagesAdded: () => undefined }
+          }
+        ],
+        teardown: { destroyAfterEach: false }
+      });
+      spyOn(TestBed.inject(Router), 'navigate').and.resolveTo(true);
+      const read = spyOn(TestBed.inject(AIImportService), 'importFromMultipleImages').and.callThrough();
+      const translation = TestBed.inject(TranslationService);
+
+      history.replaceState({}, '');
+      const before = new Set(
+        (await getDocs(collection(firestore, `users/${uid}/transactions`))).docs.map(d => d.id)
+      );
+
+      const fixture = TestBed.createComponent(ImportWizardComponent);
+      fixture.detectChanges();
+      const host = fixture.nativeElement as HTMLElement;
+      const component = fixture.componentInstance;
+
+      // Each photo's bytes are its own, so a stored photo can be told from
+      // its neighbour.
+      const a = new File([new Uint8Array([0xff, 0xd8, 0x61, 0xd9])], 'smoke-badge-a.jpg', { type: 'image/jpeg' });
+      const csv = new File(
+        ['Date,Description,Amount,Type\n2026-10-30,Smoke mixed pick row,3456,expense\n'],
+        'smoke-mixed.csv',
+        { type: 'text/csv' }
+      );
+      const b = new File([new Uint8Array([0xff, 0xd8, 0x62, 0xd9])], 'smoke-badge-b.jpg', { type: 'image/jpeg' });
+      dropOnTheZone(host, [a, csv, b]);
+      fixture.detectChanges();
+
+      const names = (): string[] =>
+        Array.from(host.querySelectorAll('app-file-dropzone .file-name'), n => n.textContent?.trim() ?? '');
+      const badges = (): string[] =>
+        Array.from(host.querySelectorAll('app-file-dropzone .image-number'), n => n.textContent?.trim() ?? '');
+      expect(names()).withContext('the rows as dropped').toEqual([a.name, csv.name, b.name]);
+      expect(badges()).withContext('the photos numbered among photos').toEqual(['1', '2']);
+
+      const rowOf = (name: string): HTMLElement | undefined =>
+        Array.from(host.querySelectorAll<HTMLElement>('app-file-dropzone .file-item'))
+          .find(item => item.querySelector('.file-name')?.textContent?.trim() === name);
+      const up = rowOf(b.name)?.querySelector<HTMLButtonElement>('.reorder-btn') ?? null;
+      expect(up).withContext("photo 2's up arrow").not.toBeNull();
+      // Karma loads no catalog: the name is the bare key on both sides.
+      expect(up!.getAttribute('aria-label'))
+        .toBe(translation.t('import.movePhotoUpLabel', { position: 2, name: b.name }));
+      expect(up!.disabled).withContext("photo 2's up arrow is live").toBeFalse();
+      up!.click();
+      fixture.detectChanges();
+
+      expect(names()).withContext('photo 2 moved up, the CSV kept in its row').toEqual([b.name, csv.name, a.name]);
+      expect(badges()).toEqual(['1', '2']);
+      expect(component.selectedFiles().map(f => f.name)).toEqual([b.name, csv.name, a.name]);
+
+      await component.processFiles();
+      await until(fixture, () => component.extractedTransactions().length === 3);
+
+      // Jasmine's equality finds two Files equal whatever they hold, so the
+      // photos are told apart by name.
+      expect(read).toHaveBeenCalledTimes(1);
+      expect(read.calls.mostRecent().args[0].map(f => f.name))
+        .withContext('the photos read, in badge order')
+        .toEqual([b.name, a.name]);
+
+      // The stepper is linear with no hand-off; steps 0 and 1 are complete.
+      component.stepper.selectedIndex = 2;
+      fixture.detectChanges();
+      await until(
+        fixture,
+        () => TestBed.inject(CategoryService).categories().length > 0 &&
+          host.querySelectorAll('.transaction-card').length === 3
+      );
+      expect(component.unansweredDates()).toBe(0);
+
+      await component.confirmImport();
+
+      const after = await getDocs(collection(firestore, `users/${uid}/transactions`));
+      const landed = after.docs.filter(d => !before.has(d.id));
+      expect(landed.length).toBe(3);
+      const storedAs = (description: string) => landed.find(d => d.data()['description'] === description);
+      const bytesAt = async (id: string): Promise<number[]> =>
+        [...new Uint8Array(await getBytes(ref(storage, `users/${uid}/receipts/${id}`)))];
+      const bytesOf = async (file: File): Promise<number[]> => [...new Uint8Array(await file.arrayBuffer())];
+
+      // Receipt 1 was read from photo 1, which is b once moved up, and it
+      // keeps b's bytes; receipt 2 keeps a's.
+      const first = storedAs('Smoke badge photo one');
+      const second = storedAs('Smoke badge photo two');
+      expect(first?.data()['receiptCount']).withContext('receipt 1 keeps one photo').toBe(1);
+      expect(second?.data()['receiptCount']).withContext('receipt 2 keeps one photo').toBe(1);
+      expect(await bytesAt(first!.id)).withContext("receipt 1's stored photo").toEqual(await bytesOf(b));
+      expect(await bytesAt(second!.id)).withContext("receipt 2's stored photo").toEqual(await bytesOf(a));
+      const csvRow = storedAs('Smoke mixed pick row');
+      expect(csvRow).withContext("the CSV's row").toBeDefined();
+      expect('receiptUrls' in (csvRow?.data() ?? {})).withContext("the CSV's row holds no photo").toBeFalse();
+
+      history.replaceState({}, '');
+      fixture.destroy();
+      await new Promise(resolve => setTimeout(resolve, 300));
     },
     30000
   );

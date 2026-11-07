@@ -81,7 +81,7 @@
               [class.is-pinned]="!!record.pinned"
               [attr.aria-pressed]="!!record.pinned"
               [attr.aria-label]="
-                (record.pinned ? 'aiSearch.historyUnpin' : 'aiSearch.historyPin') | translate
+                'aiSearch.historyPinLabel' | translate: { query: record.query, date: recordDateLabel(record) }
               "
               (click)="togglePin(record)"
             >
@@ -90,7 +90,9 @@
             <button
               mat-icon-button
               class="history-delete"
-              [attr.aria-label]="'common.delete' | translate"
+              [attr.aria-label]="
+                'aiSearch.historyDeleteLabel' | translate: { query: record.query, date: recordDateLabel(record) }
+              "
               (click)="deleteRecord(record)"
             >
               <mat-icon>close</mat-icon>

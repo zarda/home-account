@@ -8,14 +8,22 @@ import { Goal } from '../../../../models';
 import { TranslationService } from '../../../../core/services/translation.service';
 import { LocaleFormatService } from '../../../../core/services/locale-format.service';
 import {
+  accessibleName,
+  catalogTranslationStub,
+  catalogTranslator,
   channels,
   createLocaleFormatStub,
   createTranslationStub,
+  expectPainted,
+  inPalette,
   paintedBackground,
   paintedColor,
+  PALETTES,
   provideNoMotion,
   ratio,
   settleAnimations,
+  tokenValue,
+  type TranslationStub,
   withTheme,
 } from '../../../../core/services/testing';
 
@@ -167,6 +175,7 @@ describe('GoalProgressCardComponent', () => {
 describe('GoalProgressCardComponent, through its own template', () => {
   let fixture: ComponentFixture<GoalProgressCardComponent>;
   let component: GoalProgressCardComponent;
+  let translation: TranslationStub;
 
   function card(overrides: Partial<Goal> = {}): void {
     fixture.componentRef.setInput('goal', goalOf(overrides));
@@ -183,12 +192,13 @@ describe('GoalProgressCardComponent, through its own template', () => {
   beforeEach(async () => {
     const mockCurrency = jasmine.createSpyObj('CurrencyService', ['formatCurrency']);
     mockCurrency.formatCurrency.and.callFake((amount: number, code: string) => `${code} ${amount}`);
+    translation = createTranslationStub();
 
     await TestBed.configureTestingModule({
       imports: [GoalProgressCardComponent],
       providers: [
         { provide: CurrencyService, useValue: mockCurrency },
-        { provide: TranslationService, useValue: createTranslationStub() },
+        { provide: TranslationService, useValue: translation },
         { provide: LocaleFormatService, useValue: createLocaleFormatStub() },
         provideNoMotion()
       ]
@@ -299,12 +309,33 @@ describe('GoalProgressCardComponent, through its own template', () => {
     component.contribute.subscribe(() => seen.push('contribute'));
     card();
 
-    (el().querySelector('[aria-label="common.edit"]') as HTMLButtonElement).click();
-    (el().querySelector('[aria-label="common.delete"]') as HTMLButtonElement).click();
+    const [edit, remove] = Array.from(el().querySelectorAll<HTMLButtonElement>('.goal-actions button'));
+    edit.click();
+    remove.click();
     button('goal.contribute')?.click();
 
     expect(seen).toEqual(['edit', 'delete', 'contribute']);
   });
+
+  /**
+   * The goals page stamps one card per goal, so each card's Edit and Delete
+   * name the goal they act on, in the words the card's header shows. The
+   * catalog stub goes in before the first render, so the pipe never caches
+   * an echoed key.
+   */
+  for (const locale of ['en', 'ja', 'tc'] as const) {
+    it(`names its Edit and Delete by the goal in ${locale}`, () => {
+      const t = catalogTranslator(locale, { strict: true });
+      Object.assign(translation, catalogTranslationStub(locale));
+      card({ name: 'Japan trip' });
+
+      expect(text('.goal-name')).toBe('Japan trip');
+      expect(Array.from(el().querySelectorAll('.goal-actions button')).map(accessibleName)).toEqual([
+        t('goal.editNamed', { name: 'Japan trip' }),
+        t('goal.deleteNamed', { name: 'Japan trip' }),
+      ]);
+    });
+  }
 
   it('shows the note only when the goal carries one', () => {
     card();
@@ -326,6 +357,75 @@ describe('GoalProgressCardComponent, through its own template', () => {
     const done = el().querySelector<HTMLElement>('.item-label.done')!;
     expect(getComputedStyle(done).textDecorationLine).toBe('line-through');
     expect(getComputedStyle(done).opacity).toBe('1');
+  });
+
+  /**
+   * #533: a secondary line rests in the muted token, not a fade. A fade
+   * lowers a line against whatever it sits on, and the high-contrast palette
+   * deepens the token but can never reach an opacity. The card is filled so
+   * every faded line renders at once: the target date and its glyph, the
+   * target, the linked share, the remaining amount, the checklist count, an
+   * item's amount and the note.
+   */
+  it('rests every secondary line in the muted token, at AA on the card, in all four palettes', () => {
+    card({
+      targetDate: Timestamp.fromDate(new Date('2026-12-01T00:00:00Z')),
+      linkedAmount: 250,
+      items: [{ name: 'Deposit', amount: 100, done: false }],
+      note: 'Three months of expenses',
+    });
+    const lines = [
+      '.goal-date',
+      '.goal-date mat-icon',
+      '.target',
+      '.linked-breakdown',
+      '.status',
+      '.items-count',
+      '.item-amount',
+      '.goal-note',
+    ];
+    const muted = new Map<string, string>();
+
+    for (const palette of PALETTES) {
+      inPalette(palette.classes, () => {
+        muted.set(palette.name, tokenValue('--text-muted'));
+        expect(paintedBackground(el().querySelector('.goal-card')!))
+          .withContext(`${palette.name} card`)
+          .toEqual(channels(tokenValue('--mat-sys-surface-container-low')).rgb);
+        for (const selector of lines) {
+          const node = el().querySelector(selector);
+          const label = `${palette.name} ${selector}`;
+          expect(node ? getComputedStyle(node).opacity : null).withContext(`${label} opacity`).toBe('1');
+          expectPainted(node, '--text-muted', label);
+        }
+      });
+    }
+
+    // Four palettes prove four things only while high contrast moves the token.
+    expect(muted.get('high contrast')).withContext('light high contrast').not.toBe(muted.get('plain'));
+    expect(muted.get('dark high contrast')).withContext('dark high contrast').not.toBe(muted.get('dark'));
+  });
+
+  // The reached note is the card's good news, so it speaks in the card's own
+  // colour rather than the muted one its `.status` class would give it.
+  it('lets the reached note keep the card\'s own colour, unfaded and at AA, in all four palettes', () => {
+    card({ contributedAmount: 3000 });
+    const note = el().querySelector<HTMLElement>('.status.reached-note');
+    expect(note).withContext('the reached note renders').not.toBeNull();
+    if (!note) return;
+
+    for (const palette of PALETTES) {
+      inPalette(palette.classes, () => {
+        settleAnimations(document);
+        expect(getComputedStyle(note).opacity).withContext(`${palette.name} opacity`).toBe('1');
+        expect(getComputedStyle(note).color)
+          .withContext(`${palette.name} colour`)
+          .toBe(getComputedStyle(note.parentElement!).color);
+        expect(ratio(paintedColor(note), paintedBackground(note)))
+          .withContext(`${palette.name} on the card`)
+          .toBeGreaterThanOrEqual(4.5);
+      });
+    }
   });
 
   // Material paints the indicator as the inner bar's top border, from

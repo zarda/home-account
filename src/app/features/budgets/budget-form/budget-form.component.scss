@@ -1,6 +1,41 @@
 // Header chrome lives in app-dialog-header; no fixed min-width here so the
 // dialog respects the global maxWidth on narrow phones.
 
+// Budget Period and Start Date share a row while each half can hold the
+// start date's resting label beside its calendar button, and wrap, each
+// taking the whole row, once it cannot. A half needs the label, which is
+// text and grows with the account's text size, and the field's chrome,
+// which is px and does not: the label sits 16px in (the outline's 12px
+// leading edge and the label's own 4px), and the 40px calendar button ends
+// the field, an icon suffix taking the wrapper's end padding. The longest
+// label is en's *Start Date (Optional)*, about 152px (152.1) in the app's
+// PT Sans at a 16px root, 9.5em (tc's is 132px, ja's 115px), so each half's
+// basis is 9.5rem + 56px, each term in the unit of what it measures, as the
+// household plan dialog's currency basis is (docs/ui-overflow.md G1,
+// *Scale*). Two of them and the 1rem gap come to 432px at the default size,
+// the 480px dialog's row exactly: there the two keep their row, and en's
+// label meets the button's box rather than clearing it. They wrap wherever
+// the dialog is narrower than its 480px, in a window under about 505px, and
+// in the dialog at any size from Large (1.15) up; at Extra large the label
+// had run 31.6px under the button in en, 7.6 in ja and 29.2 in tc. The row
+// reads its own room, not the window, so this holds wherever the dialog
+// opens. Wherever the label fits beside the button the hint fits too: ja's,
+// the widest, is 8em in the half less 60px. A basis rather than a
+// min-width, because the basis only decides where the line breaks, and a
+// field alone on its line still shrinks to its row, as on a 320px phone at
+// Extra large (household setup's create form wraps the same way). A longer
+// `budget.startDateOptional` in any catalog re-measures the 9.5.
+// Encapsulated, these outrank the row's gap utility and the fields' flex-1.
+.period-row {
+  flex-wrap: wrap;
+  row-gap: 0;
+
+  > mat-form-field {
+    flex: 1 1 calc(9.5rem + 56px);
+    min-width: 0;
+  }
+}
+
 // Material's dialog container draws the actions row's top border in
 // transparent, from a stylesheet that lands after styles.scss; this rule
 // outranks it, so it is the one that colours that edge.

@@ -1,29 +1,13 @@
 import { accountDisplayName, givenName, memberDisplayName, welcomeGreeting } from './person-name.utils';
-import en from '../../../assets/i18n/en.json';
-import ja from '../../../assets/i18n/ja.json';
-import tc from '../../../assets/i18n/tc.json';
+import { type SupportedLocale } from '../services/translation.service';
+import { CATALOGS, catalogTranslator, echoKey, echoTranslation } from '../services/testing';
 
-/** A translator that answers with the key, so a case names the key it expects. */
-const keyOnly = (key: string): string => key;
-
-/** A translator that answers with the key and the params it was given, as the app's spec doubles do. */
-const keyAndParams = (key: string, params?: Record<string, string | number>): string =>
-  params ? `${key}:${JSON.stringify(params)}` : key;
-
-/** The catalog's own words and templates, as the translation service reads them. */
-function catalogTranslator(catalog: unknown): (key: string, params?: Record<string, string | number>) => string {
-  return (key, params) => {
-    let value: unknown = catalog;
-    for (const part of key.split('.')) {
-      value = (value as Record<string, unknown> | undefined)?.[part];
-    }
-    if (typeof value !== 'string') throw new Error(`${key} is not a string in the catalog`);
-    return Object.entries(params ?? {}).reduce(
-      (text, [name, each]) => text.replaceAll(`{{${name}}}`, String(each)),
-      value
-    );
-  };
-}
+/**
+ * The three locales whose catalogs a case reads, each through the service's
+ * own walk; `strict`, so a key a catalog lacks throws rather than reading as
+ * the key.
+ */
+const LOCALES = Object.keys(CATALOGS) as SupportedLocale[];
 
 describe('person-name.utils', () => {
   describe('givenName', () => {
@@ -46,7 +30,7 @@ describe('person-name.utils', () => {
 
   describe('accountDisplayName', () => {
     it('is the given name, trimmed, and asks nobody for a fallback it will not use', () => {
-      const t = jasmine.createSpy('t').and.callFake(keyOnly);
+      const t = jasmine.createSpy('t').and.callFake(echoKey);
 
       expect(accountDisplayName('Alex', t)).toBe('Alex');
       expect(accountDisplayName('  Alex Kim \n', t)).toBe('Alex Kim');
@@ -54,22 +38,22 @@ describe('person-name.utils', () => {
     });
 
     it('reads a stored "User" as the name it is (pin)', () => {
-      expect(accountDisplayName('User', keyOnly)).toBe('User');
-      expect(accountDisplayName(' User ', keyOnly)).toBe('User');
+      expect(accountDisplayName('User', echoKey)).toBe('User');
+      expect(accountDisplayName(' User ', echoKey)).toBe('User');
     });
 
     it('is the word for an account with no name when none was given', () => {
       for (const missing of [null, undefined, '', '   ', '\t\n', '　']) {
-        expect(accountDisplayName(missing, keyOnly)).withContext(JSON.stringify(missing)).toBe('common.unnamedAccount');
+        expect(accountDisplayName(missing, echoKey)).withContext(JSON.stringify(missing)).toBe('common.unnamedAccount');
       }
     });
 
     describe('against the real catalogs', () => {
       const words = { en: 'No name set', ja: '名前未設定', tc: '未設定名稱' };
 
-      for (const [locale, catalog] of Object.entries({ en, ja, tc })) {
+      for (const locale of LOCALES) {
         it(`reads ${locale} as its own word, with no punctuation or edge space of its own`, () => {
-          const text = accountDisplayName('', catalogTranslator(catalog));
+          const text = accountDisplayName('', catalogTranslator(locale, { strict: true }));
 
           expect(text).toBe(words[locale as keyof typeof words]);
           expect(text).toBe(text.trim());
@@ -81,29 +65,29 @@ describe('person-name.utils', () => {
 
   describe('welcomeGreeting', () => {
     it('greets by the first word of the name, whatever white space ends it', () => {
-      expect(welcomeGreeting('Ada Lovelace', keyAndParams)).toBe('common.welcomeNamed:{"name":"Ada"}');
-      expect(welcomeGreeting('Ada\tLovelace', keyAndParams)).toBe('common.welcomeNamed:{"name":"Ada"}');
-      expect(welcomeGreeting('Ada\nLovelace', keyAndParams)).toBe('common.welcomeNamed:{"name":"Ada"}');
+      expect(welcomeGreeting('Ada Lovelace', echoTranslation)).toBe('common.welcomeNamed:{"name":"Ada"}');
+      expect(welcomeGreeting('Ada\tLovelace', echoTranslation)).toBe('common.welcomeNamed:{"name":"Ada"}');
+      expect(welcomeGreeting('Ada\nLovelace', echoTranslation)).toBe('common.welcomeNamed:{"name":"Ada"}');
     });
 
     it('splits a name written with the ideographic space as well', () => {
-      expect(welcomeGreeting('山田　太郎', keyAndParams)).toBe('common.welcomeNamed:{"name":"山田"}');
+      expect(welcomeGreeting('山田　太郎', echoTranslation)).toBe('common.welcomeNamed:{"name":"山田"}');
     });
 
     it('greets a one-word name by that word, and ignores white space around the name', () => {
-      expect(welcomeGreeting('Ada', keyAndParams)).toBe('common.welcomeNamed:{"name":"Ada"}');
-      expect(welcomeGreeting('  Ada   Lovelace  ', keyAndParams)).toBe('common.welcomeNamed:{"name":"Ada"}');
-      expect(welcomeGreeting('　山田　', keyAndParams)).toBe('common.welcomeNamed:{"name":"山田"}');
+      expect(welcomeGreeting('Ada', echoTranslation)).toBe('common.welcomeNamed:{"name":"Ada"}');
+      expect(welcomeGreeting('  Ada   Lovelace  ', echoTranslation)).toBe('common.welcomeNamed:{"name":"Ada"}');
+      expect(welcomeGreeting('　山田　', echoTranslation)).toBe('common.welcomeNamed:{"name":"山田"}');
     });
 
     it('reads a stored "User" as the name it is (pin)', () => {
-      expect(welcomeGreeting('User', keyAndParams)).toBe('common.welcomeNamed:{"name":"User"}');
-      expect(welcomeGreeting('User Name', keyAndParams)).toBe('common.welcomeNamed:{"name":"User"}');
+      expect(welcomeGreeting('User', echoTranslation)).toBe('common.welcomeNamed:{"name":"User"}');
+      expect(welcomeGreeting('User Name', echoTranslation)).toBe('common.welcomeNamed:{"name":"User"}');
     });
 
     it('greets an account with no name by the plain welcome, and passes no params', () => {
       for (const missing of [null, undefined, '', '   ', '\t\n', '　']) {
-        const t = jasmine.createSpy('t').and.callFake(keyAndParams);
+        const t = jasmine.createSpy('t').and.callFake(echoTranslation);
 
         expect(welcomeGreeting(missing, t)).withContext(JSON.stringify(missing)).toBe('common.welcome');
         expect(t).withContext(JSON.stringify(missing)).toHaveBeenCalledOnceWith('common.welcome');
@@ -111,7 +95,7 @@ describe('person-name.utils', () => {
     });
 
     it('asks only for the key it uses', () => {
-      const t = jasmine.createSpy('t').and.callFake(keyAndParams);
+      const t = jasmine.createSpy('t').and.callFake(echoTranslation);
 
       welcomeGreeting('Ada Lovelace', t);
 
@@ -125,9 +109,9 @@ describe('person-name.utils', () => {
         tc: '歡迎回來，Ada',
       };
 
-      for (const [locale, catalog] of Object.entries({ en, ja, tc })) {
+      for (const locale of LOCALES) {
         describe(locale, () => {
-          const t = catalogTranslator(catalog);
+          const t = catalogTranslator(locale, { strict: true });
 
           it('greets by name in the reader\'s language', () => {
             expect(welcomeGreeting('Ada Lovelace', t)).toBe(named[locale as keyof typeof named]);
@@ -143,7 +127,7 @@ describe('person-name.utils', () => {
 
   describe('memberDisplayName', () => {
     it('is the given name, and asks nobody for a fallback it will not use', () => {
-      const t = jasmine.createSpy('t').and.callFake(keyOnly);
+      const t = jasmine.createSpy('t').and.callFake(echoKey);
 
       expect(memberDisplayName('  Alex ', t)).toBe('Alex');
       expect(memberDisplayName('Alex', t, 'inline')).toBe('Alex');
@@ -151,31 +135,29 @@ describe('person-name.utils', () => {
     });
 
     it('reads a stored "User" as the name it is (pin)', () => {
-      expect(memberDisplayName('User', keyOnly)).toBe('User');
-      expect(memberDisplayName('User', keyOnly, 'inline')).toBe('User');
+      expect(memberDisplayName('User', echoKey)).toBe('User');
+      expect(memberDisplayName('User', echoKey, 'inline')).toBe('User');
     });
 
     it('opens a sentence with "a member" when no name was given', () => {
       for (const missing of [null, undefined, '', '   ', '　']) {
-        expect(memberDisplayName(missing, keyOnly)).withContext(JSON.stringify(missing)).toBe('household.unnamedMember');
-        expect(memberDisplayName(missing, keyOnly, 'start')).toBe('household.unnamedMember');
+        expect(memberDisplayName(missing, echoKey)).withContext(JSON.stringify(missing)).toBe('household.unnamedMember');
+        expect(memberDisplayName(missing, echoKey, 'start')).toBe('household.unnamedMember');
       }
     });
 
     it('reads "a member" in the middle of a sentence in its inline form', () => {
       for (const missing of [null, undefined, '', '   ', '　']) {
-        expect(memberDisplayName(missing, keyOnly, 'inline'))
+        expect(memberDisplayName(missing, echoKey, 'inline'))
           .withContext(JSON.stringify(missing))
           .toBe('household.unnamedMemberInline');
       }
     });
 
     describe('against the real catalogs', () => {
-      const catalogs = { en, ja, tc };
-
-      for (const [locale, catalog] of Object.entries(catalogs)) {
+      for (const locale of LOCALES) {
         describe(locale, () => {
-          const t = catalogTranslator(catalog);
+          const t = catalogTranslator(locale, { strict: true });
 
           it('gives both forms as words that carry no punctuation or edge space of their own', () => {
             for (const form of ['start', 'inline'] as const) {
@@ -207,7 +189,7 @@ describe('person-name.utils', () => {
       }
 
       it('has English begin a sentence with a capital and carry on in lower case', () => {
-        const t = catalogTranslator(en);
+        const t = catalogTranslator('en', { strict: true });
         const start = memberDisplayName('', t, 'start');
         const inline = memberDisplayName('', t, 'inline');
 

@@ -140,7 +140,7 @@
               class="row-menu-btn"
               [matMenuTriggerFor]="mobileMenu"
               (click)="$event.stopPropagation()"
-              [attr.aria-label]="'common.moreActionsFor' | translate: { description: transaction.description }"
+              [attr.aria-label]="'common.moreActionsFor' | translate: { description: transactionName(transaction) }"
             >
               <mat-icon>more_vert</mat-icon>
             </button>
@@ -207,7 +207,7 @@
            there too; the checkbox's own click stops here so it counts once. -->
       <ng-container matColumnDef="select">
         <th mat-header-cell *matHeaderCellDef class="col-select">
-          <span class="sr-only">{{ 'transactions.select.start' | translate }}</span>
+          <span class="select-header-label">{{ 'transactions.select.start' | translate }}</span>
         </th>
         <td mat-cell *matCellDef="let transaction" class="col-select">
           <mat-checkbox
@@ -326,7 +326,7 @@
               type="button"
               class="note-button"
               [matTooltip]="transaction.note"
-              [attr.aria-label]="'transactions.viewNote' | translate"
+              [attr.aria-label]="'transactions.viewNoteFor' | translate: { description: quotedName(transaction) }"
               (click)="$event.stopPropagation(); openNote(transaction)"
             >
               <mat-icon class="note-icon">notes</mat-icon>
@@ -336,7 +336,7 @@
             <button
               type="button"
               class="receipt-icon-button"
-              [attr.aria-label]="'transactions.viewReceipt' | translate"
+              [attr.aria-label]="'transactions.viewReceiptFor' | translate: { description: quotedName(transaction) }"
               (click)="$event.stopPropagation(); openReceipt(transaction)"
               [matTooltip]="receiptCount(transaction) > 1
                 ? ('receiptImages.countBadge' | translate: { count: receiptCount(transaction) })
@@ -390,7 +390,7 @@
             class="action-btn"
             [matMenuTriggerFor]="menu"
             (click)="$event.stopPropagation()"
-            [attr.aria-label]="'common.moreActionsFor' | translate: { description: transaction.description }"
+            [attr.aria-label]="'common.moreActionsFor' | translate: { description: transactionName(transaction) }"
           >
             <mat-icon>more_vert</mat-icon>
           </button>

@@ -1,3 +1,4 @@
+/// <reference types="jasmine" />
 import type { Rgb } from '../../utils/color-contrast.utils';
 import { settleAnimations } from './axe';
 import { styleRules } from './style-rules';
@@ -169,6 +170,15 @@ export function withTheme<T>(theme: 'light' | 'dark', fn: () => T): T {
 
   root.classList.toggle('light-theme', theme === 'light');
   root.classList.toggle('dark-theme', theme === 'dark');
+  return thenRestore(fn, restore);
+}
+
+/**
+ * Runs `fn` and returns what it returns, calling `restore` once it is done:
+ * after the returned promise settles, resolved or rejected, when `fn` is
+ * async, and at once otherwise, a throw included.
+ */
+function thenRestore<T>(fn: () => T, restore: () => void): T {
   let pending = false;
   try {
     const result = fn();
@@ -180,6 +190,104 @@ export function withTheme<T>(theme: 'light' | 'dark', fn: () => T): T {
   } finally {
     if (!pending) restore();
   }
+}
+
+/**
+ * What `<property>: var(token)` computes to under the palette on <html> now,
+ * read off a probe on the body once motion has settled.
+ */
+export function tokenValue(token: string, property = 'color'): string {
+  const probe = document.createElement('span');
+  probe.style.setProperty(property, `var(${token})`);
+  document.body.appendChild(probe);
+  try {
+    settleAnimations(document);
+    return getComputedStyle(probe).getPropertyValue(property);
+  } finally {
+    probe.remove();
+  }
+}
+
+/**
+ * What `expectPainted` asserts on, read without asserting, so a spec can
+ * check it both ways.
+ */
+export interface PaintedVerdict {
+  /** `node`'s computed `color`. */
+  readonly colour: string;
+  /** What `color: var(token)` computes to under the palette on <html> now. */
+  readonly tokenColour: string;
+  /** Whether the two are the same computed colour. */
+  readonly colourMatches: boolean;
+  /** The painted text on what is painted behind it, 1–21, unrounded. */
+  readonly ratio: number;
+}
+
+/**
+ * Whether `node`'s text is painted in `token`, and how it reads on what is
+ * painted behind it. Throws, as `paintedColor` does, when `node` is detached
+ * or nothing under it is opaque.
+ */
+export function paintedVerdict(node: Element, token: string): PaintedVerdict {
+  const colour = getComputedStyle(node).color;
+  const tokenColour = tokenValue(token);
+  return {
+    colour,
+    tokenColour,
+    colourMatches: colour === tokenColour,
+    ratio: ratio(paintedColor(node), paintedBackground(node)),
+  };
+}
+
+/**
+ * `node`'s text is painted in `token`, and reads at `floor` or better on what
+ * is painted behind it, as `paintedVerdict` reads them. The floor is 4.5:1 for
+ * text; pass 3 for a glyph or another graphic (WCAG 1.4.11). `label` names the
+ * node in a failure.
+ */
+export function expectPainted(node: Element | null, token: string, label: string, floor = 4.5): void {
+  expect(node).withContext(label).toBeTruthy();
+  if (!node) return;
+  const verdict = paintedVerdict(node, token);
+  expect(verdict.colourMatches)
+    .withContext(`${label} is painted ${verdict.colour}, and ${token} computes to ${verdict.tokenColour}`)
+    .toBeTrue();
+  expect(verdict.ratio).withContext(`${label} on what it sits on`).toBeGreaterThanOrEqual(floor);
+}
+
+/**
+ * The four palettes the app renders: the two themes, each with and without
+ * high contrast. Two tokens can share a value in one palette and part in
+ * another, so a check run in one palette only proves that one.
+ */
+export const PALETTES: readonly { name: string; classes: readonly string[] }[] = [
+  { name: 'plain', classes: ['light-theme'] },
+  { name: 'high contrast', classes: ['light-theme', 'high-contrast'] },
+  { name: 'dark', classes: ['dark-theme'] },
+  { name: 'dark high contrast', classes: ['dark-theme', 'high-contrast'] },
+];
+
+const PALETTE_CLASSES = ['light-theme', 'dark-theme', 'high-contrast'];
+
+/**
+ * Runs `fn` with exactly `classes` (of the three palette classes) on <html>,
+ * then restores all three as they were — after the returned promise settles,
+ * when `fn` is async, as `withTheme` does. A leaked `dark-theme` reads every
+ * later spec in the wrong scheme (ADR 0151); a leaked `high-contrast` does the
+ * same to every token it overrides.
+ *
+ * Like `withTheme`, this stamps classes only, for probing tokens and
+ * stylesheet rules.
+ */
+export function inPalette<T>(classes: readonly string[], fn: () => T): T {
+  const root = document.documentElement;
+  const had = PALETTE_CLASSES.map(name => [name, root.classList.contains(name)] as const);
+  const restore = () => {
+    for (const [name, on] of had) root.classList.toggle(name, on);
+  };
+
+  for (const name of PALETTE_CLASSES) root.classList.toggle(name, classes.includes(name));
+  return thenRestore(fn, restore);
 }
 
 /** A selector list split at its top-level commas, leaving `:is(a, b)` whole. */

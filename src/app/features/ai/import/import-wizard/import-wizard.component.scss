@@ -1,3 +1,5 @@
+@use 'a11y';
+
 .import-wizard {
   max-width: 960px;
   margin: 0 auto;
@@ -142,7 +144,7 @@
   margin-top: 24px;
 }
 
-.image-previews h3 {
+.image-previews h2 {
   font-size: var(--text-sm);
   font-weight: 500;
   color: var(--text-muted);
@@ -692,16 +694,11 @@
      the progress instead. Each header is a tab its label names (and, while
      the import is written, the lock in it), so the label is clipped in place
      rather than taken out with display: none, which left four tabs with no
-     name. Material positions the header, so the 1px box stays inside it,
-     and gives the label a 50px min-width the box has to drop. */
+     name. Its insets stay auto, so the 1px box stays where the label stood,
+     inside the header, whose position decides only which overflow clips it.
+     Material gives the label a 50px min-width the box has to drop. */
   ::ng-deep .modern-stepper .mat-step-label {
-    position: absolute;
-    width: 1px;
-    min-width: 0;
-    height: 1px;
-    overflow: hidden;
-    clip-path: inset(50%);
-    white-space: nowrap;
+    @include a11y.visually-hidden;
   }
 
   ::ng-deep .modern-stepper .mat-horizontal-stepper-header {
@@ -714,10 +711,10 @@
      on a line of its own. The wizard's padding is the page's gutter here.
      Not all of Material's padding goes, though: the container clips
      (overflow: hidden), and the focus ring drawn outside a step's own
-     controls, the dropzone's among them, needs room inside it — 5px, the
-     high-contrast ring's 3px outline and 2px offset. The negative margin
-     takes those 5px back out of the wizard's gutter, so the content keeps
-     the full width. */
+     controls needs room inside it, the ring drawn round the dropzone while
+     Browse has keyboard focus among them — 5px, the high-contrast ring's
+     3px outline and 2px offset. The negative margin takes those 5px back
+     out of the wizard's gutter, so the content keeps the full width. */
   ::ng-deep .modern-stepper .mat-horizontal-content-container {
     padding-inline: 5px;
     margin-inline: -5px;

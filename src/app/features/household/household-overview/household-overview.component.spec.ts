@@ -20,8 +20,10 @@ import { NotificationService } from '../../../core/services/notification.service
 import { CurrencyService } from '../../../core/services/currency.service';
 import { LocaleFormatService } from '../../../core/services/locale-format.service';
 import { PwaService } from '../../../core/services/pwa.service';
-import { TranslationService } from '../../../core/services/translation.service';
+import { SupportedLocale, TranslationService } from '../../../core/services/translation.service';
 import {
+  accessibleName,
+  catalogTranslator,
   createLocaleFormatStub,
   createTranslationStub,
   createUser,
@@ -1005,6 +1007,33 @@ describe('HouseholdOverviewComponent', () => {
       ]);
       expect(rowOf('Matcha').querySelector('button, a, [tabindex]')).toBeNull();
     });
+
+    // A row whose description is empty once trimmed is named by the
+    // catalog's words for an untitled transaction, as the list names it, not
+    // by its spaces; a titled row (Bouldering) keeps its own description.
+    // The stub's t reads its locale signal, as the service's reads its
+    // catalog signal, and the language is switched with the page open, so
+    // the name is read as it re-renders.
+    for (const blank of ['', '   ']) {
+      for (const locale of ['en', 'ja', 'tc'] as const) {
+        it(`names a row whose description is ${JSON.stringify(blank)} as an untitled transaction in ${locale}`, () => {
+          const say = catalogTranslator(locale, { strict: true });
+          const translation = TestBed.inject(TranslationService) as unknown as TranslationStub;
+          translation.t = (key, params) => catalogTranslator(translation.currentLocale() as SupportedLocale)(key, params);
+          translation.translationsVersion.update(version => version + 1);
+          ledger.rows.update(rows => rows.map(each => (each.sourceId === 'tx-a1' ? { ...each, description: blank } : each)));
+          render();
+
+          translation.currentLocale.set(locale);
+          render();
+
+          expect(linkButtons().map(button => accessibleName(button))).toEqual([
+            say('household.overview.countToward', { name: say('transactions.untitledRow') }),
+            say('household.overview.countToward', { name: 'Bouldering' })
+          ]);
+        });
+      }
+    }
 
     it('offers nothing while the household has no active goal', () => {
       goals.set([]);

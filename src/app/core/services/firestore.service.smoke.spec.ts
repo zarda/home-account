@@ -496,6 +496,7 @@ describe('FirestoreService reads, writes and subscriptions (emulator smoke test)
 
       await waitFor(() => errors.length === 1, 'the permission error');
       sub.unsubscribe();
+      expect((errors[0] as { code?: string }).code).toBe('permission-denied');
     });
 
     it('subscribeToDocumentWithMetadata says which emissions the server confirmed, including metadata-only ones', async () => {

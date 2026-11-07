@@ -19,6 +19,8 @@ import { ThemeService } from '../../../../core/services/theme.service';
 import {
   AUDIT_SCHEMES,
   GLYPH_PROBE_COLOURS,
+  afterTwoFrames,
+  catalogTranslationStub,
   chooseOption,
   createTranslationStub,
   eachOptionState,
@@ -35,7 +37,6 @@ import {
   PLAN_AUDIT_THEMES,
   PLAN_PHONE_WIDTH,
   auditPlanDialog,
-  englishTranslationStub,
   measureAmountRowLabels,
   measurePinnedActions,
   openPlanDialog,
@@ -317,7 +318,7 @@ describe('HouseholdBudgetDialogComponent', () => {
       const saving = component.submit();
       fixture.detectChanges();
       // Focus fixup runs as the page next renders.
-      await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+      await afterTwoFrames();
       expect(document.activeElement).withContext('while the save is on its way').toBe(saveButton);
 
       refuse(new HouseholdError('household.errors.refused'));
@@ -581,7 +582,7 @@ describe('HouseholdBudgetDialogComponent', () => {
   });
 
   it("keeps each hint inside its own field at a phone's width, a wrapped hint pushing the next row down", async () => {
-    TestBed.overrideProvider(TranslationService, { useValue: englishTranslationStub() });
+    TestBed.overrideProvider(TranslationService, { useValue: catalogTranslationStub('en') });
     const dialog = await openPlanDialog(HouseholdBudgetDialogComponent, { currency: 'USD', save }, { maxWidth: PLAN_PHONE_WIDTH });
     try {
       const hints = readSubscripts(dialog.container);
@@ -604,7 +605,7 @@ describe('HouseholdBudgetDialogComponent', () => {
   });
 
   it("keeps every error inside its own field at a phone's width, at every font scale", async () => {
-    TestBed.overrideProvider(TranslationService, { useValue: englishTranslationStub() });
+    TestBed.overrideProvider(TranslationService, { useValue: catalogTranslationStub('en') });
     const data = { currency: 'USD', save };
     const errors = (container: HTMLElement) => readSubscripts(container).filter(subscript => subscript.kind === 'error');
     const readings = [
@@ -658,7 +659,7 @@ describe('HouseholdBudgetDialogComponent', () => {
   });
 
   it("keeps the limit's error inside its own field at a phone's width, the wrapped error pushing the period down", async () => {
-    TestBed.overrideProvider(TranslationService, { useValue: englishTranslationStub() });
+    TestBed.overrideProvider(TranslationService, { useValue: catalogTranslationStub('en') });
     const dialog = await openPlanDialog(
       HouseholdBudgetDialogComponent,
       { currency: 'USD', save },
@@ -687,7 +688,7 @@ describe('HouseholdBudgetDialogComponent', () => {
   });
 
   it("shows the limit's and the currency's floated labels whole at a phone's width, at every font scale", async () => {
-    TestBed.overrideProvider(TranslationService, { useValue: englishTranslationStub() });
+    TestBed.overrideProvider(TranslationService, { useValue: catalogTranslationStub('en') });
     const readings = await measureAmountRowLabels(HouseholdBudgetDialogComponent, { currency: 'USD', save }, dialog =>
       dialog.form.patchValue({ amount: 600 })
     );

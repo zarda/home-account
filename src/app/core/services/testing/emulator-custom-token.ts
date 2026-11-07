@@ -5,8 +5,9 @@
 // client move to another account without signing out first. No deployed
 // project would honour one: the signature segment is empty.
 //
-// This file compiles into the app program (tsconfig.app.json excludes only
-// *.spec.ts, not testing helpers), so it stays jasmine-free.
+// This file compiles into the app program (tsconfig.app.json excludes
+// *.spec.ts and src/test-main.ts, not testing helpers), so it stays
+// jasmine-free.
 
 /** The audience the emulator checks on a custom token. */
 const IDENTITY_TOOLKIT_AUDIENCE =

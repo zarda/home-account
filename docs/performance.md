@@ -204,6 +204,24 @@ Unit specs cannot see a stale view: `fixture.detectChanges()` checks a view
 whether or not anything marked it dirty. The route smoke drives the period
 toggle on real routed UI instead.
 
+The `translate` pipe memoizes each binding: after its first answer it asks
+the catalog again only when the key, the params, the locale or the
+catalog's version changes. An argument the template computes for it is
+outside that memo and runs each time the view is checked. Since the fixes
+for what ADR 0187's third browser run found, the names that put a
+description in the reader's own quotation marks call
+`TranslationService.t('common.quotedName')` in such an argument for every
+transaction or review row that has a description: the transaction list's
+note and receipt buttons and the receipt manager's remove-all, convert and
+remove buttons (each component's `quotedName`), and the review card's
+per-row names (`announceDescription`, which ten pipe arguments in its
+template read). The review card's row checkbox makes the same call without
+the pipe: its name is `selectLabel(row)`, a method the template calls on
+each check, which asks the catalog for `import.selectRowLabel` with
+`announceDescription`'s answer. Before, a description went in as it stood,
+with no call. That is one more catalog walk per binding per check; it is
+accepted and has not been measured.
+
 ## The budget
 
 `angular.json` carries an `initial` budget in both the `production` and
@@ -213,18 +231,170 @@ toggle on real routed UI instead.
 
 | | Warning | Error |
 |---|---|---|
-| Initial bundle | 2.415 MB | 2.7 MB |
+| Initial bundle | 2.417 MB | 2.7 MB |
 
-Against 2,414,488 bytes (JavaScript 2,383,292, stylesheet 31,196, in 62
+Against 2,416,258 bytes (JavaScript 2,384,891, stylesheet 31,367, in 63
 initial files), measured by `npm run build:analyze` from a clean production
-build of `26.11.181` on 2026-11-01, as `26.10.181` read on 2026-10-31 after
-the whole-branch review's fixes. Before them `26.10.181` read 2,414,407, and
-that tree at `26.10.180` 2,414,409: the version is the same length, but at
-`26.10.181` the builder names two lazy chunks one character shorter than at
-`26.10.180` (jsPDF's, which the export service loads, and the Anthropic SDK's,
-which the Claude provider loads), and each initial chunk whose `import()`
-names one is a byte shorter. No code moved. The fixes gave both chunks their
-`26.10.180` names back, so no figure below moved for the version.
+build of `26.11.182` on 2026-11-06, after the fixes for what the work's
+third browser run and a reading of the whole branch found.
+
+The warning went up, to 2.416 MB, when the work of #531, #532, #533, #534,
+#536 and #537
+([ADR 0187](ADR/0187-repeated-controls-name-their-item-the-upload-area-has-one-button-and-numbers-photos-among-photos-resting-text-is-a-token-sentences-end-in-the-readers-stop-and-a-spec-that-expects-nothing-fails.md):
+a control stamped once per item named by its item, the upload area's one
+Browse button and its photos numbered among the photos, resting text in the
+muted token rather than a fade, two sentences joined in the reader's own
+stop, and a spec that expects nothing failing) put the initial bundle at
+2,415,396 bytes, 396 over the 2.415 MB it stood at; it moved to the whole
+kilobyte above the figure and no more, which left 604 bytes of headroom
+(2,416,000 less 2,415,396). The fixes for what the work's second browser run
+found took 343 of them, which left 261 (2,416,000 less 2,415,739), so the
+warning did not move for them. The fixes for what the work's third browser
+run and a reading of the whole branch found added 519 more, which put the
+figure 258 bytes over the 2.416 MB it stood at, so the warning moved again,
+to 2.417 MB, the whole kilobyte above the figure and no more, which leaves
+742 bytes of headroom (2,417,000 less 2,416,258). The work of the six issues
+grew the initial JavaScript by 737 bytes and the stylesheet by 171. One
+initial file was added, a 78-byte chunk that holds
+`transaction-display.utils.ts` alone:
+`transactionDisplayName`, which names a transaction with no description as
+the list names it, is imported by four chunks, the receipt viewer's initial
+one among them, so the builder gives it a chunk of its own. No other input
+moved from one chunk to another. The base is the figure this page recorded:
+a clean build of `133179db`, the merge of #523, reads 2,414,488 to the byte.
+
+This work's growth up to the 2,415,396-byte build, measured the same way
+against the stats of that base, `26.11.181` at 2,414,488 bytes (summed over
+the initial outputs and matched by input path):
+`onboarding-dialog.component.ts` took 153 bytes (6,656 to 6,809): its step
+count's clip moved off Tailwind's `sr-only` onto the shared
+`a11y.visually-hidden` mixin, whose declarations ship in the component's own
+styles. `transaction-form.component.ts` took 148 (68,831 to 68,979): its
+image controls name the image by its number, new or stored, two queued
+photos of one picture keep a row each, and the Tags field reads the filter
+panel's short hint. `receipt-viewer-dialog.component.ts` took 137 (10,282 to
+10,419): its subtitle names a transaction with no description by the list's
+word; its chunk took 163 on disk. `camera-capture.component.ts` took 128
+(23,903 to 24,031): its arrows and remove buttons name the image by its
+number. `ai-search-dialog.component.ts` took 112 (15,940 to 16,052): a saved
+answer's pin and delete buttons name its question and its date.
+`transaction-display.utils.ts` brought 113 into the initial set.
+`import-review.utils.ts` took 28 (6,023 to 6,051): `joinSentences` takes the
+reader's `t` and joins with the catalog's separator; its chunk took 23.
+`translation.service.ts` took 9 (2,985 to 2,994): the catalog walk is
+`translateFrom`, which the service calls and the specs share; its chunk took
+23. The camera, the form, the onboarding dialog and the search dialog are in
+`main`, which took 469 on disk. Thirty-five other inputs moved by 1 to 6
+bytes, 15 less between them, and none was edited: the minifier renaming
+around the changed modules. On disk, fourteen other initial files moved by 1
+to 13 bytes, 19 less between them. Summed over the 63 initial outputs the
+inputs come to 2,885,955 bytes (2,884,980 at the base), 975 more, against
+2,415,396 (2,414,488) on disk and 908 more, a difference of 67 bytes between
+the two measures that is not attributed.
+
+The stylesheet's 171 bytes are no rule of this work. Tailwind's `content`
+reads every `.ts` under `src`, specs included, and *ring*, a word standing
+alone in a comment of `file-dropzone.component.spec.ts`, is the name of
+Tailwind's bare `ring` utility, which it now generates. Nothing in the app
+uses it. Specs bring about 1.8 kB of Tailwind's utilities into the
+stylesheet in all, some of them on purpose (`theme-aliases.spec.ts` reads
+every semantic alias's utility off the page), so leaving specs out of
+`content` is more than a one-line change; ADR 0187 records it as a known
+gap.
+
+The `anyComponentStyle` budget is unchanged. Compiled by Sass, compressed,
+the import wizard's and the preview table's stylesheets read as before; the
+dropzone's took 232 bytes, the ring drawn on the zone while Browse has
+keyboard focus, and the transaction list's 128, the select column's clipped
+header label, and both stay well under.
+
+The fixes for what the second browser run found (ADR 0187 records the run)
+brought the figure to 2,415,739 bytes, 343 more than the 2,415,396 above, all
+of it JavaScript; the stylesheet did not move. No chunk was cut or added, and
+each of the 63 initial files holds the same inputs as one of the
+2,415,396-byte build's 63, but for `main`, which also holds
+`dialog.config.ts`, new with the fixes. Their growth, measured the same way
+against the stats of the 2,415,396-byte build, not of `26.11.181`'s:
+`dialog-header.component.ts` took 270 bytes (1,791 to 2,061). So that a
+dialog drawn with the shared header is named by its title alone, the header's
+row is a `div` that holds the title's `h2` and the close button side by side,
+where the `h2` was the row and held the button, and the row draws the 40px strut
+Material gives a dialog title, which the title no longer draws; the header's
+own initial chunk took 261 on disk (1,777 to 2,038). `dialog.config.ts`
+brought 180: `provideAppDialogs()`, the app's dialog options spread over
+`new MatDialogConfig()`, so every dialog keeps Material's other defaults, its
+`dialog` role among them. `app.config.ts` gave back 153 (2,958 to 2,805), the
+inline options it held, and `chart.js`, unedited, 9; all three are in `main`,
+which took 35 on disk. The chunk that holds Material's dialog took 7 on disk
+for one more export, `MatDialogConfig`, which `main` now imports from it.
+`transaction-display.utils.ts` took 49 (113 to 162): `isUntitled`, which the
+delete and stop-sharing confirms read to pick a sentence of their own, with
+no quotes, for a transaction with no description; its chunk took 46 (78 to
+124). Twenty other inputs moved by 1 to 4 bytes, 12 more between them, and
+none was edited: the minifier renaming around the changed modules. On disk,
+the chunk that holds `ai-import.service.ts` gave back 8 and two other initial
+files took a byte each. Summed over the 63 initial outputs the inputs come to
+2,886,304 bytes (2,885,955 at the 2,415,396-byte build), 349 more, against
+343 on disk, a difference of 6 bytes between the two measures that is not
+attributed. The rest of the fixes are in lazy chunks: the filter panel's
+suggestions and save-search box, the transaction list's confirms, the upload
+area's removes, the budget dialog's row, the tab strip's reveal and the
+review card's keep-date and currency-offer tooltips. Among the lazy chunks,
+`import-focus.ts`, which the filter panel now imports too, moved out of the
+import wizard's chunk into a small one it shares with
+`country-options.utils.ts`. The confirms' new sentences are in the catalogs,
+which are fetched at runtime. In the same stats, the component stylesheets
+the fixes touched stay well under the `anyComponentStyle` warning: the dialog
+header's took 164 bytes (425 to 589), the filter panel's 42 (5,425 to 5,467)
+and the budget dialog's 20 (663 to 683). A component's styles ship inside its
+chunk, each selector scoped to the component by a 19-byte attribute, so the
+dialog header's 164 and 57 more for its three new selectors are part of the
+270 that `dialog-header.component.ts` took above.
+
+The fixes for what the third browser run and a reading of the whole branch
+found (ADR 0187 records both) brought the figure to 2,416,258 bytes, 519
+more than the 2,415,739 above, all of it JavaScript; the stylesheet did not
+move. No chunk was cut or added, and each of the 63 initial files holds the
+same inputs as one of the 2,415,739-byte build's 63, but for `main`, which
+also holds `focus.utils.ts`, new with the fixes. Their growth, measured the
+same way against the stats of the 2,415,739-byte build: `dialog.config.ts`
+took 278 bytes (180 to 458): `provideAppDialogs()` now provides, beside the
+options, one rule for where focus goes when a dialog closes,
+`returnFocusPastTheMenu`, by which a dialog a menu's entry opened gives
+focus back to the menu's button if focus has fallen to the page.
+`focus.utils.ts` brought 136: `focusDropped`, the one test of whether focus
+has fallen to the page, which that rule reads. It moved there out of the
+household page's focus helpers, which load with that page, and the
+transactions page and the transaction list read it too. Both files are in
+`main`, which took 347 on disk. `transaction-display.utils.ts` took 95 (162
+to 257): `quotedTransactionName`, which the list's note and receipt buttons
+and the receipt manager's image controls read, puts a description in the
+reader's own quotation marks (`common.quotedName`: none in en and ja, 「」 in
+tc) and leaves an untitled transaction's stand-in bare, since in quotes it
+would read as its name; its chunk took 82 (124 to 206).
+`import-review.utils.ts` took 82 (6,051 to 6,133): `joinSentences` keeps a
+lead's own question mark and adds only what follows the stop in the
+catalog's separator, a space in en and nothing in ja and tc, so the review
+card's keep-date and currency-offer buttons open their names with the words
+their chips show; its chunk took 77 (5,293 to 5,370). Eighteen other inputs
+moved by 1 to 4 bytes, 11 more between them, and none was edited: the
+minifier renaming around the changed modules. On disk, the chunk that holds
+Angular's core took 9 and the one that holds `ai-import.service.ts` 8, the
+receipt viewer's initial chunk gave back 6, and two other initial files took
+a byte each. Summed over the 63 initial outputs the inputs come to 2,886,906
+bytes (2,886,304 at the 2,415,739-byte build), 602 more, against 519 on
+disk, a difference of 83 bytes between the two measures that is not
+attributed. The rest of the fixes are in lazy chunks: the household
+overview's goal button; the note and share dialogs' stand-in, which now
+follows a language switch; Save search's open state and the rings round the
+filter panel's two text boxes; the review card's names; and the guard in
+`import-focus.ts` that keeps a held Enter or Space from pressing what the
+filter panel, the upload area and the review card hand focus to. The
+catalogs, which gained `common.quotedName`, lost two keys the review card no
+longer reads and in tc lost the quotation marks round a description, are
+fetched at runtime. The filter panel's stylesheet, which took the rings,
+raised no `anyComponentStyle` warning. The changes to `icon-labels:check`,
+`opacity:check` and `i18n:check` are scripts that CI runs, and ship nothing.
 
 The warning went up, to 2.415 MB, when the work of #515, #516 and #518
 ([ADR 0186](ADR/0186-a-date-stops-at-a-currency-sign-and-a-line-break-a-total-read-past-an-aside-or-under-a-count-is-flagged-and-a-shared-file-lands-in-the-upload-area.md):
@@ -233,7 +403,7 @@ aside or under a count flagged, a shared file that lands in the upload area or
 is told there with the reason the share gate refused it, a file's size in the
 reader's language, and the device's flags on an amount or a date naming the
 scan) put the initial bundle 3,488 bytes over the 2.411 MB it stood at; it
-moved to the whole kilobyte above the figure and no more, which leaves 512
+moved to the whole kilobyte above the figure and no more, which left 512
 bytes of headroom (2,415,000 less 2,414,488). That work grew the initial
 JavaScript by 3,844 bytes and left the stylesheet alone. No chunk was cut or
 added, and no input moved from one chunk to another: each of the 62 initial
@@ -241,7 +411,7 @@ files holds the same inputs as one of the base's 62. The base is the figure
 this page recorded: a clean build of `c3708366`, the merge of #519, reads
 2,410,644 to the byte.
 
-This work's growth, measured the same way against the stats of that base
+That work's growth, measured the same way against the stats of that base
 (summed over the initial outputs and matched by input path):
 `receipt-text-parser.ts` took 3,073 bytes (6,266 to 9,339). A date's
 separator stops at a currency sign and a line break, and a date whose year
@@ -292,6 +462,17 @@ the new sentences, are fetched at runtime and are in no chunk. Summed over
 the 62 initial outputs the inputs come to 2,884,980 bytes (2,880,184 at the
 base), 4,796 more, against 2,414,488 (2,410,644) on disk and 3,844 more, a
 difference of 952 bytes between the two measures that is not attributed.
+
+That figure, 2,414,488 bytes (JavaScript 2,383,292, stylesheet 31,196, in 62
+initial files), was measured from a clean production build of `26.11.181` on
+2026-11-01, as `26.10.181` read on 2026-10-31 after the whole-branch review's
+fixes. Before them `26.10.181` read 2,414,407, and that tree at `26.10.180`
+2,414,409: the version is the same length, but at `26.10.181` the builder
+names two lazy chunks one character shorter than at `26.10.180` (jsPDF's,
+which the export service loads, and the Anthropic SDK's, which the Claude
+provider loads), and each initial chunk whose `import()` names one is a byte
+shorter. No code moved. The fixes gave both chunks their `26.10.180` names
+back, so no figure below moved for the version.
 
 The `anyComponentStyle` budget stays at 12 kB for the warning and 16 kB for the
 error. The two largest component stylesheets are the import wizard's (10,892

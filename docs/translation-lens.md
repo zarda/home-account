@@ -48,7 +48,7 @@ Everything down to *What is never written* is the note. The photo starts at
 
 | Door | Where | What it opens |
 |---|---|---|
-| The note icon | A transactions row that has a note, labelled *View note* | The note dialog, with the lens under the note |
+| The note icon | A transactions row that has a note, named *View note for {description}* | The note dialog, with the lens under the note |
 | *View note* | Both action menus — the desktop row's ⋮ and the mobile row's overflow | The same dialog |
 | Beneath the note field | The transaction form, under the note textarea | The lens, on whatever is currently typed |
 

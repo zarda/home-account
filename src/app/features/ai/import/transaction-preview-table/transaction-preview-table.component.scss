@@ -718,7 +718,10 @@
   max-inline-size: 100%;
 }
 
-// A figure, not a sentence: narrower than .tag-input, same reason.
+// A figure, not a sentence: narrower than .tag-input, same reason. Its hint
+// has to fit the 7em too, since a placeholder cannot wrap: import.splitAmount
+// stays short, and the field's name carries the full words
+// (docs/ui-overflow.md, a shorter word).
 .split-input {
   inline-size: 7em;
   max-inline-size: 100%;

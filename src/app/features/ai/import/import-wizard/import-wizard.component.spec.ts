@@ -6,9 +6,11 @@ import { MatSnackBar } from '@angular/material/snack-bar';
 import { MatStepper } from '@angular/material/stepper';
 import { provideNativeDateAdapter } from '@angular/material/core';
 import { By } from '@angular/platform-browser';
+import axe from 'axe-core';
 
 import { ImportWizardComponent } from './import-wizard.component';
 import { FileDropzoneComponent } from '../file-dropzone/file-dropzone.component';
+import { withEveryCardShown } from '../transaction-preview-table/transaction-preview-table.testing';
 import { AIImportService, AI_QUEUED_OFFLINE, IMPORT_NOT_STARTED, IMPORT_READBACK_FAILED } from '../../../../core/services/ai-import.service';
 import { DuplicateDetectionService } from '../../../../core/services/duplicate-detection.service';
 import { CategoryService } from '../../../../core/services/category.service';
@@ -25,18 +27,30 @@ import {
   AUDIT_SCHEMES,
   MockAuthService,
   channels,
+  expectEachContrastScored,
+  type ContrastPart,
+  expectOneRule,
+  expectPainted,
   paintedBackground,
   paintedColor,
   ratio,
+  rulesUnder,
   runAxe,
   settleAnimations,
-  styleRules,
+  standOnThePage,
   summarizeViolations,
   textLines,
+  tokenValue,
+  underRule,
+  withInlineStyle,
   withScheme,
   withTheme,
   provideNoMotion,
+  catalogTranslator,
   createTranslationStub,
+  echoKey,
+  echoTranslation,
+  type Translator,
 } from '../../../../core/services/testing';
 import { ThemeService } from '../../../../core/services/theme.service';
 import { blankImportRow, joinSentences, splitImportRow } from '../../../../core/utils/import-review.utils';
@@ -180,7 +194,7 @@ describe('ImportWizardComponent', () => {
 
     mockTranslationService = jasmine.createSpyObj('TranslationService', ['t']);
     notifications = jasmine.createSpyObj('NotificationService', ['success', 'error', 'info']);
-    mockTranslationService.t.and.callFake((key: string) => key);
+    mockTranslationService.t.and.callFake(echoKey);
 
     mockSnackBar = jasmine.createSpyObj('MatSnackBar', ['open']);
     mockAnnouncer = jasmine.createSpyObj('AnnouncerService', ['announce']);
@@ -1696,13 +1710,40 @@ describe('ImportWizardComponent', () => {
       tick();
 
       expect(notifications.info).toHaveBeenCalledOnceWith(
-        joinSentences('import.importComplete', 'import.importPhotosSkipped'),
+        joinSentences(echoKey, 'import.importComplete', 'import.importPhotosSkipped'),
         { durationMs: 5000 }
       );
       expect(mockTranslationService.t).toHaveBeenCalledWith('import.importPhotosSkipped', { count: 2 });
       expect(notifications.success).not.toHaveBeenCalled();
       expect(notifications.error).not.toHaveBeenCalled();
       expect(mockRouter.navigate).toHaveBeenCalled();
+    }));
+
+    // ja through its catalog, for the ja notices below.
+    const ja = catalogTranslator('ja');
+
+    it('raises a two-part notice in ja as one snackbar joined by 。', fakeAsync(() => {
+      // ja ends a sentence with 。 and puts no space after it, so the round's
+      // outcome and its photo sentence are joined by the catalog's own stop,
+      // not by the Latin ". ".
+      mockTranslationService.t.and.callFake(ja);
+      mockImportService.confirmImport.and.returnValue(Promise.resolve({
+        id: 'history1', userId: 'user1', importedAt: { seconds: 0 } as never,
+        source: 'image' as const, fileType: 'receipt_image' as const,
+        fileName: 'r.png', fileSize: 10, transactionCount: 2, successCount: 2,
+        skippedCount: 0, errorCount: 0, totalIncome: 0, totalExpenses: 5,
+        duplicatesSkipped: 0, status: 'completed' as const, receiptsSkipped: 2
+      }));
+
+      component.confirmImport();
+      tick();
+
+      // Two sentences: the info tone's three seconds and two more for the second.
+      expect(notifications.info).toHaveBeenCalledOnceWith(
+        `${ja('import.importComplete', { count: 2 })}。${ja('import.importPhotosSkipped', { count: 2 })}`,
+        { durationMs: 5000 }
+      );
+      expect(notifications.info.calls.mostRecent().args[0]).not.toContain('. ');
     }));
 
     it('says when photos could not be uploaded, info-toned, without calling the import partial', fakeAsync(() => {
@@ -1721,7 +1762,7 @@ describe('ImportWizardComponent', () => {
       tick();
 
       expect(notifications.info).toHaveBeenCalledOnceWith(
-        joinSentences('import.importComplete', 'import.importPhotosFailed'),
+        joinSentences(echoKey, 'import.importComplete', 'import.importPhotosFailed'),
         { durationMs: 5000 }
       );
       expect(mockTranslationService.t).toHaveBeenCalledWith('import.importPhotosFailed', { count: 1 });
@@ -1731,15 +1772,22 @@ describe('ImportWizardComponent', () => {
     }));
 
     // The photo-failure sentence is two sentences in en and in ja, where no
-    // space follows the full stop, and each is read before the notice goes.
-    for (const [locale, photosFailed] of [
-      ['en', 'The transactions were saved, but 1 receipt photo could not be uploaded. You can attach it from the transaction.'],
-      ['ja', '取引は保存されましたが、レシート写真1枚をアップロードできませんでした。取引の画面から添付し直せます。'],
-    ] as const) {
+    // space follows the full stop, and each is read before the notice goes:
+    // en through the echo with its sentence stood in, ja through its catalog,
+    // which joins the round's outcome to it with 。.
+    const enPhotosFailed =
+      'The transactions were saved, but 1 receipt photo could not be uploaded. You can attach it from the transaction.';
+    const rounds: [string, Translator, string][] = [
+      [
+        'en',
+        (key: string) => (key === 'import.importPhotosFailed' ? enPhotosFailed : echoKey(key)),
+        joinSentences(echoKey, 'import.importComplete', enPhotosFailed),
+      ],
+      ['ja', ja, `${ja('import.importComplete', { count: 1 })}。${ja('import.importPhotosFailed', { count: 1 })}`],
+    ];
+    for (const [locale, translate, notice] of rounds) {
       it(`gives the notice time for every sentence a part carries, not one a part (${locale})`, fakeAsync(() => {
-        mockTranslationService.t.and.callFake((key: string) =>
-          key === 'import.importPhotosFailed' ? photosFailed : key
-        );
+        mockTranslationService.t.and.callFake(translate);
         mockImportService.confirmImport.and.returnValue(Promise.resolve({
           id: 'history1', userId: 'user1', importedAt: { seconds: 0 } as never,
           source: 'image' as const, fileType: 'receipt_image' as const,
@@ -1753,10 +1801,7 @@ describe('ImportWizardComponent', () => {
 
         // Three sentences: the info tone's three seconds and two more for each
         // sentence past the first.
-        expect(notifications.info).toHaveBeenCalledOnceWith(
-          joinSentences('import.importComplete', photosFailed),
-          { durationMs: 7000 }
-        );
+        expect(notifications.info).toHaveBeenCalledOnceWith(notice, { durationMs: 7000 });
       }));
     }
 
@@ -1785,7 +1830,12 @@ describe('ImportWizardComponent', () => {
       // sentence past the first, so the last is still on screen to be read.
       expect(notifications.error).toHaveBeenCalledOnceWith(
         joinSentences(
-          joinSentences(joinSentences('import.importPartial', 'import.importPartialSetAside'), 'import.importPhotosSkipped'),
+          echoKey,
+          joinSentences(
+            echoKey,
+            joinSentences(echoKey, 'import.importPartial', 'import.importPartialSetAside'),
+            'import.importPhotosSkipped'
+          ),
           'import.importPhotosFailed'
         ),
         { durationMs: 11000 }
@@ -2449,7 +2499,7 @@ describe('ImportWizardComponent', () => {
       // card already shows. A second notice would replace the first on
       // screen, and the count with it.
       expect(notifications.error).toHaveBeenCalledOnceWith(
-        joinSentences('import.importPartial', 'import.importPartialSetAside'),
+        joinSentences(echoKey, 'import.importPartial', 'import.importPartialSetAside'),
         { durationMs: 7000 }
       );
       expect(mockTranslationService.t)
@@ -2482,7 +2532,7 @@ describe('ImportWizardComponent', () => {
 
       expect(component.extractedTransactions().every(t => !t.selected)).toBeTrue();
       expect(notifications.error).toHaveBeenCalledOnceWith(
-        joinSentences('import.importPartial', 'import.importPartialSetAside'),
+        joinSentences(echoKey, 'import.importPartial', 'import.importPartialSetAside'),
         { durationMs: 7000 }
       );
       expect(mockTranslationService.t)
@@ -3528,41 +3578,18 @@ describe('ImportWizardComponent', () => {
       const widths = (nodes: HTMLElement[]) => nodes.map(node => node.getBoundingClientRect().width);
 
       /** The rules under the 599.98px query that style the step labels. */
-      const phoneLabelRules = (): CSSStyleRule[] =>
-        styleRules()
-          .filter(
-            ({ media, rule }) =>
-              media !== null &&
-              media.includes('max-width: 599.98px') &&
-              rule.selectorText.includes('.modern-stepper') &&
-              /\.mat-step-label(?![\w-])/.test(rule.selectorText)
-          )
-          .map(({ rule }) => rule);
-
-      /** Runs `fn` with `cssText` as every step label's inline style, then puts the labels back. */
-      async function withLabelStyle(cssText: string, fn: () => unknown): Promise<void> {
-        const all = labels();
-        const before = all.map(label => label.style.cssText);
-        all.forEach(label => (label.style.cssText = cssText));
-        try {
-          await fn();
-        } finally {
-          all.forEach((label, i) => (label.style.cssText = before[i]));
-        }
-      }
+      const phoneLabelRules = () =>
+        rulesUnder(
+          'max-width: 599.98px',
+          selector => selector.includes('.modern-stepper') && /\.mat-step-label(?![\w-])/.test(selector)
+        );
 
       /** Runs `fn` with the phone rule's declarations on every step label. */
-      async function underPhoneRule(fn: () => unknown): Promise<void> {
-        const [rule] = phoneLabelRules();
-        expect(rule).withContext('the phone rule for the step labels').toBeDefined();
-        if (!rule) return;
-        await withLabelStyle(rule.style.cssText, fn);
-      }
+      const underPhoneRule = (fn: () => unknown) =>
+        underRule(phoneLabelRules()[0], labels(), 'the phone rule for the step labels', fn);
 
       it('finds the phone rule for the step labels, so the cases below read something', () => {
-        const rules = phoneLabelRules();
-        expect(rules.length).withContext('at least one').toBeGreaterThan(0);
-        expect(new Set(rules.map(rule => rule.cssText)).size).withContext('one rule, however many copies').toBe(1);
+        expectOneRule(phoneLabelRules());
         expect(labels().length).withContext('a label per step').toBe(4);
       });
 
@@ -3575,7 +3602,7 @@ describe('ImportWizardComponent', () => {
 
       it("takes the labels out of the headers' room under it, leaving the numbered circles", async () => {
         let bare: number[] = [];
-        await withLabelStyle('display: none', () => (bare = widths(headers())));
+        await withInlineStyle(labels(), 'display: none', () => (bare = widths(headers())));
         expect(bare.length).withContext('a header per step').toBe(4);
 
         await underPhoneRule(() => {
@@ -3763,6 +3790,8 @@ describe('ImportWizardComponent', () => {
 
     const zone = () =>
       realFixture.debugElement.query(By.directive(FileDropzoneComponent)).componentInstance as FileDropzoneComponent;
+    const uploadStep = () =>
+      (realFixture.nativeElement as HTMLElement).querySelector<HTMLElement>('.upload-step');
     const names = (files: readonly File[]) => files.map(f => f.name);
     const rowNames = () =>
       Array.from((realFixture.nativeElement as HTMLElement).querySelectorAll('app-file-dropzone .file-name'))
@@ -3907,6 +3936,32 @@ describe('ImportWizardComponent', () => {
         expect(names(real.selectedFiles())).toEqual(['receipt.png', 'ledger.csv']);
       }));
     });
+
+    // The zone numbers a photo among the photos and moves it among them, so a
+    // CSV picked between two photos keeps its row, and Process reads the
+    // photos in the order their badges show. The up arrow used to swap the
+    // photo with the CSV above it, which left the photos in the old order.
+    it('sends the photos in badge order once a photo is moved past a CSV', fakeAsync(() => {
+      const real = realFixture.componentInstance;
+      const host = realFixture.nativeElement as HTMLElement;
+      drop(photo('a.png'), csv(), photo('b.png'));
+
+      const up = host.querySelectorAll('app-file-dropzone .file-item')[2]?.querySelector<HTMLButtonElement>('.reorder-btn');
+      expect(up).withContext('b\'s up arrow').toBeTruthy();
+      up?.click();
+      realFixture.detectChanges();
+
+      expect(rowNames()).withContext('the zone\'s rows').toEqual(['b.png', 'ledger.csv', 'a.png']);
+      expect(names(real.selectedFiles())).withContext('the wizard').toEqual(['b.png', 'ledger.csv', 'a.png']);
+
+      uploadStep()?.querySelector<HTMLButtonElement>('.step-actions button')?.click();
+      tick();
+      realFixture.detectChanges();
+
+      expect(mockImportService.importFromMultipleImages).toHaveBeenCalledTimes(1);
+      const sent = mockImportService.importFromMultipleImages.calls.mostRecent()?.args[0] ?? [];
+      expect(names(sent)).withContext('the photos Process sends, in order').toEqual(['b.png', 'a.png']);
+    }));
 
     // A share reached the wizard's selection and never the zone, so the zone
     // listed nothing, and its next pick or remove emitted a list without the
@@ -4290,9 +4345,7 @@ describe('ImportWizardComponent', () => {
       beforeEach(() => {
         // The figures travel with the key, so a notice that lost its numbers
         // on the way to the template fails here.
-        mockTranslationService.t.and.callFake((key: string, params?: Record<string, string | number>) =>
-          params ? `${key}|${JSON.stringify(params)}` : key
-        );
+        mockTranslationService.t.and.callFake(echoTranslation);
       });
 
       function processBatch(files: File[]): void {
@@ -4324,8 +4377,8 @@ describe('ImportWizardComponent', () => {
         const notice = el().querySelector('.truncated-notice');
         expect(notice).not.toBeNull();
         expect(notice!.getAttribute('role')).toBe('status');
-        expect(notice!.textContent).toContain('import.pdfPagesTruncated|{"read":15,"total":40}');
-        expect(notice!.textContent).toContain('import.pdfPagesTruncatedMore|{"others":1}');
+        expect(notice!.textContent).toContain('import.pdfPagesTruncated:{"read":15,"total":40}');
+        expect(notice!.textContent).toContain('import.pdfPagesTruncatedMore:{"others":1}');
         expect(el().querySelector('.incomplete-notice')).withContext('nothing was cut off mid-answer').toBeNull();
       }));
 
@@ -4364,16 +4417,124 @@ describe('ImportWizardComponent', () => {
       }));
     });
 
-    // /import/file is a route the smoke walkthrough never opens, so no axe
-    // pass had looked at the upload step with photos on it: the question that
-    // asks what they are, the zone's rows and previews, and the banner a
+    /**
+     * Runs axe's heading-order alone over the whole wizard, whose h1 heads the
+     * page, so a heading on a step sits one level under it: the stepper's
+     * labels are no headings. heading-order is best practice, outside the
+     * wcag2a/wcag2aa tags axeOptions runs, so the steps' sweeps never ask it.
+     */
+    async function expectHeadingsInOrder(): Promise<void> {
+      const results = await axe.run(realFixture.nativeElement as HTMLElement, {
+        runOnly: { type: 'rule', values: ['heading-order'] },
+        resultTypes: ['violations'],
+      });
+      expect(summarizeViolations(results)).withContext('heading-order').toEqual([]);
+      expect(results.passes.map(result => result.id)).withContext('headings were found to order').toContain('heading-order');
+    }
+
+    // The same step with nothing picked, the state a reader meets first: the
+    // zone, its hint, the four file types and Browse. The zone was a
+    // role="button" around Browse, axe's nested-interactive, and no pass had
+    // looked at it.
+    describe('the empty upload step, under the axe sweep', () => {
+      beforeEach(() => {
+        standOnThePage(realFixture.nativeElement as HTMLElement);
+      });
+
+      for (const scheme of AUDIT_SCHEMES) {
+        it(`finds nothing on the step in the ${scheme} scheme`, async () => {
+          const step = uploadStep();
+          expect(step).withContext('the upload step').toBeTruthy();
+          expect(step?.querySelector('app-file-dropzone .dropzone-content'))
+            .withContext('the empty zone is on the swept step')
+            .toBeTruthy();
+          expect(step?.querySelector('app-file-dropzone .browse-btn')).withContext('Browse is on it').toBeTruthy();
+          expect(step?.querySelectorAll('app-file-dropzone .file-item').length).withContext('nothing picked').toBe(0);
+          if (!step) return;
+
+          await withScheme(TestBed.inject(ThemeService), scheme, async () => {
+            realFixture.detectChanges();
+            expect(summarizeViolations(await runAxe(step))).toEqual([]);
+          });
+        });
+
+        // Each part's pass is read back to it (expectEachContrastScored), so
+        // it can only come from the part's own text. A pin. Mutations:
+        // .dropzone-content given visibility: hidden, which leaves the step's
+        // pass holding the rule; the step's upload-step class dropped, so no
+        // step is found to score.
+        it(`scores the empty zone's title, hint, file types and Browse for contrast in the ${scheme} scheme`, async () => {
+          const step = uploadStep();
+          expect(step).withContext('the upload step').toBeTruthy();
+          if (!step) return;
+
+          await withScheme(TestBed.inject(ThemeService), scheme, async () => {
+            realFixture.detectChanges();
+            // A file type's words stand beside its glyph in no element of
+            // their own, so each type is scored with every element it holds
+            // hidden and the pass can only come from its own text nodes, the
+            // words, whatever draws the glyph (a mat-icon, a span holding a
+            // ligature); Browse's words are its label. Mutation: the words
+            // given visibility: hidden (each type hidden with its glyph shown,
+            // and Browse's label), which leaves each unscored, where
+            // .file-types and .browse-btn, scored whole, still passed on the
+            // glyphs alone. Mutation: a type's glyph a bare ligature, in no
+            // element, which leaves that type nothing to hide.
+            const types = [...step.querySelectorAll<HTMLElement>('app-file-dropzone .file-type')];
+            expect(types.length).withContext('the four file types').toBe(4);
+            const held = types.map(type => [...type.querySelectorAll<HTMLElement>(':scope > *')]);
+            for (const [i, elements] of held.entries()) {
+              expect(elements.length).withContext(`.file-type ${i + 1}'s glyph, hidden`).toBeGreaterThan(0);
+            }
+            await withInlineStyle(held.flat(), 'visibility: hidden', async () => {
+              await expectEachContrastScored(types.map((type, i) => [type, `.file-type ${i + 1}`] as const));
+            });
+            await expectEachContrastScored(['.title', '.hint', '.browse-btn .mdc-button__label'].flatMap(part => {
+              const node = step.querySelector(`app-file-dropzone ${part}`);
+              expect(node).withContext(part).toBeTruthy();
+              return node ? [[node, part] as const] : [];
+            }));
+          });
+        });
+
+        // The zone's title heads the empty step under the page's h1, so it is
+        // an h2. While the zone was a role="button", a button's children
+        // being presentational, the title was out of the tree; dropping the
+        // role brought its h3 in.
+        it(`keeps the zone's title one level under the page's heading in the ${scheme} scheme`, async () => {
+          expect(uploadStep()?.querySelector('app-file-dropzone .title')).withContext('the zone\'s title').toBeTruthy();
+
+          await withScheme(TestBed.inject(ThemeService), scheme, async () => {
+            realFixture.detectChanges();
+            await expectHeadingsInOrder();
+          });
+        });
+      }
+    });
+
+    // The smoke walkthrough opens /import/file only with nothing picked, so no
+    // axe pass had looked at the upload step with photos on it: the question
+    // that asks what they are, the zone's rows and previews, and the banner a
     // refused file leaves. Swept here in both schemes, as the walkthrough
     // sweeps its routes.
     describe('the upload step with photos picked, under the axe sweep', () => {
-      const uploadStep = () =>
-        (realFixture.nativeElement as HTMLElement).querySelector<HTMLElement>('.upload-step');
+      /** What holds the words of each part of the step, apart from any glyph beside them. */
+      const PICKED_PARTS = [
+        '.image-kind-label',
+        '.image-kind-hint',
+        'app-file-dropzone .multi-image-hint span',
+        'app-file-dropzone .file-item .image-number',
+        'app-file-dropzone .file-item .file-name',
+        'app-file-dropzone .file-item .file-size',
+        'app-file-dropzone .file-item .file-type-label',
+        'app-file-dropzone .add-more-btn .mdc-button__label',
+        'app-file-dropzone .error-banner .error-message',
+        '.image-previews h2',
+        '.step-actions .action-button .mdc-button__label',
+      ] as const;
 
       beforeEach(() => {
+        standOnThePage(realFixture.nativeElement as HTMLElement);
         // Two photos and a file the zone refuses, so the rows, the previews,
         // the question and the banner all stand.
         drop(photo('a.png'), photo('b.png'), new File(['x'], 'run.exe', { type: 'application/x-msdownload' }));
@@ -4400,41 +4561,201 @@ describe('ImportWizardComponent', () => {
             expect(summarizeViolations(await runAxe(step!))).toEqual([]);
           });
         });
+
+        // Each part's pass is read back to its words (expectEachContrastScored),
+        // so it can only come from them, not from a glyph beside them.
+        // Left out: the chips, whose background axe reports as overlapped
+        // (bgOverlap) and leaves unscored, and the previews' captions, which
+        // sit on the photo and are held at AA over white paper under
+        // *colours, as painted*. A pin. Mutations: .image-kind-hint given
+        // visibility: hidden; the page's fill dropped (standOnThePage), which
+        // leaves the question, its hint, the refusal and the previews'
+        // heading unscored.
+        it(`scores the words of the question, its hint, each row, Add more, the refusal, the previews' heading and Process for contrast in the ${scheme} scheme`, async () => {
+          const step = uploadStep();
+          expect(step).withContext('the upload step').toBeTruthy();
+          if (!step) return;
+
+          await withScheme(TestBed.inject(ThemeService), scheme, async () => {
+            realFixture.detectChanges();
+            await expectEachContrastScored(PICKED_PARTS.flatMap(part => {
+              const nodes = [...step.querySelectorAll(part)];
+              expect(nodes.length).withContext(`${part} is on the step`).toBeGreaterThan(0);
+              return nodes.map((node, i) => [node, `${part} ${i + 1}`] as const);
+            }));
+          });
+        });
+
+        // With photos picked the zone's title is gone, and the previews'
+        // heading follows the page's h1 with none between, so it is an h2,
+        // as the title is.
+        it(`keeps the previews' heading one level under the page's heading in the ${scheme} scheme`, async () => {
+          expect(uploadStep()?.querySelector('.image-previews')).withContext('the previews stand').not.toBeNull();
+          expect(uploadStep()?.querySelector('app-file-dropzone .title')).withContext('the zone\'s title is gone').toBeNull();
+
+          await withScheme(TestBed.inject(ThemeService), scheme, async () => {
+            realFixture.detectChanges();
+            await expectHeadingsInOrder();
+          });
+        });
+      }
+    });
+
+    // The zone's title and the previews' heading went from h3 to h2 with
+    // nothing redrawn: each keeps the size, weight, line height and margins
+    // it was drawn with as an h3, read off the h3s. A pin. Mutations: the
+    // zone's .title rule written h3.title; the previews' rule left on
+    // .image-previews h3.
+    it('draws the zone\'s title and the previews\' heading as they were drawn as h3s', () => {
+      const drawn = (heading: Element | null | undefined) => {
+        expect(heading).withContext('the heading').toBeTruthy();
+        if (!heading) return undefined;
+        const style = getComputedStyle(heading);
+        return {
+          fontSize: style.fontSize,
+          fontWeight: style.fontWeight,
+          lineHeight: style.lineHeight,
+          margin: [style.marginTop, style.marginRight, style.marginBottom, style.marginLeft].join(' '),
+        };
+      };
+
+      expect(drawn(uploadStep()?.querySelector('app-file-dropzone .title')))
+        .withContext('the zone\'s title')
+        .toEqual({ fontSize: '18px', fontWeight: '600', lineHeight: '27px', margin: '0px 0px 0px 0px' });
+
+      drop(photo('a.png'), photo('b.png'));
+
+      expect(drawn(uploadStep()?.querySelector('.image-previews h2')))
+        .withContext('the previews\' heading')
+        .toEqual({ fontSize: '14px', fontWeight: '500', lineHeight: '21px', margin: '0px 0px 12px 0px' });
+    });
+
+    // The review step with everything that can stand around its rows: the
+    // cut-off answer and the PDF read in part above them, the duplicate
+    // warning, the date and fill-in hints below them, and Back and Continue.
+    // No axe pass had looked at any of it. Material hides a step that is not
+    // selected, so the step is selected first. The stepper is linear, and CDK
+    // refuses a move past a step that is not yet complete without a word, so
+    // the signals are written and rendered before the move, and the move is
+    // checked.
+    describe('the review step\'s body, under the axe sweep', () => {
+      /** Each notice and hint, and the paragraphs it holds its words in. */
+      const NOTICES_AND_HINTS = [
+        ['.incomplete-notice', '.incomplete-notice p'],
+        ['.truncated-notice', '.truncated-notice p'],
+        ['.dates-hint', '.dates-hint'],
+        ['.rows-hint', '.rows-hint'],
+      ] as const;
+
+      /**
+       * What else holds words on the step, apart from any glyph beside them:
+       * the header, the duplicate warning's title and Back's label. Continue
+       * is held disabled here (a date and a row are owed), so axe, as WCAG
+       * 1.4.3 does, leaves its contrast out.
+       */
+      const OTHER_WORDS = [
+        '.review-header h2',
+        '.review-header p',
+        'app-duplicate-warning mat-panel-title span',
+        '.step-actions button:not(.action-button) .mdc-button__label',
+      ] as const;
+
+      /** The review step with both notices, the warning and both hints on it, selected. */
+      function landReviewStep(): HTMLElement | null {
+        standOnThePage(realFixture.nativeElement as HTMLElement);
+        const real = realFixture.componentInstance;
+        real.selectedFiles.set([photo('r.png')]);
+        real.receiptRowIds.set(new Set(['dated']));
+        real.extractedTransactions.set([
+          { ...mockTransactions[0], id: 'dated', dateAssumed: true },
+          { ...mockTransactions[0], id: 'unfilled', description: '' },
+          { ...mockTransactions[1], id: 'skipped', isDuplicate: true, selected: false },
+        ]);
+        real.duplicateChecks.set([{
+          transactionId: 'skipped', isDuplicate: true, matchType: 'exact', existingTransactionId: 'stored-skipped', confidence: 1,
+        }]);
+        real.answerIncomplete.set(true);
+        real.pagesTruncated.set({ read: 15, total: 40, others: 1 });
+        realFixture.detectChanges();
+        real.stepper.selectedIndex = 2;
+        realFixture.detectChanges();
+        expect(real.stepper.selectedIndex).withContext('the review step is selected').toBe(2);
+
+        const step = (realFixture.nativeElement as HTMLElement).querySelector<HTMLElement>('.review-step');
+        expect(step).withContext('the review step').toBeTruthy();
+        if (!step) return null;
+        for (const [part] of NOTICES_AND_HINTS) {
+          expect(step.querySelector(part)).withContext(`${part} is on the swept step`).toBeTruthy();
+        }
+        expect(step.querySelectorAll('.truncated-notice p').length).withContext('the part read, and the others').toBe(2);
+        expect(step.querySelector('app-duplicate-warning .duplicate-warning')).withContext('the warning').toBeTruthy();
+        const actions = [...step.querySelectorAll('.step-actions button')]
+          .map(b => b.textContent?.replace(/\s+/g, ' ').trim());
+        expect(actions).withContext('Back and Continue').toEqual(['arrow_back common.back', 'common.continue 2']);
+        return step;
       }
 
-      it('scores the step\'s contrast rather than skipping it', async () => {
-        const results = await runAxe(uploadStep()!);
-        expect(results.passes.map(result => result.id)).toContain('color-contrast');
-      });
+      for (const scheme of AUDIT_SCHEMES) {
+        // A pin. Mutations: the move to the step dropped, and the move made
+        // before the first render, which CDK refuses: either way the step
+        // stays hidden and the pass finds nothing on it, which only the
+        // move's check catches; the hints painted rgb(128, 128, 128).
+        it(`finds nothing on the step in the ${scheme} scheme`, async () => {
+          const step = landReviewStep();
+          if (!step) return;
+
+          await withScheme(TestBed.inject(ThemeService), scheme, async () => {
+            realFixture.detectChanges();
+            await withEveryCardShown(step, async () => {
+              expect(summarizeViolations(await runAxe(step))).toEqual([]);
+            });
+          });
+        });
+
+        // Each of the step's word-holders has its pass read back to it
+        // (expectEachContrastScored), so the pass can only come from its own
+        // words, and each notice's and hint's are read as painted. A
+        // notice's own pass would not do: its glyph holds the rule by
+        // itself. Each selector must find its words, so no loop can run
+        // empty. A pin. Mutations: .incomplete-notice p given visibility:
+        // hidden; the hints painted rgb(128, 128, 128), which the step's
+        // pass also finds; the cut-off notice's words moved out of their
+        // <p>; the warning's title given visibility: hidden; the page's fill
+        // dropped (standOnThePage), which leaves the header and Back
+        // unscored while the step's pass still finds nothing.
+        it(`scores the words of the header, each notice and hint (in --text-secondary at AA), the duplicate warning and Back for contrast in the ${scheme} scheme`, async () => {
+          const step = landReviewStep();
+          if (!step) return;
+
+          await withScheme(TestBed.inject(ThemeService), scheme, async () => {
+            realFixture.detectChanges();
+            await withEveryCardShown(step, async () => {
+              const parts: ContrastPart[] = [];
+              for (const [part, words] of NOTICES_AND_HINTS) {
+                const paragraphs = [...step.querySelectorAll(words)];
+                expect(paragraphs.length).withContext(`${words} is on the step`).toBeGreaterThan(0);
+                for (const [i, paragraph] of paragraphs.entries()) {
+                  const label = `${scheme} ${part}, paragraph ${i + 1}`;
+                  parts.push([paragraph, label]);
+                  expectPainted(paragraph, '--text-secondary', label);
+                }
+              }
+              for (const words of OTHER_WORDS) {
+                const nodes = [...step.querySelectorAll(words)];
+                expect(nodes.length).withContext(`${words} is on the step`).toBeGreaterThan(0);
+                parts.push(...nodes.map((node, i) => [node, `${scheme} ${words} ${i + 1}`] as const));
+              }
+              await expectEachContrastScored(parts);
+            });
+          });
+        });
+      }
     });
 
     describe('colours, as painted', () => {
       const THEMES = ['light', 'dark'] as const;
       const el = () => realFixture.nativeElement as HTMLElement;
       const part = (selector: string) => el().querySelector(selector) as HTMLElement | null;
-
-      /** What `<property>: var(token)` computes to under the theme on <html> now. */
-      function tokenValue(token: string, property = 'color'): string {
-        const probe = document.createElement('span');
-        probe.style.setProperty(property, `var(${token})`);
-        document.body.appendChild(probe);
-        try {
-          settleAnimations(document);
-          return getComputedStyle(probe).getPropertyValue(property);
-        } finally {
-          probe.remove();
-        }
-      }
-
-      /** `node` is `token`, and reads at `floor` or better on what is painted behind it. */
-      function expectPainted(node: HTMLElement | null, token: string, label: string, floor = 4.5): void {
-        expect(node).withContext(label).toBeTruthy();
-        if (!node) return;
-        expect(getComputedStyle(node).color).withContext(label).toBe(tokenValue(token));
-        expect(ratio(paintedColor(node), paintedBackground(node)))
-          .withContext(`${label} on what it sits on`)
-          .toBeGreaterThanOrEqual(floor);
-      }
 
       const merged = (id: string): CategorizedImportTransaction => ({
         ...mockTransactions[0],
@@ -4461,7 +4782,7 @@ describe('ImportWizardComponent', () => {
 
       // The wizard sits on the page itself.
       beforeEach(() => {
-        el().style.backgroundColor = 'var(--surface-background)';
+        standOnThePage(realFixture.nativeElement as HTMLElement);
       });
 
       // A glyph is a graphic, so its floor is 3:1 (WCAG 1.4.11).

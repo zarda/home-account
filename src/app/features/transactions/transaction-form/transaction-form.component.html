@@ -24,7 +24,7 @@
           <!-- Queued receipts -->
           @if (pendingReceipts().length > 0) {
             <div class="receipt-strip">
-              @for (pending of pendingReceipts(); track pending.preview; let i = $index) {
+              @for (pending of pendingReceipts(); track pending; let i = $index) {
                 <div class="receipt-preview">
                   <img
                     [src]="pending.preview"
@@ -35,7 +35,7 @@
                     type="button"
                     class="clear-receipt-btn"
                     (click)="removePendingReceipt(i)"
-                    [attr.aria-label]="'common.remove' | translate"
+                    [attr.aria-label]="'receiptImages.removeNewImage' | translate: { index: i + 1 }"
                   >
                     <mat-icon>close</mat-icon>
                   </button>
@@ -117,7 +117,7 @@
                     (click)="convertStoredReceiptToNote(stored)"
                     [disabled]="busyStoredSlot() !== null"
                     [matTooltip]="'receiptImages.convertToNoteHint' | translate"
-                    [attr.aria-label]="'receiptImages.convertToNote' | translate"
+                    [attr.aria-label]="'receiptImages.convertStoredImage' | translate: { index: i + 1 }"
                   >
                     <mat-icon>notes</mat-icon>
                   </button>
@@ -128,7 +128,7 @@
                     (click)="removeStoredReceipt(stored)"
                     [disabled]="busyStoredSlot() !== null"
                     [matTooltip]="'receiptImages.removeImage' | translate"
-                    [attr.aria-label]="'receiptImages.removeImage' | translate"
+                    [attr.aria-label]="'receiptImages.removeStoredImage' | translate: { index: i + 1 }"
                   >
                     <mat-icon>delete</mat-icon>
                   </button>
@@ -414,7 +414,10 @@
         </div>
       }
 
-      <!-- Tags (Optional) -->
+      <!-- Tags (Optional). The hint is the short one the filter panel reads: an
+           input's one line cannot wrap, and a phone's dialog leaves the field less
+           room than a full sentence takes in ja (docs/ui-overflow.md, "a shorter
+           word, not a smaller one"). -->
       <mat-form-field appearance="outline" class="full-width">
         <mat-label>{{ 'transactions.tags' | translate }}</mat-label>
         <mat-chip-grid #tagGrid [attr.aria-label]="'transactions.tags' | translate">
@@ -431,7 +434,7 @@
             </mat-chip-row>
           }
           <input
-            [placeholder]="'transactions.tagsPlaceholder' | translate"
+            [placeholder]="'transactions.tagsPlaceholderShort' | translate"
             [matChipInputFor]="tagGrid"
             [matChipInputSeparatorKeyCodes]="tagSeparatorKeys"
             (matChipInputTokenEnd)="addTag($event)"

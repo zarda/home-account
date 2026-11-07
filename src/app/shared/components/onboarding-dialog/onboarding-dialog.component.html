@@ -58,7 +58,7 @@
       half and is hidden from the reading, or it would be announced twice.
     -->
     <span class="step-indicator" role="status">
-      <span class="sr-only">{{
+      <span class="step-sentence">{{
         'onboarding.stepOf' | translate: { current: step() + 1, total: totalSteps }
       }}</span>
       <span aria-hidden="true">{{ step() + 1 }}/{{ totalSteps }}</span>

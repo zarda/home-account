@@ -24,6 +24,7 @@ import { LoadingSpinnerComponent } from '../../../shared/components/loading-spin
 import { LocaleDatePipe } from '../../../shared/pipes/locale-date.pipe';
 import { LocaleNumberPipe } from '../../../shared/pipes/locale-number.pipe';
 import { TranslatePipe } from '../../../shared/pipes/translate.pipe';
+import { quotedTransactionName } from '../../../core/utils/transaction-display.utils';
 import { Transaction, receiptImageSlots } from '../../../models';
 
 /** One stored image of a transaction, addressed by its storage slot. */
@@ -118,6 +119,17 @@ export class ReceiptImageManagerComponent implements OnInit {
 
   dateOf(group: ReceiptGroup): Date {
     return group.transaction.date.toDate();
+  }
+
+  /**
+   * The transaction as remove-all and each image's convert and remove name
+   * it, whose keys only tc quotes: its description in the reader's own
+   * quotation marks, or the catalog's words for an untitled one, bare
+   * (quotedTransactionName). The template reads it, which is why it is
+   * protected.
+   */
+  protected quotedName(group: ReceiptGroup): string {
+    return quotedTransactionName(group.transaction.description, (key, params) => this.translationService.t(key, params));
   }
 
   /** Open the in-app viewer on one image, at the slot its thumbnail sits in. */

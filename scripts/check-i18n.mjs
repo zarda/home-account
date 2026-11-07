@@ -73,6 +73,44 @@
  * their inline `template:` strings, comments are masked, and the line
  * reported is the comma's own.
  *
+ * And one code check, also without a number: two sentences must not be
+ * joined in code with a literal stop. ja and tc end a sentence with 。 and
+ * put no space after it, so `${lead}. ${next}` reads as en on every locale;
+ * the join is joinSentences (core/utils/import-review.utils.ts), which reads
+ * the reader's own stop from common.sentenceSeparator (#534). Non-spec `.ts`
+ * files under src/app are lexed with lexTs (comments and regex literals never
+ * count), and three shapes fail: a template literal whose text between two
+ * `${…}` substitutions is a stop, a stop literal between two parts of a `+`
+ * concatenation (`+=` on its left too, and a template's leading or trailing
+ * stop run into a `+`), and a stop literal as the whole argument of
+ * `.join()`. A stop is `.` followed by a space, or 。 with or without one; a
+ * `.` with no space after it is a decimal point, a path, a key, a version or
+ * an extension, never a sentence's end, and is what lets `${whole}.${fraction}`
+ * and `[a, b].join('.')` through. joinSentences itself needs no exemption: it
+ * holds no literal stop. The class was recorded as a known gap by ADR 0099
+ * and again by ADR 0186, and came back in the dropzone's alert, before ADR
+ * 0145's rule made it this check.
+ *
+ * And one check of markup and code, also without a number: a translated
+ * slot is not filled with a raw description. A description can be blank, and
+ * a sentence that quotes one then has nothing where the item goes: the
+ * household overview's count-toward button read *Count toward a goal:* for an
+ * untitled row, and the transaction list's delete confirm asked *Are you sure
+ * you want to delete ""?*. A slot whose value is a description read straight
+ * off a value (`view.transaction.description`, `transaction().description`,
+ * `row?.description`) fails, in a translate pipe's parameters and in a `t(`
+ * call's second argument, wherever either stands: an `.html` file, an inline
+ * `template:` string, or a `.ts` file's code (lexTs's masked code, so a
+ * comment never counts). The slot reads `transactionDisplayName(description,
+ * t)` for a transaction or the review card's `announceDescription(row)` for
+ * an import row; where the sentence quotes the description, an untitled one
+ * gets a sentence of its own, chosen by `isUntitled(description)`. A slot
+ * that cannot be blank where it is read sits in GUARDED_DESCRIPTIONS, by file
+ * and line text with a count and a reason, set against the hits by
+ * fallbackFindings as the fallback tables are; what the check finds and a
+ * change cannot fix would sit in RAW_DESCRIPTIONS_FROZEN, which is empty
+ * (ADR 0151).
+ *
  * Key-set parity between locales is asserted in translation-keys.spec.ts,
  * which runs with the unit suite. Only literal keys can be checked; dynamic
  * keys (`'prefix.' + value | translate`, `t(chip.labelKey)`) are skipped and
@@ -151,7 +189,24 @@
  *     is not this shape (scan 4 reads the word if it is English), and a comma
  *     that ends the element before the value begins.
  *   - A sentence assembled in code: `t('a.b') + ', ' + name`, or a template
- *     literal. Only template interpolations are read.
+ *     literal. Only template interpolations are read (the sentence-join
+ *     check reads code, for a stop and not a comma).
+ *
+ * What the sentence-join check deliberately cannot see:
+ *   - A stop in markup: `{{ 'a' | translate }}. {{ 'b' | translate }}` in a
+ *     template is a join of the comma-join check's kind, and no template in
+ *     this tree writes one.
+ *   - A stop written with its words: `'Saved. ' + name` or `` `Saved. ${n}` ``
+ *     is English in code, which scan 4 and the fallback scan cover only in
+ *     their own shapes.
+ *   - A stop that reaches the join by another road: a constant
+ *     (`const STOP = '. '`, then `.join(STOP)`), a conditional
+ *     (`${a}${done ? '. ' : ''}${b}`), an argument to a helper of another name,
+ *     `.concat`, or a lead given its stop in one statement and its next part
+ *     in another (`message += '. '; message += next;`).
+ *   - A Latin stop with no space, `${t('a.b')}.${t('c.d')}`: en shows that
+ *     missing space itself, so it is not the class a locale alone would hide.
+ *   - The full-width `．` and the other sentence ends, `!`, `?`, `！`, `？`.
  *
  * What the widget scan (6) deliberately cannot see:
  *   - A word that is not a literal: `Text(labels.net)` shows a string the
@@ -173,6 +228,18 @@
  *   - A device language no table names: zh-Hans reads the en table.
  *   - A catalog placeholder: a `{{name}}` copied into a table is equal to
  *     the catalog and iOS shows it as written; the widget's one key has none.
+ *
+ * What the raw-description check deliberately cannot see:
+ *   - A description that reaches the reader through no translate call: a
+ *     dialog's data (`data: { description: … }`), as the note and share
+ *     dialogs took it, or text in markup (`{{ data.transaction.description }}`),
+ *     as the receipt viewer's subtitle showed it. Their specs hold them.
+ *   - A description through a variable, a shorthand slot (`{ description }`)
+ *     or a call: `.trim()`, or a helper of another name, leaves a blank one
+ *     blank, and only the bare read is matched.
+ *   - A field of another name that can be blank: only `.description` is
+ *     read.
+ *   - Whether a guarded row's guard still holds: its row is matched on text.
  *
  * `--self-test` exercises the parser against known shapes and exits non-zero
  * if the checker itself is broken; npm's i18n:check chains it first, as
@@ -274,25 +341,25 @@ function flatten(value, prefix = '', out = new Set()) {
 }
 
 /**
- * Collects the keys named in the first argument of every `t(` call in a file.
+ * Every `t(` call in `text` whose first argument ends, in order, as
+ * `{ index, literals, comma }`: `index` the call's own offset, `literals` the
+ * quoted strings in its first argument (a template literal's text is not
+ * one), and `comma` the offset of the top-level comma that ends that
+ * argument, or -1 when the call closes after it.
  *
  * Walks the characters of the first argument — to the first top-level comma
- * or the balanced close — tracking paren depth and quote state, and gathers
- * every quoted literal shaped like a key (charset [A-Za-z0-9_.], at least one
- * dot). A first argument that yields no key-shaped literal (an identifier, a
- * template literal, `t(chip.labelKey)`) is dynamic: counted, not failed.
- * A call left unbalanced at end-of-file is ignored.
+ * or the balanced close — tracking paren depth and quote state. A call left
+ * unbalanced at end-of-file is skipped.
  */
-function extractTCallKeys(text) {
-  const keys = [];
-  let dynamicCount = 0;
+function tCalls(text) {
+  const calls = [];
   const T_OPEN = /\bt\(/g;
   let open;
   while ((open = T_OPEN.exec(text)) !== null) {
     const literals = [];
     let depth = 1;
     let quote = null;
-    let ended = false;
+    let end = -1;
     let i = open.index + open[0].length;
     for (; i < text.length; i++) {
       const ch = text[i];
@@ -306,13 +373,29 @@ function extractTCallKeys(text) {
       }
       if (ch === "'" || ch === '"' || ch === '`') { quote = { ch, start: i + 1 }; continue; }
       if (ch === '(') depth++;
-      else if (ch === ')') { depth--; if (depth === 0) { ended = true; break; } }
-      else if (ch === ',' && depth === 1) { ended = true; break; }
+      else if (ch === ')') { depth--; if (depth === 0) { end = i; break; } }
+      else if (ch === ',' && depth === 1) { end = i; break; }
     }
-    if (!ended) continue;
+    if (end < 0) continue;
+    calls.push({ index: open.index, literals, comma: text[end] === ',' ? end : -1 });
+  }
+  return calls;
+}
+
+/**
+ * Collects the keys named in the first argument of every `t(` call in a file
+ * (tCalls), as every quoted literal there shaped like a key (charset
+ * [A-Za-z0-9_.], at least one dot). A first argument that yields no
+ * key-shaped literal (an identifier, a template literal, `t(chip.labelKey)`)
+ * is dynamic: counted, not failed.
+ */
+function extractTCallKeys(text) {
+  const keys = [];
+  let dynamicCount = 0;
+  for (const { index, literals } of tCalls(text)) {
     const keyShaped = literals.filter(l => /^[A-Za-z0-9_.]+$/.test(l) && l.includes('.'));
     if (keyShaped.length > 0) {
-      for (const key of keyShaped) keys.push({ key, index: open.index });
+      for (const key of keyShaped) keys.push({ key, index });
     } else {
       dynamicCount++;
     }
@@ -553,15 +636,19 @@ const REGEX_KEYWORDS = new Set([
  * a template literal's `${…}`, whose own strings belong to the template.
  * (Copied from check-colors.mjs; each gate script stays runnable on its own.)
  *
- * The copy differs in one place: a string inside a `${…}` substitution is
+ * The copy differs in two places. A string inside a `${…}` substitution is
  * recorded too, alongside the template around it. check-colors reads a
  * template's text whole, so the substitution's strings stay with it there;
  * here a fallback is a literal of its own, and `${name ?? 'Unknown'}` puts
- * the word in front of a reader exactly as a bare `'Unknown'` does.
+ * the word in front of a reader exactly as a bare `'Unknown'` does. And each
+ * template's text runs are recorded, as `templates`: the [start, end) of the
+ * text before, between and after its substitutions, in order, so the
+ * sentence-join check can read the text that stands between two parts.
  */
 export function lexTs(source) {
   const out = source.split('');
   const strings = [];
+  const templates = [];
   let i = 0;
 
   const blank = (from, to) => {
@@ -610,14 +697,27 @@ export function lexTs(source) {
   // Declarations, not arrows: a template's `${…}` is code, and code holds templates.
   function readTemplate(record) {
     const start = i + 1;
+    const runs = [];
+    let runStart = start;
     i += 1;
     while (i < source.length && source[i] !== '`') {
       if (source[i] === '\\') { i += 2; continue; }
-      // check-colors passes `false` here: see the doc comment for why this copy records.
-      if (source[i] === '$' && source[i + 1] === '{') { i += 2; readCode(true, record); continue; }
+      if (source[i] === '$' && source[i + 1] === '{') {
+        runs.push([runStart, i]);
+        i += 2;
+        // check-colors passes `false` here: see the doc comment for why this copy records.
+        readCode(true, record);
+        runStart = i;
+        continue;
+      }
       i += 1;
     }
-    if (record) strings.push([start, Math.min(i, source.length)]);
+    const end = Math.min(i, source.length);
+    runs.push([runStart, end]);
+    if (record) {
+      strings.push([start, end]);
+      templates.push(runs);
+    }
     i += 1;
   }
 
@@ -654,7 +754,7 @@ export function lexTs(source) {
   }
 
   readCode(false, true);
-  return { masked: out.join(''), strings };
+  return { masked: out.join(''), strings, templates };
 }
 
 /**
@@ -769,9 +869,11 @@ export function findEnglishFallbacks(source, kind) {
  * slashes) set against `allowed` rows. Hits are tallied per row, as
  * check-colors.mjs's ALLOWED counts are: a row whose tally is not its
  * `count` is drift (a tally of 0 is a stale row), and a hit no row names is
- * an offence. The table is a parameter so the self-test can hand in its own.
+ * an offence. The table is a parameter so the self-test can hand in its own,
+ * and so is the finder, so the raw-description check sets its slots against
+ * its own rows the same way.
  */
-export function fallbackFindings(files, allowed) {
+export function fallbackFindings(files, allowed, find = findEnglishFallbacks) {
   const rowOf = new Map();
   allowed.forEach((row, index) => {
     const key = `${row.file}\n${row.text.trim()}`;
@@ -780,7 +882,7 @@ export function fallbackFindings(files, allowed) {
   const tally = allowed.map(() => 0);
   const offences = [];
   for (const { file, source } of files) {
-    for (const hit of findEnglishFallbacks(source, file.endsWith('.html') ? 'html' : 'ts')) {
+    for (const hit of find(source, file.endsWith('.html') ? 'html' : 'ts')) {
       const index = rowOf.get(`${file}\n${hit.text}`);
       if (index === undefined) offences.push({ file, ...hit });
       else tally[index] += 1;
@@ -790,6 +892,211 @@ export function fallbackFindings(files, allowed) {
     .map((row, index) => ({ file: row.file, text: row.text, count: row.count, hits: tally[index] }))
     .filter(row => row.hits !== row.count);
   return { offences, drift };
+}
+
+/**
+ * A translated slot's value that is a description read straight off a value
+ * (`view.transaction.description`, `transaction().description`,
+ * `row?.description`) and nothing else: no call around it, no fallback after it.
+ */
+const RAW_DESCRIPTION = /^\s*(?:this\s*\.\s*)?[A-Za-z_$][\w$]*(?:\(\))?(?:\s*\??\.\s*[A-Za-z_$][\w$]*(?:\(\))?)*\s*\??\.\s*description\s*$/;
+
+/** A translate pipe given a parameter object, its `{` last. */
+const PIPE_PARAMS = /\|\s*translate\s*:\s*\{/g;
+
+/**
+ * The top-level `name: value` slots of the object literal whose `{` is at
+ * `open` in `text`, each with the offset of its value; brackets are balanced
+ * and quoted text is stepped over. An object left open is no object.
+ */
+function slotsAt(text, open) {
+  const slots = [];
+  let depth = 0;
+  let quote = null;
+  let start = open + 1;
+  for (let i = open; i < text.length; i++) {
+    const ch = text[i];
+    if (quote !== null) {
+      if (ch === '\\') i++;
+      else if (ch === quote) quote = null;
+      continue;
+    }
+    if (ch === "'" || ch === '"' || ch === '`') quote = ch;
+    else if (ch === '{' || ch === '(' || ch === '[') depth++;
+    else if ((ch === ',' && depth === 1) || ((ch === '}' || ch === ')' || ch === ']') && --depth === 0)) {
+      const part = text.slice(start, i);
+      const colon = part.indexOf(':');
+      if (colon > 0) slots.push({ value: part.slice(colon + 1), at: start + colon + 1 });
+      if (depth === 0) return slots;
+      start = i + 1;
+    }
+  }
+  return [];
+}
+
+/**
+ * Every translated slot `source` fills with a raw description, as
+ * `{ line, text }` with `text` the trimmed line: a translate pipe's parameter
+ * (`'household.overview.countToward' | translate: { name:
+ * view.transaction.description }`), or a `t(` call's second argument when it
+ * is an object (`t(messageKey, { description: transaction.description })`),
+ * as tCalls reads a call. A description can be blank, and the sentence then
+ * reads with nothing where the item's name goes: *Count toward a goal:*.
+ * `kind` is `'ts'` or `'html'`. Markup (an `.html` file, or a `.ts` file's
+ * inline `template:` strings, offsets kept) is read for both with its HTML
+ * comments masked; a `.ts` file's own code is read for its calls on lexTs's
+ * masked code. So a comment of either kind never counts.
+ */
+export function findRawDescriptionSlots(source, kind) {
+  const offsets = new Set();
+  const inline = kind === 'html' ? null : inlineTemplatesOnly(source);
+  const markup = maskHtmlComments(inline ?? source);
+  const raw = slots => {
+    for (const slot of slots) if (RAW_DESCRIPTION.test(slot.value)) offsets.add(slot.at);
+  };
+  for (const pipe of markup.matchAll(PIPE_PARAMS)) raw(slotsAt(markup, pipe.index + pipe[0].length - 1));
+  for (const text of kind === 'html' ? [markup] : [markup, lexTs(source).masked]) {
+    for (const { index, comma } of tCalls(text)) {
+      // A call inside an inline template is read once, from the markup.
+      if (text !== markup && inline[index] !== ' ') continue;
+      const object = comma < 0 ? null : /^\s*\{/.exec(text.slice(comma + 1));
+      if (object !== null) raw(slotsAt(text, comma + object[0].length));
+    }
+  }
+  const lines = source.split('\n');
+  return [...offsets]
+    .sort((a, b) => a - b)
+    .map(offset => {
+      const line = lineOf(source, offset);
+      return { line, text: lines[line - 1].trim() };
+    });
+}
+
+/**
+ * A raw description in a translated slot where it cannot be blank, by the
+ * file and the trimmed text of its line, and how many slots those lines hold.
+ * Not a freeze (ADR 0151): nothing here waits to be fixed, and a count that
+ * moves either way fails. All six name an import row on the review card,
+ * whose stand-in for a blank one is announceDescription's import.untitledRow.
+ */
+export const GUARDED_DESCRIPTIONS = [
+  {
+    file: 'src/app/features/ai/import/transaction-preview-table/transaction-preview-table.component.ts',
+    text: ": this.translationService.t('common.quotedName', { name: row.description });",
+    count: 1,
+    reason: 'announceDescription reads import.untitledRow when descriptionIsUnfilled(row), so this branch has a description to quote',
+  },
+  {
+    file: 'src/app/features/ai/import/transaction-preview-table/transaction-preview-table.component.ts',
+    text: ": this.translationService.t('import.splitRowLabel', { description: row.description });",
+    count: 1,
+    reason: 'splitLabel reads import.splitRow when descriptionIsUnfilled(row), so this branch has a description',
+  },
+  {
+    file: 'src/app/features/ai/import/transaction-preview-table/transaction-preview-table.component.ts',
+    text: "return this.translationService.t('import.mergeIntoLabel', { description: row.description });",
+    count: 1,
+    reason: 'the merge trigger is offered only under canMerge, which refuses a row mergeableRow fails, and mergeableRow refuses a blank description',
+  },
+  {
+    file: 'src/app/features/ai/import/transaction-preview-table/transaction-preview-table.component.ts',
+    text: 'description: target.description,',
+    count: 1,
+    reason: 'mergeOptionLabel names a merge target, and mergeTargets lists only rows mergeableRow passes',
+  },
+  {
+    file: 'src/app/features/ai/import/transaction-preview-table/transaction-preview-table.component.ts',
+    text: ": this.translationService.t('import.removeRowLabel', { description: row.description });",
+    count: 1,
+    reason: 'removeLabel reads common.remove when descriptionIsUnfilled(row), so this branch has a description',
+  },
+  {
+    file: 'src/app/features/ai/import/transaction-preview-table/transaction-preview-table.component.ts',
+    text: ": this.translationService.t('import.editDescription', { description: row.description });",
+    count: 1,
+    reason: 'editDescriptionLabel reads import.addDescription when descriptionIsUnfilled(row), so this branch has a description',
+  },
+];
+
+/**
+ * Raw descriptions the check found when it landed and its change did not
+ * fix, in GUARDED_DESCRIPTIONS's rows. Empty is the goal (ADR 0151): a row is
+ * a debt with a name, and it goes when its slot reads the display name.
+ */
+export const RAW_DESCRIPTIONS_FROZEN = [];
+
+/**
+ * Literal text that is a sentence stop and nothing else: a Latin stop with the
+ * space every Latin-script locale writes after it, or the ideographic stop ja
+ * and tc write, with or without spaces round it. A Latin stop with no space
+ * after it is not a sentence's end in any locale this app reads: it is a
+ * decimal point (`${whole}.${fraction}`), a key or field path, a version, a
+ * host name or a file extension, and en itself would show the missing space.
+ * Read after STOP_ESCAPES, so `'.\n'` and `'\u3002'` are what they print.
+ */
+const SENTENCE_STOP = /^(?:\.\s+|\s*。\s*)$/;
+/** The escapes a stop literal may spell its space or its ideographic stop with. */
+const STOP_ESCAPES = [[/\\[nrt]/g, ' '], [/\\u(?:3002|\{3002\})/gi, '。']];
+/** Code that runs a literal into the part before it: `+`, or `+=`. */
+const PLUS_BEFORE = /\+=?\s*$/;
+/** Code that runs a literal into the part after it. */
+const PLUS_AFTER = /^\s*\+(?![+=])/;
+/** A literal that is the whole argument of a `.join(…)`. */
+const JOIN_BEFORE = /\.\s*join\s*\(\s*$/;
+const JOIN_AFTER = /^\s*\)/;
+
+/**
+ * Every place `source` (TypeScript) joins two sentences with a literal stop,
+ * as `{ line, text }` with `text` the trimmed line: a template literal whose
+ * text between two `${…}` substitutions is a stop (`${lead}. ${next}`,
+ * `${lead}。${next}`), a stop literal between two parts of a `+`
+ * concatenation (`lead + '. ' + next`, the template forms `${lead}. ` + next
+ * and lead + `. ${next}` among them), and a stop literal as the whole
+ * argument of `.join()`. ja and tc end a sentence with 。 and no space, so a
+ * Latin ". " written into the code reads wrong on every locale but en (#534);
+ * the join is joinSentences (core/utils/import-review.utils.ts), which reads
+ * the reader's own stop from common.sentenceSeparator. joinSentences needs no
+ * exemption: it holds no literal stop, and the `[.。]` of its strip sits in a
+ * regex literal, which the lexer steps over. A literal stop written back into
+ * it is #534's own first shape and fails as any other does.
+ */
+export function findSentenceStopJoins(source) {
+  const { masked, strings, templates } = lexTs(source);
+  const isStop = ([start, end]) =>
+    SENTENCE_STOP.test(STOP_ESCAPES.reduce((text, [escape, as]) => text.replace(escape, as), source.slice(start, end)));
+  // A window wide enough for a line break and a comment between a literal and its `+`.
+  const before = index => masked.slice(Math.max(0, index - 200), index);
+  const after = index => masked.slice(index, index + 200);
+  // A literal opens one character before its text and closes at its end.
+  const runInto = ([start, end]) => ({
+    lead: PLUS_BEFORE.test(before(start - 1)),
+    next: PLUS_AFTER.test(after(end + 1)),
+  });
+  const joinArgument = ([start, end]) => JOIN_BEFORE.test(before(start - 1)) && JOIN_AFTER.test(after(end + 1));
+
+  const hits = new Set();
+  for (const runs of templates) {
+    const outer = [runs[0][0], runs[runs.length - 1][1]];
+    const plus = runInto(outer);
+    runs.forEach((run, k) => {
+      if (!isStop(run)) return;
+      const lead = k > 0 || plus.lead;
+      const next = k < runs.length - 1 || plus.next;
+      if ((lead && next) || (runs.length === 1 && joinArgument(outer))) hits.add(run[0]);
+    });
+  }
+  for (const literal of strings) {
+    if (source[literal[0] - 1] === '`' || !isStop(literal)) continue;
+    const plus = runInto(literal);
+    if ((plus.lead && plus.next) || joinArgument(literal)) hits.add(literal[0]);
+  }
+  const lines = source.split('\n');
+  return [...hits]
+    .sort((a, b) => a - b)
+    .map(offset => {
+      const line = lineOf(source, offset);
+      return { line, text: lines[line - 1].trim() };
+    });
 }
 
 /**
@@ -1259,8 +1566,10 @@ function run() {
   const altOffences = [];
   const englishOffences = [];
   const commaOffences = [];
+  const stopOffences = [];
   const allowedSeen = new Set();
   let templatesScanned = 0;
+  let codeFilesScanned = 0;
   const fallbackFiles = [];
 
   for (const file of walk(SOURCE_DIR)) {
@@ -1324,6 +1633,13 @@ function run() {
         commaOffences.push({ site: `${path}:${join.line}`, value: join.text });
       }
     }
+
+    if (file.endsWith('.ts')) {
+      codeFilesScanned += 1;
+      for (const join of findSentenceStopJoins(text)) {
+        stopOffences.push({ site: `${relative('.', file)}:${join.line}`, value: join.text });
+      }
+    }
   }
 
   const staleAllowances = PROPER_NOUNS.map((row, index) => ({ row, index }))
@@ -1333,6 +1649,8 @@ function run() {
   const fallbackRows = [...MODEL_FACING_FALLBACKS, ...STORED_FALLBACKS];
   const fallbacks = fallbackFindings(fallbackFiles, fallbackRows);
   const allowedHits = rows => rows.reduce((sum, row) => sum + row.count, 0);
+  const descriptionRows = [...GUARDED_DESCRIPTIONS, ...RAW_DESCRIPTIONS_FROZEN];
+  const rawDescriptions = fallbackFindings(fallbackFiles, descriptionRows, findRawDescriptionSlots);
 
   const nativeTables = readNativeTables(NATIVE_DIR);
   const tableFindings = nativeTableFindings(nativeTables, catalogs);
@@ -1370,11 +1688,17 @@ function run() {
       `(${PROPER_NOUNS.length} proper nouns allowed by name).`
   );
   console.log(`Checked ${templatesScanned} templates for a translated fragment joined to a value by a comma.`);
+  console.log(`Checked ${codeFilesScanned} TypeScript files for two sentences joined in code with a literal stop.`);
   console.log(
     `Checked ${fallbackFiles.length} files for an English "Unknown", "Other" or "User" fallback ` +
       `(${fallbackRows.length} rows allow ${allowedHits(fallbackRows)} hits: ` +
       `${MODEL_FACING_FALLBACKS.length} model-facing for ${allowedHits(MODEL_FACING_FALLBACKS)}, ` +
       `${STORED_FALLBACKS.length} stored for ${allowedHits(STORED_FALLBACKS)}).`
+  );
+  console.log(
+    `Checked ${fallbackFiles.length} files for a translated slot filled with a raw description ` +
+      `(${GUARDED_DESCRIPTIONS.length} rows allow ${allowedHits(GUARDED_DESCRIPTIONS)} guarded slots, ` +
+      `${allowedHits(RAW_DESCRIPTIONS_FROZEN)} frozen by name).`
   );
   console.log(
     `Checked the widget's string tables (${Object.entries(NATIVE_TABLES)
@@ -1436,6 +1760,21 @@ function run() {
         'punctuates it itself (see docs/i18n.md). A label and its value may be joined by a colon.'
     );
   }
+  if (stopOffences.length > 0) {
+    failed = true;
+    console.error(
+      `\n${stopOffences.length} sentence(s) joined in code with a literal stop — ` +
+        'ja and tc end a sentence with 。 and no space:\n'
+    );
+    const bySite = (a, b) => a.site.localeCompare(b.site, 'en', { numeric: true });
+    for (const { site, value } of stopOffences.sort(bySite)) {
+      console.error(`  ${site}  ${value.slice(0, 120)}`);
+    }
+    console.error(
+      '\nJoin them with joinSentences (core/utils/import-review.utils.ts), which reads the reader\'s own\n' +
+        'stop from common.sentenceSeparator: ". " in en, 。 in ja and tc (see docs/i18n.md).'
+    );
+  }
   if (staleAllowances.length > 0) {
     failed = true;
     console.error(`\n${staleAllowances.length} PROPER_NOUNS row(s) match nothing any more:\n`);
@@ -1471,6 +1810,33 @@ function run() {
     console.error(
       '\nEdit the row\'s count to match, or drop the row from scripts/check-i18n.mjs in the\n' +
         'same commit that removed the literal.'
+    );
+  }
+  if (rawDescriptions.offences.length > 0) {
+    failed = true;
+    console.error(`\n${rawDescriptions.offences.length} translated slot(s) filled with a raw description:\n`);
+    const site = hit => `${hit.file}:${hit.line}`;
+    for (const hit of rawDescriptions.offences.sort((a, b) => site(a).localeCompare(site(b)))) {
+      console.error(`  ${site(hit)}  ${hit.text.slice(0, 120)}`);
+    }
+    console.error(
+      '\nA description can be blank, and the sentence then has nothing where the item goes.\n' +
+        'Fill the slot with transactionDisplayName(description, t) for a transaction\n' +
+        "(core/utils/transaction-display.utils.ts) or the review card's announceDescription(row)\n" +
+        'for an import row; where the sentence quotes the description, give an untitled one a\n' +
+        'sentence of its own, chosen by isUntitled(description). A slot that cannot be blank\n' +
+        'where it is read goes in GUARDED_DESCRIPTIONS with its reason (see docs/i18n.md).'
+    );
+  }
+  if (rawDescriptions.drift.length > 0) {
+    failed = true;
+    console.error(`\n${rawDescriptions.drift.length} raw-description row(s) no longer match the code:\n`);
+    for (const { file, text, count, hits } of rawDescriptions.drift) {
+      console.error(`  ${file}  ${text}  (the row allows ${count} hits, the file holds ${hits})`);
+    }
+    console.error(
+      "\nEdit the row's count to match, or drop the row from scripts/check-i18n.mjs in the\n" +
+        'same commit that changed the slot.'
     );
   }
   if (tableFindings.length > 0) {
@@ -1523,6 +1889,8 @@ function run() {
   console.log(
     'Every literal translation key resolves in every locale, no template hard-codes an aria-label, ' +
       'alt text or English sentence or joins a translated fragment to a value by a comma, ' +
+      'no code joins two sentences with a literal stop, ' +
+      'no translated slot is filled with a raw description where it can be blank, ' +
       'no code falls back to an English word a reader would see, and the widget names its words ' +
       'from wired string tables equal to the catalogs.'
   );
@@ -1680,6 +2048,87 @@ function selfTest() {
   check('a pipe whose name only starts with translate', joins(`{{ label | translateOrDash }}, {{ y }}`), []);
   check('a comma that ends the element', joins(`<b>{{ 'x' | translate }},</b> {{ y }}`), []);
   check('a commented-out join', joins(`<!-- {{ 'x' | translate }}, {{ y }} -->`), []);
+
+  // --- the sentence-join check ----------------------------------------------
+  const stops = source => findSentenceStopJoins(source).map(join => join.line);
+
+  // must hit
+  check('a template joining two parts with a Latin stop and a space', stops('const s = `${lead}. ${next}`;'), [1]);
+  check('a template joining two parts with the ideographic stop', stops('const s = `${lead}。${next}`;'), [1]);
+  check('the ideographic stop with a space after it', stops('const s = `${lead}。 ${next}`;'), [1]);
+  check(
+    'two translated sentences joined in a template',
+    stops("return `${this.t('import.verifyType')}. ${this.t('common.expense')}`;"),
+    [1]
+  );
+  check('a concatenation through a Latin stop', stops("return lead + '. ' + next;"), [1]);
+  check('a double-quoted Latin stop', stops('return lead + ". " + next;'), [1]);
+  check('a concatenation through the ideographic stop', stops("return lead + '。' + next;"), [1]);
+  check('an escaped ideographic stop', stops("return lead + '\\u3002' + next;"), [1]);
+  check('a stop added onto a lead in place', stops("message += '. ' + next;"), [1]);
+  check('a concatenation across lines reports the line of its stop', stops("return lead +\n  '. ' +\n  next;"), [2]);
+  check('a template that ends in the stop before a concatenation', stops('return `${lead}. ` + next;'), [1]);
+  check('a template that starts with the stop after a concatenation', stops('return lead + `. ${next}`;'), [1]);
+  check('a join through a Latin stop', stops("return [lead, next].join('. ');"), [1]);
+  check('a join through the ideographic stop', stops("return parts.join('。');"), [1]);
+  check('a join through a stop and an escaped line break', stops("return parts.join('.\\n');"), [1]);
+  check('a join through a template that is the stop alone', stops('return parts.join(`. `);'), [1]);
+  check(
+    'joinSentences as it stood before #534',
+    stops("  return `${lead.replace(/\\s*[.。]?\\s*$/, '')}. ${next}`;"),
+    [1]
+  );
+  check(
+    "the dropzone's alert as it stood before its fix",
+    stops('    this.refusals().map(r => this.refusal(r.name, r.reason)).join(\'. \')'),
+    [1]
+  );
+
+  // must not hit — joinSentences joins through the catalog, and each of the
+  // others is a shape this tree writes legitimately. A Latin stop with no space
+  // after it is a decimal point, a path, a version or an extension, never a
+  // sentence's end.
+  check(
+    "joinSentences' own body",
+    stops(
+      'export function joinSentences(\n' +
+        '  t: (key: string, params?: Record<string, string | number>) => string,\n' +
+        '  lead: string,\n' +
+        '  next: string,\n' +
+        '): string {\n' +
+        '  if (!lead) return next;\n' +
+        '  if (!next) return lead;\n' +
+        "  return lead.replace(/\\s*[.。]?\\s*$/, '') + t('common.sentenceSeparator') + next;\n" +
+        '}'
+    ),
+    []
+  );
+  check('a decimal assembled from its parts', stops('return `${whole}.${fraction}`;'), []);
+  check('a field path', stops('const path = field ? `${field}.${key}` : key;'), []);
+  check('a version', stops('const version = `${major}.${minor}.${patch}`;'), []);
+  check('a host name and a URL', stops('const url = `https://${host}.${domain}/${path}`;'), []);
+  check('a file name and its extension', stops("const file = name + '.' + extension;"), []);
+  check('an extension that leads with its stop', stops("const extension = '.' + file.name.split('.').pop();"), []);
+  check('a key joined by stops', stops("return [header, payload, signature].join('.');"), []);
+  check('a split on a stop and a space', stops("const sentences = text.split('. ');"), []);
+  check('the stops a sentence may end in, listed', stops("const ENDS = ['.', '!', '?', '。', '！', '？'];"), []);
+  check('a comparison with the ideographic stop', stops("if (char === '。' || char === '. ') return;"), []);
+  check('a stop that stands alone', stops('const STOP = `. `;'), []);
+  check('a stop in a regex literal', stops('const END = /[.。]\\s*$/;'), []);
+  check('a join in a line comment', stops("// return lead + '. ' + next;"), []);
+  check('a join in a block comment', stops('/* `${lead}。${next}` */'), []);
+  check(
+    'a join in a doc comment',
+    stops("/**\n * Once joined with `${lead}. ${next}`, now with parts.join('。').\n */"),
+    []
+  );
+
+  // reporting
+  check(
+    'a join reports its line and the trimmed text of that line',
+    findSentenceStopJoins("const a = 1;\n    return `${lead}. ${next}`;\n"),
+    [{ line: 2, text: 'return `${lead}. ${next}`;' }]
+  );
 
   // --- the fallback scan --------------------------------------------------
   const fallbacks = (source, kind = 'ts') => findEnglishFallbacks(source, kind).map(hit => hit.word);
@@ -1947,6 +2396,111 @@ function selfTest() {
   check('a head in a line comment', swift('// Text("Home Account")'), []);
   check('a head in a nested block comment', swift('/* outer /* Text("x") */ Text("y") */'), []);
   check('an image or symbol name', swift('Image("logo")\nImage(systemName: "lock.fill")'), []);
+
+  // --- a translated slot filled with a raw description ---
+  const rawSlots = (source, kind = 'html') => findRawDescriptionSlots(source, kind).map(hit => hit.line);
+  check(
+    "a pipe's slot, the household overview's count-toward button",
+    rawSlots(`<button\n  [attr.aria-label]="'household.overview.countToward' | translate: { name: view.transaction.description }"\n>`),
+    [2]
+  );
+  check(
+    "a signal's description beside other slots, in an interpolation, the transaction row's name before its fix",
+    rawSlots(`<span>{{ 'transactions.rowLabel' | translate: { description: transaction().description, amount: signedAmount() } }}</span>`),
+    [1]
+  );
+  check('an optional read is still a raw read', rawSlots(`{{ 'a.b' | translate: { name: row?.description } }}`), [1]);
+  check(
+    'a bracket quoted in another slot neither closes the object nor hides the slot after it',
+    [
+      rawSlots("t('a.b', { sep: '}', description: row.description })", 'ts'),
+      rawSlots(`{{ 'a.b' | translate: { open: '{', name: row.description } }}`),
+    ],
+    [[1], [1]]
+  );
+  check(
+    "a t() call's slot, the list's delete confirm before its fix, its key held in a variable",
+    rawSlots('message: this.translationService.t(messageKey, { description: transaction.description }),', 'ts'),
+    [1]
+  );
+  check(
+    "a slot on its own line of a call spread over several, the list's row name before its fix",
+    rawSlots(
+      "return this.translationService.t('transactions.rowLabel', {\n  description: transaction.description,\n  amount: amountOf(transaction),\n});",
+      'ts'
+    ),
+    [2]
+  );
+  check(
+    "an inline template's pipe is read as markup",
+    rawSlots("@Component({\n  template: `<button [attr.aria-label]=\"'a.b' | translate: { name: t.description }\">x</button>`,\n})", 'ts'),
+    [2]
+  );
+  check(
+    'a t() call in a template is read too, interpolated or bound',
+    [
+      rawSlots("<span>{{ t('a.b', { name: row.description }) }}</span>"),
+      rawSlots(`<x [description]="translationService.t('a.b', { name: row.description })"></x>`),
+    ],
+    [[1], [1]]
+  );
+  check(
+    'the display name, the review card helper and a defaulted read are not matched',
+    [
+      rawSlots(`{{ 'a.b' | translate: { description: transactionName(transaction) } }}`),
+      rawSlots("t('a.b', { description: transactionDisplayName(transaction.description, t) })", 'ts'),
+      rawSlots("t('a.b', { description: this.announceDescription(row) })", 'ts'),
+      rawSlots("t('a.b', { description: row.description || fallback })", 'ts'),
+    ],
+    [[], [], [], []]
+  );
+  check(
+    'a description shown as text, a key named description and a field that only starts with it are not slots',
+    [
+      rawSlots('<span class="description-text">{{ transaction.description }}</span>'),
+      rawSlots(`<p>{{ 'about.description' | translate }}</p>`),
+      rawSlots(`{{ 'a.b' | translate: { name: option.descriptionKey } }}`),
+    ],
+    [[], [], []]
+  );
+  check(
+    'an object handed to anything but t() is data, and a comment is not code',
+    [
+      rawSlots('this.store.save(id, { description: transaction.description, amount: 1 });', 'ts'),
+      rawSlots("// t('a.b', { description: transaction.description })", 'ts'),
+      rawSlots(`<!-- {{ 'a.b' | translate: { name: t.description } }} -->`),
+      rawSlots("@Component({\n  template: `<!-- {{ t('a.b', { name: row.description }) }} -->`,\n})", 'ts'),
+    ],
+    [[], [], [], []]
+  );
+  check(
+    'a guarded slot its row allows, and a row whose slot is gone',
+    [
+      fallbackFindings(
+        [{ file: 'src/app/x.ts', source: "  : t('a.b', { description: row.description });" }],
+        [fixtureRow(": t('a.b', { description: row.description });", 1)],
+        findRawDescriptionSlots
+      ),
+      fallbackFindings(
+        [{ file: 'src/app/x.ts', source: "  : t('a.b', { description: name(row) });" }],
+        [fixtureRow(": t('a.b', { description: row.description });", 1)],
+        findRawDescriptionSlots
+      ).drift.map(d => d.hits),
+    ],
+    [{ offences: [], drift: [] }, [0]]
+  );
+  check(
+    'every raw-description row names its file, its line, a count and why, once',
+    [...GUARDED_DESCRIPTIONS, ...RAW_DESCRIPTIONS_FROZEN].filter(
+      (row, i, rows) =>
+        !/^src\/app\/.+\.(html|ts)$/.test(row.file) ||
+        !row.text ||
+        !(Number.isInteger(row.count) && row.count > 0) ||
+        !row.reason ||
+        rows.findIndex(other => other.file === row.file && other.text === row.text) !== i
+    ),
+    []
+  );
 
   const failed = cases.filter(c => !c.ok);
   for (const c of cases) {

@@ -64,8 +64,8 @@
         </mat-form-field>
       </div>
 
-      <!-- Period and Start Date -->
-      <div class="flex gap-4">
+      <!-- Period and Start Date; they stack when the row cannot hold both (budget-form.component.scss) -->
+      <div class="period-row flex gap-4">
         <mat-form-field appearance="outline" class="flex-1 min-w-0">
           <mat-label>{{ 'budget.budgetPeriod' | translate }}</mat-label>
           <mat-select formControlName="period">
@@ -90,10 +90,10 @@
 
       <!-- Alert threshold slider -->
       <div class="threshold-section mt-4 mb-2">
-        <span class="block text-xs text-fg-muted mb-3 text-center" id="threshold-label">{{ 'budget.alertWhenReaches' | translate }}: <strong class="text-sm text-fg-secondary">{{ form.value.alertThreshold }}%</strong></span>
+        <span class="block text-xs text-fg-muted mb-3 text-center"><span id="threshold-label">{{ 'budget.alertWhenReaches' | translate }}</span>: <strong class="text-sm text-fg-secondary">{{ form.value.alertThreshold }}%</strong></span>
         <div class="slider-container">
-          <mat-slider min="50" max="100" step="5" aria-labelledby="threshold-label" discrete>
-            <input matSliderThumb formControlName="alertThreshold">
+          <mat-slider min="50" max="100" step="5" discrete>
+            <input matSliderThumb formControlName="alertThreshold" aria-labelledby="threshold-label">
           </mat-slider>
           <div class="flex justify-between text-xs text-fg-muted mt-1">
             <span>50%</span>

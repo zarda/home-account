@@ -13,7 +13,13 @@ import { TranslationService } from '../../../core/services/translation.service';
 import { NotificationService } from '../../../core/services/notification.service';
 import { EmptyStateComponent } from '../../../shared/components/empty-state/empty-state.component';
 import { CreateGoalDTO, Goal } from '../../../models';
-import { provideNoMotion } from '../../../core/services/testing';
+import {
+  expectPainted,
+  inPalette,
+  PALETTES,
+  provideNoMotion,
+  standOnThePage,
+} from '../../../core/services/testing';
 
 describe('GoalsComponent', () => {
   let fixture: ComponentFixture<GoalsComponent>;
@@ -218,5 +224,20 @@ describe('GoalsComponent empty state CTA', () => {
     emptyState.triggerEventHandler('action', undefined);
 
     expect(component.openAddDialog).toHaveBeenCalled();
+  });
+
+  // #533: the tab's hint sits on the page itself, and rests in the muted
+  // token, not a fade, which the high-contrast palette could never deepen.
+  it('rests its hint in the muted token, at AA on the page, in all four palettes', () => {
+    standOnThePage(fixture.nativeElement as HTMLElement);
+    const hint = (fixture.nativeElement as HTMLElement).querySelector('.goals-hint');
+
+    for (const palette of PALETTES) {
+      inPalette(palette.classes, () => {
+        const label = `${palette.name} Goals hint`;
+        expect(hint ? getComputedStyle(hint).opacity : null).withContext(`${label} opacity`).toBe('1');
+        expectPainted(hint, '--text-muted', label);
+      });
+    }
   });
 });

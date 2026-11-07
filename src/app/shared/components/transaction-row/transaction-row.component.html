@@ -70,7 +70,7 @@
         <button
           type="button"
           class="row-head row-activate"
-          [attr.aria-label]="'transactions.rowLabel' | translate: { description: transaction().description, amount: signedAmount(), date: relativeDate() }"
+          [attr.aria-label]="'transactions.rowLabel' | translate: { description: transactionName(), amount: signedAmount(), date: relativeDate() }"
           [attr.aria-describedby]="transaction().splitGroupId ? splitIndicatorId() : null"
         >
           <ng-container [ngTemplateOutlet]="headContent" />

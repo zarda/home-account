@@ -16,6 +16,9 @@ import {
   StorableRecurringSummary
 } from '../../../../models';
 import {
+  type TranslationStub,
+  accessibleName,
+  catalogTranslator,
   createCategory,
   createTranslationStub,
   provideNoMotion,
@@ -336,13 +339,47 @@ describe('RecurringListComponent, through its own template', () => {
     render([groupFor({ source: 'detected' })]);
 
     const convert = rows()[0].querySelector('.row-convert') as HTMLButtonElement;
-    expect(convert.getAttribute('aria-label')).toBe('insights.convertToRule');
+    expect(convert.getAttribute('aria-label')).toBe('insights.convertToRuleFor:{"name":"NETFLIX.COM"}');
     expect(convert.getAttribute('title')).toBe('insights.convertToRule');
 
     convert.click();
 
     expect(dialog.open).toHaveBeenCalled();
   });
+
+  /**
+   * One convert and one toggle per group, so each names the group it acts
+   * on by the label its row shows.
+   */
+  for (const locale of ['en', 'ja', 'tc'] as const) {
+    it(`names each row's convert and toggle by the group's label in ${locale}`, () => {
+      const t = catalogTranslator(locale, { strict: true });
+      const translation = TestBed.inject(TranslationService) as unknown as TranslationStub;
+      translation.t = catalogTranslator(locale);
+      translation.currentLocale.set(locale);
+      render(
+        [
+          groupFor({ key: 'k1', source: 'declared', label: 'Rent' }),
+          groupFor({ key: 'k2', source: 'detected', label: 'NETFLIX.COM' }),
+          groupFor({ key: 'k3', source: 'detected', label: 'Gym' }),
+        ],
+        { drillDownIds: { 'recurring:k1': ['t1'], 'recurring:k2': ['t2'], 'recurring:k3': ['t3'] } },
+      );
+
+      const named = (selector: string) =>
+        rows().map(row => row.querySelector(selector)).map(button => (button ? accessibleName(button) : null));
+      expect(named('.row-convert')).toEqual([
+        null,
+        t('insights.convertToRuleFor', { name: 'NETFLIX.COM' }),
+        t('insights.convertToRuleFor', { name: 'Gym' }),
+      ]);
+      expect(named('.row-toggle')).toEqual([
+        t('insights.showTransactionsFor', { name: 'Rent' }),
+        t('insights.showTransactionsFor', { name: 'NETFLIX.COM' }),
+        t('insights.showTransactionsFor', { name: 'Gym' }),
+      ]);
+    });
+  }
 
   it('offers no convert on a declared row — the user already made that rule', () => {
     render([groupFor({ source: 'declared' })]);

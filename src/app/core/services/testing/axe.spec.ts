@@ -1,15 +1,21 @@
 import { ChangeDetectionStrategy, Component, inject, signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
-import type { AxeResults } from 'axe-core';
+import axe, { type AxeResults } from 'axe-core';
 import { type EffectiveTheme, ThemeService } from '../theme.service';
 import {
   AUDIT_SCHEMES,
   DISABLED_RULES,
   KNOWN_VIOLATIONS,
   KNOWN_VIOLATION_REASONS,
+  accessibleDescription,
+  accessibleName,
   auditInView,
   axeOptions,
+  contrastUnscored,
+  expectContrastScored,
+  expectEachContrastScored,
   runAxe,
+  standOnThePage,
   summarizeViolations,
   unexpectedViolations,
   withScheme,
@@ -124,6 +130,45 @@ class FoldFixtureComponent {}
 })
 class OutOfBandFixtureComponent {}
 
+/**
+ * Words further down the document than body's box reaches. styles.scss holds
+ * html and body at the frame's height, and the spacer is taller than any
+ * Karma frame. The words have no fill of their own, as most text on a page
+ * has none.
+ */
+@Component({
+  selector: 'app-axe-below-body-fixture',
+  standalone: true,
+  changeDetection: ChangeDetectionStrategy.OnPush,
+  template: '<div class="spacer"></div><p class="words">Total</p>',
+  styles: `
+    :host { display: block; }
+    .spacer { height: 2000px; }
+    .words { margin: 0; color: var(--text-primary); }
+  `,
+})
+class BelowBodyFixtureComponent {}
+
+/** Two parts whose words clear AA, and one whose words are not drawn. */
+@Component({
+  selector: 'app-axe-parts-fixture',
+  standalone: true,
+  changeDetection: ChangeDetectionStrategy.OnPush,
+  template: `
+    <div class="parts">
+      <p class="first">Total</p>
+      <p class="second">Paid</p>
+      <p class="undrawn">Due</p>
+    </div>
+  `,
+  styles: `
+    .parts { background: #ffffff; }
+    p { margin: 0; color: #000000; }
+    .undrawn { visibility: hidden; }
+  `,
+})
+class PartsFixtureComponent {}
+
 /** A pair that clears AA in the light theme and fails it in the dark one. */
 @Component({
   selector: 'app-axe-dark-only-fixture',
@@ -202,6 +247,51 @@ describe('the axe harness', () => {
     expect(axeOptions().rules?.['color-contrast']).toBeUndefined();
   });
 
+  // A contrast sweep reads one rule's result, so it runs that rule alone,
+  // and once for all its parts: run once per node, with the whole
+  // wcag2a/wcag2aa pass a sweep of fifteen outlasted jasmine's five seconds on
+  // a loaded full run, and with the one rule a sweep of twenty did once
+  // coverage was on. Each part's nodes are kept, with their elements, so
+  // each pass is read back to the part that holds it.
+  it('scores every part with color-contrast alone, in one run that keeps each node\'s element', async () => {
+    TestBed.configureTestingModule({ imports: [PartsFixtureComponent] });
+    const fixture = TestBed.createComponent(PartsFixtureComponent);
+    fixture.detectChanges();
+    const host = fixture.nativeElement as HTMLElement;
+    const run = spyOn(axe, 'run').and.callThrough();
+
+    await expectEachContrastScored([
+      [host.querySelector('.first') as HTMLElement, 'the first'],
+      [host.querySelector('.second') as HTMLElement, 'the second'],
+    ]);
+
+    expect(run).withContext('one run for both parts').toHaveBeenCalledTimes(1);
+    // Typed by axe.run's last overload, the callback form, which returns void.
+    const results = await (run.calls.mostRecent().returnValue as unknown as Promise<AxeResults>);
+    expect([...results.passes, ...results.violations, ...results.incomplete, ...results.inapplicable].map(r => r.id))
+      .withContext('the rules the pass ran')
+      .toEqual(['color-contrast']);
+    expect(results.passes[0]?.nodes.map(node => node.element?.className))
+      .withContext('every passed node, with its element')
+      .toEqual(['first', 'second']);
+  });
+
+  // A pass is read back to the part whose element holds it, so a part whose
+  // own words are not drawn is reported though the part beside it passed in
+  // the same run. A pin. Mutation: a part's pass read from every node of
+  // the rule's passes, not only those inside its element.
+  it('reports a part none of whose own words passed, though the part beside it did', async () => {
+    TestBed.configureTestingModule({ imports: [PartsFixtureComponent] });
+    const fixture = TestBed.createComponent(PartsFixtureComponent);
+    fixture.detectChanges();
+    const host = fixture.nativeElement as HTMLElement;
+
+    expect(await contrastUnscored([
+      [host.querySelector('.first') as HTMLElement, 'the first'],
+      [host.querySelector('.undrawn') as HTMLElement, 'the undrawn words'],
+    ])).toEqual(['the undrawn words: no pass of its own']);
+  });
+
   describe('motion', () => {
     // Headless Chrome need not paint a frame between a class landing and the
     // pass, so a transition can still sit on its first colours for the whole
@@ -277,6 +367,46 @@ describe('the axe harness', () => {
       await expectAsync(auditInView(root.querySelector('.tall') as HTMLElement))
         .withContext('taller than the band')
         .toBeRejectedWithError(/outside the band .*64/);
+    });
+  });
+
+  describe('below body\'s box', () => {
+    // The tall fixture scrolls the document itself.
+    afterEach(() => {
+      document.scrollingElement?.scrollTo(0, 0);
+    });
+
+    // Body paints the page's fill only as far down as its own box, so axe
+    // finds no background it can trust behind words further down, and
+    // leaves them incomplete rather than failing or passing them: a pass
+    // over a long fixture reads clean without having measured them.
+    it('leaves words below body\'s box unscored until their host stands on the page\'s fill', async () => {
+      TestBed.configureTestingModule({ imports: [BelowBodyFixtureComponent] });
+      const fixture = TestBed.createComponent(BelowBodyFixtureComponent);
+      fixture.detectChanges();
+      const host = fixture.nativeElement as HTMLElement;
+      const words = host.querySelector('.words') as HTMLElement;
+      expect(words.getBoundingClientRect().top)
+        .withContext('the words start below body\'s box')
+        .toBeGreaterThan(document.body.getBoundingClientRect().bottom);
+
+      const bare = await runAxe(words);
+      expect([...bare.passes, ...bare.violations].map(result => result.id))
+        .withContext('with no fill, passed or failed')
+        .not.toContain('color-contrast');
+      const left = bare.incomplete.find(result => result.id === 'color-contrast');
+      expect((left?.nodes[0]?.any[0]?.data as { messageKey?: string } | undefined)?.messageKey)
+        .withContext('with no fill, why it was left incomplete')
+        .toBe('elmPartiallyObscured');
+      expect(await contrastUnscored([[words, 'the words with no fill']]))
+        .withContext('a sweep that meets them says why')
+        .toEqual(['the words with no fill: no pass of its own, left incomplete: elmPartiallyObscured']);
+
+      standOnThePage(host);
+      expect(getComputedStyle(host).backgroundColor)
+        .withContext('the host paints what body paints')
+        .toBe(getComputedStyle(document.body).backgroundColor);
+      await expectContrastScored(words, 'on the page\'s fill');
     });
   });
 
@@ -460,6 +590,77 @@ describe('the axe harness', () => {
       } as Parameters<typeof summarizeViolations>[0];
 
       expect(summarizeViolations(results)).toEqual(['color-contrast (2): .a, .b .c']);
+    });
+  });
+
+  describe('accessible names and descriptions', () => {
+    const VISUALLY_HIDDEN =
+      'position: absolute; width: 1px; min-width: 0; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap';
+    let host: HTMLElement;
+
+    /** `html` rendered in a fresh host on the page, which the case reads by id. */
+    function render(html: string): (id: string) => Element {
+      host.innerHTML = html;
+      return id => host.querySelector(`#${id}`)!;
+    }
+
+    beforeEach(() => {
+      host = document.createElement('div');
+      document.body.appendChild(host);
+    });
+
+    afterEach(() => host.remove());
+
+    it('gives a control the name its shown label carries, and none from a display:none label', () => {
+      const node = render(`
+        <label for="shown">Amount</label><input id="shown" />
+        <label for="gone" style="display: none">Amount</label><input id="gone" />
+      `);
+
+      expect(accessibleName(node('shown'))).withContext('a shown label').toBe('Amount');
+      expect(accessibleName(node('gone'))).withContext('a display:none label').toBe('');
+    });
+
+    it('keeps the name of a label clipped out of sight, as a screen reader does', () => {
+      const node = render(`<label for="clipped" style="${VISUALLY_HIDDEN}">Amount</label><input id="clipped" />`);
+
+      expect(accessibleName(node('clipped'))).toBe('Amount');
+    });
+
+    it('reads the description from the nodes aria-describedby names, in its order, a display:none one included, and from aria-description without them', () => {
+      const node = render(`
+        <button id="browse" type="button" aria-describedby="second first">Browse</button>
+        <span id="first">Photos or CSV.</span>
+        <span id="second" style="display: none">Drop files here.</span>
+        <button id="plain" type="button">Plain</button>
+        <button id="inline" type="button" aria-description="Opens the picker.">Inline</button>
+      `);
+
+      expect(accessibleDescription(node('browse'))).toBe('Drop files here. Photos or CSV.');
+      expect(accessibleName(node('browse'))).withContext('the name stays the button\'s own').toBe('Browse');
+      expect(accessibleDescription(node('plain'))).withContext('nothing describes it').toBe('');
+      expect(accessibleDescription(node('inline'))).withContext('aria-description').toBe('Opens the picker.');
+    });
+
+    it('refuses to read a name while a pass is still running, and leaves the pass whole', async () => {
+      TestBed.configureTestingModule({ imports: [BrokenFixtureComponent] });
+      const fixture = TestBed.createComponent(BrokenFixtureComponent);
+      fixture.detectChanges();
+      const node = render('<button id="named" type="button">Named</button>');
+
+      const pass = runAxe(fixture.nativeElement as Element);
+      expect(() => accessibleName(node('named'))).toThrowError(/a pass is still running/);
+      expect(rulesOf(await pass)).withContext('the pass it overlapped').toContain('image-alt');
+      expect(accessibleName(node('named'))).withContext('once the pass is done').toBe('Named');
+    });
+
+    it('leaves axe as it found it, so the next read and the next pass both work', async () => {
+      const node = render('<button id="named" type="button">Named</button>');
+
+      expect(accessibleName(node('named'))).toBe('Named');
+      node('named').textContent = 'Renamed';
+      expect(accessibleName(node('named'))).withContext('a second read, of the DOM as it is now').toBe('Renamed');
+      expect(await violationsOf(BrokenFixtureComponent)).withContext('a pass after it').toContain('image-alt');
     });
   });
 });

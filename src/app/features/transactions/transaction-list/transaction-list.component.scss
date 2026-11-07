@@ -1,3 +1,5 @@
+@use 'a11y';
+
 :host {
   display: block;
   // The sliding window compensates scrollTop itself when rows are prepended
@@ -267,6 +269,12 @@ app-transaction-row.row-selected::before,
 .col-select {
   inline-size: 56px;
   padding: 4px 8px !important;
+}
+
+// The header shows no words; these are its only name, so they are clipped in
+// place rather than taken out.
+.select-header-label {
+  @include a11y.visually-hidden;
 }
 
 // nowrap, so the auto table layout widens .col-date to the whole date instead

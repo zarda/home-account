@@ -80,10 +80,14 @@
  *     ending in `.name`, trailing whitespace allowed, since the template
  *     parser keeps it in the source. Two files can share a name (two iOS
  *     captures are both image.jpg), and a list keyed by it hands one row, and
- *     its preview, to the other. The selector sits in the template block's
- *     array beside the two above; it fires on the name read off the item,
- *     and leaves the item itself, an id, `$index` and a longer member that
- *     merely starts with `name` alone, which the self-test's fixtures prove.
+ *     its preview, to the other. A track expression ending in `.preview`
+ *     fails too (ADR 0187): the transaction form read each queued photo's
+ *     preview from its bytes, so two picks of one picture shared one. The
+ *     selector sits in the template block's array beside the two above; it
+ *     fires on the name or the preview read off the item, and leaves the item
+ *     itself, an id, `$index`, a member of a preview (`preview.url`) and a
+ *     longer member that merely starts with `name` or `preview` alone, which
+ *     the self-test's fixtures prove.
  *   - A spec listening for a rejection nobody caught on window (#500,
  *     docs/testing.md): the `unhandledrejection` and `rejectionhandled` event
  *     names as any string literal, and the `onunhandledrejection` /
@@ -139,11 +143,12 @@
  *   - What a bound sort-header description says. The selector asks for a
  *     binding, not for the catalog key: `[sortActionDescription]="'Sort'"` is a
  *     binding and passes.
- *   - A list keyed by name some other way than a member read ending in
- *     `.name`: `track f['name']` (a keyed read), a track function
- *     (`track byName(f)`), or a name under another member (`track f.fileName`).
- *     The selector reads the track expression's source text, and only its
- *     ending.
+ *   - A list keyed by name or by content some other way than a member read
+ *     ending in `.name` or `.preview`: `track f['name']` (a keyed read), a
+ *     track function (`track byName(f)`), a name under another member
+ *     (`track f.fileName`), or a data URL held under another name
+ *     (`track f.dataUrl`). The selector reads the track expression's source
+ *     text, and only its ending.
  *   - App code listening for a rejection. The ban resolves for specs; the
  *     population row proves nothing about src/app outside *.spec.ts.
  *   - A detector that is merely too weak: a spec that never listens, but reads
@@ -258,12 +263,14 @@ const TEMPLATE_SORT_HEADER_SELECTOR =
   'Element:has(> TextAttribute[name="mat-sort-header"], > BoundAttribute[name="mat-sort-header"])' +
   ':not(:has(> BoundAttribute[name="sortActionDescription"]))';
 
-// A `@for` that tracks its items by name (ADR 0186). Two files can share a
-// name, so a list keyed by it hands one row and its preview to the other. The
-// template parser keeps trailing whitespace in the track source, so the
+// A `@for` that tracks its items by name (ADR 0186) or by preview (ADR 0187).
+// Two files can share a name, and two picks of one picture a preview read from
+// its bytes, so a list keyed by either hands one row and its preview to the
+// other.
+// The template parser keeps trailing whitespace in the track source, so the
 // pattern allows it. A plain string, not imported, so a drift from
 // eslint.config.js shows up as a resolved-selector mismatch below.
-const TEMPLATE_TRACK_BY_NAME_SELECTOR = 'ForLoopBlock[trackBy.source=/\\.name\\s*$/]';
+const TEMPLATE_TRACK_BY_NAME_SELECTOR = 'ForLoopBlock[trackBy.source=/\\.(name|preview)\\s*$/]';
 
 // The dynamic half of the analytics ban. no-restricted-imports reads static
 // declarations only, so import('@capacitor-firebase/analytics') passes it —
@@ -919,12 +926,14 @@ async function selfTest() {
   );
   check('only the sort header that lacks a description fails the rule', countSyntaxMessages(twoSortHeaders), 1);
 
-  // The track-by-name half (ADR 0186). Two files can share a name, so a list
-  // tracked by it hands one row to the other. The template parser keeps the
+  // The track-by-name half (ADR 0186, its preview arm ADR 0187). Two files can
+  // share a name, and two picks of one picture a preview, so a list tracked by
+  // either hands one row to the other. The template parser keeps the
   // whitespace after the expression in its source, so a name followed by a
   // space, or ending its own line, must fail as the plain one does; the item
-  // itself, an id, a longer member that merely starts with `name` and the
-  // index must not.
+  // itself, an id, a longer member that merely starts with `name` or
+  // `preview`, a member of a preview (the wizard's `preview.url`, an object
+  // URL made once per file) and the index must not.
   const trackCases = [
     ['a list tracked by name', '@for (f of files; track f.name) {<p>{{ f.name }}</p>}', 1],
     ['a list tracked by name before a trailing space', '@for (f of files; track f.name ) {<p>{{ f.name }}</p>}', 1],
@@ -934,6 +943,11 @@ async function selfTest() {
     ['a list tracked by id', '@for (f of files; track f.id) {<p>{{ f.name }}</p>}', 0],
     ['a list tracked by a member that starts with name', '@for (f of files; track f.nameKey) {<p>{{ f.name }}</p>}', 0],
     ['a list tracked by index', '@for (f of files; track $index) {<p>{{ f.name }}</p>}', 0],
+    ['a list tracked by preview beside its index', '@for (p of pending; track p.preview; let i = $index) {<img [src]="p.preview" />}', 1],
+    ['a list tracked by preview before a trailing space', '@for (p of pending; track p.preview ) {<img [src]="p.preview" />}', 1],
+    ['a list tracked by a member of a preview', '@for (preview of previews; track preview.url) {<img [src]="preview.url" />}', 0],
+    ['a list tracked by a member that starts with preview', '@for (p of pending; track p.previewId) {<img [src]="p.preview" />}', 0],
+    ['a list of previews tracked by the item itself', '@for (preview of previews; track preview) {<img [src]="preview.url" />}', 0],
   ];
   for (const [shape, source, expected] of trackCases) {
     const linted = await fixtureEslint.lintText(source + '\n', { filePath: templatePath });

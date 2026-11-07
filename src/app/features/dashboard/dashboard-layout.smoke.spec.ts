@@ -590,9 +590,15 @@ describe('dashboard card arrangement (emulator smoke test)', () => {
         const router = TestBed.inject(Router);
 
         await harness.navigateByUrl(`/dashboard?bill=${RULE_ID}`);
-        await waitForDom('the recurring rules', () => router.url === '/budgets?tab=recurring');
+        // Waiting for the dashboard to be left, not for the rules' URL, lets a
+        // wrong destination fail on the expectation instead of a timeout.
+        await waitForDom('the dashboard to be left', () => !router.url.startsWith('/dashboard'));
 
-        expect(harness.routeNativeElement?.ownerDocument.querySelector('app-upcoming-bills')).toBeNull();
+        // Nothing here looks for the hidden card: the dashboard is left while
+        // its first load still holds every card back, so the card is never
+        // put on the page whether or not the preference hides it, and once
+        // the router has left no card is.
+        expect(router.url).toBe('/budgets?tab=recurring');
       },
       CASE_TIMEOUT
     );
@@ -608,7 +614,11 @@ describe('dashboard card arrangement (emulator smoke test)', () => {
         const router = TestBed.inject(Router);
 
         await harness.navigateByUrl('/dashboard?bill=smoke-no-such-rule');
-        await waitForDom('the recurring rules', () => router.url === '/budgets?tab=recurring');
+        // Waiting for the dashboard to be left, not for the rules' URL, lets a
+        // wrong destination fail on the expectation instead of a timeout.
+        await waitForDom('the dashboard to be left', () => !router.url.startsWith('/dashboard'));
+
+        expect(router.url).toBe('/budgets?tab=recurring');
       },
       CASE_TIMEOUT
     );

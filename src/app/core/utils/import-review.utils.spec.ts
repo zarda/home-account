@@ -26,6 +26,7 @@ import {
   withoutFieldConfidence,
 } from './import-review.utils';
 import { CategorizedImportTransaction, ImagePositionMetadata, VERIFY_FIELD_THRESHOLD } from '../../models';
+import { catalogTranslator, echoTranslation } from '../services/testing';
 
 /**
  * Dates are built from local parts (`new Date(2026, 5, 15)`), never parsed
@@ -487,51 +488,80 @@ describe('import-review.utils', () => {
   });
 
   describe('fieldDoubtSentence', () => {
-    const t = (key: string, params?: Record<string, string | number>) =>
-      params ? `${key}:${JSON.stringify(params)}` : key;
-
     it("names the scan for a field the device read, and quotes no percentage", () => {
-      expect(fieldDoubtSentence(t, 'amount', true, 0.6)).toBe('import.verifyAmountOnDevice');
-      expect(fieldDoubtSentence(t, 'date', true, 0.3)).toBe('import.verifyDateOnDevice');
+      expect(fieldDoubtSentence(echoTranslation, 'amount', true, 0.6)).toBe('import.verifyAmountOnDevice');
+      expect(fieldDoubtSentence(echoTranslation, 'date', true, 0.3)).toBe('import.verifyDateOnDevice');
     });
 
     it("quotes a cloud reader's confidence as a whole percentage, and 0 where it reported none", () => {
-      expect(fieldDoubtSentence(t, 'amount', false, 0.655)).toBe('import.verifyAmount:{"percent":66}');
-      expect(fieldDoubtSentence(t, 'date', false, 0.5)).toBe('import.verifyDate:{"percent":50}');
-      expect(fieldDoubtSentence(t, 'date', false, undefined)).toBe('import.verifyDate:{"percent":0}');
+      expect(fieldDoubtSentence(echoTranslation, 'amount', false, 0.655)).toBe('import.verifyAmount:{"percent":66}');
+      expect(fieldDoubtSentence(echoTranslation, 'date', false, 0.5)).toBe('import.verifyDate:{"percent":50}');
+      expect(fieldDoubtSentence(echoTranslation, 'date', false, undefined)).toBe('import.verifyDate:{"percent":0}');
     });
   });
 
   describe('joinSentences', () => {
+    // The join is the reader's own stop, read off the catalog it speaks:
+    // a Latin stop and a space in en, 。 alone in ja and tc.
+    const en = catalogTranslator('en');
+    const ja = catalogTranslator('ja');
+
     it('drops the leading sentence\'s own stop before adding one', () => {
-      expect(joinSentences('This receipt is dated another day.', 'Change date'))
+      expect(joinSentences(en, 'This receipt is dated another day.', 'Change date'))
         .toBe('This receipt is dated another day. Change date');
     });
 
-    it('drops a CJK stop too, so ja and tc are not read out with two', () => {
+    it('joins a ja lead ending in 。 with 。 alone', () => {
       // The reasons are whole sentences in every catalog, and ja and tc end
-      // them with 。 A joiner that only knew the Latin stop left the name as
-      // "…ください。. 日付を変更" — two terminators, both spoken.
-      expect(joinSentences('別の日を選んでください。', '日付を変更'))
-        .toBe('別の日を選んでください. 日付を変更');
+      // them with 。 and put no space after it. A join in the Latin ". "
+      // left the name as "…ください. 日付を変更", a stop no ja reader writes.
+      expect(joinSentences(ja, '別の日を選んでください。', '日付を変更'))
+        .toBe('別の日を選んでください。日付を変更');
+    });
+
+    it('joins en with a stop and a space', () => {
+      expect(joinSentences(en, 'Pick another day.', 'Change date')).toBe('Pick another day. Change date');
     });
 
     it('takes trailing whitespace with the stop', () => {
-      expect(joinSentences('Read off the receipt . ', 'Use KRW')).toBe('Read off the receipt. Use KRW');
+      expect(joinSentences(en, 'Read off the receipt . ', 'Use KRW')).toBe('Read off the receipt. Use KRW');
     });
 
     it('adds a stop to a sentence that carries none', () => {
-      expect(joinSentences('import.currencyFellBack', 'import.setCurrency'))
+      expect(joinSentences(en, 'import.currencyFellBack', 'import.setCurrency'))
         .toBe('import.currencyFellBack. import.setCurrency');
+    });
+
+    it('an empty half adds nothing', () => {
+      // A row nobody doubts has no reason to lead with, a round that lost no
+      // photo has no photo sentence: neither brings a stop with it.
+      expect(joinSentences(ja, '', '日付を変更')).toBe('日付を変更');
+      expect(joinSentences(ja, '日付を変更', '')).toBe('日付を変更');
     });
 
     it('is the trailing half alone when there is no reason to lead with', () => {
       // A row nobody doubts is not announced as suspect.
-      expect(joinSentences('', 'Change date')).toBe('Change date');
+      expect(joinSentences(en, '', 'Change date')).toBe('Change date');
     });
 
     it('leaves a lone leading sentence exactly as it is', () => {
-      expect(joinSentences('Dated another day.', '')).toBe('Dated another day.');
+      expect(joinSentences(en, 'Dated another day.', '')).toBe('Dated another day.');
+    });
+
+    it('keeps a question\'s own mark, and adds only the space the reader\'s stop leaves', () => {
+      // The review card's keep-date and offer buttons open their names with
+      // the question their chips show; a stop after its mark read "keep it?. This".
+      expect(joinSentences(en, 'Dated Jan 15, 2026 — keep it?', 'This receipt is dated Jan 15, 2026, not today.'))
+        .toBe('Dated Jan 15, 2026 — keep it? This receipt is dated Jan 15, 2026, not today.');
+    });
+
+    it('joins a ja or tc question ending in ？ with nothing after its mark', () => {
+      // ja and tc put no space after a sentence, so after the question's own
+      // mark the reader's stop leaves nothing to add.
+      expect(joinSentences(ja, '日付は 2026年1月15日 です — このままにしますか？', 'このレシートの日付は今日ではありません。'))
+        .toBe('日付は 2026年1月15日 です — このままにしますか？このレシートの日付は今日ではありません。');
+      expect(joinSentences(catalogTranslator('tc'), '要改用 KRW 嗎？ ', '從收據上讀到的'))
+        .toBe('要改用 KRW 嗎？從收據上讀到的');
     });
   });
 

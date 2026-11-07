@@ -14,7 +14,16 @@ import { TagMemoryService } from '../../../core/services/tag-memory.service';
 import { ProviderKeyService } from '../../../core/services/provider-key.service';
 import { AnnouncerService } from '../../../core/services/announcer.service';
 import { NotificationService } from '../../../core/services/notification.service';
-import { provideNoMotion, settleAnimations, withTheme } from '../../../core/services/testing';
+import { TranslationService } from '../../../core/services/translation.service';
+import {
+  accessibleName,
+  catalogTranslator,
+  provideNoMotion,
+  runAxe,
+  settleAnimations,
+  summarizeViolations,
+  withTheme,
+} from '../../../core/services/testing';
 import { DEFAULT_LLM_PROVIDER_PREFERENCES, ProviderSecrets } from '../../../models';
 
 describe('AiSettingsPageComponent', () => {
@@ -168,6 +177,40 @@ describe('AiSettingsPageComponent', () => {
       expect(component.autoSync()).toBeFalse();
       expect(strategyServiceMock.updatePreferences).toHaveBeenCalledWith({ autoSync: false });
     });
+  });
+
+  /**
+   * The Auto sync switch is Material's inner `role="switch"` button. Its words
+   * are the span beside the toggle, which names it through `aria-labelledby`:
+   * Material hands the host's to the button, as the dashboard layout's toggles
+   * are named. Each locale renders its catalog's words.
+   */
+  describe('the Auto sync switch (real template)', () => {
+    for (const locale of ['en', 'ja', 'tc'] as const) {
+      it(`is named by the words beside it, in ${locale}`, async () => {
+        const translator = catalogTranslator(locale);
+        const translation = TestBed.inject(TranslationService);
+        spyOn(translation, 't').and.callFake(translator);
+        // The translate pipe memoises on the locale and the catalog version.
+        // The bump is what a catalog's arrival does, so en, the locale already
+        // set, is read again too.
+        translation.currentLocale.set(locale);
+        translation.translationsVersion.update(version => version + 1);
+        fixture.detectChanges();
+
+        const row = (fixture.nativeElement as HTMLElement).querySelector('.auto-sync-row');
+        const toggle = row?.querySelector('button[role="switch"]') ?? null;
+        expect(toggle).withContext('the switch').not.toBeNull();
+        if (!row || !toggle) return;
+        expect(accessibleName(toggle)).toBe(catalogTranslator(locale, { strict: true })('aiPage.autoSync'));
+        // Material renders an empty <label for> beside the button, and axe's
+        // button-name takes any label it cannot see as a name, so an unnamed
+        // switch would pass. Without it, axe reads only the button's own names.
+        row.querySelector(`label[for="${toggle.id}"]`)?.remove();
+        const violations = summarizeViolations(await runAxe(row));
+        expect(violations.filter(line => line.startsWith('button-name'))).withContext(locale).toEqual([]);
+      });
+    }
   });
 
   describe('RAG insights level', () => {

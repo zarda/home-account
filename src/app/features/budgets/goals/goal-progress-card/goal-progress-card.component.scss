@@ -28,7 +28,7 @@
         align-items: center;
         gap: 4px;
         font-size: 12px;
-        opacity: 0.7;
+        color: var(--text-muted);
 
         mat-icon {
           font-size: 14px;
@@ -58,7 +58,7 @@
       }
 
       .target {
-        opacity: 0.7;
+        color: var(--text-muted);
       }
 
       .percentage {
@@ -71,19 +71,21 @@
     .linked-breakdown {
       margin: 0 0 6px;
       font-size: 12px;
-      opacity: 0.7;
+      color: var(--text-muted);
     }
 
     .status {
       margin: 6px 0 0;
       font-size: 13px;
-      opacity: 0.8;
+      color: var(--text-muted);
 
+      // Reaching the goal is the card's news, so it reads in the card's own
+      // colour, not the muted one.
       &.reached-note {
         display: inline-flex;
         align-items: center;
         gap: 4px;
-        opacity: 1;
+        color: inherit;
 
         mat-icon {
           font-size: 18px;
@@ -109,7 +111,7 @@
 
     .items-count {
       font-size: 12px;
-      opacity: 0.7;
+      color: var(--text-muted);
       margin-bottom: 4px;
     }
 
@@ -127,14 +129,14 @@
     .item-amount {
       margin-left: 8px;
       font-size: 12px;
-      opacity: 0.7;
+      color: var(--text-muted);
     }
   }
 
   .goal-note {
     margin: 12px 0 0;
     font-size: 13px;
-    opacity: 0.75;
+    color: var(--text-muted);
     overflow-wrap: anywhere;
   }
 }

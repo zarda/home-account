@@ -9,6 +9,7 @@ import { provideNativeDateAdapter } from '@angular/material/core';
 import { Subject } from 'rxjs';
 
 import { TransactionPreviewTableComponent } from './transaction-preview-table.component';
+import { withEveryCardShown } from './transaction-preview-table.testing';
 import { CategorySuggestionComponent } from '../category-suggestion/category-suggestion.component';
 import { Category, CategorizedImportTransaction } from '../../../../models';
 import { TranslationService } from '../../../../core/services/translation.service';
@@ -18,16 +19,23 @@ import { LocaleFormatService } from '../../../../core/services/locale-format.ser
 import { NotificationService } from '../../../../core/services/notification.service';
 import { AnnouncerService } from '../../../../core/services/announcer.service';
 import { toCreateTransactionDTO } from '../../../../core/utils/import-dto.utils';
-import { blankImportRow, needsDateAnswer } from '../../../../core/utils/import-review.utils';
+import { blankImportRow, joinSentences, needsDateAnswer } from '../../../../core/utils/import-review.utils';
 import { UNRESOLVED_CATEGORY_CONFIDENCE } from '../../../../core/utils/categorization.utils';
 import { createCategory } from '../../../../core/services/testing/test-data';
 import {
   AUDIT_SCHEMES,
   GLYPH_PROBE_COLOURS,
+  accessibleDescription,
+  accessibleName,
+  catalogTranslator,
   channels,
+  contentWidthPx,
+  echoTranslation,
   hoverValue,
   paintedBackground,
   paintedColor,
+  placeholderWidthPx,
+  pressKey,
   ratio,
   runAxe,
   settleAnimations,
@@ -53,6 +61,13 @@ const flipCatalogue = () => [
   createCategory({ id: 'other_expense', name: 'categoryNames.otherExpense', type: 'expense' }),
   createCategory({ id: 'other_income', name: 'categoryNames.otherIncome', type: 'income' }),
 ];
+
+/**
+ * Any quotation mark a catalog writes. None of the card's names or
+ * announcements holds one round the stand-in, which in quotes would read
+ * as the row's name.
+ */
+const QUOTATION_MARKS = /["“”「」『』]/;
 
 describe('TransactionPreviewTableComponent', () => {
   let component: TransactionPreviewTableComponent;
@@ -116,10 +131,7 @@ describe('TransactionPreviewTableComponent', () => {
           // Echoes the key and its params so tooltip assertions can check the
           // interpolated value without depending on the English wording.
           provide: TranslationService,
-          useValue: {
-            t: (key: string, params?: Record<string, string | number>) =>
-              params ? `${key}:${JSON.stringify(params)}` : key,
-          },
+          useValue: { t: echoTranslation },
         },
         {
           // Two codes are enough to prove the picker curates: one the row
@@ -653,36 +665,43 @@ describe('TransactionPreviewTableComponent', () => {
       expect(component.dateTooltip(row)).toBe('import.verifyDate:{"percent":30}');
     });
 
-    it('names the keep button by the reason and by the date it keeps', () => {
+    it('names the keep button by the question its chip shows, then by the reason', () => {
       const row = makeRow({ dateAssumed: true });
-      expect(component.keepDateLabel(row)).toBe(`import.dateAssumedTooltip. import.keepDate:{"date":"${formatted(row)}"}`);
+      expect(component.keepDateLabel(row)).toBe('import.dateAssumedKeep. import.dateAssumedTooltip');
       expect(component.dateChipText(row)).toBe('import.dateAssumedKeep');
     });
 
-    it('drops the reason\'s own stop before the join adds one', () => {
+    it('drops the reason\'s own stop before the join adds one, and adds none after a question', () => {
       // The three date tooltips are sentences with a terminator of their
-      // own — "." in en, "。" in ja and tc — and the join puts one between
-      // the reason and the action, so a flagged row's name would end its
-      // reason "here.. Change" or "。. 日付". dateReviewed and the percent
-      // wording carry no stop and keep the plain ". " join the cases above
-      // pin; the echoing stub returns bare keys, so these two are stood in
-      // for with real sentences.
+      // own — "." in en, "。" in ja and tc — and the join puts the reader's
+      // stop between the reason and the action, so a flagged row's name
+      // would end its reason "here.. Change" or "。。日付". dateReviewed and
+      // the percent wording carry no stop and keep the plain ". " join the
+      // cases above pin; the echoing stub returns bare keys, so these are
+      // stood in for with real sentences, and the ja ones with ja's own
+      // marks. The keep button's name opens with its chip's question, which
+      // keeps its own ？, and ja's stop leaves nothing to add after it.
       const sentences: Record<string, string> = {
         'import.dateAssumedTooltip': 'This row is dated today — keep it or change it here.',
         'import.dateNotTodayTooltip': 'このレシートの日付は今日ではありません。',
+        'import.dateNotTodayKeep': '日付は X です — このままにしますか？',
       };
       spyOn(TestBed.inject(TranslationService), 't').and.callFake(
-        (key: string, params?: Record<string, string | number>) =>
-          sentences[key] ?? (params ? `${key}:${JSON.stringify(params)}` : key)
+        (key: string, params?: Record<string, string | number>) => sentences[key] ?? echoTranslation(key, params)
       );
 
       const assumed = makeRow({ dateAssumed: true });
       expect(component.dateChipLabel(assumed))
         .toBe(`This row is dated today — keep it or change it here. import.changeDate:{"date":"${formatted(assumed)}"}`);
+      sentences['common.sentenceSeparator'] = '。';
       const receipt = makeRow({ id: 'receipt', date: new Date(2026, 5, 1) });
       component.dateAttentionIds = new Set(['receipt']);
+      expect(component.dateChipLabel(receipt))
+        .withContext('the date chip: the reason gives up its 。 before the join adds one')
+        .toBe(`このレシートの日付は今日ではありません。import.changeDate:{"date":"${formatted(receipt)}"}`);
       expect(component.keepDateLabel(receipt))
-        .toBe(`このレシートの日付は今日ではありません. import.keepDate:{"date":"${formatted(receipt)}"}`);
+        .withContext('the keep button: the question keeps its ？ and nothing follows it')
+        .toBe('日付は X です — このままにしますか？このレシートの日付は今日ではありません。');
     });
 
     it('asks a not-today row to keep the day it is dated, and flags its button', () => {
@@ -1214,7 +1233,8 @@ describe('TransactionPreviewTableComponent', () => {
       // (M7): a chip built here reads the same keys the form's own does.
       const row = makeRow({ currencySuggestion: offer });
       expect(component.currencyOfferText(row)).toBe('import.currencyFromCountry:{"country":"South Korea","currency":"KRW"}');
-      expect(component.currencyOfferLabel(row)).toBe('import.acceptCurrencySuggestion:{"currency":"KRW"}. import.currencyReasonReceipt');
+      expect(component.currencyOfferLabel(row))
+        .toBe('import.currencyFromCountry:{"country":"South Korea","currency":"KRW"}. import.currencyReasonReceipt');
       expect(component.currencyOfferText(makeRow({ currencySuggestion: { code: 'THB', reason: 'session' } })))
         .toBe('import.currencySuggested:{"currency":"THB"}');
       expect(component.currencyOfferReason(makeRow({ currencySuggestion: { code: 'THB', reason: 'session' } })))
@@ -1337,10 +1357,7 @@ describe('TransactionPreviewTableComponent, the offer chip through its own templ
           // Echoes the key and its params, as the first describe does, so a
           // label that carries the formatted date can be asserted whole.
           provide: TranslationService,
-          useValue: {
-            t: (key: string, params?: Record<string, string | number>) =>
-              params ? `${key}:${JSON.stringify(params)}` : key,
-          },
+          useValue: { t: echoTranslation },
         },
         {
           provide: CurrencyService,
@@ -1465,6 +1482,48 @@ describe('TransactionPreviewTableComponent, the offer chip through its own templ
 
     expect(document.activeElement).toBe(fixture.nativeElement.querySelector('.currency-chip'));
   });
+
+  /**
+   * Lets a tooltip's description land before a case reads it. MatTooltip
+   * hands its message to the CDK's AriaDescriber in an afterNextRender write,
+   * and the describer points the host's aria-describedby at it unless the
+   * message is the host's whole aria-label. fixture.detectChanges() runs no
+   * render hook itself, and the zone's own tick at its end runs them only
+   * when no microtask is pending, so this ticks the app, then settles the
+   * view as settle() does.
+   */
+  async function settleDescriptions(): Promise<void> {
+    TestBed.tick();
+    await settle();
+  }
+
+  /** The tooltip a rendered element hosts. */
+  const tooltipOn = (host: Element): MatTooltip =>
+    fixture.debugElement.query(debug => debug.nativeElement === host).injector.get(MatTooltip);
+
+  for (const l of ['en', 'ja'] as const) {
+    it(`shows the offered currency's whole name as its tooltip, so a screen reader reads its reason once, in ${l}`, async () => {
+      // The name is the question the chip shows, then why it is offered; the
+      // order is held under 'a chip that asks is named first by the words it
+      // shows'. A tooltip of the reason alone is not the whole name, so the
+      // CDK described the button by it, and the reason was read again after
+      // the name.
+      const words = catalogTranslator(l, { strict: true });
+      spyOn(TestBed.inject(TranslationService), 't').and.callFake(catalogTranslator(l));
+      component.transactions = [makeRow({ currencySuggestion: { code: 'KRW', country: 'KR', reason: 'receipt' } })];
+      component.categories = [];
+      fixture.detectChanges();
+      await settleDescriptions();
+
+      const accept = fixture.nativeElement.querySelector('.currency-offer .extra-accept') as HTMLElement | null;
+      expect(accept).withContext('the offer renders').not.toBeNull();
+      if (!accept) return;
+      const name = accessibleName(accept);
+      expect(name).withContext('the name says why it is offered').toContain(words('import.currencyReasonReceipt'));
+      expect(tooltipOn(accept).message).withContext('a pointer or keyboard focus shows the whole name').toBe(name);
+      expect(accessibleDescription(accept)).withContext('nothing the name read is read again').toBe('');
+    });
+  }
 
   /**
    * MatIcon sets aria-hidden="true" on itself at construction unless the
@@ -1830,20 +1889,74 @@ describe('TransactionPreviewTableComponent, the offer chip through its own templ
       expect(questionChips().length).withContext('attention on: the not-today row is asked too').toBe(2);
     });
 
+    it('names the keep button and the date chip of a ja row dated another day in ja\'s own marks: nothing after the keep\'s ？, one 。 after the date chip\'s reason', () => {
+      // ja ends a sentence with 。 and puts no space after it. The keep's
+      // question ends in its own ？, after which the join adds nothing. The
+      // date chip's not-today reason ends in its own 。, which the join gives
+      // up before adding the reader's, so the reason and the action read as
+      // two ja sentences.
+      const ja = catalogTranslator('ja');
+      spyOn(TestBed.inject(TranslationService), 't').and.callFake(ja);
+      const row = makeRow({ id: 'old', date: yesterday() });
+      render([row], ['old']);
+
+      const date = formatted(row);
+      const reason = ja('import.dateNotTodayTooltip', { date });
+      const keep = fixture.nativeElement.querySelector('.extra-chip.date-check .extra-accept') as HTMLElement | null;
+      expect(keep).withContext('the not-today row is asked').not.toBeNull();
+      expect(keep?.getAttribute('aria-label')).not.toContain('. ');
+      expect(keep?.getAttribute('aria-label')).not.toContain('？。');
+      expect(keep?.getAttribute('aria-label')).toBe(`${ja('import.dateNotTodayKeep', { date })}${reason}`);
+      expect(dateButton().getAttribute('aria-label')).not.toContain('. ');
+      expect(dateButton().getAttribute('aria-label')).toBe(`${reason}${ja('import.changeDate', { date })}`);
+    });
+
+    for (const l of ['en', 'ja'] as const) {
+      it(`shows the keep button's whole name as its tooltip, so a screen reader reads its reason once, in ${l}`, async () => {
+        // The name is the question the chip shows, then why the row is
+        // asked; the order is held under 'a chip that asks is named first by
+        // the words it shows'. A tooltip of the reason alone was read again
+        // after the name. Both reasons a row is asked: an assumed date, and
+        // a receipt dated another day, one long past so that no run
+        // straddles today.
+        const words = catalogTranslator(l, { strict: true });
+        spyOn(TestBed.inject(TranslationService), 't').and.callFake(catalogTranslator(l));
+        const assumed = makeRow({ id: 'assumed', dateAssumed: true });
+        const old = makeRow({ id: 'old' });
+        render([assumed, old], ['old']);
+        await settleDescriptions();
+
+        const asked = [
+          { row: assumed, reason: words('import.dateAssumedTooltip') },
+          { row: old, reason: words('import.dateNotTodayTooltip', { date: formatted(old) }) },
+        ];
+        for (const { row, reason } of asked) {
+          const keep = fixture.nativeElement
+            .querySelector(`[data-row-id="${row.id}"] .date-check .extra-accept`) as HTMLElement | null;
+          expect(keep).withContext(`${row.id}: the row is asked`).not.toBeNull();
+          if (!keep) continue;
+          const name = accessibleName(keep);
+          expect(name).withContext(`${row.id}: the name says why the row is asked`).toContain(reason);
+          expect(tooltipOn(keep).message).withContext(`${row.id}: a pointer or keyboard focus shows the whole name`).toBe(name);
+          expect(accessibleDescription(keep)).withContext(`${row.id}: nothing the name read is read again`).toBe('');
+        }
+      });
+    }
+
     it('renders the question only while the row carries the mark', () => {
       render([makeRow({ id: 'marked', dateAssumed: true }), makeRow({ id: 'unmarked' })]);
 
       expect(questionChips().length).toBe(1);
     });
 
-    it('renders the keep button with the reason and the keep wording in its name', () => {
+    it('renders the keep button with the words its chip shows and the reason in its name', () => {
       const row = makeRow({ dateAssumed: true });
       render([row]);
 
       const keep = fixture.nativeElement.querySelector('.extra-chip.date-check .extra-accept') as HTMLElement;
-      // Reason, then action: the name is more than the tooltip, so `toContain`.
+      // The chip's words, then the reason: two parts of one name, so `toContain` each.
       expect(keep.getAttribute('aria-label')).toContain(component.dateAssumedTooltip(row));
-      expect(keep.getAttribute('aria-label')).toContain('import.keepDate');
+      expect(keep.getAttribute('aria-label')).toContain('import.dateAssumedKeep');
     });
 
     it('an implausible row is asked with the implausible wording and wears no verify flag', () => {
@@ -2320,6 +2433,31 @@ describe('TransactionPreviewTableComponent, the offer chip through its own templ
       expect(document.activeElement).withContext('after a cancel').toBe(trigger('amount'));
     });
 
+    // A held Enter's repeats go to the input the press opened, whose Enter
+    // closes it and hands focus back to the trigger, and the next repeat
+    // pressed the trigger: the editor opened and closed for as long as the
+    // key was held.
+    it('opens the editor once for an Enter held down on its trigger, and keeps it open', () => {
+      render(makeRow());
+      const emitted = emissions();
+      const open = trigger('description');
+      open.focus();
+
+      pressKey(open, 'Enter');
+      fixture.detectChanges();
+      TestBed.tick();
+      expect(document.activeElement).withContext('focus, in the editor the press opened').toBe(input('description'));
+
+      for (const n of [1, 2, 3]) {
+        const repeat = pressKey(document.activeElement!, 'Enter', { repeat: true });
+        fixture.detectChanges();
+        TestBed.tick();
+        expect(repeat.defaultPrevented).withContext(`repeat ${n}, cancelled`).toBeTrue();
+        expect(input('description')).withContext(`the editor, after repeat ${n}`).not.toBeNull();
+      }
+      expect(emitted.length).withContext('rows emitted').toBe(0);
+    });
+
     it('holds the amount editor open and says why when the figure cannot be read', () => {
       // Closing on an unreadable figure filed the old amount and said
       // nothing: the reviewer saw the editor shut, assumed the correction
@@ -2704,7 +2842,7 @@ describe('TransactionPreviewTableComponent, the offer chip through its own templ
       expect(chip!.querySelector('.country-name')?.textContent?.trim()).toBe('South Korea');
       expect(chip!.querySelector('mat-icon')?.textContent?.trim()).toBe('place');
       const remove = chip!.querySelector('.extra-remove') as HTMLElement;
-      expect(remove.getAttribute('aria-label')).toBe('import.removeLocation');
+      expect(remove.getAttribute('aria-label')).toBe('import.removeLocation:{"description":"Coffee Shop"}');
 
       remove.click();
       fixture.detectChanges();
@@ -3016,7 +3154,7 @@ describe('TransactionPreviewTableComponent, the offer chip through its own templ
       const button = clearButtons()[0];
       expect(button.closest('[data-row-id]')?.getAttribute('data-row-id')).toBe('flagged');
       expect(button.closest('.duplicate-badge')).withContext('on the badge it answers').not.toBeNull();
-      expect(button.getAttribute('aria-label')).toBe('import.notADuplicate');
+      expect(button.getAttribute('aria-label')).toBe('import.notADuplicate:{"description":"Coffee Shop"}');
       expect(button.querySelector('mat-icon')?.textContent?.trim()).toBe('close');
     });
 
@@ -3089,9 +3227,9 @@ describe('TransactionPreviewTableComponent, the offer chip through its own templ
       fixture.detectChanges();
 
       const tooltip = fixture.debugElement.query(By.css('.duplicate-clear')).injector.get(MatTooltip);
-      expect(tooltip.message).toBe('import.notADuplicate');
+      expect(tooltip.message).toBe('import.notADuplicate:{"description":"Coffee Shop"}');
       expect(clearButtons()[0].getAttribute('aria-label'))
-        .withContext('one key, so the two names cannot drift')
+        .withContext('one key read with one set of params, so the two names cannot drift')
         .toBe(tooltip.message);
     });
 
@@ -3115,6 +3253,227 @@ describe('TransactionPreviewTableComponent, the offer chip through its own templ
       expect(fixture.nativeElement.querySelector('.extra-chip.date-check'))
         .withContext('the question renders on the row now')
         .not.toBeNull();
+    });
+  });
+
+  /**
+   * The rule the keep button and the offer broke, over every tooltip on a
+   * card that a screen reader reaches. The CDK describes a host by any
+   * tooltip that is not its whole aria-label, so a tooltip saying one
+   * sentence of its name had that sentence read twice. A tooltip on an
+   * aria-hidden icon (the date, currency and type flags) is left out: its
+   * button's name carries the sentence, and nothing reads the icon.
+   */
+  describe('a tooltip a reader reaches on the card', () => {
+    for (const l of ['en', 'ja'] as const) {
+      it(`says its control's whole name, so no description repeats the name, in ${l}`, async () => {
+        spyOn(TestBed.inject(TranslationService), 't').and.callFake(catalogTranslator(l));
+        component.transactions = [
+          makeRow({ id: 'assumed', dateAssumed: true }),
+          makeRow({ id: 'doubted', fieldConfidence: { amount: 0.2, date: 0.2 } }),
+          makeRow({
+            id: 'offer',
+            currencyFellBack: true,
+            currencySuggestion: { code: 'KRW', country: 'KR', reason: 'receipt' },
+          }),
+          makeRow({ id: 'duplicate', isDuplicate: true, duplicateOf: 'stored-1', selected: false, fieldConfidence: { type: 0.3 } }),
+        ];
+        component.categories = [];
+        component.dateAttentionIds = new Set(['doubted']);
+        fixture.detectChanges();
+        await settleDescriptions();
+
+        const hosts = fixture.debugElement.queryAll(By.directive(MatTooltip));
+        const reached = hosts.filter(debug => !(debug.nativeElement as Element).closest('[aria-hidden="true"]'));
+        expect(hosts.length - reached.length)
+          .withContext('the doubted date, the fallen-back currency and the doubted type, each on a hidden icon')
+          .toBe(3);
+        expect(reached.length)
+          .withContext("two keeps, the doubted amount, the offer, the overrule and each card's category grade")
+          .toBe(9);
+        const repeated = reached
+          .map(debug => {
+            const host = debug.nativeElement as Element;
+            return {
+              row: host.closest('[data-row-id]')?.getAttribute('data-row-id'),
+              tooltip: debug.injector.get(MatTooltip).message,
+              name: accessibleName(host),
+              description: accessibleDescription(host),
+            };
+          })
+          .filter(read => read.tooltip !== read.name || read.description !== '');
+        expect(repeated)
+          .withContext("a tooltip that is not its control's whole name, or a description read after the name")
+          .toEqual([]);
+      });
+    }
+  });
+
+  /**
+   * A speech-input user says what a control shows (WCAG 2.5.3). The two
+   * chips that ask show their question on the accept half, so each name
+   * opens with it, then says why the row is asked, which the chip does not;
+   * the tooltip stays the whole name, so nothing is read twice. The value
+   * triggers beside them (the date chip, the currency chip) keep their mark
+   * first and their value inside the action.
+   */
+  describe('a chip that asks is named first by the words it shows', () => {
+    for (const l of ['en', 'ja', 'tc'] as const) {
+      it(`opens the keep and offer names with the chip's words, then its reason, in ${l}`, async () => {
+        const words = catalogTranslator(l, { strict: true });
+        spyOn(TestBed.inject(TranslationService), 't').and.callFake(catalogTranslator(l));
+        const date = TestBed.inject(LocaleFormatService).formatDate(new Date('2024-01-15'));
+        component.transactions = [
+          makeRow({ id: 'assumed', dateAssumed: true }),
+          makeRow({ id: 'old' }),
+          makeRow({ id: 'doubted', fieldConfidence: { date: 0.2 } }),
+          makeRow({ id: 'offer', currencySuggestion: { code: 'KRW', country: 'KR', reason: 'receipt' } }),
+          makeRow({ id: 'session', currencySuggestion: { code: 'THB', reason: 'session' } }),
+        ];
+        component.categories = [];
+        component.dateAttentionIds = new Set(['old', 'doubted']);
+        fixture.detectChanges();
+        await settleDescriptions();
+
+        const asked = [
+          ['assumed', '.date-check', words('import.dateAssumedTooltip')],
+          ['old', '.date-check', words('import.dateNotTodayTooltip', { date })],
+          ['doubted', '.date-check', words('import.verifyDate', { percent: 20 })],
+          ['offer', '.currency-offer', words('import.currencyReasonReceipt')],
+          ['session', '.currency-offer', words('import.currencyReasonSession')],
+        ] as const;
+        for (const [id, chip, reason] of asked) {
+          const accept = fixture.nativeElement
+            .querySelector(`[data-row-id="${id}"] ${chip} .extra-accept`) as HTMLElement | null;
+          expect(accept).withContext(`${id}: the chip asks`).not.toBeNull();
+          if (!accept) continue;
+          const shown = accept.querySelector('.extra-text')?.textContent?.trim() ?? '';
+          const name = accessibleName(accept);
+          expect(shown).withContext(`${id}: the chip shows its question`).not.toBe('');
+          expect(name.startsWith(shown)).withContext(`${id}: "${name}" opens with "${shown}"`).toBeTrue();
+          expect(name).withContext(`${id}: then the reason, whole`).toBe(joinSentences(words, shown, reason));
+          expect(name).withContext(`${id}: no stop after the question's mark`).not.toMatch(/[?？]\s*[.。]/);
+          expect(tooltipOn(accept).message).withContext(`${id}: the tooltip is the whole name`).toBe(name);
+          expect(accessibleDescription(accept)).withContext(`${id}: nothing the name read is read again`).toBe('');
+        }
+      });
+    }
+  });
+
+  /**
+   * Every one of these is stamped once per card, so a name that is only what
+   * the control does — "Notes", "Remove suggested location" — reads the same
+   * on every card, and a list of them says nothing about which row each one
+   * changes. Each names its row the way the row's checkbox does: by its
+   * description, or the stand-in for a row that has none. Two rows are open
+   * at once, because the editing state is kept per row.
+   */
+  describe('every field and button on a card names its row', () => {
+    const carries = {
+      isDuplicate: true,
+      duplicateOf: 'stored-1',
+      location: { name: 'Myeongdong', country: 'KR' },
+      currencySuggestion: { code: 'KRW', country: 'KR', reason: 'receipt' as const },
+      notes: 'two lattes',
+    };
+    const rows: readonly (readonly [id: string, description: string, named: string])[] = [
+      ['titled', 'Coffee Shop', 'Coffee Shop'],
+      ['blank', '', 'import.untitledRow'],
+    ];
+    const card = (id: string) => fixture.nativeElement.querySelector(`[data-row-id="${id}"]`) as HTMLElement | null;
+    const nameOf = (id: string, selector: string) => {
+      const control = card(id)?.querySelector(selector);
+      expect(control).withContext(`${selector} renders on the ${id} row`).not.toBeNull();
+      return control ? accessibleName(control) : '';
+    };
+    const label = (key: string, description: string) => `${key}:${JSON.stringify({ description })}`;
+
+    function render(): void {
+      component.transactions = rows.map(([id, description]) => makeRow({ id, description, ...carries }));
+      component.categories = [];
+      fixture.detectChanges();
+    }
+
+    it('names the overrule, the location\'s remove, the currency dismiss and the notes by the row', () => {
+      render();
+      for (const [id, , named] of rows) {
+        expect(nameOf(id, '.duplicate-clear')).withContext(`the overrule on the ${id} row`)
+          .toBe(label('import.notADuplicate', named));
+        expect(nameOf(id, '.extra-country ~ .extra-remove')).withContext(`the location's remove on the ${id} row`)
+          .toBe(label('import.removeLocation', named));
+        expect(nameOf(id, '.currency-offer .extra-remove')).withContext(`the currency dismiss on the ${id} row`)
+          .toBe(label('import.dismissCurrencySuggestion', named));
+        expect(nameOf(id, '.notes-input')).withContext(`the notes on the ${id} row`)
+          .toBe(label('import.notesLabel', named));
+      }
+    });
+
+    it('names each field by the row as it opens, on two rows open at once', () => {
+      render();
+      const fields = [
+        ['description', 'import.descriptionFieldLabel'],
+        ['amount', 'import.amountFieldLabel'],
+        ['split', 'import.splitAmountLabel'],
+        ['place', 'import.placeName'],
+        ['tag', 'import.newTagLabel'],
+      ] as const;
+      for (const [field, key] of fields) {
+        for (const row of component.transactions) component.startEdit(row, field);
+        fixture.detectChanges();
+        for (const [id, , named] of rows) {
+          expect(nameOf(id, '.inline-input')).withContext(`the ${field} field on the ${id} row`).toBe(label(key, named));
+        }
+      }
+    });
+
+    // tc quotes a description in 「」 in each of these names, and the stand-in
+    // would read, in quotes, as the row's name: a row with no description is
+    // named by the stand-in bare. The translator is swapped before the first
+    // render, since the pipe memoizes on its key and params.
+    describe('in tc', () => {
+      for (const blank of ['', '   ']) {
+        it(`names a row whose description is ${JSON.stringify(blank)} by the stand-in, unquoted, and a titled row in quotes`, () => {
+          const words = catalogTranslator('tc', { strict: true });
+          spyOn(TestBed.inject(TranslationService), 't').and.callFake(catalogTranslator('tc'));
+          component.transactions = [
+            makeRow({ id: 'titled', description: 'Coffee Shop', ...carries }),
+            makeRow({ id: 'blank', description: blank, ...carries }),
+          ];
+          component.categories = [];
+          fixture.detectChanges();
+          const read = (id: string) => {
+            const names = ['.duplicate-clear', '.extra-country ~ .extra-remove', '.currency-offer .extra-remove', '.notes-input']
+              .map(selector => nameOf(id, selector));
+            for (const field of ['description', 'amount', 'split', 'place', 'tag'] as const) {
+              component.startEdit(component.transactions.find(row => row.id === id)!, field);
+              fixture.detectChanges();
+              names.push(nameOf(id, '.inline-input'));
+            }
+            return names;
+          };
+          const tooltip = (id: string) =>
+            fixture.debugElement.query(By.css(`[data-row-id="${id}"] .duplicate-clear`)).injector.get(MatTooltip).message;
+          const stand = words('import.untitledRow');
+
+          expect(read('titled')).withContext('a titled row keeps its quotes (pin)').toEqual([
+            '不是重複項目 — 匯入「Coffee Shop」',
+            '從「Coffee Shop」移除建議的地點',
+            '關閉「Coffee Shop」的貨幣建議',
+            '「Coffee Shop」的備註',
+            '「Coffee Shop」的說明',
+            '「Coffee Shop」的金額',
+            '要從「Coffee Shop」分出的金額',
+            '「Coffee Shop」的地點名稱',
+            '「Coffee Shop」的新標籤',
+          ]);
+          const names = read('blank');
+          expect(names.filter(name => !name.includes(stand))).withContext('each names it by the stand-in').toEqual([]);
+          expect(names.filter(name => QUOTATION_MARKS.test(name))).withContext('a quotation mark round the stand-in')
+            .toEqual([]);
+          expect(tooltip('blank')).withContext("the overrule's tooltip, which a sighted reader sees, is its name")
+            .toBe(names[0]);
+        });
+      }
     });
   });
 
@@ -4000,6 +4359,61 @@ describe('TransactionPreviewTableComponent, the offer chip through its own templ
       expect(emitted.length).toBe(0);
       expect(splitInput('txn1')).withContext('still editing').not.toBeNull();
     });
+
+    // The placeholder is the field's only visible hint, and it sits on the
+    // input's one line, so it cannot wrap: wider than the input's content
+    // box, it is cut where the box ends. The field's name carries the full
+    // words, so the hint may say less than the name, never be cut
+    // (docs/ui-overflow.md, a shorter word). The host widths are what each
+    // pane leaves the table: 311 px on a 375 px phone (the shell's and the
+    // wizard's 16 px gutters each side), and 864 px in a 1280 px pane (the
+    // wizard's 960 px cap less its own 24 px padding and the stepper
+    // content's 24 px, each side). The face is pinned as docs/testing.md
+    // *Karma serves no fonts* says. The ja and tc cases are pins: their old
+    // hints already fitted. Mutation: .split-input's inline-size at 4.5em.
+    describe("the split field's hint", () => {
+      const HOST_WIDTHS_PX = [
+        { pane: 375, host: 311 },
+        { pane: 1280, host: 864 },
+      ] as const;
+      const FACE = "Verdana, 'DejaVu Sans', sans-serif";
+      const host = () => fixture.nativeElement as HTMLElement;
+
+      for (const l of ['en', 'ja', 'tc'] as const) {
+        it(`fits its input on a 375 px phone and in a 1280 px pane, in ${l}${l === 'en' ? '' : ' (pin)'}`, () => {
+          const words = catalogTranslator(l, { strict: true });
+          spyOn(TestBed.inject(TranslationService), 't').and.callFake(catalogTranslator(l));
+          host().style.display = 'block';
+          host().style.fontFamily = FACE;
+          for (const token of ['--mat-sys-body-large-font', '--mat-sys-body-small-font', '--mat-sys-label-large-font']) {
+            host().style.setProperty(token, FACE);
+          }
+          render([makeRow({ id: 'txn1', description: 'Coffee Shop', amount: 5400 })]);
+          splitTrigger('txn1')!.click();
+          fixture.detectChanges();
+          settleAnimations(document);
+
+          const input = splitInput('txn1');
+          expect(input).withContext('the split field').not.toBeNull();
+          if (!input) return;
+          expect(input.placeholder).withContext("the hint, in the catalog's words").toBe(words('import.splitAmount'));
+          expect(accessibleName(input))
+            .withContext('the name, which carries the full words')
+            .toBe(words('import.splitAmountLabel', { description: words('common.quotedName', { name: 'Coffee Shop' }) }));
+          const hint = placeholderWidthPx(input);
+          expect(hint).withContext('the hint, px').toBeGreaterThan(0);
+
+          for (const { pane, host: width } of HOST_WIDTHS_PX) {
+            host().style.width = `${width}px`;
+            const room = contentWidthPx(input);
+            expect(room).withContext(`in a ${pane} px pane: the room, px`).toBeGreaterThan(0);
+            expect(hint)
+              .withContext(`in a ${pane} px pane: "${input.placeholder}", px, against its room`)
+              .toBeLessThanOrEqual(room);
+          }
+        });
+      }
+    });
   });
 
   /**
@@ -4552,6 +4966,22 @@ describe('TransactionPreviewTableComponent, the offer chip through its own templ
         .toBe('import.selectRowLabel:{"description":"import.untitledRow"}');
     });
 
+    // tc quotes the description in 「」, and the stand-in in quotes would read
+    // as the row's name.
+    for (const blank of ['', '   ']) {
+      it(`names a blank row's checkbox in tc by the stand-in, unquoted, for ${JSON.stringify(blank)}, and a filled row's in quotes`, () => {
+        spyOn(TestBed.inject(TranslationService), 't').and.callFake(catalogTranslator('tc'));
+        component.transactions = [makeRow({ id: 'filled' }), makeRow({ id: 'blank', description: blank })];
+        component.categories = [];
+        fixture.detectChanges();
+        const stand = catalogTranslator('tc', { strict: true })('import.untitledRow');
+
+        expect(box('filled')?.getAttribute('aria-label')).withContext('a filled row keeps its quotes (pin)')
+          .toBe('勾選「Coffee Shop」');
+        expect(box('blank')?.getAttribute('aria-label')).toBe(`勾選${stand}`);
+      });
+    }
+
     it('leaves Select all named by its own text', () => {
       component.transactions = [makeRow({ id: 'filled' })];
       component.categories = [];
@@ -4687,6 +5117,31 @@ describe('TransactionPreviewTableComponent, the offer chip through its own templ
 
       expect(open.calls.mostRecent().args[1].data.message)
         .toBe('import.removeRowConfirm:{"description":"import.untitledRow"}');
+    });
+
+    // The question is on screen. tc quotes the description in 「」, and the
+    // stand-in in quotes would read as the row's name.
+    for (const blank of ['', '   ']) {
+      it(`asks in tc about a row whose description is ${JSON.stringify(blank)} by the stand-in, unquoted`, () => {
+        spyOn(TestBed.inject(TranslationService), 't').and.callFake(catalogTranslator('tc'));
+        render([makeRow({ id: 'blank', description: blank, editedOnCard: true })]);
+
+        pressRemove('blank');
+
+        const message = open.calls.mostRecent().args[1].data.message as string;
+        expect(message).toContain(catalogTranslator('tc', { strict: true })('import.untitledRow'));
+        expect(message).withContext('a quotation mark round the stand-in').not.toMatch(QUOTATION_MARKS);
+      });
+    }
+
+    it('asks in tc about a titled row with its description in quotes (pin)', () => {
+      spyOn(TestBed.inject(TranslationService), 't').and.callFake(catalogTranslator('tc'));
+      render([makeRow({ id: 'edited', editedOnCard: true })]);
+
+      pressRemove('edited');
+
+      expect(open.calls.mostRecent().args[1].data.message)
+        .toBe('您對「Coffee Shop」所做的變更將會遺失。若要保留變更但不匯入，請改為取消勾選。');
     });
 
     it('removes the row it asked about even when the row was replaced under its id while the question was open', () => {
@@ -5071,6 +5526,97 @@ describe('TransactionPreviewTableComponent, the offer chip through its own templ
       component.applyCurrencyToSelected('JPY');
 
       expect(mockAnnouncer.announce).toHaveBeenCalledTimes(1);
+    });
+
+    // tc quotes a description in 「」 in each of these, and the stand-in in
+    // quotes would read as the row's name: a row with no description is
+    // announced by the stand-in bare, and a titled one by its description in
+    // quotes, once.
+    describe('in tc', () => {
+      const events: readonly {
+        event: string;
+        row: Partial<CategorizedImportTransaction>;
+        flip?: boolean;
+        act: (row: CategorizedImportTransaction) => void;
+        titled: string;
+      }[] = [
+        {
+          event: 'a row no longer a duplicate',
+          row: { isDuplicate: true, duplicateOf: 'stored-1', selected: false },
+          act: row => component.clearDuplicate(row),
+          titled: '「Coffee Shop」不是重複項目',
+        },
+        {
+          event: 'a filed tag',
+          row: { tags: [] },
+          act: row => {
+            component.startEdit(row, 'tag');
+            component.commitTag(row, { type: 'blur', target: { value: 'lunch' } } as unknown as Event);
+          },
+          titled: '已在「Coffee Shop」新增標籤 lunch',
+        },
+        {
+          event: 'a removed tag',
+          row: { tags: ['lunch'] },
+          act: row => component.removeTag(row, 'lunch'),
+          titled: '已從「Coffee Shop」移除標籤 lunch',
+        },
+        {
+          event: 'a withdrawn country',
+          row: { location: { name: 'Shibuya', country: 'JP' } },
+          act: row => component.setCountry(row, null),
+          titled: '已從「Coffee Shop」移除國家',
+        },
+        {
+          event: 'a removed location',
+          row: { location: { name: 'Shibuya', country: 'JP' } },
+          act: row => component.removeLocation(row),
+          titled: '已從「Coffee Shop」移除地點',
+        },
+        {
+          event: 'a removed row',
+          row: {},
+          act: row => component.removeRow(row),
+          titled: '已移除「Coffee Shop」',
+        },
+        {
+          event: 'a category the type flip moved',
+          row: {},
+          flip: true,
+          act: row => component.toggleType(row),
+          titled: '已將「Coffee Shop」的類別改為其他收入',
+        },
+      ];
+
+      function say(row: CategorizedImportTransaction, flip: boolean, act: (row: CategorizedImportTransaction) => void): string {
+        spyOn(TestBed.inject(TranslationService), 't').and.callFake(catalogTranslator('tc'));
+        component.transactions = [row];
+        component.categories = flip ? flipCatalogue() : [];
+        fixture.detectChanges();
+        act(row);
+        expect(mockAnnouncer.announce).withContext('said once').toHaveBeenCalledTimes(1);
+        return mockAnnouncer.announce.calls.mostRecent().args[0];
+      }
+
+      for (const { event, row, flip = false, act, titled } of events) {
+        it(`announces ${event} on a titled row with its description in quotes (pin)`, () => {
+          expect(say(makeRow(row), flip, act)).toBe(titled);
+        });
+
+        for (const blank of ['', '   ']) {
+          it(`announces ${event} on a row whose description is ${JSON.stringify(blank)} by the stand-in, unquoted`, () => {
+            // A hand-added row is born on the expense catch-all, so its first
+            // flip always moves the category.
+            const blankRow = flip
+              ? { ...blankImportRow('blank', undefined, 'USD'), description: blank }
+              : makeRow({ ...row, description: blank });
+            const said = say(blankRow, flip, act);
+
+            expect(said).toContain(catalogTranslator('tc', { strict: true })('import.untitledRow'));
+            expect(said).withContext('a quotation mark round the stand-in').not.toMatch(QUOTATION_MARKS);
+          });
+        }
+      }
     });
   });
 
@@ -5539,11 +6085,11 @@ describe('TransactionPreviewTableComponent, the offer chip through its own templ
     });
   });
 
-  // The review card is on no route the smoke walkthrough opens (/import/file
-  // is never visited), so its controls are swept here, over a card carrying
-  // every kind of row the review shows: a plain one, one whose amount and
-  // date are doubted, a refund whose type is, a duplicate, and one added by
-  // hand, in both schemes.
+  // The smoke walkthrough opens /import/file only with nothing picked, so no
+  // axe pass there meets the review card. Its controls are swept here, over a
+  // card carrying every kind of row the review shows: a plain one, one whose
+  // amount and date are doubted, a refund whose type is, a duplicate, and one
+  // added by hand, in both schemes.
   describe('under the axe sweep', () => {
     function renderEveryKind(): void {
       component.transactions = [
@@ -5557,35 +6103,6 @@ describe('TransactionPreviewTableComponent, the offer chip through its own templ
       fixture.detectChanges();
     }
 
-    /**
-     * Runs `pass` with the list let out to its full height, then puts its cap
-     * back. The container clips what overflows it, and axe takes a card
-     * outside that clip as off screen: at its 70dvh cap in Karma's short frame
-     * the list shows about two cards, and contrast on the rest would go
-     * unscored while the pass still read as clean. So every card is first
-     * seen inside the container.
-     */
-    async function withEveryCardShown<T>(pass: () => Promise<T>): Promise<T> {
-      const list = fixture.nativeElement.querySelector('.transactions-list') as HTMLElement;
-      const cap = list.style.maxHeight;
-      list.style.maxHeight = 'none';
-      try {
-        const container = (fixture.nativeElement.querySelector('.table-container') as HTMLElement).getBoundingClientRect();
-        const cards = [...fixture.nativeElement.querySelectorAll('.transaction-card')] as HTMLElement[];
-        const clipped = cards
-          .filter(card => {
-            const rect = card.getBoundingClientRect();
-            return rect.top < container.top || rect.bottom > container.bottom
-              || rect.left < container.left || rect.right > container.right;
-          })
-          .map(card => card.dataset['rowId']);
-        expect(clipped).withContext('cards outside the container, which axe would skip').toEqual([]);
-        return await pass();
-      } finally {
-        list.style.maxHeight = cap;
-      }
-    }
-
     for (const scheme of AUDIT_SCHEMES) {
       it(`finds nothing on a card of every kind of row, in the ${scheme} scheme`, async () => {
         renderEveryKind();
@@ -5595,7 +6112,7 @@ describe('TransactionPreviewTableComponent, the offer chip through its own templ
 
         await withScheme(TestBed.inject(ThemeService), scheme, async () => {
           fixture.detectChanges();
-          const results = await withEveryCardShown(() => runAxe(fixture.nativeElement));
+          const results = await withEveryCardShown(fixture.nativeElement, () => runAxe(fixture.nativeElement));
           expect(summarizeViolations(results)).toEqual([]);
         });
       });
@@ -5603,7 +6120,7 @@ describe('TransactionPreviewTableComponent, the offer chip through its own templ
 
     it('scores the card\'s contrast rather than skipping it', async () => {
       renderEveryKind();
-      const results = await withEveryCardShown(() => runAxe(fixture.nativeElement));
+      const results = await withEveryCardShown(fixture.nativeElement, () => runAxe(fixture.nativeElement));
       expect(results.passes.map(result => result.id)).toContain('color-contrast');
     });
   });
@@ -5659,12 +6176,10 @@ describe('TransactionPreviewTableComponent, its catalogue arriving after its row
       imports: [CatalogueArrivalHostComponent],
       providers: [
         {
-          // Echoes the key and its params, as the describes above do.
+          // Echoes the key and its params, and answers the sentence separator
+          // with en's own stop, as the describes above do.
           provide: TranslationService,
-          useValue: {
-            t: (key: string, params?: Record<string, string | number>) =>
-              params ? `${key}:${JSON.stringify(params)}` : key,
-          },
+          useValue: { t: echoTranslation },
         },
         {
           provide: CurrencyService,

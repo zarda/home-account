@@ -2,7 +2,7 @@ import { ChangeDetectionStrategy, Component } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { MatIconModule } from '@angular/material/icon';
 import { MatMenuModule } from '@angular/material/menu';
-import { channels, withTheme } from './core/services/testing';
+import { PALETTES, channels, inPalette, withTheme } from './core/services/testing';
 
 /**
  * The colour utilities in tailwind.config.js that follow the theme, the
@@ -22,33 +22,6 @@ import { channels, withTheme } from './core/services/testing';
  */
 
 const SENTINEL = 'rgb(1, 2, 3)';
-
-/** The four palettes: the two themes, each with and without high contrast. */
-const PALETTES: readonly { name: string; classes: readonly string[] }[] = [
-  { name: 'plain', classes: ['light-theme'] },
-  { name: 'high contrast', classes: ['light-theme', 'high-contrast'] },
-  { name: 'dark', classes: ['dark-theme'] },
-  { name: 'dark high contrast', classes: ['dark-theme', 'high-contrast'] },
-];
-
-const PALETTE_CLASSES = ['light-theme', 'dark-theme', 'high-contrast'];
-
-/**
- * Runs `fn` with exactly `classes` (of the three palette classes) on <html>,
- * then restores all three as they were. A leaked `dark-theme` reads every
- * later spec in the wrong scheme (ADR 0151); a leaked `high-contrast` does the
- * same to every token it overrides.
- */
-function inPalette<T>(classes: readonly string[], fn: () => T): T {
-  const root = document.documentElement;
-  const had = PALETTE_CLASSES.map(name => [name, root.classList.contains(name)] as const);
-  try {
-    for (const name of PALETTE_CLASSES) root.classList.toggle(name, classes.includes(name));
-    return fn();
-  } finally {
-    for (const [name, on] of had) root.classList.toggle(name, on);
-  }
-}
 
 /** The utility prefix decides the property its colour lands on. */
 function propertyOf(utility: string): 'color' | 'border-top-color' | 'background-color' {

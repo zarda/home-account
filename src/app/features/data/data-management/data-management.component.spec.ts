@@ -1,6 +1,7 @@
 import { provideRouter } from '@angular/router';
 import { LocaleFormatService } from '../../../core/services/locale-format.service';
 import {
+  catalogTranslator,
   createTranslationStub,
   createLocaleFormatStub,
   hoverValue,
@@ -13,6 +14,7 @@ import {
   provideNoMotion,
   TranslationStub,
 } from '../../../core/services/testing';
+import { silenceFirebaseWarnings } from '../../../core/services/testing/silence-firebase-warnings';
 import { ComponentFixture, TestBed, fakeAsync, tick } from '@angular/core/testing';
 import { Component, signal, NO_ERRORS_SCHEMA } from '@angular/core';
 import { of, Subject } from 'rxjs';
@@ -50,6 +52,11 @@ import { Firestore } from '@angular/fire/firestore';
 import { Category, FONT_SCALES, Transaction } from '../../../models';
 import { BACKUP_SECTIONS, NOT_IN_BACKUP } from '../../../core/services/export.service';
 import en from '../../../../assets/i18n/en.json';
+
+// terminate() runs here outside any injector, in the component under test,
+// where the zone wrapper would print its advisory and a per-call warning into
+// the run's output.
+silenceFirebaseWarnings();
 
 describe('DataManagementComponent', () => {
   let component: DataManagementComponent;
@@ -1123,6 +1130,50 @@ describe('DataManagementComponent, through its own template', () => {
     expect(el().querySelector('.dropzone-text')).toBeNull();
   });
 
+  // The upload area answers a press on keydown, and Space went on to scroll
+  // the page under it. Its hidden input sat inside its own click target, so
+  // the input's own click, which is the picker, bubbled back out through the
+  // area and asked again.
+  describe('the backup upload area, pressed or clicked', () => {
+    let area: HTMLElement;
+    let picker: jasmine.Spy;
+
+    beforeEach(() => {
+      fixture.detectChanges();
+      area = el().querySelector('.import-dropzone') as HTMLElement;
+      // Let through, so the click the input dispatches is real and bubbles.
+      picker = spyOn(el().querySelector('input[type="file"]') as HTMLInputElement, 'click').and.callThrough();
+    });
+
+    /** A key's keydown on the area, the way the browser delivers it. */
+    function press(key: 'Enter' | ' '): KeyboardEvent {
+      const keydown = new KeyboardEvent('keydown', { key, bubbles: true, cancelable: true });
+      area.dispatchEvent(keydown);
+      return keydown;
+    }
+
+    it('cancels Space\'s keydown, so the page does not scroll under it', () => {
+      expect(press(' ').defaultPrevented).withContext('Space\'s keydown cancelled').toBeTrue();
+    });
+
+    it('asks the input once for a press or a click, though the input\'s own click bubbles', () => {
+      const words = el().querySelector<HTMLElement>('.dropzone-text');
+      expect(words).withContext('the area\'s words').toBeTruthy();
+      const actions: readonly (readonly [string, () => void])[] = [
+        ['Space', () => press(' ')],
+        ['Enter', () => press('Enter')],
+        ['a click on the area', () => area.click()],
+        ['a click on its words', () => words?.click()],
+      ];
+
+      for (const [action, act] of actions) {
+        const before = picker.calls.count();
+        act();
+        expect(picker.calls.count() - before).withContext(`picker requests for ${action}`).toBe(1);
+      }
+    });
+  });
+
   it('previews a full backup as its section counts, and offers a restore', () => {
     fixture.detectChanges();
     component.backupContents.set({
@@ -1414,21 +1465,13 @@ describe('DataManagementComponent, through its own template', () => {
     /** The section's 20 px padding and 1 px border, a side. */
     const SECTION_INSET_PX = 21;
 
-    /** A key's English copy, or the key itself where the catalog has none. */
-    function english(key: string): string {
-      const found = key
-        .split('.')
-        .reduce<unknown>((node, part) => (node as Record<string, unknown> | undefined)?.[part], en);
-      return typeof found === 'string' ? found : key;
-    }
-
     /**
      * The row in a section `sectionWidth` px wide, with each action's label
      * checked to be one line inside it. Returns the line each action stands
      * on, by its top edge.
      */
     function actionLines(sectionWidth: number, where: string): number[] {
-      (TestBed.inject(TranslationService) as unknown as TranslationStub).t = english;
+      (TestBed.inject(TranslationService) as unknown as TranslationStub).t = catalogTranslator('en');
       const host = el();
       host.style.display = 'block';
       host.style.width = `${sectionWidth}px`;

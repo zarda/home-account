@@ -5,7 +5,8 @@ import { LocaleFormatService } from '../locale-format.service';
 import { TranslatePipe } from '../../../shared/pipes/translate.pipe';
 import { LocaleDatePipe } from '../../../shared/pipes/locale-date.pipe';
 import { LocaleNumberPipe } from '../../../shared/pipes/locale-number.pipe';
-import { createTranslationStub, createLocaleFormatStub } from './translation-stub';
+import { createTranslationStub, createLocaleFormatStub, echoKey, echoTranslation } from './translation-stub';
+import en from '../../../../assets/i18n/en.json';
 
 describe('createTranslationStub', () => {
   it('echoes the key', () => {
@@ -14,6 +15,13 @@ describe('createTranslationStub', () => {
 
   it('echoes the params beside the key when there are any', () => {
     expect(createTranslationStub().t('goals.remaining', { count: 3 })).toBe('goals.remaining:{"count":3}');
+  });
+
+  // Two sentences joined through the stub read as en, so a two-part notice
+  // keeps its stop, its space and the time its second sentence earns.
+  it('answers the separator with en\'s own stop', () => {
+    expect(createTranslationStub().t('common.sentenceSeparator')).toBe('. ');
+    expect(createTranslationStub().t('common.sentenceSeparator')).toBe(en.common.sentenceSeparator);
   });
 
   it('exposes currentLocale and translationsVersion as readable signals', () => {
@@ -29,6 +37,28 @@ describe('createTranslationStub', () => {
     expect(stub.t('a.b')).toBe('Pinned');
     expect(stub.t('c.d')).toBe('c.d');
     expect(stub.currentLocale()).toBe('en');
+  });
+});
+
+describe('echoTranslation and echoKey', () => {
+  // A separator is punctuation, not words: echoed, it would glue the two
+  // sentences round it into one token.
+  it('answer the sentence separator with en\'s own, and echo every other key', () => {
+    expect(echoTranslation('common.sentenceSeparator')).toBe(en.common.sentenceSeparator);
+    expect(echoKey('common.sentenceSeparator')).toBe(en.common.sentenceSeparator);
+    expect(echoTranslation('goals.remaining', { count: 3 })).toBe('goals.remaining:{"count":3}');
+    expect(echoTranslation('settings.title')).toBe('settings.title');
+    expect(echoKey('settings.title')).toBe('settings.title');
+  });
+
+  // Quotation marks round a name are punctuation, not words: echoed, they
+  // would bury the name they quote inside a key of its own. Without the
+  // name there is nothing to quote, so the key alone echoes, as any other.
+  it('answer the quoted name with en\'s own, the name bare, and echo its key when no name comes', () => {
+    expect(en.common.quotedName).toBe('{{name}}');
+    expect(echoTranslation('common.quotedName', { name: 'Cafe' })).toBe('Cafe');
+    expect(echoTranslation('common.quotedName')).toBe('common.quotedName');
+    expect(echoKey('common.quotedName')).toBe('common.quotedName');
   });
 });
 

@@ -1,6 +1,8 @@
 # 100. A receipt dated before today is a question the reviewer answers
 
-**Status:** Accepted, implemented · **Date:** 2026-09-04 · **Issues:** #368
+**Status:** Accepted, implemented; amended by
+[0187](0187-repeated-controls-name-their-item-the-upload-area-has-one-button-and-numbers-photos-among-photos-resting-text-is-a-token-sentences-end-in-the-readers-stop-and-a-spec-that-expects-nothing-fails.md)
+· **Date:** 2026-09-04 · **Issues:** #368
 
 Reference documentation lives in [../receipt-import.md](../receipt-import.md)
 and [../dates.md](../dates.md).
@@ -155,6 +157,12 @@ The count is one pluralised key, `import.datesToCheck`, and the hint carries
   different people.** The chip's Keep half and the button's flag carry the
   same tooltip, so a pointer user and a screen-reader user get one sentence
   between them rather than two that drift.
+  *Amended by
+  [0187](0187-repeated-controls-name-their-item-the-upload-area-has-one-button-and-numbers-photos-among-photos-resting-text-is-a-token-sentences-end-in-the-readers-stop-and-a-spec-that-expects-nothing-fails.md):
+  the Keep half's tooltip is now the button's whole name, which opens with
+  the question the chip shows and then gives the reason, so a speech-input
+  user can say the chip's words; the date button's flag keeps the reason
+  alone, so the two still carry the same reason.*
 
 ## Known gaps
 

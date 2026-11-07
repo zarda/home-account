@@ -23,7 +23,7 @@ import {
   SearchAnswerRecord,
 } from '../../../models';
 import { createCategory, createTransaction } from '../../../core/services/testing/test-data';
-import { provideNoMotion } from '../../../core/services/testing';
+import { accessibleName, catalogTranslator, provideNoMotion } from '../../../core/services/testing';
 import {
   hoverValue,
   paintedBackground,
@@ -505,6 +505,39 @@ describe('AiSearchDialogComponent', () => {
       expect(matDialog.open).toHaveBeenCalled();
       expect(answerHistory.deleteAnswer).toHaveBeenCalledWith('a-1');
     });
+
+    /**
+     * As on the history page: each row's pin and delete name the question
+     * and the day it was answered, and the pin keeps one name pressed or not.
+     */
+    for (const locale of ['en', 'ja', 'tc'] as const) {
+      it(`names each row's pin and delete by its question and day in ${locale}`, () => {
+        const t = catalogTranslator(locale, { strict: true });
+        const translation = TestBed.inject(TranslationService) as jasmine.SpyObj<TranslationService>;
+        translation.t.and.callFake(catalogTranslator(locale));
+        const pinned = rec('a-1', Date.UTC(2026, 7, 14, 12), { query: 'coffee in August', pinned: true });
+        const loose = rec('a-2', Date.UTC(2026, 6, 2, 12), { query: 'rent this year' });
+        storedAnswers.set([pinned, loose]);
+        fixture.detectChanges();
+
+        const rows = Array.from(fixture.nativeElement.querySelectorAll('.history-row')) as HTMLElement[];
+        const named = (selector: string) => rows.map(row => accessibleName(row.querySelector(selector)!));
+        const params = (record: SearchAnswerRecord) =>
+          ({ query: record.query, date: record.computedAt.toDate().toISOString().slice(0, 10) });
+
+        expect(named('.history-pin')).toEqual([
+          t('aiSearch.historyPinLabel', params(pinned)),
+          t('aiSearch.historyPinLabel', params(loose)),
+        ]);
+        expect(rows.map(row => row.querySelector('.history-pin')!.getAttribute('aria-pressed')))
+          .withContext('the pin says whether it is pressed')
+          .toEqual(['true', 'false']);
+        expect(named('.history-delete')).toEqual([
+          t('aiSearch.historyDeleteLabel', params(pinned)),
+          t('aiSearch.historyDeleteLabel', params(loose)),
+        ]);
+      });
+    }
 
     it('see-all closes the dialog and navigates to the history page', () => {
       storedAnswers.set([rec('a-1', 1_000_000)]);

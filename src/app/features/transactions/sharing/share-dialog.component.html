@@ -5,7 +5,7 @@
 />
 
 <mat-dialog-content>
-  <p class="share-row">{{ data.description }}</p>
+  <p class="share-row">{{ mode === 'row' ? transactionName() : data.description }}</p>
 
   <div
     class="share-options"

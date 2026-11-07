@@ -20,6 +20,7 @@ import { AuthService } from './auth.service';
 import { PwaService } from './pwa.service';
 import { TranslationService } from './translation.service';
 import { MockFirestoreService } from './testing/mock-firestore.service';
+import { silenceFirebaseWarnings } from './testing/silence-firebase-warnings';
 import { createTranslationStub } from './testing/translation-stub';
 import { journalRows, ledgerJournalKey, ledgerSweepKey, readLedgerJournal, stampSweep } from './ledger-journal';
 import { LedgerShareProgress, LedgerShareService } from './ledger-share.service';
@@ -33,6 +34,11 @@ import {
   MAX_HOUSEHOLDS_PER_ACCOUNT,
   User
 } from '../../models';
+
+// deleteField() runs here outside any injector, in the specs and in the
+// service under test, where the zone wrapper would print its advisory into
+// the run's output.
+silenceFirebaseWarnings();
 
 type OwnMember = DocumentWithMetadata<HouseholdMember>;
 interface Write { op: 'set' | 'update' | 'delete'; path: string; data?: unknown }

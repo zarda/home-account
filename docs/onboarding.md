@@ -29,8 +29,8 @@ that *permits* an author-supplied name, which a bare `<span>` is not: a
 `<span>` maps to `generic`, whose name from author is prohibited, so an
 `aria-label` on it may be dropped outright. What is announced is the localized
 `onboarding.stepOf` sentence ("Step 2 of 3"), rendered into the region as
-`sr-only` text; the `1/3` glyph beside it is `aria-hidden`, or the same fact
-would be read twice.
+visually hidden text (`a11y.visually-hidden`, the app's one clip); the `1/3`
+glyph beside it is `aria-hidden`, or the same fact would be read twice.
 
 `OnboardingDialogComponent` holds a `stepIndex` signal and renders `@if` panes
 — not a `mat-stepper`. Nothing else in the app puts a stepper in a dialog, its

@@ -148,7 +148,12 @@
                   <button
                     mat-icon-button
                     class="feedback-item-delete"
-                    [attr.aria-label]="'about.feedback.deleteLabel' | translate"
+                    [attr.aria-label]="
+                      'about.feedback.deleteLabel' | translate: {
+                        position: $index + 1,
+                        category: (feedbackCategoryKey(entry.category) | translate)
+                      }
+                    "
                     (click)="deleteFeedback(entry)"
                   >
                     <mat-icon>delete_outline</mat-icon>

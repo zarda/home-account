@@ -23,6 +23,7 @@ import {
 } from '../../../core/services/household-plans.service';
 import { TranslationService } from '../../../core/services/translation.service';
 import {
+  afterTwoFrames,
   channels,
   createTranslationStub,
   createUser,
@@ -824,7 +825,7 @@ describe('HouseholdPlansComponent', () => {
         await answerConfirm(true);
         render();
         // Focus fixup runs as the page next renders.
-        await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+        await afterTwoFrames();
 
         expect(remove.getAttribute('aria-disabled')).withContext('it says it is not offered meanwhile').toBe('true');
         expect(document.activeElement).withContext('the confirm hands focus back, and the write keeps it there').toBe(remove);

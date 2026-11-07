@@ -15,11 +15,17 @@ import { SearchHistoryService } from '../../../core/services/search-history.serv
 import { GoalService } from '../../../core/services/goal.service';
 import { Category, Goal, SavedSearch, TransactionFilters } from '../../../models';
 import {
+  accessibleName,
+  catalogTranslator,
   channels,
   chooseOption,
+  contentWidthPx,
+  expectOneRule,
   hoverValue,
   paintedBackground,
   paintedColor,
+  placeholderWidthPx,
+  pressKey,
   provideAppDatepickerForTests,
   provideNoMotion,
   ratio,
@@ -897,6 +903,103 @@ describe('TransactionFiltersComponent', () => {
       flush();
     }));
 
+    /**
+     * Each suggestion's remove names the search it removes, in the words its
+     * row shows: a saved search by its label, or by its query when it has
+     * none, and a recent search by its query.
+     */
+    for (const l of ['en', 'ja', 'tc'] as const) {
+      it(`names each suggestion's remove by its search in ${l}`, fakeAsync(() => {
+        const t = catalogTranslator(l, { strict: true });
+        mockTranslationService.t.and.callFake(catalogTranslator(l));
+        locale.set(l);
+        mockSearchHistory.savedSearches.set([
+          savedSearch('s1', 'utilities', { label: 'Bills' }),
+          savedSearch('s2', 'gym'),
+        ]);
+        mockSearchHistory.recentSearches.set([savedSearch('r1', 'starbucks')]);
+        const { input, root } = renderExpanded();
+        tick();
+
+        input.dispatchEvent(new Event('focus'));
+        fixture.detectChanges();
+
+        expect(Array.from(root.querySelectorAll('.suggestion-remove')).map(accessibleName)).toEqual([
+          t('transactions.removeSavedSearch', { name: 'Bills' }),
+          t('transactions.removeSavedSearch', { name: 'gym' }),
+          t('transactions.removeRecentSearch', { query: 'starbucks' }),
+        ]);
+        flush();
+      }));
+    }
+
+    /**
+     * The panel scrolls down once its rows outgrow it, never sideways. A
+     * row's remove is its last item, flush with the panel's end, and
+     * Material centres a 48 px touch target on the 40 px button, 4 px past
+     * it on every side: past the panel's end, which then scrolled 4 px, over
+     * the end of its own row's apply, and up over the bottom of the remove
+     * above it, so a tap there removed the wrong search. Read at the 712 px
+     * host a 1024 px pane gives (a 686 px panel) and at the 336 px a 375 px
+     * phone gives: the 312 px grid the filter-date cases read, and the
+     * filter panel's 12 px padding on each side. A scroll width or height
+     * sees only what reaches past a box's end or bottom, so each touch
+     * target is also read against its row on every side. The headings are
+     * raw keys here, one unbroken word each and part of the panel's scroll
+     * width, so the face is pinned.
+     */
+    it('keeps each 40px suggestion remove and its touch target on its own row, and the panel never scrolls sideways', fakeAsync(() => {
+      mockSearchHistory.savedSearches.set([
+        savedSearch('s1', 'utilities', { label: 'Bills' }),
+        savedSearch('s2', 'gym'),
+      ]);
+      mockSearchHistory.recentSearches.set([savedSearch('r1', 'starbucks')]);
+      const { input, root } = renderExpanded();
+      tick();
+      input.dispatchEvent(new Event('focus'));
+      fixture.detectChanges();
+
+      const panel = root.querySelector<HTMLElement>('.search-suggestions');
+      expect(panel).withContext('the suggestions panel').not.toBeNull();
+      const rows = Array.from(panel!.querySelectorAll<HTMLElement>('.suggestion-row'));
+      expect(rows.length).withContext('two saved rows and one recent').toBe(3);
+
+      root.style.display = 'block';
+      pinFieldFace();
+      for (const width of [712, 336]) {
+        root.style.width = `${width}px`;
+        const at = `a ${width} px host`;
+        expect(panel!.scrollWidth)
+          .withContext(`${at}: the panel's scroll width against its client width, px`)
+          .toBeLessThanOrEqual(panel!.clientWidth);
+        rows.forEach((row, i) => {
+          const shown = `${at}: row ${i + 1}`;
+          const remove = row.querySelector('.suggestion-remove')!;
+          const box = remove.getBoundingClientRect();
+          expect([box.width, box.height]).withContext(`${shown}'s remove, px`).toEqual([40, 40]);
+          expect(row.scrollWidth)
+            .withContext(`${shown}'s scroll width against its client width, px`)
+            .toBeLessThanOrEqual(row.clientWidth);
+          expect(row.scrollHeight)
+            .withContext(`${shown}'s scroll height against its client height, px`)
+            .toBeLessThanOrEqual(row.clientHeight);
+          const own = row.getBoundingClientRect();
+          const apply = row.querySelector('.suggestion-apply')!.getBoundingClientRect();
+          const target = remove.querySelector('.mat-mdc-button-touch-target')!.getBoundingClientRect();
+          const room: readonly [string, number][] = [
+            ["top, inside the row's", target.top - own.top],
+            ["bottom, inside the row's", own.bottom - target.bottom],
+            ["start, clear of the apply's end", target.left - apply.right],
+            ["end, inside the row's", own.right - target.right],
+          ];
+          for (const [edge, px] of room) {
+            expect(px).withContext(`${shown}'s remove, its touch target's ${edge}, px`).toBeGreaterThanOrEqual(-0.5);
+          }
+        });
+      }
+      flush();
+    }));
+
     it('moves focus into the panel on ArrowDown', fakeAsync(() => {
       mockSearchHistory.recentSearches.set([savedSearch('r1', 'starbucks')]);
       const { input, root } = renderExpanded();
@@ -1049,6 +1152,661 @@ describe('TransactionFiltersComponent', () => {
       component.expanded.set(false);
       expect(component.expanded()).toBe(false);
     });
+  });
+
+  /**
+   * The filter toggle shows an icon and, while any filter is set, a badge
+   * with how many. Its name says what it opens in the reader's language, and
+   * how many filters are set when any are, so the badge's number is not the
+   * whole name; and it says whether the panel is open.
+   */
+  describe('the filter toggle (real template)', () => {
+    function toggleIn(root: HTMLElement): HTMLButtonElement {
+      const toggle = root.querySelector<HTMLButtonElement>('.filter-toggle');
+      expect(toggle).withContext('the filter toggle').not.toBeNull();
+      return toggle!;
+    }
+
+    for (const l of ['en', 'ja', 'tc'] as const) {
+      it(`is named by the filters it opens, and how many are set, in ${l}`, () => {
+        const t = catalogTranslator(l, { strict: true });
+        mockTranslationService.t.and.callFake(catalogTranslator(l));
+        // The translate pipe memoises on the locale and the catalog version;
+        // the bump is what a catalog's arrival does, so en is read again too.
+        locale.set(l);
+        TestBed.inject(TranslationService).translationsVersion.update(version => version + 1);
+        fixture.detectChanges();
+        const root = fixture.nativeElement as HTMLElement;
+        const toggle = toggleIn(root);
+
+        expect(accessibleName(toggle)).withContext('no filter set').toBe(t('transactions.filtersToggle'));
+
+        // Today sets a start and an end date: two filters.
+        root.querySelector<HTMLButtonElement>('.quick-btn')!.click();
+        fixture.detectChanges();
+        expect(component.activeFilterCount()).withContext('the filters Today sets').toBe(2);
+        expect(accessibleName(toggle))
+          .withContext('two filters set')
+          .toBe(t('transactions.filtersToggleActive', { active: 2 }));
+        const badge = toggle.querySelector('.filter-badge');
+        expect(badge?.textContent?.trim()).withContext('the badge still shows the number').toBe('2');
+        expect(badge?.getAttribute('aria-hidden'))
+          .withContext('the badge, whose number the name already reads')
+          .toBe('true');
+      });
+    }
+
+    it('says whether the panel is open, before and after a click', () => {
+      const root = fixture.nativeElement as HTMLElement;
+      const toggle = toggleIn(root);
+      expect(toggle.getAttribute('aria-expanded')).withContext('before a click').toBe('false');
+
+      toggle.click();
+      fixture.detectChanges();
+      expect(root.querySelector('.filter-panel')).withContext('the panel the click opens').not.toBeNull();
+      expect(toggle.getAttribute('aria-expanded')).withContext('after a click').toBe('true');
+
+      toggle.click();
+      fixture.detectChanges();
+      expect(root.querySelector('.filter-panel')).withContext('the panel the second click closes').toBeNull();
+      expect(toggle.getAttribute('aria-expanded')).withContext('after a second click').toBe('false');
+    });
+  });
+
+  /**
+   * Clear all, a suggestion applied from the keyboard and the save-search
+   * box each take the control holding focus off the page, and focus fell to
+   * the page with it. Clear all hands focus to the filter toggle, which
+   * stays, heads the panel and then reads Filters with no count; a
+   * suggestion leaves it in the search box it fills; and the box hands it
+   * back to Save search, which opened it, or to the search box once an
+   * emptied query has taken Save search away too. A press focuses its button
+   * first, as a key or Chrome's pointer does, and focus is read after the
+   * render hooks the press asks for.
+   */
+  describe('focus after Clear all, a suggestion or the save-search box takes the pressed control away (real template)', () => {
+    const root = () => fixture.nativeElement as HTMLElement;
+
+    /** The render a press asks for, then its render hooks, where a focus request lands. */
+    function render(): void {
+      fixture.detectChanges();
+      TestBed.tick();
+    }
+
+    function find<T extends HTMLElement>(selector: string, what: string): T {
+      const found = root().querySelector<T>(selector);
+      expect(found).withContext(what).not.toBeNull();
+      return found!;
+    }
+
+    /** A scripted click focuses nothing, so a press is focus() then click(), as a key or Chrome's pointer gives one. */
+    function press(button: HTMLButtonElement): void {
+      button.focus();
+      expect(document.activeElement).withContext('the button, focused before the press').toBe(button);
+      button.click();
+      render();
+    }
+
+    /** The panel open over `query`, and the Save search beside it. */
+    function openOver(query: string): HTMLButtonElement {
+      // filters is a plain object, so it is set before the signal that renders it.
+      component.filters.searchQuery = query;
+      component.expanded.set(true);
+      render();
+      return find<HTMLButtonElement>('.save-search-button', 'Save search, beside a query');
+    }
+
+    /** The open box's Save and Cancel, in that order. */
+    function rowButtons(): HTMLButtonElement[] {
+      const buttons = Array.from(root().querySelectorAll<HTMLButtonElement>('.save-search-row button'));
+      expect(buttons.length).withContext("the row's Save and Cancel").toBe(2);
+      return buttons;
+    }
+
+    /** A key as the box's own listener reads it, cancelable as a real keydown is. */
+    function keydown(box: HTMLInputElement, init: KeyboardEventInit): KeyboardEvent {
+      const event = new KeyboardEvent('keydown', { cancelable: true, ...init });
+      box.dispatchEvent(event);
+      render();
+      return event;
+    }
+
+    it('hands focus to the filter toggle when Clear all clears the last filter', () => {
+      component.expanded.set(true);
+      render();
+      // Today sets a start and an end date: two filters, so Clear all shows.
+      find<HTMLButtonElement>('.quick-btn', 'Today').click();
+      render();
+
+      press(find<HTMLButtonElement>('.clear-btn', 'Clear all, with two filters set'));
+
+      expect(root().querySelector('.clear-btn')).withContext('Clear all, with nothing left to clear').toBeNull();
+      expect(root().querySelector('.filter-panel')).withContext('the panel, still open').not.toBeNull();
+      expect(document.activeElement)
+        .withContext('focus, after Clear all')
+        .toBe(find('.filter-toggle', 'the filter toggle'));
+    });
+
+    /**
+     * A held Enter's repeats go to whatever holds focus by then, and a
+     * focused button presses itself on each. Focus handed on from the control
+     * pressed had the next repeat press the control it landed on: the filter
+     * toggle folded and unfolded the panel Clear all left open, and Save
+     * search opened the box a close had just shut.
+     */
+    describe('an Enter held down through the hand-off', () => {
+      function clearAllByEnter(): HTMLButtonElement {
+        component.expanded.set(true);
+        render();
+        find<HTMLButtonElement>('.quick-btn', 'Today').click();
+        render();
+        const clear = find<HTMLButtonElement>('.clear-btn', 'Clear all, with two filters set');
+        clear.focus();
+        pressKey(clear, 'Enter');
+        render();
+        const toggle = find<HTMLButtonElement>('.filter-toggle', 'the filter toggle');
+        expect(document.activeElement).withContext('focus, after Clear all').toBe(toggle);
+        return toggle;
+      }
+
+      it('keeps the panel open through the repeats of an Enter held down on Clear all', () => {
+        const toggle = clearAllByEnter();
+
+        for (const n of [1, 2, 3]) {
+          const repeat = pressKey(document.activeElement!, 'Enter', { repeat: true });
+          render();
+          expect(repeat.defaultPrevented).withContext(`repeat ${n}, cancelled`).toBeTrue();
+          expect(root().querySelector('.filter-panel')).withContext(`the panel, after repeat ${n}`).not.toBeNull();
+          // A held Space's repeat presses nothing itself, but it arms the
+          // button it reaches for the keyup that ends the hold.
+          expect(pressKey(document.activeElement!, ' ', { repeat: true }).defaultPrevented)
+            .withContext(`a held Space's repeat ${n}, cancelled`)
+            .toBeTrue();
+        }
+        expect(toggle.getAttribute('aria-expanded')).withContext('the toggle, after the repeats').toBe('true');
+      });
+
+      // A pin. Mutation: the guard never lets go, so it cancels a fresh Enter
+      // as it does a repeat.
+      it('closes the panel on a fresh Enter on the toggle once the Enter held on Clear all is let go (pin)', () => {
+        const toggle = clearAllByEnter();
+        toggle.dispatchEvent(new KeyboardEvent('keyup', { key: 'Enter', bubbles: true }));
+
+        const fresh = pressKey(toggle, 'Enter');
+        render();
+
+        expect(fresh.defaultPrevented).withContext('a fresh Enter, cancelled').toBeFalse();
+        expect(root().querySelector('.filter-panel')).withContext('the panel, after a fresh Enter').toBeNull();
+      });
+
+      // A pin. Mutation: the guard stands until the component goes, so every
+      // held key's repeats on the page are lost after one hand-off.
+      it('lets a held key repeat again once the Enter held on Clear all is let go (pin)', () => {
+        const toggle = clearAllByEnter();
+        toggle.dispatchEvent(new KeyboardEvent('keyup', { key: 'Enter', bubbles: true }));
+
+        const later = pressKey(toggle, ' ', { repeat: true });
+
+        expect(later.defaultPrevented).withContext('a repeat after the key is let go').toBeFalse();
+      });
+
+      const heldCloses = [
+        { where: 'in the box', key: (box: HTMLInputElement): HTMLElement => box, saves: 1 },
+        { where: "on the row's Save", key: (): HTMLElement => rowButtons()[0], saves: 1 },
+        { where: "on the row's Cancel", key: (): HTMLElement => rowButtons()[1], saves: 0 },
+      ] as const;
+      for (const { where, key, saves } of heldCloses) {
+        it(`keeps the box shut through the repeats of an Enter held down ${where}`, fakeAsync(() => {
+          const bookmark = openOver('utilities');
+          press(bookmark);
+          flush(); // NgModel hands the box its value a microtask after it renders
+          const held = key(find<HTMLInputElement>('.save-label-input', 'the save-search box'));
+          held.focus();
+          pressKey(held, 'Enter');
+          render();
+          flush();
+          expect(root().querySelector('.save-search-row')).withContext(`the box, after an Enter ${where}`).toBeNull();
+          expect(document.activeElement).withContext(`focus, after an Enter ${where}`).toBe(bookmark);
+
+          for (const n of [1, 2, 3]) {
+            const repeat = pressKey(document.activeElement!, 'Enter', { repeat: true });
+            render();
+            flush();
+            expect(repeat.defaultPrevented).withContext(`repeat ${n}, cancelled`).toBeTrue();
+            expect(root().querySelector('.save-search-row')).withContext(`the box, after repeat ${n}`).toBeNull();
+          }
+          expect(mockSearchHistory.saveSearch).withContext('saves').toHaveBeenCalledTimes(saves);
+          flush();
+        }));
+      }
+    });
+
+    // ngOnInit clears the filters itself under showAll, on load, where no
+    // press took focus anywhere and none may move.
+    it('leaves focus where it is when the panel clears itself to show every transaction (pin)', fakeAsync(() => {
+      const elsewhere = document.body.appendChild(document.createElement('button'));
+      try {
+        elsewhere.focus();
+        const shown = TestBed.createComponent(TransactionFiltersComponent);
+        const clear = spyOn(shown.componentInstance, 'clearFilters').and.callThrough();
+        shown.componentInstance.showAll = true;
+        shown.detectChanges();
+        tick(); // ngOnInit's start, a timeout
+        shown.detectChanges();
+        TestBed.tick();
+
+        expect(clear).withContext('the showAll start').toHaveBeenCalled();
+        expect(document.activeElement).withContext('focus, after the panel cleared itself').toBe(elsewhere);
+      } finally {
+        elsewhere.remove();
+      }
+    }));
+
+    it('keeps focus in the search box once a suggestion reached by ArrowDown applies', fakeAsync(() => {
+      mockSearchHistory.recentSearches.set([savedSearch('r1', 'starbucks')]);
+      component.expanded.set(true);
+      render();
+      const search = find<HTMLInputElement>('.search-input', 'the search box');
+      search.focus();
+      search.dispatchEvent(new Event('focus'));
+      render();
+      search.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown' }));
+      const apply = find<HTMLButtonElement>('.suggestion-apply', 'the suggestion');
+      expect(document.activeElement).withContext('focus, on the suggestion').toBe(apply);
+
+      // Enter on a focused button clicks it. A scripted click fires no
+      // mousedown, so the row's preventDefault keeps nothing, as for Enter.
+      apply.click();
+      render();
+
+      expect(component.filters.searchQuery).withContext('the query the suggestion applies').toBe('starbucks');
+      expect(root().querySelector('.search-suggestions')).withContext('the suggestions, once one applies').toBeNull();
+      expect(document.activeElement).withContext('focus, once the suggestion applies').toBe(search);
+      flush();
+    }));
+
+    const enter = (box: HTMLInputElement) => {
+      keydown(box, { key: 'Enter' });
+    };
+    const closes: readonly {
+      how: string;
+      /** What the box holds before the close: a typed name, or null for the query it opened with. */
+      typed: string | null;
+      close: (box: HTMLInputElement) => void;
+      saved: readonly [query: string, label: string] | null;
+    }[] = [
+      { how: 'Enter in the box', typed: 'Bills', close: enter, saved: ['utilities', 'Bills'] },
+      { how: 'Enter in the box, its suggested name kept', typed: null, close: enter, saved: ['utilities', 'utilities'] },
+      // An emptied name saves under the query.
+      { how: 'Enter in the box, its name emptied', typed: '', close: enter, saved: ['utilities', 'utilities'] },
+      { how: "the row's Save", typed: 'Bills', close: () => press(rowButtons()[0]), saved: ['utilities', 'Bills'] },
+      { how: "the row's Cancel", typed: 'Bills', close: () => press(rowButtons()[1]), saved: null },
+      { how: 'Escape in the box', typed: 'Bills', close: box => keydown(box, { key: 'Escape' }), saved: null },
+    ];
+    for (const { how, typed, close, saved } of closes) {
+      it(`gives focus back to Save search once ${how} closes the box`, fakeAsync(() => {
+        const bookmark = openOver('utilities');
+        press(bookmark);
+        flush(); // NgModel hands the box its value a microtask after it renders
+        const box = find<HTMLInputElement>('.save-label-input', 'the save-search box');
+        box.focus(); // where a click into the box leaves focus, so the case reads the close alone
+        expect(document.activeElement).withContext('the box, focused before the close').toBe(box);
+        if (typed === null) {
+          expect(box.value).withContext('the box, holding the query as its name').toBe('utilities');
+        } else {
+          box.value = typed;
+          box.dispatchEvent(new Event('input'));
+        }
+
+        close(box);
+
+        expect(root().querySelector('.save-search-row')).withContext(`the box, after ${how}`).toBeNull();
+        if (saved) expect(mockSearchHistory.saveSearch).toHaveBeenCalledOnceWith(...saved);
+        else expect(mockSearchHistory.saveSearch).not.toHaveBeenCalled();
+        expect(document.activeElement).withContext(`focus, after ${how}`).toBe(bookmark);
+        flush();
+      }));
+    }
+
+    // The search box's focus opens its suggestions under an empty query: the
+    // reader was just in that box, and the suggestions are what it offers.
+    it('gives focus to the search box, which opens its suggestions, once Cancel closes the box over an emptied query', fakeAsync(() => {
+      mockSearchHistory.recentSearches.set([savedSearch('r1', 'gym')]);
+      press(openOver('utilities'));
+      flush();
+      const search = find<HTMLInputElement>('.search-input', 'the search box');
+      search.focus();
+      search.value = '';
+      search.dispatchEvent(new Event('input'));
+      render();
+      expect(root().querySelector('.save-search-button')).withContext('Save search, with no query to save').toBeNull();
+
+      press(rowButtons()[1]);
+      fixture.detectChanges();
+
+      expect(root().querySelector('.save-search-row')).withContext('the box, after Cancel').toBeNull();
+      expect(document.activeElement).withContext('focus, after Cancel').toBe(search);
+      expect(root().querySelector('.search-suggestions'))
+        .withContext('the suggestions, under the emptied search box')
+        .not.toBeNull();
+      flush(); // the search box's typing debounce
+    }));
+
+    // A button presses itself on Enter's keypress, which goes to whatever
+    // holds focus once the keydown is done, unless the keydown was cancelled.
+    // The Enter that saves hands focus to Save search, so it is cancelled.
+    it('cancels the Enter that saves, and leaves an Enter that ends a composition to the IME', fakeAsync(() => {
+      press(openOver('utilities'));
+      flush();
+      const box = find<HTMLInputElement>('.save-label-input', 'the save-search box');
+
+      const composing = keydown(box, { key: 'Enter', isComposing: true });
+      expect(mockSearchHistory.saveSearch).withContext('a save, on an Enter that ends a composition').not.toHaveBeenCalled();
+      expect(composing.defaultPrevented).withContext('an Enter that ends a composition, cancelled').toBeFalse();
+
+      const plain = keydown(box, { key: 'Enter' });
+      expect(mockSearchHistory.saveSearch).withContext('a save, on a plain Enter').toHaveBeenCalledTimes(1);
+      expect(plain.defaultPrevented).withContext('the Enter that saves, cancelled').toBeTrue();
+      flush();
+    }));
+
+    /**
+     * Save search opens a box whose one job is the name, so focus goes into
+     * it, with the query it offers as the name selected: a typed name
+     * replaces it, and Enter alone keeps it. Escape closes the box, unless it
+     * ends a composition, which is the IME's.
+     */
+    describe('the save-search box, as it opens', () => {
+      it('takes focus, its suggested name selected', fakeAsync(() => {
+        press(openOver('utilities'));
+        flush(); // NgModel hands the box its value a microtask after it renders
+        fixture.detectChanges();
+        const box = find<HTMLInputElement>('.save-label-input', 'the save-search box');
+
+        expect(document.activeElement).withContext('focus, as the box opens').toBe(box);
+        expect(box.value).withContext('the box, holding the query as its name').toBe('utilities');
+        expect([box.selectionStart, box.selectionEnd])
+          .withContext('the selection, over the whole name')
+          .toEqual([0, 'utilities'.length]);
+      }));
+
+      it('takes a typed name in place of its suggested one, and saves under it', fakeAsync(() => {
+        const bookmark = openOver('utilities');
+        press(bookmark);
+        flush();
+        const box = find<HTMLInputElement>('.save-label-input', 'the save-search box');
+
+        // The browser's own typing: into whatever holds focus, over whatever is selected there.
+        document.execCommand('insertText', false, 'Bills');
+        expect(box.value).withContext('the box, after typing').toBe('Bills');
+        keydown(box, { key: 'Enter' });
+
+        expect(mockSearchHistory.saveSearch).toHaveBeenCalledOnceWith('utilities', 'Bills');
+        expect(document.activeElement).withContext('focus, after Enter').toBe(bookmark);
+        flush();
+      }));
+
+      it('stays open through an Escape that ends a composition, and closes on a plain one', fakeAsync(() => {
+        press(openOver('utilities'));
+        flush();
+        const box = find<HTMLInputElement>('.save-label-input', 'the save-search box');
+
+        keydown(box, { key: 'Escape', isComposing: true });
+        expect(root().querySelector('.save-search-row'))
+          .withContext('the box, after an Escape that ends a composition')
+          .not.toBeNull();
+
+        keydown(box, { key: 'Escape' });
+        expect(root().querySelector('.save-search-row')).withContext('the box, after a plain Escape').toBeNull();
+        flush();
+      }));
+
+      // A tap focuses nothing in WebKit, so a second tap on Save search finds
+      // focus still in the box it takes away, as a scripted click does here.
+      it('gives focus back to Save search once a second press on it closes the box, focus still in the box', fakeAsync(() => {
+        const bookmark = openOver('utilities');
+        press(bookmark);
+        flush();
+        const box = find<HTMLInputElement>('.save-label-input', 'the save-search box');
+        expect(document.activeElement).withContext('the box, focused before the second press').toBe(box);
+
+        bookmark.click();
+        render();
+
+        expect(root().querySelector('.save-search-row')).withContext('the box, after the second press').toBeNull();
+        expect(mockSearchHistory.saveSearch).not.toHaveBeenCalled();
+        expect(document.activeElement).withContext('focus, after the second press').toBe(bookmark);
+        flush();
+      }));
+
+      // The press that closes the box hands focus to Save search itself, so
+      // a held Enter's next repeat pressed it and opened the box again.
+      it('stays shut through the repeats of an Enter held down on Save search to close the box', fakeAsync(() => {
+        const bookmark = openOver('utilities');
+        press(bookmark);
+        flush();
+        bookmark.focus(); // where Shift+Tab from the box lands
+
+        pressKey(bookmark, 'Enter');
+        render();
+        flush();
+        expect(root().querySelector('.save-search-row')).withContext('the box, after the press that closes it').toBeNull();
+
+        for (const n of [1, 2, 3]) {
+          const repeat = pressKey(document.activeElement!, 'Enter', { repeat: true });
+          render();
+          flush();
+          expect(repeat.defaultPrevented).withContext(`repeat ${n}, cancelled`).toBeTrue();
+          expect(root().querySelector('.save-search-row')).withContext(`the box, after repeat ${n}`).toBeNull();
+        }
+        expect(document.activeElement).withContext('focus, after the repeats').toBe(bookmark);
+        expect(mockSearchHistory.saveSearch).not.toHaveBeenCalled();
+      }));
+
+      // A pin. Mutation: a fresh keydown leaves the guard standing, so a key
+      // held in the box after a tap opened it types once and no more.
+      it('lets a key held in the box repeat after a tap opened it (pin)', fakeAsync(() => {
+        press(openOver('utilities'));
+        flush();
+        const box = find<HTMLInputElement>('.save-label-input', 'the save-search box');
+
+        keydown(box, { key: ' ' });
+        const held = keydown(box, { key: ' ', repeat: true });
+
+        expect(held.defaultPrevented).withContext('a held Space typed in the box').toBeFalse();
+        flush();
+      }));
+
+      // A held Enter on Save search opens the box, and its repeats then reach
+      // the box, which holds focus by then. A repeat that saved would hand
+      // focus back to Save search, whose next repeat opens the box again, for
+      // as long as the key is held. focusWhenRendered drops them, since the
+      // press that opened the box handed focus into it.
+      it('saves nothing on the repeat of an Enter held down from Save search', fakeAsync(() => {
+        press(openOver('utilities'));
+        flush();
+        const box = find<HTMLInputElement>('.save-label-input', 'the save-search box');
+
+        keydown(box, { key: 'Enter', repeat: true });
+
+        expect(mockSearchHistory.saveSearch).withContext("a save, on a held Enter's repeat").not.toHaveBeenCalled();
+        expect(root().querySelector('.save-search-row')).withContext('the box, after the repeat').not.toBeNull();
+        flush();
+      }));
+    });
+
+    /**
+     * While the box was open, Save search and the box's own button both read
+     * Save search, and the first closes the box unsaved. Save search keeps
+     * its name and says with aria-expanded whether its box is open, as the
+     * filter toggle says it of the panel; the box's own button reads Save.
+     */
+    describe('Save search and the box it opens, told apart', () => {
+      it('says whether its box is open, through a press, a second press and the Enter that saves', fakeAsync(() => {
+        const bookmark = openOver('utilities');
+        expect(bookmark.getAttribute('aria-expanded')).withContext('before a press').toBe('false');
+
+        press(bookmark);
+        flush(); // NgModel hands the box its value a microtask after it renders
+        expect(root().querySelector('.save-search-row')).withContext('the box a press opens').not.toBeNull();
+        expect(bookmark.getAttribute('aria-expanded')).withContext('the box open').toBe('true');
+
+        press(bookmark);
+        expect(root().querySelector('.save-search-row')).withContext('the box a second press closes').toBeNull();
+        expect(bookmark.getAttribute('aria-expanded')).withContext('after a second press').toBe('false');
+
+        press(bookmark);
+        flush();
+        keydown(find<HTMLInputElement>('.save-label-input', 'the box, open again'), { key: 'Enter' });
+        expect(mockSearchHistory.saveSearch).toHaveBeenCalledOnceWith('utilities', 'utilities');
+        expect(bookmark.getAttribute('aria-expanded')).withContext('after the Enter that saves').toBe('false');
+        flush();
+      }));
+
+      for (const l of ['en', 'ja', 'tc'] as const) {
+        it(`names the box's Save apart from Save search, which keeps its name open or closed, in ${l}`, fakeAsync(() => {
+          const t = catalogTranslator(l, { strict: true });
+          mockTranslationService.t.and.callFake(catalogTranslator(l));
+          // The translate pipe memoises on the locale and the catalog version;
+          // the bump is what a catalog's arrival does, so en is read again too.
+          locale.set(l);
+          TestBed.inject(TranslationService).translationsVersion.update(version => version + 1);
+          const bookmark = openOver('utilities');
+          expect(accessibleName(bookmark)).withContext('Save search, the box closed').toBe(t('transactions.saveSearch'));
+
+          press(bookmark);
+          flush();
+          const [save, cancel] = rowButtons();
+          expect(accessibleName(bookmark)).withContext('Save search, the box open').toBe(t('transactions.saveSearch'));
+          expect(accessibleName(save)).withContext("the box's Save").toBe(t('common.save'));
+          expect(accessibleName(cancel)).withContext("the box's Cancel").toBe(t('common.cancel'));
+          expect(new Set([bookmark, save, cancel].map(accessibleName)).size)
+            .withContext('Save search, Save and Cancel, each its own name')
+            .toBe(3);
+        }));
+      }
+    });
+  });
+
+  /**
+   * Each text box is a borderless input inside a pill, and its own
+   * outline: none outranked styles.scss's ring, so a focused box showed its
+   * caret alone. The pill is what a reader sees as the box, so the ring goes
+   * round it while its box has keyboard focus, inset, at the 2px of every
+   * other ring (3px under high contrast, which styles.scss widens by
+   * :focus-visible alone). The box's own ring is cleared, so one ring shows.
+   * The rules are read, as a scripted focus is no reliable :focus-visible.
+   */
+  describe("the two text boxes' ring (real template)", () => {
+    type Pill = 'search-wrapper' | 'save-search-row';
+    const BOX: Record<Pill, string> = { 'search-wrapper': 'search-input', 'save-search-row': 'save-label-input' };
+
+    /** The pill's ring while its box has keyboard focus, plain and under high contrast, and the box's own. */
+    function ringRules(pill: Pill): { plain: CSSStyleRule[]; wide: CSSStyleRule[]; own: CSSStyleRule[] } {
+      const box = BOX[pill];
+      const rules = styleRules()
+        .filter(({ media }) => media === null)
+        .map(({ rule }) => rule);
+      // The pill itself, its own attribute and then :has( at once: a ring
+      // on anything inside it goes round that instead. Angular scopes
+      // nothing inside :has(), so the box in it carries no attribute.
+      const ring = rules.filter(rule =>
+        new RegExp(`(?:^|[\\s,])\\.${pill}\\[_ngcontent-[^\\]]+\\]:has\\(\\.${box}(?:\\[_ngcontent-[^\\]]+\\])?:focus-visible\\)`)
+          .test(rule.selectorText));
+      return {
+        plain: ring.filter(rule => !rule.selectorText.includes('.high-contrast')),
+        wide: ring.filter(rule => rule.selectorText.includes('.high-contrast')),
+        own: rules.filter(rule => new RegExp(`^\\.${box}\\[_ngcontent-[^\\]]+\\]:focus-visible$`).test(rule.selectorText))
+      };
+    }
+
+    /**
+     * How far the pill's widest ring reaches past its edge, px: the ring under
+     * high contrast less its inset, and none while the inset is the deeper.
+     */
+    function ringReach(pill: Pill): number {
+      const { plain, wide } = ringRules(pill);
+      expectOneRule(plain);
+      expectOneRule(wide);
+      // The plain ring is a shorthand whose longhands the CSSOM leaves unread, and its width leads it.
+      const width = Math.max(parseFloat(plain[0]?.style.outline ?? ''), parseFloat(wide[0]?.style.outlineWidth ?? ''));
+      return Math.max(0, width + parseFloat(plain[0]?.style.outlineOffset ?? ''));
+    }
+
+    /** Renders, runs the render hooks a press asks for, lets each select take its value, and settles the labels' float. */
+    function render(): void {
+      fixture.detectChanges();
+      TestBed.tick();
+      flush();
+      fixture.detectChanges();
+      settleAnimations(document);
+    }
+
+    /**
+     * An outlined field floats a filled field's label onto its top border, so
+     * half the label stands above the filter grid's own box. The pill over
+     * the grid ends, its ring included, at or above every floated label's top,
+     * or its fill and its ring run through them.
+     */
+    function expectClearOfFloatedLabels(pill: Pill): void {
+      const host = fixture.nativeElement as HTMLElement;
+      const found = host.querySelector(`.filter-panel > .${pill}`);
+      expect(found).withContext(`the ${pill}`).not.toBeNull();
+      const edge = found!.getBoundingClientRect().bottom + ringReach(pill);
+      const labels = Array.from(host.querySelectorAll<HTMLElement>('.filter-grid .mdc-floating-label--float-above'));
+      // Type and Category read All, so theirs float.
+      expect(labels.length).withContext('floated labels in the grid').toBeGreaterThanOrEqual(2);
+      for (const label of labels) {
+        expect(edge)
+          .withContext(`the ${pill}'s lower edge and its ring's reach, px, against the top of the floated ${label.textContent?.trim()} label`)
+          .toBeLessThanOrEqual(label.getBoundingClientRect().top);
+      }
+    }
+
+    it("rings the search pill and the save-search pill while their box has keyboard focus, inset, 3px under high contrast, and clears each box's own ring", () => {
+      component.expanded.set(true);
+      fixture.detectChanges(); // the real template, its stylesheet in the document
+      for (const pill of ['search-wrapper', 'save-search-row'] as const) {
+        const box = BOX[pill];
+        const { plain, wide, own } = ringRules(pill);
+
+        expectOneRule(plain);
+        // A shorthand holding a var() leaves its longhands unread in the
+        // CSSOM, so the ring is read whole.
+        expect([plain[0]?.style.outline, plain[0]?.style.outlineOffset])
+          .withContext(`the ${pill} ring, then its offset`)
+          .toEqual(['2px solid var(--color-primary)', '-2px']);
+        expectOneRule(wide);
+        expect(wide[0]?.style.outlineWidth).withContext(`the ${pill} ring under high contrast`).toBe('3px');
+        expectOneRule(own);
+        expect(own[0]?.style.outlineStyle).withContext(`the ${box}'s own ring`).toBe('none');
+      }
+    });
+
+    // The two cases below read the labels' boxes, which are text, so each pins the runner's face.
+    it("ends the search pill, its ring included, above the filter grid's floated labels (pin)", fakeAsync(() => {
+      pinFieldFace();
+      component.expanded.set(true);
+      render();
+
+      expect((fixture.nativeElement as HTMLElement).querySelector('.save-search-row'))
+        .withContext('the save-search box, closed')
+        .toBeNull();
+      expectClearOfFloatedLabels('search-wrapper');
+    }));
+
+    it("ends the open save-search pill, its ring included, above the filter grid's floated labels", fakeAsync(() => {
+      pinFieldFace();
+      component.filters.searchQuery = 'utilities';
+      component.expanded.set(true);
+      render();
+      const bookmark = (fixture.nativeElement as HTMLElement).querySelector<HTMLButtonElement>('.save-search-button');
+      expect(bookmark).withContext('Save search, beside a query').not.toBeNull();
+      bookmark!.click();
+      render();
+
+      expectClearOfFloatedLabels('save-search-row');
+    }));
   });
 
   describe('output events', () => {
@@ -1451,6 +2209,57 @@ describe('TransactionFiltersComponent', () => {
     }));
   });
 
+  // Karma serves none of the app's fonts, so each platform measures in its
+  // own fallback. The Linux runner's is DejaVu Sans, which Verdana matches
+  // to within a few pixels. Material's fields take their face from the
+  // --mat-sys tokens rather than from the host. The width cases below pin it.
+  function pinFieldFace(): void {
+    const host = fixture.nativeElement as HTMLElement;
+    const face = "Verdana, 'DejaVu Sans', sans-serif";
+    host.style.fontFamily = face;
+    for (const token of ['--mat-sys-body-large-font', '--mat-sys-body-small-font', '--mat-sys-label-large-font']) {
+      host.style.setProperty(token, face);
+    }
+  }
+
+  /** Constrains the component's host so the grid inside the panel's padding is `width` px wide. */
+  function layOutGrid(width: number): HTMLElement {
+    const host = fixture.nativeElement as HTMLElement;
+    const panel = getComputedStyle(host.querySelector('.filter-panel')!);
+    host.style.width = `${width + parseFloat(panel.paddingInlineStart) + parseFloat(panel.paddingInlineEnd)}px`;
+    const grid = host.querySelector<HTMLElement>('.filter-grid')!;
+    expect(grid.getBoundingClientRect().width).withContext('the grid width, px').toBeCloseTo(width, 0);
+    return grid;
+  }
+
+  function gridColumns(grid: HTMLElement): number {
+    return getComputedStyle(grid).gridTemplateColumns.split(' ').length;
+  }
+
+  /**
+   * Lays the grid out at the narrowest width that still sets two fields side
+   * by side, where each track is at its floor, and returns that width. It is
+   * searched for rather than worked out from the floor, since tracks stretch
+   * to fill whatever width they are given and a floor too small would pass at
+   * any width computed from the right one.
+   */
+  function layOutNarrowestTwoColumnGrid(): number {
+    const SEARCH_FROM_PX = 400;
+    const SEARCH_DOWN_TO_PX = 200;
+    expect(gridColumns(layOutGrid(SEARCH_FROM_PX)))
+      .withContext(`columns in a ${SEARCH_FROM_PX} px grid, where the search starts`)
+      .toBe(2);
+    let width = SEARCH_FROM_PX;
+    while (width > SEARCH_DOWN_TO_PX && gridColumns(layOutGrid(width - 1)) === 2) {
+      width--;
+    }
+    expect(gridColumns(layOutGrid(width - 1)))
+      .withContext(`columns in a ${width - 1} px grid, the widest that no longer holds two`)
+      .toBe(1);
+    expect(gridColumns(layOutGrid(width))).withContext(`columns in a ${width} px grid, 1 px wider`).toBe(2);
+    return width;
+  }
+
   // Material caps an outlined select's notch at the field's width less 60 px,
   // the room a resting label leaves beside the arrow, and lifts the cap only
   // under a class its form field no longer sets. A floated label sits on the
@@ -1475,15 +2284,7 @@ describe('TransactionFiltersComponent', () => {
     /** Renders at a pinned width and face, lets ngModel hand each select its value, then settles the label's float. */
     function render(): void {
       const host = fixture.nativeElement as HTMLElement;
-      // Karma serves none of the app's fonts, so each platform measures in its
-      // own fallback. The Linux runner's is DejaVu Sans, which Verdana matches
-      // to within a few pixels. Material's fields take their face from the
-      // --mat-sys tokens rather than from the host.
-      const face = "Verdana, 'DejaVu Sans', sans-serif";
-      host.style.fontFamily = face;
-      for (const token of ['--mat-sys-body-large-font', '--mat-sys-body-small-font', '--mat-sys-label-large-font']) {
-        host.style.setProperty(token, face);
-      }
+      pinFieldFace();
       component.expanded.set(true);
       fixture.detectChanges();
       for (const each of Array.from(host.querySelectorAll<HTMLElement>('.filter-grid mat-form-field'))) {
@@ -1578,10 +2379,6 @@ describe('TransactionFiltersComponent', () => {
   // them out at every pane.
   describe('a filter date beside its calendar button', () => {
     const GRID_WIDTHS_PX = [702, 312, 257] as const;
-    // Karma serves none of the app's fonts, so the face is pinned as in the
-    // narrow-select cases above: the Linux runner's DejaVu Sans has Verdana's
-    // digit widths, and Material's fields read their face from the tokens.
-    const FACE = "Verdana, 'DejaVu Sans', sans-serif";
 
     // 12 October 2026 as each of the reader's settings shows it. A two-digit
     // month and day, so every one is ten characters: eight digits and two
@@ -1599,10 +2396,7 @@ describe('TransactionFiltersComponent', () => {
     /** Opens the panel on 12 October 2026 to 12 October 2026, then lets ngModel hand each date input its value. */
     function render(): void {
       host().style.display = 'block';
-      host().style.fontFamily = FACE;
-      for (const token of ['--mat-sys-body-large-font', '--mat-sys-body-small-font', '--mat-sys-label-large-font']) {
-        host().style.setProperty(token, FACE);
-      }
+      pinFieldFace();
       const filters: TransactionFilters = { startDate: new Date(2026, 9, 12), endDate: new Date(2026, 9, 12) };
       component.presetFilters = filters;
       component.ngOnChanges({ presetFilters: new SimpleChange(undefined, filters, false) });
@@ -1624,15 +2418,6 @@ describe('TransactionFiltersComponent', () => {
       fixture.detectChanges();
     }
 
-    /** Constrains the component's host so the grid inside the panel's padding is `width` px wide. */
-    function layOut(width: number): HTMLElement {
-      const panel = getComputedStyle(host().querySelector('.filter-panel')!);
-      host().style.width = `${width + parseFloat(panel.paddingInlineStart) + parseFloat(panel.paddingInlineEnd)}px`;
-      const grid = host().querySelector<HTMLElement>('.filter-grid')!;
-      expect(grid.getBoundingClientRect().width).withContext('the grid width, px').toBeCloseTo(width, 0);
-      return grid;
-    }
-
     function dateInputs(): HTMLInputElement[] {
       const inputs = Array.from(host().querySelectorAll<HTMLInputElement>('.filter-grid input.mat-datepicker-input'));
       expect(inputs.length).withContext('the From and To inputs').toBe(2);
@@ -1641,10 +2426,6 @@ describe('TransactionFiltersComponent', () => {
 
     function wrapperOf(element: Element): HTMLElement {
       return element.closest('mat-form-field')!.querySelector<HTMLElement>('.mat-mdc-text-field-wrapper')!;
-    }
-
-    function columnsOf(grid: HTMLElement): number {
-      return getComputedStyle(grid).gridTemplateColumns.split(' ').length;
     }
 
     /** What a date field needs, read off the page: its start padding, its calendar button and ten digits of the input's own font. */
@@ -1730,7 +2511,7 @@ describe('TransactionFiltersComponent', () => {
       for (const rendering of RENDERINGS) {
         readAs(rendering);
         for (const width of GRID_WIDTHS_PX) {
-          layOut(width);
+          layOutGrid(width);
           dateInputs().forEach((input, index) => {
             const which = `${index === 0 ? 'From' : 'To'}, ${rendering.name}, in a ${width} px grid`;
             expect(input.value).withContext(`${which}: the date shown`).toBe(rendering.shown);
@@ -1745,7 +2526,7 @@ describe('TransactionFiltersComponent', () => {
 
     it("gives a date field's end padding to its date, as Material does beside an icon suffix", fakeAsync(() => {
       render();
-      layOut(GRID_WIDTHS_PX[0]);
+      layOutGrid(GRID_WIDTHS_PX[0]);
 
       for (const input of dateInputs()) {
         const wrapper = getComputedStyle(wrapperOf(input));
@@ -1757,7 +2538,7 @@ describe('TransactionFiltersComponent', () => {
     // Pin: the compact padding stays on every field without a button.
     it('keeps the end padding of a compact field with no calendar button (pin)', fakeAsync(() => {
       render();
-      layOut(GRID_WIDTHS_PX[0]);
+      layOutGrid(GRID_WIDTHS_PX[0]);
 
       const minAmount = Array.from(host().querySelectorAll('.filter-grid mat-form-field'))
         .find(each => each.querySelector('mat-label')?.textContent?.trim() === 'Min Amount');
@@ -1774,9 +2555,9 @@ describe('TransactionFiltersComponent', () => {
     // bounds the floor only from far below; the next case lays one out at it.
     it('lays a 702 px grid out in more than one column, no field narrower than a date needs (pin)', fakeAsync(() => {
       render();
-      const grid = layOut(GRID_WIDTHS_PX[0]);
+      const grid = layOutGrid(GRID_WIDTHS_PX[0]);
 
-      expect(columnsOf(grid)).withContext('columns in a 702 px grid').toBeGreaterThan(1);
+      expect(gridColumns(grid)).withContext('columns in a 702 px grid').toBeGreaterThan(1);
 
       const need = dateFieldNeedPx(dateInputs()[0]);
       for (const field of Array.from(grid.querySelectorAll('mat-form-field'))) {
@@ -1789,28 +2570,11 @@ describe('TransactionFiltersComponent', () => {
 
     // Pin: the narrowest grid that still sets two fields side by side lays
     // each track out at its floor, so it is where 56 px and 10ch are put to
-    // the test. The step is searched for rather than worked out from the
-    // floor, since tracks stretch to fill whatever width they are given and
-    // a floor too small would pass at any width computed from the right one.
-    // Every digit of the pinned face is as wide as any other, so each
-    // rendering is as wide as any date with its two separators.
+    // the test. Every digit of the pinned face is as wide as any other, so
+    // each rendering is as wide as any date with its two separators.
     it('shows the whole of a date in every rendering in the narrowest grid that holds two columns (pin)', fakeAsync(() => {
-      const SEARCH_FROM_PX = 400;
-      const SEARCH_DOWN_TO_PX = 200;
       render();
-
-      expect(columnsOf(layOut(SEARCH_FROM_PX)))
-        .withContext(`columns in a ${SEARCH_FROM_PX} px grid, where the search starts`)
-        .toBe(2);
-      let width = SEARCH_FROM_PX;
-      while (width > SEARCH_DOWN_TO_PX && columnsOf(layOut(width - 1)) === 2) {
-        width--;
-      }
-      expect(columnsOf(layOut(width - 1)))
-        .withContext(`columns in a ${width - 1} px grid, the widest that no longer holds two`)
-        .toBe(1);
-      const grid = layOut(width);
-      expect(columnsOf(grid)).withContext(`columns in a ${width} px grid, 1 px wider`).toBe(2);
+      const width = layOutNarrowestTwoColumnGrid();
 
       const need = dateFieldNeedPx(dateInputs()[0]);
       for (const rendering of RENDERINGS) {
@@ -1828,6 +2592,64 @@ describe('TransactionFiltersComponent', () => {
         });
       }
     }));
+  });
+
+  // The Tags field's hint shows once the field has focus, on an input's one
+  // line, so it cannot wrap: it has to fit the room its input gives it. That
+  // room is the input's content box as far as its field's infix reaches.
+  // Material sets a chip input at 150 px or wider, so in a track under 174 px
+  // the input runs past the infix, over the field's end padding and outline.
+  // The widths are the grid's own, as in the date cases above: 312 px, read on
+  // a 375 px phone, and 944 px, what a 1280 px pane leaves it (1280 less the
+  // docked 256 px sidebar, an 8 px scrollbar, the page's two 24 px gutters and
+  // the panel's two 12 px). Verdana's digits are wider than the app's own
+  // face's, so in the pinned face 312 px holds one column where the phone
+  // showed two; the narrowest grid that holds two is that phone's layout at
+  // its tightest, and no track is narrower.
+  describe("the Tags field's hint", () => {
+    const GRID_WIDTHS_PX = [312, 944] as const;
+    const host = () => fixture.nativeElement as HTMLElement;
+
+    /** Opens the panel in a language, with the face pinned, and returns the Tags input. */
+    function render(l: SupportedLocale): HTMLInputElement {
+      mockTranslationService.t.and.callFake(catalogTranslator(l));
+      // The translate pipe memoises on the locale and the catalog version.
+      locale.set(l);
+      TestBed.inject(TranslationService).translationsVersion.update(version => version + 1);
+      host().style.display = 'block';
+      pinFieldFace();
+      component.expanded.set(true);
+      fixture.detectChanges();
+      flush();
+      fixture.detectChanges();
+      settleAnimations(document);
+      const input = host().querySelector<HTMLInputElement>('.tags-field input.mat-mdc-chip-input');
+      expect(input).withContext('the Tags input').not.toBeNull();
+      return input!;
+    }
+
+    /** Where the hint is drawn, px: the input's content box, as far as its field's infix reaches. */
+    const roomPx = (input: HTMLInputElement) => contentWidthPx(input, input.closest('.mat-mdc-form-field-infix')!);
+
+    for (const l of ['en', 'ja', 'tc'] as const) {
+      it(`fits its input on a 375 px phone, in a 1280 px pane and in the narrowest two-column grid, in ${l}`, fakeAsync(() => {
+        const input = render(l);
+        expect(input.placeholder)
+          .withContext("the hint, in the catalog's words")
+          .toBe(catalogTranslator(l, { strict: true })('transactions.tagsPlaceholderShort'));
+        const hint = placeholderWidthPx(input);
+        expect(hint).withContext('the hint, px').toBeGreaterThan(0);
+
+        for (const width of [...GRID_WIDTHS_PX, layOutNarrowestTwoColumnGrid()]) {
+          layOutGrid(width);
+          const room = roomPx(input);
+          expect(room).withContext(`in a ${width} px grid: the room, px`).toBeGreaterThan(0);
+          expect(hint)
+            .withContext(`in a ${width} px grid: "${input.placeholder}", px, against its room`)
+            .toBeLessThanOrEqual(room);
+        }
+      }));
+    }
   });
 
   describe('grid tracks (#450)', () => {

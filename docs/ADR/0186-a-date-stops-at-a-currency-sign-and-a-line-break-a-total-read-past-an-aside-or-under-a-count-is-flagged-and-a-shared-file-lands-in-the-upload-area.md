@@ -1,7 +1,8 @@
 # 186. A date stops at a currency sign and a line break, a total read past an aside or under a count is flagged, and a shared file lands in the upload area
 
-**Status:** Accepted, implemented · **Date:** 2026-10-31 · **Issues:**
-#515, #516, #518
+**Status:** Accepted, implemented; amended by
+[0187](0187-repeated-controls-name-their-item-the-upload-area-has-one-button-and-numbers-photos-among-photos-resting-text-is-a-token-sentences-end-in-the-readers-stop-and-a-spec-that-expects-nothing-fails.md)
+· **Date:** 2026-10-31 · **Issues:** #515, #516, #518
 
 Reference documentation lives in [../receipt-import.md](../receipt-import.md),
 [../share-import.md](../share-import.md), [../dates.md](../dates.md),
@@ -84,6 +85,20 @@ spec, and three classes of unnamed control rules of `icon-labels:check`.
 Applies [0171](0171-second-copies-fold-into-one-copy-of-each-helper.md):
 Import History's copy of the file-size formatter folds onto the one the
 upload area reads.
+
+**Amended by
+[0187](0187-repeated-controls-name-their-item-the-upload-area-has-one-button-and-numbers-photos-among-photos-resting-text-is-a-token-sentences-end-in-the-readers-stop-and-a-spec-that-expects-nothing-fails.md).**
+The rule below stands: a button in the upload area names its file by its
+place, the number its badge shows, and its name. What the place counts does
+not. A photo is numbered among the photos alone, and its buttons read keys of
+their own, `import.movePhotoUpLabel`, `import.movePhotoDownLabel` and
+`import.removePhotoLabel`, so after a CSV the first photo's remove reads
+*Remove photo 1 (image.jpg)* where it read *Remove file 2 (image.jpg)*. A
+file that is not a photo is numbered among the files that are not, under
+`import.removeFileLabel`, so two CSVs of one name stay apart.
+`import.moveFileUpLabel` and `import.moveFileDownLabel` leave the catalogs,
+since only a photo moves. Each Known gap below that 0187 took up says what it
+did.
 
 ## Context
 
@@ -1469,24 +1484,49 @@ them and the follow-ups below, and lists what none of them takes up.
   controls. The goal card's edit and delete, stamped once per goal by the
   goals page's own repeat, are neither guarded nor frozen: the rule reads a
   template's own repeats. #531 takes up these, the two toggles and Sign out.
+  *Closed by
+  [0187](0187-repeated-controls-name-their-item-the-upload-area-has-one-button-and-numbers-photos-among-photos-resting-text-is-a-token-sentences-end-in-the-readers-stop-and-a-spec-that-expects-nothing-fails.md):
+  every one names its item now, the goal card's pair included: the sixth rule
+  reads a component another template repeats, and `ITEMLESS_FROZEN` is
+  empty.*
 - **Two toggles stay unnamed, frozen by the eighth rule.** The budget form's
   alert-threshold slider carries its `aria-labelledby` on the `mat-slider`
   host, which names no thumb; the AI page's Auto sync switch has a sibling
   label it never references.
+  *Closed by
+  [0187](0187-repeated-controls-name-their-item-the-upload-area-has-one-button-and-numbers-photos-among-photos-resting-text-is-a-token-sentences-end-in-the-readers-stop-and-a-spec-that-expects-nothing-fails.md):
+  the slider is named on its thumb and the switch by its label, and
+  `UNNAMED_FROZEN` is empty.*
 - **Settings' Sign out button has no name below 480px.** Its label, the only
   name it has, is taken out with `display: none` there
   (`settings.component.scss:81-85`), the class the step labels had.
+  *Closed by
+  [0187](0187-repeated-controls-name-their-item-the-upload-area-has-one-button-and-numbers-photos-among-photos-resting-text-is-a-token-sentences-end-in-the-readers-stop-and-a-spec-that-expects-nothing-fails.md):
+  the label is clipped in place there by the `visually-hidden` mixin, and
+  keeps its words.*
 - **`joinSentences` still joins with a Latin stop in ja and tc** (0099's
   gap): the review card's names, the form's verify text and the wizard's
   round notice. Only the dropzone's alert reads `common.sentenceSeparator`,
   the key a later fold would read. Filed as #534.
+  *Closed by
+  [0187](0187-repeated-controls-name-their-item-the-upload-area-has-one-button-and-numbers-photos-among-photos-resting-text-is-a-token-sentences-end-in-the-readers-stop-and-a-spec-that-expects-nothing-fails.md):
+  `joinSentences` joins in `common.sentenceSeparator`, a `。` in ja and tc,
+  for all three readers and the dropzone's alert.*
 - **Two places are swept by no axe pass.** The empty upload step, where the
   dropzone is a `role="button"` around the Browse button, which axe very
   likely reads as nested-interactive; and the review step's body, of which
   only the review card is swept. Filed as #532.
+  *Closed by
+  [0187](0187-repeated-controls-name-their-item-the-upload-area-has-one-button-and-numbers-photos-among-photos-resting-text-is-a-token-sentences-end-in-the-readers-stop-and-a-spec-that-expects-nothing-fails.md):
+  the zone is no control now, and both steps are swept, each word-holder
+  scored for contrast in a pass of its own.*
 - **In a mixed pick the move arrows and the number badge count every file.**
   A photo before a CSV keeps an enabled down arrow that swaps it below the
   CSV, and with a CSV first the photos are numbered 2 and 3. Filed as #536.
+  *Closed by
+  [0187](0187-repeated-controls-name-their-item-the-upload-area-has-one-button-and-numbers-photos-among-photos-resting-text-is-a-token-sentences-end-in-the-readers-stop-and-a-spec-that-expects-nothing-fails.md):
+  a photo is numbered, moved and named among the photos, and a row that is no
+  photo keeps its place.*
 - **Eleven resting fades outside this wave are unmeasured.** The upload
   area and the wizard hold no other resting fade. The stylesheets elsewhere
   hold 19 `opacity` declarations between 0 and 1, and eleven of them fade
@@ -1495,6 +1535,10 @@ them and the follow-ups below, and lists what none of them takes up.
   cannot see opacity. The other eight are a loading pulse, two disabled
   buttons, and drag placeholders and a drag preview, none of them a resting
   fade. Filed as #533.
+  *Closed by
+  [0187](0187-repeated-controls-name-their-item-the-upload-area-has-one-button-and-numbers-photos-among-photos-resting-text-is-a-token-sentences-end-in-the-readers-stop-and-a-spec-that-expects-nothing-fails.md):
+  each line rests in `--text-muted` at full strength, and painted cases
+  measure it in all four palettes.*
 - **Neither of those two classes is a gate**, unlike the three this record
   makes one. A control's only name taken out with `display: none` under a
   media query, and a resting glyph faded under its bar by `opacity`, came to
@@ -1507,6 +1551,11 @@ them and the follow-ups below, and lists what none of them takes up.
   its token's full-strength ratio. The step headers' case and the upload
   area's painted-colour cases hold the instances fixed here; Sign out and
   the eleven fades wait for a sweep that renders them.
+  *Its fade half closed by
+  [0187](0187-repeated-controls-name-their-item-the-upload-area-has-one-button-and-numbers-photos-among-photos-resting-text-is-a-token-sentences-end-in-the-readers-stop-and-a-spec-that-expects-nothing-fails.md):
+  a resting fade fails `opacity:check`, which refuses a fade rather than
+  scoring one. A control's only name taken out under a media query is still
+  read by no gate.*
 - **iOS 15's WebView keeps the one-line photo row.** It has no container
   queries, so at phone width the name keeps its narrow column there and only
   the size and type wrap. No device run checked it. A photo row dragged at

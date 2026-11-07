@@ -1,5 +1,7 @@
 import { signal } from '@angular/core';
+import en from '../../../../assets/i18n/en.json';
 import type { LocaleDateStyle } from '../locale-format.service';
+import { INTL_LOCALES, translateFrom } from '../translation.service';
 
 /**
  * Stubs for the two services every rendered template reaches.
@@ -28,20 +30,47 @@ export interface TranslationStub {
 /**
  * A `TranslationService` a real template can render against.
  *
- * `t` echoes the key, and echoes the params beside it when there are any, so
- * an assertion can name the whole rendered label rather than a prefix — the
- * shape `transaction-preview-table.component.spec.ts:1043-1050` hand-rolled
- * first. Pass `overrides` to pin a specific key's copy, or to swap `t`
- * outright for a spy.
+ * `t` is `echoTranslation`: it echoes the key, and the params beside it when
+ * there are any, so an assertion can name the whole rendered label rather
+ * than a prefix, and it answers `common.sentenceSeparator` with en's own
+ * stop, so two joined sentences read as en, and `common.quotedName` with
+ * en's own, the name bare, so a quoted name reads as the name inside the
+ * label that carries it. Pass `overrides` to pin a
+ * specific key's copy, or to swap `t` outright for a spy.
  */
 export function createTranslationStub(overrides: Partial<TranslationStub> = {}): TranslationStub {
   return {
-    t: (key: string, params?: Record<string, string | number>) =>
-      params ? `${key}:${JSON.stringify(params)}` : key,
+    t: echoTranslation,
     currentLocale: signal('en'),
     translationsVersion: signal(0),
     ...overrides,
   };
+}
+
+const SENTENCE_SEPARATOR = 'common.sentenceSeparator';
+const QUOTED_NAME = 'common.quotedName';
+
+/**
+ * A translator that echoes the key, and the params beside it when there are
+ * any, as `key:JSON(params)`, except for the two keys that are punctuation,
+ * not words, which it answers with en.json's own: `common.sentenceSeparator`,
+ * which echoed would glue the two sentences round it into one token, and
+ * `common.quotedName` with its name, which echoed would bury the name it
+ * quotes inside a key of its own (en quotes no name, so the name reads bare).
+ * The quoted name without a name has nothing to quote, so its key echoes.
+ */
+export function echoTranslation(key: string, params?: Record<string, string | number>): string {
+  if (key === SENTENCE_SEPARATOR) return en.common.sentenceSeparator;
+  if (key === QUOTED_NAME && params) return translateFrom(en, key, params, () => INTL_LOCALES.en);
+  return params ? `${key}:${JSON.stringify(params)}` : key;
+}
+
+/**
+ * `echoTranslation` without the params: the key alone, and en's separator
+ * for its key. The quoted name, with no name to quote, echoes its key.
+ */
+export function echoKey(key: string): string {
+  return echoTranslation(key);
 }
 
 /** The half of `LocaleFormatService` the two locale pipes and the time and size callers use. */

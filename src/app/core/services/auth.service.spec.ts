@@ -15,6 +15,11 @@ import { AccessibilityService } from './accessibility.service';
 import { NotificationService } from './notification.service';
 import { PwaService } from './pwa.service';
 import { PAGE_RELOAD } from './page-reload';
+import { silenceFirebaseWarnings } from './testing/silence-firebase-warnings';
+
+// deleteField() runs here outside any injector, in the service under test,
+// where the zone wrapper would print its advisory into the run's output.
+silenceFirebaseWarnings();
 
 describe('buildNewUserProfile', () => {
   const firebaseUser = (overrides: Partial<FirebaseUser>): FirebaseUser =>

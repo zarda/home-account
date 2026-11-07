@@ -3,8 +3,7 @@ import { TestBed } from '@angular/core/testing';
 import { MatDialog, MatDialogRef } from '@angular/material/dialog';
 import { firstValueFrom } from 'rxjs';
 
-import en from '../../../../assets/i18n/en.json';
-import { TranslationStub, createTranslationStub, runAxe, summarizeViolations } from '../../../core/services/testing';
+import { runAxe, summarizeViolations } from '../../../core/services/testing';
 import { PLAN_DIALOG_CONFIG } from './household-plan-form';
 
 /**
@@ -25,24 +24,6 @@ export const PLAN_PHONE_WIDTH = '320px';
  * face with the runner's metrics (docs/testing.md, "Karma serves no fonts").
  */
 const RUNNER_FACE = "Verdana, 'DejaVu Sans', sans-serif";
-
-/**
- * A translation stub that renders the English copy with its parameters filled
- * in. A layout spec needs the words a reader sees: the default stub renders
- * each key as one unbroken token, which never wraps and is longer than any
- * label.
- */
-export function englishTranslationStub(): TranslationStub {
-  return createTranslationStub({
-    t: (key, params) => {
-      const text = key
-        .split('.')
-        .reduce<unknown>((node, part) => (node as Record<string, unknown> | undefined)?.[part], en);
-      if (typeof text !== 'string') return key;
-      return text.replace(/\{\{(\w+)\}\}/g, (whole, name: string) => params?.[name]?.toString() ?? whole);
-    }
-  });
-}
 
 export interface OpenPlanDialog<T> {
   ref: MatDialogRef<T>;
@@ -267,7 +248,7 @@ export interface FloatedLabelReading {
  * Opens `component` at a phone's width at each of the app's font scales and
  * reads each label on the amount's row: the amount and its currency. `prepare`
  * gives the amount a value, so its label floats as the currency's does. The
- * spec provides englishTranslationStub(), so the labels are the reader's
+ * spec provides catalogTranslationStub('en'), so the labels are the reader's
  * words.
  */
 export function measureAmountRowLabels<T>(

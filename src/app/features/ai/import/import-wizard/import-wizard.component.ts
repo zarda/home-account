@@ -1422,7 +1422,7 @@ export class ImportWizardComponent implements OnInit, AfterViewInit, OnDestroy {
    * empty part is no sentence and adds no time.
    */
   private raiseRoundNotice(tone: NotificationTone, parts: readonly string[]): void {
-    const message = parts.reduce(joinSentences, '');
+    const message = parts.reduce((lead, next) => joinSentences((k, p) => this.t(k, p), lead, next), '');
     const durationMs =
       NOTIFICATION_DURATION_MS[tone] + Math.max(0, countSentences(message) - 1) * ROUND_NOTICE_MS_PER_EXTRA_SENTENCE;
     this.notifications[tone](message, { durationMs });

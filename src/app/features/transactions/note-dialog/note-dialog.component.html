@@ -1,7 +1,7 @@
 <app-dialog-header titleKey="transactions.note" icon="notes" (closed)="close()" />
 
 <mat-dialog-content class="note-content">
-  <p class="note-subtitle">{{ data.description }}</p>
+  <p class="note-subtitle">{{ transactionName() }}</p>
 
   @if (!showingTranslation()) {
     <p class="note-text">{{ data.note }}</p>

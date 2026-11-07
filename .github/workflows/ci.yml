@@ -209,6 +209,18 @@ jobs:
       - name: Check reduced motion
         run: npm run motion:check
 
+      # A resting fade: text drawn at part strength through `opacity` while
+      # nothing is happening to it. Nothing else here can see one:
+      # contrast:check scores a token at full strength, colors:check sees a
+      # token and is satisfied, and the high-contrast theme strengthens the
+      # tokens under a fade that dims them again. A fade passes only in a
+      # keyframe, under :disabled or in a drag; any other is frozen in the
+      # script's ALLOWED table, which ratchets: a row must match its file's
+      # count exactly, so a new fade fails, and so does a repair that leaves
+      # its row behind.
+      - name: Check resting opacity
+        run: npm run opacity:check
+
       # Contrast is a property of a PAIR, so no stylesheet can state it and
       # no reviewer sees it: a token is chosen on its own, against whichever
       # background the author had on screen. Three dark-mode chips shipped

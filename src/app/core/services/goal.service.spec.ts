@@ -6,7 +6,13 @@ import { firstValueFrom, of } from 'rxjs';
 import { GoalService, GOAL_CONTRIBUTION_BELOW_ZERO } from './goal.service';
 import { FirestoreService } from './firestore.service';
 import { AuthService } from './auth.service';
+import { silenceFirebaseWarnings } from './testing/silence-firebase-warnings';
 import { Goal } from '../../models';
+
+// deleteField() runs here outside any injector, in the specs and in the
+// service under test, where the zone wrapper would print its advisory into
+// the run's output.
+silenceFirebaseWarnings();
 
 describe('GoalService', () => {
   let service: GoalService;

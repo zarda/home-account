@@ -10,27 +10,48 @@ import { BudgetService } from '../../../core/services/budget.service';
 import { CategoryService } from '../../../core/services/category.service';
 import { CurrencyService } from '../../../core/services/currency.service';
 import { AuthService } from '../../../core/services/auth.service';
-import { TranslationService } from '../../../core/services/translation.service';
+import { SupportedLocale, TranslationService } from '../../../core/services/translation.service';
 import { NotificationService } from '../../../core/services/notification.service';
 import { ThemeService } from '../../../core/services/theme.service';
-import { Budget, Category, User } from '../../../models';
+import { Budget, Category, DEFAULT_FONT_SCALE, FONT_SCALES, User } from '../../../models';
 import { of } from 'rxjs';
 import {
   AUDIT_SCHEMES,
   GLYPH_PROBE_COLOURS,
+  type Translator,
+  accessibleName,
+  catalogTranslator,
   chooseOption,
+  contentWidthPx,
   eachOptionState,
   iconBox,
   iconSquare,
   paintedBackground,
   paintedColor,
+  placeholderWidthPx,
   ratio,
+  runAxe,
   settleAnimations,
+  summarizeViolations,
   textLines,
   withScheme,
   withTheme,
   provideNoMotion,
 } from '../../../core/services/testing';
+
+/**
+ * Karma serves no fonts (docs/testing.md), so the width cases pin the face the
+ * overflow specs pin. Material's fields and buttons take theirs from the
+ * --mat-sys tokens rather than from the host.
+ */
+const FACE = "Verdana, 'DejaVu Sans', sans-serif";
+
+function pinFace(host: HTMLElement): void {
+  host.style.fontFamily = FACE;
+  for (const token of ['--mat-sys-body-large-font', '--mat-sys-body-small-font', '--mat-sys-label-large-font']) {
+    host.style.setProperty(token, FACE);
+  }
+}
 
 describe('BudgetFormComponent', () => {
   let component: BudgetFormComponent;
@@ -182,6 +203,22 @@ describe('BudgetFormComponent', () => {
       schemas: [NO_ERRORS_SCHEMA]
     }).compileComponents();
   };
+
+  /**
+   * The add form, painted with the surface Material gives the dialog
+   * container (`dialog-container-color` is `surface` in M3), which is what it
+   * sits on in the app. `t`, when given, answers in place of the key table.
+   */
+  async function renderOnDialogSurface(t?: Translator): Promise<void> {
+    await setupTestBed({ mode: 'add' });
+    if (t) mockTranslationService.t.and.callFake(t);
+    fixture = TestBed.createComponent(BudgetFormComponent);
+    component = fixture.componentInstance;
+    fixture.detectChanges();
+    const host = fixture.nativeElement as HTMLElement;
+    host.style.display = 'block';
+    host.style.background = 'var(--mat-sys-surface)';
+  }
 
   describe('Add Mode', () => {
     beforeEach(async () => {
@@ -427,6 +464,7 @@ describe('BudgetFormComponent', () => {
 
     it('should reset isSubmitting on error', async () => {
       mockBudgetService.createBudget.and.returnValue(Promise.reject(new Error('Failed')));
+      spyOn(console, 'error');
 
       component.form.patchValue({
         name: 'Test Budget',
@@ -437,6 +475,7 @@ describe('BudgetFormComponent', () => {
       await component.onSubmit();
 
       expect(component.isSubmitting()).toBe(false);
+      expect(console.error).toHaveBeenCalledWith('[BudgetForm] Save failed:', jasmine.any(Error));
     });
 
     it('should include startDate in createBudget when provided', async () => {
@@ -654,19 +693,7 @@ describe('BudgetFormComponent', () => {
     const THEMES = ['light', 'dark'] as const;
     const el = () => fixture.nativeElement as HTMLElement;
 
-    /**
-     * The form, painted with the surface Material gives the dialog container
-     * (`dialog-container-color` is `surface` in M3), which is what it sits on
-     * in the app.
-     */
-    beforeEach(async () => {
-      await setupTestBed({ mode: 'add' });
-      fixture = TestBed.createComponent(BudgetFormComponent);
-      component = fixture.componentInstance;
-      fixture.detectChanges();
-      el().style.display = 'block';
-      el().style.background = 'var(--mat-sys-surface)';
-    });
+    beforeEach(() => renderOnDialogSurface());
 
     // The category select's panel renders into the CDK overlay.
     afterEach(() => {
@@ -691,7 +718,8 @@ describe('BudgetFormComponent', () => {
       expect(ends.map(end => end.textContent?.trim())).toEqual(['50%', '100%']);
       const lines = [
         ['label', label, '--text-muted'],
-        ['value', label.querySelector('strong') as HTMLElement, '--text-secondary'],
+        // The value sits beside the label's words, outside the span that names the slider.
+        ['value', label.parentElement!.querySelector('strong') as HTMLElement, '--text-secondary'],
         ['scale start', ends[0], '--text-muted'],
         ['scale end', ends[1], '--text-muted'],
       ] as const;
@@ -758,6 +786,38 @@ describe('BudgetFormComponent', () => {
   });
 
   /**
+   * The alert threshold slider is reached as its `<input type="range">`,
+   * which is named by the label's words alone. The value beside them is
+   * Material's own `aria-valuetext` on the same input, so the name does not
+   * repeat it. Each locale renders its catalog's words, on the surface the
+   * dialog gives the form.
+   */
+  describe('names (real template)', () => {
+    const LOCALES: readonly SupportedLocale[] = ['en', 'ja', 'tc'];
+    const el = () => fixture.nativeElement as HTMLElement;
+
+    for (const locale of LOCALES) {
+      it(`names the alert slider's range input by the label's words, in ${locale}`, async () => {
+        await renderOnDialogSurface(catalogTranslator(locale));
+        const input = el().querySelector('mat-slider input[type="range"]');
+        expect(input).withContext('the slider thumb').not.toBeNull();
+        if (!input) return;
+        expect(accessibleName(input)).toBe(catalogTranslator(locale, { strict: true })('budget.alertWhenReaches'));
+      });
+
+      it(`leaves axe nothing to find over the form, in ${locale}, in both schemes`, async () => {
+        await renderOnDialogSurface(catalogTranslator(locale));
+        for (const scheme of AUDIT_SCHEMES) {
+          await withScheme(TestBed.inject(ThemeService), scheme, async () => {
+            fixture.detectChanges();
+            expect(summarizeViolations(await runAxe(el()))).withContext(`${locale} ${scheme}`).toEqual([]);
+          });
+        }
+      });
+    }
+  });
+
+  /**
    * styles.scss grows a Material button to fit its content and its padding
    * (min-height: fit-content). Material displays a mat-spinner as a block, so
    * a spinner in the label stacks above the text: 20 px over a 21 px line,
@@ -771,7 +831,6 @@ describe('BudgetFormComponent', () => {
    * The face is pinned as docs/testing.md *Karma serves no fonts* says.
    */
   describe('the Save button while it saves (real template)', () => {
-    const FACE = "Verdana, 'DejaVu Sans', sans-serif";
     let appOrder: HTMLStyleElement;
 
     beforeEach(async () => {
@@ -792,10 +851,7 @@ describe('BudgetFormComponent', () => {
         fixture = TestBed.createComponent(BudgetFormComponent);
         component = fixture.componentInstance;
         const host = fixture.nativeElement as HTMLElement;
-        host.style.fontFamily = FACE;
-        for (const token of ['--mat-sys-body-large-font', '--mat-sys-body-small-font', '--mat-sys-label-large-font']) {
-          host.style.setProperty(token, FACE);
-        }
+        pinFace(host);
         fixture.detectChanges();
         component.isSubmitting.set(true);
         fixture.detectChanges();
@@ -808,5 +864,171 @@ describe('BudgetFormComponent', () => {
         expect(save.getBoundingClientRect().height).withContext('Save, px').toBe(40);
       });
     }
+  });
+
+  /**
+   * Budget Period and Start Date share a row while each half can hold the
+   * start date's resting label beside its calendar button, and wrap, each
+   * taking the whole row, once it cannot (budget-form.component.scss). The
+   * row reads its own room, not the window, so the cases size the host as
+   * the dialog is sized and read the live layout. On a 375 px phone the
+   * dialog is its 95vw maxWidth, 356 px, and halved, the start date's label
+   * was cut, with an ellipsis, and ran under the calendar button, which
+   * paints over it (the browser run, in en, ja and tc). Wherever 95vw is
+   * wider, from a window of about 505 px, the dialog is its own 480 px, a
+   * 432 px row at the default text size, where the two keep their row.
+   *
+   * The account's text size is set on the root before the form renders, as
+   * AccessibilityService sets it, and Karma loads styles.scss, whose html
+   * rule reads it: at Large and Extra large the 480 px dialog's row is 424.8
+   * and 417.6 px. Halved, the browser run found the label 31.6 px under the
+   * button at Extra large in en, 7.6 in ja and 29.2 in tc, and ja's hint,
+   * 166 px, in a 138 px room. The face is pinned as docs/testing.md *Karma
+   * serves no fonts* says. en is wider in Verdana than in the app's PT Sans,
+   * so the default-size 480 px case reads en's layout alone; ja's and tc's
+   * glyphs are an em in any face, so for them the case reads the label and
+   * the hint as well.
+   */
+  describe('the period and the start date (real template)', () => {
+    /** The dialog in a 375 px window: its 95vw maxWidth. */
+    const PHONE_DIALOG_PX = 356;
+    /** The dialog's own width, which it keeps wherever 95vw is wider. */
+    const DESKTOP_DIALOG_PX = 480;
+    /**
+     * No window opens the dialog this wide. At Extra large its row, 497.6 px,
+     * holds two halves of a basis in px alone (2 × 208 + 20.8 = 436.8), but a
+     * 238.4 px half leaves en's label, 197.7 px in PT Sans, 182.4 px beside
+     * the button: the basis has to grow with the text.
+     */
+    const WIDE_HOST_PX = 560;
+    const EXTRA_LARGE = 1.3;
+    /** Settings' Large and Extra large. */
+    const LARGER_SCALES = FONT_SCALES.filter((scale) => scale > DEFAULT_FONT_SCALE);
+    const LOCALES: readonly SupportedLocale[] = ['en', 'ja', 'tc'];
+    /** The locales whose label and hint the default-size case can read in Karma's face. */
+    const READ_AT_DEFAULT: readonly SupportedLocale[] = ['ja', 'tc'];
+
+    const el = () => fixture.nativeElement as HTMLElement;
+    const fieldOf = (control: string) =>
+      el().querySelector(`[formcontrolname="${control}"]`)?.closest<HTMLElement>('mat-form-field') ?? null;
+    /** The period row. */
+    const rows = () => Array.from(el().querySelectorAll<HTMLElement>('.period-row'));
+    /** The root's font, px, which every rem in the row resolves against. */
+    const rootFontPx = () => parseFloat(getComputedStyle(document.documentElement).fontSize);
+
+    afterEach(() => document.documentElement.style.removeProperty('--app-font-scale'));
+
+    /**
+     * The add form as wide as its dialog, the face pinned, and the account's
+     * text size, when given, on the root first. Material's dialog stylesheet,
+     * which displays the content as a block, loads only with a dialog;
+     * without it the content is inline, its 24 px padding never reaches the
+     * row, and the row is the dialog's width rather than its content box's
+     * (308 px at 375).
+     */
+    async function renderAt(widthPx: number, locale: SupportedLocale, scale?: number): Promise<void> {
+      if (scale !== undefined) document.documentElement.style.setProperty('--app-font-scale', String(scale));
+      await renderOnDialogSurface(catalogTranslator(locale));
+      const host = el();
+      host.style.width = `${widthPx}px`;
+      host.querySelector<HTMLElement>('mat-dialog-content')?.style.setProperty('display', 'block');
+      pinFace(host);
+      fixture.detectChanges();
+      settleAnimations(document);
+    }
+
+    /** The start date's resting label, as drawn: all its words in its box, and none of them under the calendar button. */
+    function expectLabelWholeAndClear(locale: SupportedLocale, context: string): void {
+      const field = fieldOf('startDate');
+      const label = field?.querySelector<HTMLElement>('.mdc-floating-label') ?? null;
+      const toggle = field?.querySelector<HTMLElement>('mat-datepicker-toggle button') ?? null;
+      expect(label).withContext(`${context}: the label`).not.toBeNull();
+      expect(toggle).withContext(`${context}: the calendar button`).not.toBeNull();
+      if (!label || !toggle) return;
+      expect(label.textContent?.trim())
+        .withContext(`${context}: the label's words`)
+        .toBe(catalogTranslator(locale, { strict: true })('budget.startDateOptional'));
+      expect(label.classList).withContext(`${context}: the label rests`).not.toContain('mdc-floating-label--float-above');
+      expect(label.clientWidth).withContext(`${context}: the label's box, px`).toBeGreaterThan(0);
+      expect(label.scrollWidth)
+        .withContext(`${context}: the label's words, px, against its box`)
+        .toBeLessThanOrEqual(label.clientWidth);
+      const words = label.getBoundingClientRect();
+      const button = toggle.getBoundingClientRect();
+      const across = Math.min(words.right, button.right) - Math.max(words.left, button.left);
+      const down = Math.min(words.bottom, button.bottom) - Math.max(words.top, button.top);
+      expect(across > 0 && down > 0 ? across : 0)
+        .withContext(`${context}: px of the label under the calendar button`)
+        .toBe(0);
+    }
+
+    /** The start date's hint, on its one line inside the input's content box. */
+    function expectPlaceholderWhole(locale: SupportedLocale, context: string): void {
+      const input = fieldOf('startDate')?.querySelector<HTMLInputElement>('input') ?? null;
+      expect(input).withContext(`${context}: the input`).not.toBeNull();
+      if (!input) return;
+      expect(input.placeholder)
+        .withContext(`${context}: the hint's words`)
+        .toBe(catalogTranslator(locale, { strict: true })('budget.useDefault'));
+      const room = contentWidthPx(input);
+      expect(room).withContext(`${context}: the input's room, px`).toBeGreaterThan(0);
+      expect(placeholderWidthPx(input))
+        .withContext(`${context}: "${input.placeholder}", px, against its room`)
+        .toBeLessThanOrEqual(room);
+    }
+
+    /** The two stacked and abutting, each the row's width, the label whole and clear, the hint whole. */
+    function expectStacked(locale: SupportedLocale, context: string): void {
+      const [row] = rows();
+      const period = fieldOf('period')?.getBoundingClientRect();
+      const start = fieldOf('startDate')?.getBoundingClientRect();
+      expect(row && period && start).withContext(`${context}: the row and its two fields`).toBeTruthy();
+      if (!row || !period || !start) return;
+      const across = row.getBoundingClientRect().width; // not clientWidth, which rounds 417.6
+      expect(start.top)
+        .withContext(`${context}: the start date's top, px, against the period's bottom`)
+        .toBeGreaterThanOrEqual(period.bottom - 0.5);
+      expect(start.top - period.bottom).withContext(`${context}: px between the two`).toBeCloseTo(0, 0);
+      expect(period.width).withContext(`${context}: the period's width, px, against the row's`).toBeCloseTo(across, 1);
+      expect(start.width).withContext(`${context}: the start date's width, px, against the row's`).toBeCloseTo(across, 1);
+      expectLabelWholeAndClear(locale, context);
+      expectPlaceholderWhole(locale, context);
+    }
+
+    for (const locale of LOCALES) {
+      it(`stacks the two in a phone's ${PHONE_DIALOG_PX} px dialog, the start date's label whole and clear of its calendar button, in ${locale}`, async () => {
+        await renderAt(PHONE_DIALOG_PX, locale);
+        expectStacked(locale, `${locale} at 375 px`);
+      });
+
+      for (const scale of LARGER_SCALES) {
+        it(`stacks the two in a desktop's ${DESKTOP_DIALOG_PX} px dialog at text size ${scale}, the start date's label whole and clear of its calendar button, in ${locale}`, async () => {
+          await renderAt(DESKTOP_DIALOG_PX, locale, scale);
+          expect(rootFontPx()).withContext("the root font, px, at the account's text size").toBeCloseTo(16 * scale, 1);
+          expectStacked(locale, `${locale} at ${scale}`);
+        });
+      }
+
+      const reads = READ_AT_DEFAULT.includes(locale);
+      it(`keeps the period and the start date side by side in a desktop's ${DESKTOP_DIALOG_PX} px dialog at the default text size${reads ? ", the start date's label and hint whole" : ''}, in ${locale} (pin)`, async () => {
+        await renderAt(DESKTOP_DIALOG_PX, locale);
+        expect(rootFontPx()).withContext('the root font, px, at the default text size').toBe(16);
+        const period = fieldOf('period')?.getBoundingClientRect();
+        const start = fieldOf('startDate')?.getBoundingClientRect();
+        expect(period && start).withContext('the two fields').toBeTruthy();
+        if (!period || !start) return;
+        expect(Math.abs(start.top - period.top)).withContext("the start date's top, px, from the period's").toBeLessThanOrEqual(0.5);
+        expect(start.left).withContext("the start date's left, px, against the period's right").toBeGreaterThanOrEqual(period.right);
+        if (!reads) return;
+        expectLabelWholeAndClear(locale, `${locale} at ${DESKTOP_DIALOG_PX} px`);
+        expectPlaceholderWhole(locale, `${locale} at ${DESKTOP_DIALOG_PX} px`);
+      });
+    }
+
+    it(`stacks the two in a ${WIDE_HOST_PX} px host at text size ${EXTRA_LARGE}, the basis growing with the text, in en`, async () => {
+      await renderAt(WIDE_HOST_PX, 'en', EXTRA_LARGE);
+      expect(rootFontPx()).withContext("the root font, px, at the account's text size").toBeCloseTo(16 * EXTRA_LARGE, 1);
+      expectStacked('en', `en in a ${WIDE_HOST_PX} px host at ${EXTRA_LARGE}`);
+    });
   });
 });

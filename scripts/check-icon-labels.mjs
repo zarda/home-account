@@ -131,11 +131,11 @@
  *     would say the same.
  *
  * What it cannot see: a name built in TypeScript and bound as an expression;
- * any other key that names no item on a trigger only its parent repeats (the
- * sixth rule below takes any key, in a template's own repeats); a component
- * stamped through `NgComponentOutlet`, a dialog or a router outlet rather than
- * by its selector; a repeat written as `<ng-template ngFor>`; and a trigger
- * with no `aria-label` at all, whose name comes from its text.
+ * a component stamped through `NgComponentOutlet`, a dialog or a router
+ * outlet rather than by its selector; a repeat written as
+ * `<ng-template ngFor>`; and a trigger with no `aria-label` at all, whose
+ * name comes from its text. Any other key that names no item is the sixth
+ * rule's, below.
  *
  * A fifth rule puts a flag's tooltip within reach of the keyboard. MatTooltip
  * opens for a pointer and for keyboard focus, and a `mat-icon` takes focus
@@ -168,10 +168,12 @@
  * parameters gives every copy the same name. The upload area had that shape:
  * each file's row read "Move up", "Move down" and "Remove", and two photos
  * from an iPhone are both image.jpg, so neither the buttons nor the rows could
- * be told apart by ear. The rule: inside a repeat in its own template, a
- * control does not take its whole name from one key with no parameters,
- * bound (`[attr.aria-label]="'key' | translate"`) or interpolated
- * (`aria-label="{{ 'key' | translate }}"`).
+ * be told apart by ear. The rule: a control stamped once per item, by its own
+ * template or by another's, does not take its whole name from one key with no
+ * parameters, or from a ternary between two such keys, piped once after it or
+ * in each branch; bound (`[attr.aria-label]="'key' | translate"`) or
+ * interpolated (`aria-label="{{ 'key' | translate }}"`), either is bare. A
+ * ternary with parameters on either branch passes.
  *
  *   - **Only a control.** A button, a link, a form field, a Material toggle
  *     or an element with a control's literal `role`: what a user acts on, so
@@ -183,11 +185,35 @@
  *     (`iconNameKeys[icon] | translate`) names it through the key. Whether a
  *     slot is filled with something that tells the items apart is a reading
  *     question: two photos named image.jpg need their place as well.
- *   - **"Once per item" is read in the template only**: an `@for` block, or an
- *     element under a repeating structural directive, as the fourth rule reads
- *     it there. Its cross-template reading errs toward "repeated" — the
- *     dashboard renders each card once through an `@switch` in its `@for` — and
- *     here that would freeze controls that are not repeated at all.
+ *   - **A ternary between two such keys is one of them.**
+ *     `(pinned ? 'a.unpin' : 'a.pin') | translate`, or the pipe in each
+ *     branch, gives every copy one of two names, neither of which says which
+ *     item it acts on: the search history's pin buttons had that shape. A
+ *     ternary with parameters on either branch, or on the pipe after it, has
+ *     a slot.
+ *   - **"Once per item" is read two ways, as the fourth rule reads it.**
+ *     Inside the template, an `@for` block or an element under a repeating
+ *     structural directive. Across templates, a component another template
+ *     stamps that way: the goals page stamps one card per goal, so the goal
+ *     card's Edit and Delete are repeated although nothing repeats in the
+ *     card's own template.
+ *   - **An `@case` on the `@for`'s own item is held apart.** The fourth
+ *     rule's reading errs toward "repeated", and here that would flag
+ *     controls rendered once: the dashboard's `@for` stamps each card through
+ *     an `@switch (card)`, so each `@case` renders for the one item that
+ *     matches it, and the insights card's Refresh is one button on the page.
+ *     An `@case` under an `@switch` whose subject is the nearest `@for`'s item
+ *     lifts that `@for`, inside the template and across it. What two or
+ *     more of the switch's cases reach still repeats, whether a component's
+ *     selector or a control under one bare key, and whether a case writes it
+ *     or reaches it through a component it stamps, at any depth: every card
+ *     that reaches one of those cases renders a copy, so the page holds one
+ *     copy per such card. The card menu is a selector the cases write, into
+ *     all five cards; the empty state is one they reach, through four of the
+ *     cards they stamp. The tally is per switch and per selector or key
+ *     (heldApartAcross). An `@default`, an `@switch` on something the item
+ *     holds (`c.kind`) and an outer `@for` around the switch's own still
+ *     repeat. The fourth rule reads every `@for` as repeating, as before.
  *   - **A menu trigger the fourth rule reports is reported there**, once.
  *   - **What it found and could not fix is frozen** in ITEMLESS_FROZEN, by
  *     file and key with how many controls carry that key there (ADR 0145's
@@ -196,10 +222,14 @@
  *     more control named by a frozen key, or one fixed and still on the
  *     books. An edit that only moves a frozen control leaves the list alone.
  *
- * What it cannot see: a name built in TypeScript; a ternary between two bare
- * keys; a control repeated only by its parent's repeat, such as the goal
- * card's edit and delete buttons, stamped once per goal by the goals page;
- * and a name that comes from `aria-labelledby` or from the control's text.
+ * What it cannot see: a name built in TypeScript; a ternary nested in
+ * another, or with a branch that is not a quoted key; a label wrapped whole
+ * in parentheses, or a branch in doubled parentheses; a component stamped
+ * through an outlet or a dialog rather than by its selector, as the fourth
+ * rule cannot; a selector or key that two switches on the same item each
+ * reach in one case, since the tally counts the cases of one switch; an item
+ * the list holds twice, whose `@case` then renders twice; and a name that
+ * comes from `aria-labelledby` or from the control's text.
  *
  * A seventh rule keeps a reference from pointing at nothing. `aria-labelledby`,
  * `aria-describedby`, `aria-controls`, `aria-owns` and a label's `for` name
@@ -244,11 +274,14 @@
  *     input binding is the spelling that reaches the control.
  *   - **A `mat-icon` is not text.** MatIcon hides itself, so its ligature
  *     names nothing, and a toggle whose only content is an icon is unnamed.
- *   - **A slider is read the other way round.** `mat-slider` takes no name
- *     input and forwards no attribute to its thumbs, so a name on its host
- *     reaches nothing and the `<input matSliderThumb>` stays unnamed. The
- *     rule: a slider that carries a name on its host carries one on each
- *     thumb. A slider named nowhere is not that shape and is not read.
+ *   - **A slider is read by its thumbs.** `mat-slider` takes no name input
+ *     and forwards no attribute to its thumbs, so a name on its host reaches
+ *     nothing: a screen reader lands on each `<input matSliderThumb>`, which
+ *     is named by what it carries itself. The rule: each thumb carries
+ *     `aria-label` or `aria-labelledby` with a value, as a literal, an
+ *     interpolation or a binding (`[aria-label]`, `[aria-labelledby]`,
+ *     `[attr.aria-label]`, `[attr.aria-labelledby]`), whatever its host
+ *     carries.
  *   - **What it found and could not fix is frozen** in UNNAMED_FROZEN, in
  *     ITEMLESS_FROZEN's rows with the tag as the key, set against the hits by
  *     the same helper: a hit no row names fails, and so does a row whose
@@ -262,7 +295,7 @@
  * Reference documentation lives in docs/accessibility.md.
  */
 
-import { readFileSync, readdirSync, statSync } from 'node:fs';
+import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs';
 import { dirname, join, sep } from 'node:path';
 
 const SOURCE_DIR = 'src/app';
@@ -475,6 +508,33 @@ const ARIA_LABEL = /(?:\[(?:attr\.)?aria-label\]|(?<![\w.[-])aria-label)\s*=\s*(
 /** The catalog key that names no item, closed by its quote so `moreActionsFor` is not it. */
 const ITEMLESS_KEY = /(['"])common\.moreActions\1/;
 
+/** An `@for` header's item: `(card of cards(); track card)` gives `card`. */
+const FOR_ITEM = /^\s*\(\s*([A-Za-z_$][\w$]*)\s+of\b/;
+
+/** An `@switch` header's subject, the expression inside its parentheses. */
+const SWITCH_SUBJECT = /^\s*\(([\s\S]*)\)\s*$/;
+
+/**
+ * The frame a block opens, from its keyword, its header and the frames open
+ * around it, as readBlocks describes.
+ */
+function openBlock(keyword, header, frames, { casesApart, at }) {
+  if (keyword === 'for') {
+    return { element: null, repeat: true, at, item: FOR_ITEM.exec(header)?.[1] ?? null };
+  }
+  if (keyword === 'switch') {
+    const subject = SWITCH_SUBJECT.exec(header)?.[1].trim() ?? null;
+    const nearest = frames.findLast((frame) => frame.repeat);
+    const onItem = nearest?.element === null && nearest.item !== null && nearest.item === subject;
+    return { element: null, repeat: false, at, subject, on: onItem ? nearest : null };
+  }
+  if (keyword === 'case' && casesApart) {
+    const parent = frames.at(-1);
+    if (parent?.on) return { element: null, repeat: false, at, lifts: parent.on, switchAt: parent.at };
+  }
+  return { element: null, repeat: false, at };
+}
+
 /**
  * Reads the control-flow syntax in one run of text between two tags, pushing
  * a frame onto `frames` for each block it opens and removing one for each `}`.
@@ -482,8 +542,16 @@ const ITEMLESS_KEY = /(['"])common\.moreActions\1/;
  * `@empty`, `@switch`, `@case`, `@defer`, …) a plain one. Interpolations are
  * blanked first, because their braces are expressions; Angular rejects a bare
  * `{`, `}` or `@` in text, so what remains is block syntax.
+ *
+ * An `@for` frame records its item's name, and an `@switch` frame its
+ * subject, with `on` set to the `@for` frame whose item it is when the
+ * nearest repeat around the switch is that `@for`. With `casesApart`, an
+ * `@case` under such a switch `lifts` that `@for`: it renders for the one
+ * item that matches, so its contents are stamped once. `@default` lifts
+ * nothing, since every other item lands in it. `base` is the run's offset in
+ * the template, so `at` names each block by where its `@` sits.
  */
-function readBlocks(text, frames) {
+function readBlocks(text, frames, { casesApart = false, base = 0 } = {}) {
   const plain = text.replace(/\{\{[\s\S]*?\}\}/g, (body) => ' '.repeat(body.length));
   let i = 0;
   while (i < plain.length) {
@@ -504,7 +572,10 @@ function readBlocks(text, frames) {
         else if (plain[j] === ')') depth--;
         else if (plain[j] === '{' && depth === 0) break;
       }
-      if (j < plain.length) frames.push({ element: null, repeat: keyword[1] === 'for' });
+      if (j < plain.length) {
+        const header = plain.slice(i + keyword[0].length, j);
+        frames.push(openBlock(keyword[1], header, frames, { casesApart, at: base + i }));
+      }
       i = j + 1;
       continue;
     }
@@ -522,12 +593,19 @@ function readBlocks(text, frames) {
 
 /**
  * Walks a template's opening tags in order, calling
- * `visit({ name, attrs, line, repeated, inTemplate })` for each. `repeated` is
- * true when the element is stamped once per item within this template: inside
- * an `@for` block, or on or under an element carrying a repeating structural
- * directive. `inTemplate` is true when an `<ng-template>` is open around it.
+ * `visit({ name, attrs, line, repeated, inTemplate, cases })` for each.
+ * `repeated` is true when the element is stamped once per item within this
+ * template: inside an `@for` block, or on or under an element carrying a
+ * repeating structural directive. `inTemplate` is true when an
+ * `<ng-template>` is open around it.
+ *
+ * With `casesApart`, an `@case` on the nearest `@for`'s own item holds that
+ * `@for` apart (readBlocks), so an element under it is not repeated by it,
+ * and `cases` lists each such `@case` around the element as
+ * `{ switchAt, caseAt }`. Without it, `cases` is empty and every `@for`
+ * repeats.
  */
-export function walkTemplate(source, visit) {
+export function walkTemplate(source, visit, { casesApart = false } = {}) {
   const masked = maskComments(source);
   // Open elements and blocks, innermost last. An element frame carries its
   // tag name; a block frame carries null.
@@ -536,7 +614,7 @@ export function walkTemplate(source, visit) {
   let last = 0;
   let match;
   while ((match = tag.exec(masked)) !== null) {
-    readBlocks(masked.slice(last, match.index), frames);
+    readBlocks(masked.slice(last, match.index), frames, { casesApart, base: last });
     last = tag.lastIndex;
     const [, closing, rawName, attrs] = match;
     const name = rawName.toLowerCase();
@@ -546,12 +624,15 @@ export function walkTemplate(source, visit) {
       continue;
     }
     const repeat = REPEAT_DIRECTIVE.test(attrs);
+    const cases = frames.filter((frame) => frame.lifts);
+    const lifted = new Set(cases.map((frame) => frame.lifts));
     visit({
       name,
       attrs,
       line: lineOf(masked, match.index),
-      repeated: repeat || frames.some((frame) => frame.repeat),
+      repeated: repeat || frames.some((frame) => frame.repeat && !lifted.has(frame)),
       inTemplate: frames.some((frame) => frame.element === 'ng-template'),
+      cases: cases.map((frame) => ({ switchAt: frame.switchAt, caseAt: frame.at })),
     });
     const selfClosing = /\/\s*$/.test(attrs) || VOID_ELEMENTS.has(name);
     if (!selfClosing) frames.push({ element: name, repeat });
@@ -620,40 +701,234 @@ const LABEL_ATTR = /(\[(?:attr\.)?aria-label\]|(?<![\w.[-])aria-label)\s*=\s*(?:
 /** A bound label that is one quoted key piped through translate, and nothing else. */
 const BARE_KEY_BOUND = /^\s*(['"])([\w.-]+)\1\s*\|\s*translate\s*$/;
 
-/** A literal label that is one interpolation of the same, and nothing else. */
-const BARE_KEY_INTERPOLATED = /^\s*\{\{\s*(['"])([\w.-]+)\1\s*\|\s*translate\s*\}\}\s*$/;
+/**
+ * A bound label that is a ternary between two quoted keys, piped through
+ * translate once after it with no parameters, and nothing else:
+ * `(pinned ? 'a.unpin' : 'a.pin') | translate`. The condition may read `?.`
+ * and `??`.
+ */
+const BARE_TERNARY_PIPED_ONCE =
+  /^\s*\(\s*(?:[^?{}]|\?\.|\?\?)+?\?\s*(['"])([\w.-]+)\1\s*:\s*(['"])([\w.-]+)\3\s*\)\s*\|\s*translate\s*$/;
 
 /**
- * The key a tag's `aria-label` consists of when it is one catalog key with no
- * parameters, with the label's offset in `attrs`; null otherwise.
+ * The same ternary with the pipe in each branch, and no parameters on either:
+ * `pinned ? ('a.unpin' | translate) : ('a.pin' | translate)`. The second
+ * branch may go without its parentheses, `pinned ? ('a.unpin' | translate) :
+ * 'a.pin' | translate`, since the conditional reads its last branch as a pipe;
+ * the first may not, where a `:` after the pipe would be its parameter, and
+ * Angular rejects that spelling. A label wrapped whole in parentheses,
+ * `(pinned ? ('a.unpin' | translate) : ('a.pin' | translate))`, or a branch
+ * in doubled parentheses is not read, as `('a.pin' | translate)` is not for
+ * one key.
+ */
+const BARE_TERNARY_PIPED_EACH =
+  /^\s*(?:[^?{}]|\?\.|\?\?)+?\?\s*\(\s*(['"])([\w.-]+)\1\s*\|\s*translate\s*\)\s*:\s*(?:\(\s*(['"])([\w.-]+)\3\s*\|\s*translate\s*\)|(['"])([\w.-]+)\5\s*\|\s*translate)\s*$/;
+
+/** A literal label's one interpolation, when the label is that and nothing else. */
+const ONE_INTERPOLATION = /^\s*\{\{([^{}]*)\}\}\s*$/;
+
+/**
+ * The key a bound expression consists of when it names no item: one quoted
+ * key piped with no parameters, or a ternary between two such keys, which
+ * gives every copy one of two names and is no better. A ternary's two keys
+ * are reported together, `whenTrue : whenFalse`. Null otherwise.
+ */
+function bareKeyOf(expression) {
+  const key = BARE_KEY_BOUND.exec(expression)?.[2];
+  if (key) return key;
+  const once = BARE_TERNARY_PIPED_ONCE.exec(expression);
+  if (once) return `${once[2]} : ${once[4]}`;
+  const each = BARE_TERNARY_PIPED_EACH.exec(expression);
+  return each ? `${each[2]} : ${each[4] ?? each[6]}` : null;
+}
+
+/**
+ * The key a tag's `aria-label` consists of when it names no item, with the
+ * label's offset in `attrs`; null otherwise. Bare is one quoted key piped
+ * with no parameters, or a ternary between two such keys, piped once after it
+ * or in each branch (bareKeyOf), either bound or as a literal that is one
+ * interpolation. A ternary with parameters on either branch, or on the pipe
+ * after it, is not bare.
  */
 function bareKeyLabel(attrs) {
   for (const label of attrs.matchAll(LABEL_ATTR)) {
-    const shape = label[1].startsWith('[') ? BARE_KEY_BOUND : BARE_KEY_INTERPOLATED;
-    const key = shape.exec(label[2] ?? label[3])?.[2];
+    const value = label[2] ?? label[3];
+    const expression = label[1].startsWith('[') ? value : ONE_INTERPOLATION.exec(value)?.[1];
+    const key = expression === undefined ? null : bareKeyOf(expression);
     if (key) return { key, index: label.index };
   }
   return null;
 }
 
 /**
- * Every control stamped once per item in this template whose `aria-label` is
- * one catalog key with no parameters. `line` is the label's own line, which is
- * where a finding is reported. A menu trigger the fourth rule reports is left
- * to it. Returns `{ line, tag, key }` for each.
+ * One template read for the sixth rule, an `@case` on the `@for`'s own item
+ * held apart: each control named by a bare key (`{ line, tag, key, repeated,
+ * cases }`, `line` the label's own), and, when `selectors` is given, each
+ * use of one of them (`{ name, repeated, cases }`).
  */
-export function scanItemlessLabels(source) {
-  const hits = [];
-  walkTemplate(source, ({ name, attrs, line, repeated }) => {
-    if (!repeated) return;
-    if (!CONTROL_TAGS.has(name) && !CONTROL_ROLE.test(attrs)) return;
-    if (MENU_TRIGGER.test(attrs) && itemlessName(attrs)) return;
-    const label = bareKeyLabel(attrs);
-    if (!label) return;
-    const before = attrs.slice(0, label.index);
-    hits.push({ line: line + before.split('\n').length - 1, tag: name, key: label.key });
-  });
-  return hits;
+function readHeldApart(source, selectors = null) {
+  const controls = [];
+  const stamps = [];
+  walkTemplate(
+    source,
+    ({ name, attrs, line, repeated, cases }) => {
+      if (selectors?.has(name)) stamps.push({ name, repeated, cases });
+      if (!CONTROL_TAGS.has(name) && !CONTROL_ROLE.test(attrs)) return;
+      if (MENU_TRIGGER.test(attrs) && itemlessName(attrs)) return;
+      const label = bareKeyLabel(attrs);
+      if (!label) return;
+      const before = attrs.slice(0, label.index);
+      controls.push({ line: line + before.split('\n').length - 1, tag: name, key: label.key, repeated, cases });
+    },
+    { casesApart: true }
+  );
+  return { controls, stamps };
+}
+
+/** Each element selector the templates' components carry, with the templates that carry it. */
+function selectorIndex(templates) {
+  const bySelector = new Map();
+  for (const { key, selector } of templates) {
+    if (!selector) continue;
+    if (!bySelector.has(selector)) bySelector.set(selector, []);
+    bySelector.get(selector).push(key);
+  }
+  return bySelector;
+}
+
+/**
+ * The one exception to the hold-apart. A held-apart `@case` reaches what it
+ * writes and what every component it stamps reaches, to any depth: their
+ * selectors, and the bare keys their controls are named by. A selector or key
+ * that two or more cases of one switch reach renders once per item reaching
+ * any of them, whichever template holds it, so it stays repeated. The tally is
+ * per switch and per selector or key. `templates` is a list of
+ * `{ key, selector, source }`. Returns `{ selectors, keys, slots }`: the
+ * selectors so reached; by template, the keys so reached that its own
+ * controls carry; and, by the template holding the switch, each
+ * `switchAt key` so reached, written in its cases or below them.
+ */
+export function heldApartAcross(templates) {
+  const bySelector = selectorIndex(templates);
+  const reads = new Map(templates.map(({ key, source }) => [key, readHeldApart(source, bySelector)]));
+  // What a template reaches: the selectors it and the components under it
+  // use, and each bare key their controls carry, with the templates holding
+  // it. Read to a fixed point, as repeatedTemplates reads repetition, so
+  // components that stamp each other, or one that stamps itself, reach the
+  // same whichever of them a switch's cases read first.
+  const reachOf = new Map();
+  for (const { key } of templates) {
+    const found = { selectors: new Set(), keys: new Map() };
+    for (const control of reads.get(key).controls) {
+      if (!found.keys.has(control.key)) found.keys.set(control.key, new Set());
+      found.keys.get(control.key).add(key);
+    }
+    reachOf.set(key, found);
+  }
+  const sizeOf = ({ selectors, keys }) =>
+    [...keys.values()].reduce((n, holders) => n + holders.size, selectors.size);
+  let grew = true;
+  while (grew) {
+    grew = false;
+    for (const [key, found] of reachOf) {
+      const was = sizeOf(found);
+      for (const { name } of reads.get(key).stamps) {
+        found.selectors.add(name);
+        for (const target of bySelector.get(name)) {
+          const below = reachOf.get(target);
+          for (const selector of below.selectors) found.selectors.add(selector);
+          for (const [label, holders] of below.keys) {
+            if (!found.keys.has(label)) found.keys.set(label, new Set());
+            for (const holder of holders) found.keys.get(label).add(holder);
+          }
+        }
+      }
+      if (sizeOf(found) > was) grew = true;
+    }
+  }
+  const selectors = new Set();
+  const keys = new Map();
+  const slots = new Map();
+  const add = (map, key, value) => {
+    if (!map.has(key)) map.set(key, new Set());
+    map.get(key).add(value);
+  };
+  for (const { key } of templates) {
+    const { controls, stamps } = reads.get(key);
+    // Per switch and per selector or key: the cases that reach it, and the
+    // templates below the cases whose controls carry the key.
+    const tally = new Map();
+    const reached = (switchAt, caseAt, kind, id, holders = []) => {
+      const slot = `${switchAt} ${kind} ${id}`;
+      if (!tally.has(slot)) tally.set(slot, { switchAt, kind, id, cases: new Set(), holders: new Set() });
+      tally.get(slot).cases.add(caseAt);
+      for (const holder of holders) tally.get(slot).holders.add(holder);
+    };
+    for (const control of controls) {
+      for (const { switchAt, caseAt } of control.cases) reached(switchAt, caseAt, 'key', control.key);
+    }
+    for (const stamp of stamps) {
+      for (const { switchAt, caseAt } of stamp.cases) {
+        reached(switchAt, caseAt, 'selector', stamp.name);
+        for (const target of bySelector.get(stamp.name)) {
+          const below = reachOf.get(target);
+          for (const selector of below.selectors) reached(switchAt, caseAt, 'selector', selector);
+          for (const [label, holders] of below.keys) reached(switchAt, caseAt, 'key', label, holders);
+        }
+      }
+    }
+    for (const { switchAt, kind, id, cases, holders } of tally.values()) {
+      if (cases.size < 2) continue;
+      if (kind === 'selector') {
+        selectors.add(id);
+        continue;
+      }
+      add(slots, key, `${switchAt} ${id}`);
+      for (const holder of holders) add(keys, holder, id);
+    }
+  }
+  return { selectors, keys, slots };
+}
+
+/**
+ * Every control stamped once per item whose `aria-label` is one catalog key
+ * with no parameters, or a ternary between two (see bareKeyLabel): inside a
+ * repeat in this template, an `@case` on the `@for`'s own item held apart
+ * (walkTemplate's `casesApart`) unless two or more cases of that switch reach
+ * the same key (heldApartAcross), or anywhere in it when `componentRepeated`
+ * says another template stamps the component it belongs to once per item.
+ * `across` is heldApartAcross's verdict for this template, read over every
+ * template by the run: `keys`, the keys of its controls that two cases of a
+ * switch elsewhere reach through what they stamp, and `slots`, each
+ * `switchAt key` its own switches reach in two cases. Without it, this
+ * template is read alone. `line` is the label's own line, which is where a
+ * finding is reported. A menu trigger the fourth rule reports is left to it.
+ * Returns `{ line, tag, key }` for each.
+ */
+export function scanItemlessLabels(source, componentRepeated = false, across = null) {
+  const { controls } = readHeldApart(source);
+  const apart = across ?? {
+    keys: new Set(),
+    slots: heldApartAcross([{ key: '', selector: null, source }]).slots.get('') ?? new Set(),
+  };
+  const reachedApart = (control) =>
+    apart.keys.has(control.key) || control.cases.some(({ switchAt }) => apart.slots.has(`${switchAt} ${control.key}`));
+  return controls
+    .filter((control) => control.repeated || componentRepeated || reachedApart(control))
+    .map(({ line, tag, key }) => ({ line, tag, key }));
+}
+
+/**
+ * The binding the sixth rule's fix hint gives as its model: the upload
+ * area's own, which names a photo by its place among the photos and its
+ * name. The self-test holds it to file-dropzone.component.html, so the hint
+ * never quotes a binding the tree no longer has.
+ */
+export const ITEMLESS_MODEL = "'import.movePhotoUpLabel' | translate: { position: photoNumber(file), name: file.name }";
+
+/** The fix the sixth rule prints under each hit, ITEMLESS_MODEL its example. */
+export function itemlessHint() {
+  return `give the key a slot for the item and fill it, as ${ITEMLESS_MODEL}`;
 }
 
 /**
@@ -663,170 +938,7 @@ export function scanItemlessLabels(source) {
  * is the goal: a row is a debt with a name, and it goes when its controls name
  * their item.
  */
-export const ITEMLESS_FROZEN = [
-  {
-    file: 'src/app/features/about/about.component.html',
-    key: 'about.feedback.deleteLabel',
-    count: 1,
-    why: 'one delete button per sent feedback entry on the About page',
-  },
-  {
-    file: 'src/app/features/ai/import/transaction-preview-table/transaction-preview-table.component.html',
-    key: 'import.notADuplicate',
-    count: 1,
-    why: 'one per review card row marked as a possible duplicate',
-  },
-  {
-    file: 'src/app/features/ai/import/transaction-preview-table/transaction-preview-table.component.html',
-    key: 'common.description',
-    count: 1,
-    why: 'each review card row\'s description field, while it is edited',
-  },
-  {
-    file: 'src/app/features/ai/import/transaction-preview-table/transaction-preview-table.component.html',
-    key: 'common.amount',
-    count: 1,
-    why: 'each review card row\'s amount field, while it is edited',
-  },
-  {
-    file: 'src/app/features/ai/import/transaction-preview-table/transaction-preview-table.component.html',
-    key: 'import.splitAmount',
-    count: 1,
-    why: 'each review card row\'s split amount field, while a split is edited',
-  },
-  {
-    file: 'src/app/features/ai/import/transaction-preview-table/transaction-preview-table.component.html',
-    key: 'import.placeName',
-    count: 1,
-    why: 'each review card row\'s place field, while it is edited',
-  },
-  {
-    file: 'src/app/features/ai/import/transaction-preview-table/transaction-preview-table.component.html',
-    key: 'import.removeLocation',
-    count: 1,
-    why: 'one per review card row that carries a place',
-  },
-  {
-    file: 'src/app/features/ai/import/transaction-preview-table/transaction-preview-table.component.html',
-    key: 'import.dismissCurrencySuggestion',
-    count: 1,
-    why: 'one per review card row that carries a currency suggestion',
-  },
-  {
-    file: 'src/app/features/ai/import/transaction-preview-table/transaction-preview-table.component.html',
-    key: 'import.newTag',
-    count: 1,
-    why: 'each review card row\'s new tag field, while a tag is added',
-  },
-  {
-    file: 'src/app/features/ai/import/transaction-preview-table/transaction-preview-table.component.html',
-    key: 'import.notes',
-    count: 1,
-    why: 'each review card row\'s notes field, where its notes are shown',
-  },
-  {
-    file: 'src/app/features/ai/search-history/search-answer-history.component.html',
-    key: 'common.delete',
-    count: 1,
-    why: 'one delete button per saved answer in the search history',
-  },
-  {
-    file: 'src/app/features/budgets/goals/goal-form/goal-form.component.html',
-    key: 'common.delete',
-    count: 1,
-    why: 'one delete button per item row on the goal form',
-  },
-  {
-    file: 'src/app/features/reports/insights/recurring-list/recurring-list.component.html',
-    key: 'insights.convertToRule',
-    count: 1,
-    why: 'one per recurring group in the insights list',
-  },
-  {
-    file: 'src/app/features/reports/insights/recurring-list/recurring-list.component.html',
-    key: 'insights.showTransactions',
-    count: 1,
-    why: 'one per recurring group in the insights list',
-  },
-  {
-    file: 'src/app/features/transactions/camera-capture/camera-capture.component.html',
-    key: 'common.moveUp',
-    count: 1,
-    why: 'one per captured photo in the camera capture',
-  },
-  {
-    file: 'src/app/features/transactions/camera-capture/camera-capture.component.html',
-    key: 'common.moveDown',
-    count: 1,
-    why: 'one per captured photo in the camera capture',
-  },
-  {
-    file: 'src/app/features/transactions/camera-capture/camera-capture.component.html',
-    key: 'common.remove',
-    count: 1,
-    why: 'one per captured photo in the camera capture',
-  },
-  {
-    file: 'src/app/features/transactions/receipt-images/receipt-image-manager.component.html',
-    key: 'receiptImages.removeAllImages',
-    count: 1,
-    why: 'one per transaction in the receipt image manager',
-  },
-  {
-    file: 'src/app/features/transactions/receipt-images/receipt-image-manager.component.html',
-    key: 'receiptImages.convertToNote',
-    count: 1,
-    why: 'one per image of a transaction in the receipt image manager',
-  },
-  {
-    file: 'src/app/features/transactions/receipt-images/receipt-image-manager.component.html',
-    key: 'receiptImages.removeImage',
-    count: 1,
-    why: 'one remove button per image of a transaction in the receipt image manager',
-  },
-  {
-    file: 'src/app/features/transactions/transaction-filters/transaction-filters.component.html',
-    key: 'transactions.removeSearch',
-    count: 2,
-    why: 'one remove button per saved search, and one per recent search, in the search suggestions',
-  },
-  {
-    file: 'src/app/features/transactions/transaction-form/transaction-form.component.html',
-    key: 'common.remove',
-    count: 1,
-    why: 'one per pending receipt photo on the transaction form',
-  },
-  {
-    file: 'src/app/features/transactions/transaction-form/transaction-form.component.html',
-    key: 'receiptImages.convertToNote',
-    count: 1,
-    why: 'one per stored receipt image on the transaction form',
-  },
-  {
-    file: 'src/app/features/transactions/transaction-form/transaction-form.component.html',
-    key: 'receiptImages.removeImage',
-    count: 1,
-    why: 'one remove button per stored receipt image on the transaction form',
-  },
-  {
-    file: 'src/app/features/transactions/transaction-list/transaction-list.component.html',
-    key: 'transactions.viewNote',
-    count: 1,
-    why: 'one per desktop table row that carries a note',
-  },
-  {
-    file: 'src/app/features/transactions/transaction-list/transaction-list.component.html',
-    key: 'transactions.viewReceipt',
-    count: 1,
-    why: 'one per desktop table row that carries a receipt',
-  },
-  {
-    file: 'src/app/shared/components/ai-search-dialog/ai-search-dialog.component.html',
-    key: 'common.delete',
-    count: 1,
-    why: 'one delete button per answer in the search dialog\'s history',
-  },
-];
+export const ITEMLESS_FROZEN = [];
 
 /**
  * Sets one rule's hits (`{ site, tag, key }`, `site` a repo-relative
@@ -931,10 +1043,13 @@ const SLIDER_THUMBS = new Set(['matSliderThumb', 'matSliderStartThumb', 'matSlid
 const isSliderThumb = (attrs) => attributesOf(attrs).some(({ name }) => SLIDER_THUMBS.has(name));
 
 /**
- * Any spelling of `aria-label` or `aria-labelledby`, bound to the attribute
- * or not: on a slider's host and on a plain input each lands where written.
+ * The names a slider's thumb carries itself. The thumb is a plain input, so
+ * the attribute bindings land on it too; each needs a value.
  */
-const anyAriaName = (attrs) => attributesOf(attrs).some(({ name }) => name.includes('aria-label'));
+const THUMB_NAMES = new Set([...TOGGLE_NAMES, '[attr.aria-label]', '[attr.aria-labelledby]']);
+
+const thumbNamed = (attrs) =>
+  attributesOf(attrs).some(({ name, value }) => value !== undefined && THUMB_NAMES.has(name));
 
 /**
  * True when a run of template text between two tags renders text: an
@@ -951,18 +1066,17 @@ function projectsText(run) {
 
 /**
  * Every toggle that hands the control inside it no name, and every slider
- * whose name sits on its host while a thumb carries none. A toggle is named
- * by text projected into it, outside any `mat-icon`, or by one of TOGGLE_NAMES.
- * Returns `{ line, tag }` for each, `line` being the opening tag's.
+ * with a thumb that carries none, whatever the slider's host carries. A
+ * toggle is named by text projected into it, outside any `mat-icon`, or by
+ * one of TOGGLE_NAMES; a thumb by one of THUMB_NAMES. Returns `{ line, tag }`
+ * for each, `line` being the opening tag's.
  */
 export function scanUnnamedToggles(source) {
   const masked = maskComments(source);
   const hits = [];
   const judge = (entry) => {
     if (entry.tag === 'mat-slider') {
-      if (anyAriaName(entry.attrs) && entry.thumbs.some((thumb) => !anyAriaName(thumb))) {
-        hits.push({ line: entry.line, tag: entry.tag });
-      }
+      if (entry.thumbs.some((thumb) => !thumbNamed(thumb))) hits.push({ line: entry.line, tag: entry.tag });
       return;
     }
     if (entry.text || toggleNamed(entry.attrs)) return;
@@ -1008,20 +1122,7 @@ export function scanUnnamedToggles(source) {
  * the key being the tag; `why` says which control it is and where its name
  * went instead. Empty is the goal.
  */
-export const UNNAMED_FROZEN = [
-  {
-    file: 'src/app/features/budgets/budget-form/budget-form.component.html',
-    key: 'mat-slider',
-    count: 1,
-    why: 'the alert threshold slider: its aria-labelledby sits on the mat-slider host, and its thumb is named by nothing',
-  },
-  {
-    file: 'src/app/features/settings/ai-settings-page/ai-settings-page.component.html',
-    key: 'mat-slide-toggle',
-    count: 1,
-    why: 'the Auto sync switch on the AI page: its label is a sibling span the switch never references',
-  },
-];
+export const UNNAMED_FROZEN = [];
 
 /**
  * Which templates belong to a component rendered once per item somewhere.
@@ -1030,22 +1131,32 @@ export const UNNAMED_FROZEN = [
  * another stamps its selector inside a repeat, or uses it at all inside a
  * template that is itself repeated; the second clause runs to a fixed point,
  * so a card inside a repeated row is repeated too. Returns the set of keys.
+ *
+ * With `casesApart`, a selector under an `@case` on the `@for`'s own item is
+ * stamped once (walkTemplate), as the dashboard stamps each of its cards,
+ * unless two or more of that switch's cases reach it, written there or
+ * stamped by what they stamp (heldApartAcross, or `apart` when the caller
+ * has it): then it renders once per item that reaches any of them, as the
+ * dashboard's card menu and empty state render once per card, and stays
+ * repeated.
  */
-export function repeatedTemplates(templates) {
-  const bySelector = new Map();
-  for (const { key, selector } of templates) {
-    if (!selector) continue;
-    if (!bySelector.has(selector)) bySelector.set(selector, []);
-    bySelector.get(selector).push(key);
-  }
+export function repeatedTemplates(templates, { casesApart = false, apart = null } = {}) {
+  const bySelector = selectorIndex(templates);
   const uses = templates.map(({ key, source }) => {
     const found = [];
-    walkTemplate(source, ({ name, repeated }) => {
-      if (bySelector.has(name)) found.push({ name, repeated });
-    });
+    walkTemplate(
+      source,
+      ({ name, repeated }) => {
+        if (bySelector.has(name)) found.push({ name, repeated });
+      },
+      { casesApart }
+    );
     return { key, found };
   });
-  const repeated = new Set();
+  // A component two cases of one held-apart switch reach, written there or
+  // stamped by what they stamp, renders once per item reaching either.
+  const reachedApart = casesApart ? (apart ?? heldApartAcross(templates)).selectors : new Set();
+  const repeated = new Set(templates.filter(({ selector }) => reachedApart.has(selector)).map(({ key }) => key));
   let grew = true;
   while (grew) {
     grew = false;
@@ -1062,6 +1173,30 @@ export function repeatedTemplates(templates) {
     }
   }
   return repeated;
+}
+
+/**
+ * The sixth rule over every template at once, as the run reads it: which
+ * components another template stamps once per item, an `@case` on the
+ * `@for`'s own item held apart (repeatedTemplates with `casesApart`), and
+ * each template's controls scanned with its component's verdict and the keys
+ * two cases of a held-apart switch reach in it (heldApartAcross,
+ * scanItemlessLabels). `templates` is a list of
+ * `{ key, selector, source, offset }`. Returns `{ hits, keys }`: each hit as
+ * `{ site, tag, key }`, `site` the template's key and the label's line in its
+ * file, and `keys` the set of repeated templates.
+ */
+export function scanItemlessAcross(templates) {
+  const apart = heldApartAcross(templates);
+  const keys = repeatedTemplates(templates, { casesApart: true, apart });
+  const hits = [];
+  for (const template of templates) {
+    const across = { keys: apart.keys.get(template.key) ?? new Set(), slots: apart.slots.get(template.key) ?? new Set() };
+    for (const hit of scanItemlessLabels(template.source, keys.has(template.key), across)) {
+      hits.push({ site: `${template.key}:${hit.line + template.offset}`, tag: hit.tag, key: hit.key });
+    }
+  }
+  return { hits, keys };
 }
 
 /**
@@ -1208,14 +1343,10 @@ function run() {
     }
   }
 
-  // The per-item rule reads each template's own repeats, and sets what it
-  // finds against the rows frozen when it landed.
-  const itemless = [];
-  for (const template of sources) {
-    for (const hit of scanItemlessLabels(template.source)) {
-      itemless.push({ site: `${template.key}:${hit.line + template.offset}`, tag: hit.tag, key: hit.key });
-    }
-  }
+  // The per-item rule reads each template's own repeats and the components
+  // other templates stamp per item, holding apart an @case on the @for's own
+  // item, and sets what it finds against the rows frozen when it landed.
+  const { hits: itemless, keys: itemlessKeys } = scanItemlessAcross(sources);
   const { fresh, drift } = againstFrozen(itemless, ITEMLESS_FROZEN);
   for (const hit of fresh) findings.push({ rule: 'itemless', site: hit.site, tag: hit.tag, key: hit.key });
   for (const row of drift) findings.push({ rule: 'itemless-drift', site: row.file, ...row });
@@ -1271,7 +1402,8 @@ function run() {
   console.log(
     `Checked the controls stamped once per item across ${sources.length} template(s): ` +
       `${itemless.length} take their name from a key with no parameters, ` +
-      `${ITEMLESS_FROZEN.reduce((sum, row) => sum + row.count, 0)} frozen by name.`
+      `${ITEMLESS_FROZEN.reduce((sum, row) => sum + row.count, 0)} frozen by name; ` +
+      `${itemlessKeys.size} template(s) belong to a component another template stamps once per item.`
   );
   console.log(
     `Checked ${idReferences} id(s) named by a literal aria-labelledby, aria-describedby, ` +
@@ -1387,16 +1519,17 @@ function run() {
       console.error(`\n${itemlessFindings.length} repeated control(s) take a name that names no item:\n`);
       for (const finding of itemlessFindings) {
         console.error(`  ${finding.site}  <${finding.tag}> '${finding.key}' | translate`);
-        console.error(`    → give the key a slot for the item and fill it, as 'import.removeFileLabel' | translate: { position: i + 1, name: file.name }\n`);
+        console.error(`    → ${itemlessHint()}\n`);
       }
       console.error(
         `A control stamped once per item takes its whole name from its aria-label,\n` +
           `and a key with no parameters gives every copy the same one: a screen\n` +
           `reader moving down the list hears the same button again and nothing that\n` +
           `says which item it acts on. Name the item through the key's parameters,\n` +
-          `as the upload area's remove and move buttons do, with whatever tells two\n` +
-          `items apart (two photos from an iPhone are both image.jpg, so those name\n` +
-          `the file's place too). A site that cannot be fixed in the same change is\n` +
+          `as the upload area's photo arrows do, with whatever tells two items apart\n` +
+          `(two photos from an iPhone are both image.jpg, so those name the photo's\n` +
+          `place among the photos too). A control repeated by its parent counts: the\n` +
+          `goal card is one per goal. A site that cannot be fixed in the same change is\n` +
           `frozen in ITEMLESS_FROZEN with its reason (ADR 0145).\n` +
           `Reference: ${DOC}.\n`
       );
@@ -1444,7 +1577,7 @@ function run() {
       console.error(`\n${unnamedFindings.length} toggle(s) or slider(s) leave the control inside them unnamed:\n`);
       for (const finding of unnamedFindings) {
         if (finding.tag === 'mat-slider') {
-          console.error(`  ${finding.site}  <mat-slider> named on its host, a thumb named by nothing`);
+          console.error(`  ${finding.site}  <mat-slider> with a thumb named by nothing`);
           console.error(`    → put the aria-label or aria-labelledby on each <input matSliderThumb>\n`);
         } else {
           console.error(`  ${finding.site}  <${finding.tag}> with no text and no aria-label or aria-labelledby`);
@@ -1496,7 +1629,7 @@ function run() {
       `button names its item, every tooltip icon takes focus, every control ` +
       `stamped once per item names its item or is frozen by name, every id ` +
       `a literal reference names is declared in its own template, and every ` +
-      `checkbox, slide toggle, radio button and host-named slider names the ` +
+      `checkbox, slide toggle, radio button and slider names the ` +
       `control inside it or is frozen by name.`
   );
 }
@@ -1817,8 +1950,8 @@ function selfTest() {
   );
 
   // --- the menu rule: which components are repeated ---
-  const repeatedKeys = (templates) =>
-    [...repeatedTemplates(templates.map(([key, selector, source]) => ({ key, selector, source })))].sort();
+  const repeatedKeys = (templates, options) =>
+    [...repeatedTemplates(templates.map(([key, selector, source]) => ({ key, selector, source })), options)].sort();
 
   check(
     'a card stamped in its parent\'s @for is repeated, the budget card\'s shape',
@@ -1959,7 +2092,8 @@ function selfTest() {
   check('a commented-out flag is not a flag', tooltipLines('<!-- ' + FLAG + ' -->'), []);
 
   // --- the per-item rule: must hit ---
-  const itemlessLines = (source) => scanItemlessLabels(source).map((hit) => hit.line);
+  const itemlessLines = (source, componentRepeated = false) =>
+    scanItemlessLabels(source, componentRepeated).map((hit) => hit.line);
   const REMOVE = '<button mat-icon-button [attr.aria-label]="\'common.remove\' | translate">x</button>';
 
   check(
@@ -1977,7 +2111,7 @@ function selfTest() {
   );
   check(
     'the interpolated literal form',
-    itemlessLines(`@for (s of searches; track s.id) {\n  <button aria-label="{{ 'transactions.removeSearch' | translate }}">x</button>\n}`),
+    itemlessLines(`@for (s of searches; track s.id) {\n  <button aria-label="{{ 'common.remove' | translate }}">x</button>\n}`),
     [2]
   );
   check(
@@ -2000,18 +2134,77 @@ function selfTest() {
     itemlessLines(`@for (b of list; track b.id) {\n  <button [matMenuTriggerFor]="m" [attr.aria-label]="'common.options' | translate">x</button>\n}`),
     [2]
   );
+  check(
+    'a ternary between two bare keys piped once, the search history\'s pin button',
+    scanItemlessLabels(
+      '@for (record of history.answers(); track record.id) {\n  <button\n    mat-icon-button\n' +
+        '    [attr.aria-pressed]="!!record.pinned"\n    [attr.aria-label]="\n' +
+        '      (record.pinned ? \'aiSearch.historyUnpin\' : \'aiSearch.historyPin\') | translate\n    "\n' +
+        '    (click)="togglePin(record)"\n  >x</button>\n}'
+    ),
+    [{ line: 5, tag: 'button', key: 'aiSearch.historyUnpin : aiSearch.historyPin' }]
+  );
+  check(
+    'a ternary between two bare keys, each branch piped',
+    itemlessLines(`@for (r of rows; track r.id) {\n  <button [attr.aria-label]="r.on ? ('a.turnOff' | translate) : ('a.turnOn' | translate)">x</button>\n}`),
+    [2]
+  );
+  check(
+    'a ternary between two bare keys in the interpolated literal form',
+    itemlessLines(`@for (r of rows; track r.id) {\n  <button aria-label="{{ (r.on ? 'a.turnOff' : 'a.turnOn') | translate }}">x</button>\n}`),
+    [2]
+  );
+  check(
+    'a ternary whose condition reads ?. and ?? is still a ternary',
+    itemlessLines(`@for (r of rows; track r.id) {\n  <button [attr.aria-label]="((r?.on ?? false) ? 'a.turnOff' : 'a.turnOn') | translate">x</button>\n}`),
+    [2]
+  );
+  check(
+    'a ternary between two bare keys, the first branch piped in parentheses and the last bare',
+    [
+      scanItemlessLabels(`@for (r of rows; track r.id) {\n  <button [attr.aria-label]="r.on ? ('a.turnOff' | translate) : 'a.turnOn' | translate">x</button>\n}`),
+      itemlessLines(`@for (r of rows; track r.id) {\n  <button aria-label="{{ r.on ? ('a.turnOff' | translate) : 'a.turnOn' | translate }}">x</button>\n}`),
+    ],
+    [[{ line: 2, tag: 'button', key: 'a.turnOff : a.turnOn' }], [2]]
+  );
 
   // --- the per-item rule: must not hit (the load-bearing half) ---
   check(
-    'a parameterised key names its item, the fixed upload area',
-    itemlessLines(
-      `@for (file of files(); track file; let i = $index) {\n  <button [attr.aria-label]="'import.removeFileLabel' | translate: { position: i + 1, name: file.name }">x</button>\n}`
-    ),
+    'a parameterised key names its item, the upload area\'s photo arrows',
+    itemlessLines(`@for (file of files(); track file) {\n  <button [attr.aria-label]="${ITEMLESS_MODEL}">x</button>\n}`),
     []
   );
   check(
     'a key computed from the item names it through the key',
     itemlessLines(`@for (icon of icons; track icon) {\n  <button [attr.aria-label]="iconNameKeys[icon] | translate">x</button>\n}`),
+    []
+  );
+  check(
+    'a ternary with parameters on either branch has a slot for the item',
+    [
+      itemlessLines(`@for (r of rows; track r.id) {\n  <button [attr.aria-label]="r.on ? ('a.turnOff' | translate: { name: r.name }) : ('a.turnOn' | translate)">x</button>\n}`),
+      itemlessLines(`@for (r of rows; track r.id) {\n  <button [attr.aria-label]="r.on ? ('a.turnOff' | translate) : ('a.turnOn' | translate: { name: r.name })">x</button>\n}`),
+    ],
+    [[], []]
+  );
+  check(
+    'a ternary whose bare last branch takes parameters has a slot for the item',
+    itemlessLines(`@for (r of rows; track r.id) {\n  <button [attr.aria-label]="r.on ? ('a.turnOff' | translate) : 'a.turnOn' | translate: { name: r.name }">x</button>\n}`),
+    []
+  );
+  check(
+    'a ternary piped once with parameters has a slot for the item',
+    itemlessLines(`@for (r of rows; track r.id) {\n  <button [attr.aria-label]="(r.on ? 'a.turnOff' : 'a.turnOn') | translate: { name: r.name }">x</button>\n}`),
+    []
+  );
+  check(
+    'the pin button fixed, one key whose parameters name the answer',
+    itemlessLines(
+      '@for (record of history.answers(); track record.id) {\n  <button\n    mat-icon-button\n' +
+        '    [attr.aria-pressed]="!!record.pinned"\n' +
+        '    [attr.aria-label]="\'aiSearch.historyPinLabel\' | translate: { query: record.query, date: recordDateLabel(record) }"\n' +
+        '  >x</button>\n}'
+    ),
     []
   );
   check('a bare key outside any repeat, a page\'s own button', itemlessLines(`<div class="toolbar">\n  ${REMOVE}\n</div>`), []);
@@ -2055,6 +2248,15 @@ function selfTest() {
     itemlessLines(`<!-- @for (f of files; track f) { ${REMOVE} } -->`),
     []
   );
+
+  // --- the per-item rule: the fix hint ---
+  const DROPZONE = join(SOURCE_DIR, 'features/ai/import/file-dropzone/file-dropzone.component.html');
+  check(
+    'the fix hint\'s model is a binding the upload area carries; if it left the upload area, update ITEMLESS_MODEL',
+    existsSync(DROPZONE) && readFileSync(DROPZONE, 'utf8').includes(`[attr.aria-label]="${ITEMLESS_MODEL}"`),
+    true
+  );
+  check('the fix hint quotes its model', itemlessHint().includes(ITEMLESS_MODEL), true);
 
   // --- the per-item rule: the frozen list ---
   const row = { file: 'src/app/x.component.html', key: 'common.remove', count: 1, why: 'a fixture row' };
@@ -2247,7 +2449,7 @@ function selfTest() {
     [{ line: 2, tag: 'mat-checkbox' }]
   );
   check(
-    'a bare slide toggle beside a span that names nothing, the AI page\'s Auto sync switch',
+    'a bare slide toggle beside a span it never references',
     unnamedTags(
       '<span>{{ \'aiPage.autoSync\' | translate }}</span>\n<mat-slide-toggle\n  [checked]="autoSync()"\n' +
         '  color="primary">\n</mat-slide-toggle>'
@@ -2296,7 +2498,7 @@ function selfTest() {
     ['2 mat-checkbox']
   );
   check(
-    'a slider named on its host and not on its thumb, the budget form\'s threshold',
+    'a slider named on its host alone, by a literal aria-labelledby, leaves its thumb unnamed',
     unnamedTags(
       '<mat-slider min="50" max="100" step="5" aria-labelledby="threshold-label" discrete>\n' +
         '  <input matSliderThumb formControlName="alertThreshold">\n</mat-slider>'
@@ -2309,6 +2511,17 @@ function selfTest() {
       '<mat-slider [attr.aria-label]="range">\n  <input matSliderStartThumb aria-label="From">\n' +
         '  <input matSliderEndThumb>\n</mat-slider>'
     ),
+    ['1 mat-slider']
+  );
+  check(
+    'a slider named on its host alone, by an interpolated aria-label, leaves its thumb unnamed',
+    unnamedTags('<mat-slider aria-label="{{ \'budget.alertWhenReaches\' | translate }}">\n  <input matSliderThumb>\n</mat-slider>'),
+    ['1 mat-slider']
+  );
+  check('a slider named nowhere', unnamedTags('<mat-slider>\n  <input matSliderThumb>\n</mat-slider>'), ['1 mat-slider']);
+  check(
+    'a thumb\'s aria-labelledby with no value names nothing',
+    unnamedTags('<mat-slider>\n  <input matSliderThumb aria-labelledby>\n</mat-slider>'),
     ['1 mat-slider']
   );
   const inlineToggle =
@@ -2380,7 +2593,21 @@ function selfTest() {
     ),
     []
   );
-  check('a slider named nowhere is not this shape', unnamedTags('<mat-slider>\n  <input matSliderThumb>\n</mat-slider>'), []);
+  check(
+    'a thumb named by a literal aria-labelledby, its host named by nothing',
+    unnamedTags(
+      '<span id="threshold-label">x</span>\n<mat-slider discrete>\n' +
+        '  <input matSliderThumb formControlName="alertThreshold" aria-labelledby="threshold-label">\n</mat-slider>'
+    ),
+    []
+  );
+  check(
+    'a thumb named in each spelling that lands on it',
+    ['aria-label="x"', 'aria-labelledby="t"', '[aria-label]="x"', '[aria-labelledby]="t"', '[attr.aria-label]="x"', '[attr.aria-labelledby]="t"'].map(
+      (name) => unnamedTags(`<mat-slider>\n  <input matSliderThumb ${name}>\n</mat-slider>`)
+    ),
+    [[], [], [], [], [], []]
+  );
   check('a commented-out toggle is not a toggle', unnamedTags('<!-- <mat-checkbox></mat-checkbox> -->'), []);
 
   // --- the toggle rule: the frozen list ---
@@ -2429,6 +2656,238 @@ function selfTest() {
     'no file and tag is frozen twice',
     UNNAMED_FROZEN.map((r) => `${r.file} ${r.key}`).filter((pair, i, pairs) => pairs.indexOf(pair) !== i),
     []
+  );
+
+  // --- the per-item rule across templates: a component another stamps per item ---
+  const EDIT = '<button mat-icon-button [attr.aria-label]="\'common.edit\' | translate">x</button>';
+  const REFRESH = '<button mat-icon-button [attr.aria-label]="\'ai.refresh\' | translate">x</button>';
+  // The dashboard's shape: one @for over the arranged cards, an @switch on
+  // the card itself, and each @case stamping its own card component.
+  const arranged = (insights, chart) =>
+    `@for (card of arrangedCards(); track card) {\n  @switch (card) {\n` +
+    `    @case ('insights') {\n      <app-summary>${insights}</app-summary>\n    }\n` +
+    `    @case ('chart') {\n      <app-chart>${chart}</app-chart>\n    }\n  }\n}`;
+  const CARDS = [
+    ['summary', 'app-summary', `<mat-card>\n  ${REFRESH}\n  <ng-content />\n</mat-card>`],
+    ['chart', 'app-chart', '<mat-card><ng-content /></mat-card>'],
+  ];
+  // The goal card's shape: its Edit sits in no repeat of its own template.
+  const GOAL_CARD = `<mat-card>\n  <div class="goal-actions">\n    ${EDIT}\n  </div>\n</mat-card>`;
+
+  check(
+    'a bare key in no repeat of its own template is reported only when its component is said to be repeated',
+    [itemlessLines(GOAL_CARD), itemlessLines(GOAL_CARD, true)],
+    [[], [3]]
+  );
+
+  // The run's own path: the verdict across templates and each template's scan
+  // with it, both through scanItemlessAcross.
+  const itemlessSites = (templates) =>
+    scanItemlessAcross(templates.map(([key, selector, source]) => ({ key, selector, source, offset: 0 }))).hits.map(
+      (hit) => hit.site
+    );
+
+  check(
+    'a bare key in a card its parent stamps in a plain @for is reported at the card\'s line, through the run\'s path',
+    itemlessSites([
+      ['goals', 'app-goals', '@for (goal of goals(); track goal.id) {\n  <app-goal-card [goal]="goal" />\n}'],
+      ['card', 'app-goal-card', GOAL_CARD],
+    ]),
+    ['card:3']
+  );
+  check(
+    'the same card stamped under an @case on the @for\'s own item is held apart, through the run\'s path',
+    itemlessSites([
+      ['dashboard', 'app-dashboard', '@for (card of cards(); track card) {\n  @switch (card) {\n    @case (\'goal\') {\n      <app-goal-card />\n    }\n  }\n}'],
+      ['card', 'app-goal-card', GOAL_CARD],
+    ]),
+    []
+  );
+  {
+    const keys = repeatedKeys([['dashboard', 'app-dashboard', arranged('', '')], ...CARDS], { casesApart: true });
+    check(
+      'the dashboard\'s @switch on the @for\'s own item renders each card once',
+      [keys, itemlessLines(CARDS[0][2], keys.includes('summary'))],
+      [[], []]
+    );
+  }
+  check(
+    'an @case on the item, read in its own template, is not repeated',
+    itemlessLines(`@for (card of cards(); track card) {\n  @switch (card) {\n    @case ('insights') {\n      ${REFRESH}\n    }\n  }\n}`),
+    []
+  );
+  check(
+    'rule 4\'s default still counts the dashboard\'s cards as repeated',
+    repeatedKeys([['dashboard', 'app-dashboard', arranged('', '')], ...CARDS]),
+    ['chart', 'summary']
+  );
+  check(
+    'an @switch (c.kind) on something the item holds still repeats',
+    itemlessLines(`@for (c of cards(); track c.id) {\n  @switch (c.kind) {\n    @case ('insights') {\n      ${REFRESH}\n    }\n  }\n}`),
+    [4]
+  );
+  check(
+    'an @case on the item under an outer @for over rows still repeats',
+    itemlessLines(
+      `@for (row of rows(); track row.id) {\n  @for (card of row.cards; track card) {\n    @switch (card) {\n` +
+        `      @case ('insights') {\n        ${REFRESH}\n      }\n    }\n  }\n}`
+    ),
+    [5]
+  );
+  check(
+    'an @default under an @switch on the item still repeats, since every other item lands in it',
+    itemlessLines(`@for (card of cards(); track card) {\n  @switch (card) {\n    @default {\n      ${REFRESH}\n    }\n  }\n}`),
+    [4]
+  );
+  check(
+    'a selector stamped in two cases of one lifted switch still repeats, the card menu\'s shape',
+    repeatedKeys(
+      [
+        ['dashboard', 'app-dashboard', arranged('<app-card-menu [card]="card" />', '<app-card-menu [card]="card" />')],
+        ['menu', 'app-card-menu', `<button [matMenuTriggerFor]="m" [attr.aria-label]="'dashboard.cardActions' | translate: { card: card() }">x</button>`],
+      ],
+      { casesApart: true }
+    ),
+    ['menu']
+  );
+  const DELETE = '<button mat-icon-button [attr.aria-label]="\'common.delete\' | translate">x</button>';
+  const twoCases = (first, second) =>
+    `@for (card of cards(); track card) {\n  @switch (card) {\n` +
+    `    @case ('a') {\n      ${first}\n    }\n    @case ('b') {\n      ${second}\n    }\n  }\n}`;
+  check(
+    'a bare key written in two cases of one lifted switch still repeats, as the card menu does',
+    itemlessLines(twoCases(DELETE, DELETE)),
+    [4, 7]
+  );
+  check(
+    'a bare key written in only one case of a lifted switch is lifted, beside another key in the other case',
+    itemlessLines(twoCases(DELETE, EDIT)),
+    []
+  );
+
+  // --- the per-item rule across templates: what a held-apart case reaches through what it stamps ---
+  const RETRY = '<button mat-icon-button [attr.aria-label]="\'common.retry\' | translate">x</button>';
+  check(
+    'a component every case reaches only through the card it stamps still repeats',
+    repeatedKeys(
+      [
+        ['dashboard', 'app-dashboard', twoCases('<app-a />', '<app-b />')],
+        ['a', 'app-a', '<mat-card><app-shared /></mat-card>'],
+        ['b', 'app-b', '<mat-card><div><app-shared /></div></mat-card>'],
+        ['shared', 'app-shared', RETRY],
+      ],
+      { casesApart: true }
+    ),
+    ['shared']
+  );
+  check(
+    'a component one case writes and another reaches through its card still repeats',
+    repeatedKeys(
+      [
+        ['dashboard', 'app-dashboard', twoCases('<app-shared />', '<app-b />')],
+        ['b', 'app-b', '<mat-card><app-shared /></mat-card>'],
+        ['shared', 'app-shared', RETRY],
+      ],
+      { casesApart: true }
+    ),
+    ['shared']
+  );
+  check(
+    'the empty state two of the dashboard\'s cards stamp is repeated, two levels down too',
+    repeatedKeys(
+      [
+        ['dashboard', 'app-dashboard', arranged('', '')],
+        ['summary', 'app-summary', '<mat-card>\n  @if (empty) {\n    <app-empty-state />\n  }\n</mat-card>'],
+        ['chart', 'app-chart', '<mat-card><app-chart-body /></mat-card>'],
+        ['body', 'app-chart-body', '<app-empty-state />'],
+        ['empty', 'app-empty-state', '<button mat-button>{{ actionLabel }}</button>'],
+      ],
+      { casesApart: true }
+    ),
+    ['empty']
+  );
+  check(
+    'a component that stamps itself is read to an end, and still repeats when two cases reach it',
+    repeatedKeys(
+      [
+        ['dashboard', 'app-dashboard', twoCases('<app-tree />', '<app-b />')],
+        ['b', 'app-b', '<mat-card><app-tree /></mat-card>'],
+        ['tree', 'app-tree', '@if (kids) {<app-tree />}'],
+      ],
+      { casesApart: true }
+    ),
+    ['tree']
+  );
+  // A stamps B and B stamps A: each case reaches both, and through A the
+  // Retry that X holds, whichever case the switch reads first.
+  const stampEachOther = [
+    ['a', 'app-a', '<div><app-b /><app-x /></div>'],
+    ['b', 'app-b', '@if (open) {<app-a />}'],
+    ['x', 'app-x', RETRY],
+  ];
+  check(
+    'components that stamp each other reach the same whichever case reads them first',
+    [
+      itemlessSites([
+        ['dashboard', 'app-dashboard', twoCases(`${RETRY}<app-a />`, '<app-b />')],
+        ...stampEachOther,
+      ]),
+      itemlessSites([
+        ['dashboard', 'app-dashboard', twoCases('<app-b />', `${RETRY}<app-a />`)],
+        ...stampEachOther,
+      ]),
+    ],
+    [
+      ['dashboard:4', 'x:1'],
+      ['dashboard:7', 'x:1'],
+    ]
+  );
+  check(
+    'a bare key every case reaches only through the card it stamps is reported at each card\'s line, through the run\'s path',
+    itemlessSites([
+      ['dashboard', 'app-dashboard', twoCases('<app-a />', '<app-b />')],
+      ['a', 'app-a', `<mat-card>\n  ${RETRY}\n</mat-card>`],
+      ['b', 'app-b', `<mat-card>\n  ${RETRY}\n</mat-card>`],
+    ]),
+    ['a:2', 'b:2']
+  );
+  check(
+    'a bare key one case writes and another reaches through its card is reported at both, and the page\'s own copy is not',
+    itemlessSites([
+      ['dashboard', 'app-dashboard', `${RETRY}\n` + twoCases(RETRY, '<app-b />')],
+      ['b', 'app-b', `<mat-card>\n  ${RETRY}\n</mat-card>`],
+    ]),
+    ['dashboard:5', 'b:2']
+  );
+  check(
+    'a bare key two levels below one case and written in another is reported at both',
+    itemlessSites([
+      ['dashboard', 'app-dashboard', twoCases('<app-a />', RETRY)],
+      ['a', 'app-a', '<mat-card><app-inner /></mat-card>'],
+      ['inner', 'app-inner', `<div>\n  ${RETRY}\n</div>`],
+    ]),
+    ['dashboard:7', 'inner:2']
+  );
+  check(
+    'a component and a key only one case reaches stay lifted, however deep',
+    [
+      repeatedKeys(
+        [
+          ['dashboard', 'app-dashboard', twoCases('<app-a />', '<app-b />')],
+          ['a', 'app-a', '<mat-card><app-shared /></mat-card>'],
+          ['b', 'app-b', `<mat-card>${EDIT}</mat-card>`],
+          ['shared', 'app-shared', RETRY],
+        ],
+        { casesApart: true }
+      ),
+      itemlessSites([
+        ['dashboard', 'app-dashboard', twoCases('<app-a />', '<app-b />')],
+        ['a', 'app-a', '<mat-card><app-shared /></mat-card>'],
+        ['b', 'app-b', `<mat-card>${EDIT}</mat-card>`],
+        ['shared', 'app-shared', RETRY],
+      ]),
+    ],
+    [[], []]
   );
 
   const failed = cases.filter((c) => !c.ok);

@@ -71,9 +71,12 @@ file had been dropped on it
      photos from an iPhone, both `image.jpg`, must. The dropzone keys its
      rows and previews by the file, and the wizard its tiles by the
      preview's URL, never by a name. `npm run lint` fails a template `@for`
-     that tracks by `.name`, and `lint-guards:check` holds that rule with
-     fixtures of its own
-     ([ADR 0186](ADR/0186-a-date-stops-at-a-currency-sign-and-a-line-break-a-total-read-past-an-aside-or-under-a-count-is-flagged-and-a-shared-file-lands-in-the-upload-area.md)).
+     that tracks by `.name`, and one that tracks by `.preview`, a key read
+     from a photo's bytes that two picks of one picture share, as the
+     transaction form's queued photos once were; `lint-guards:check` holds
+     that rule with fixtures of its own
+     ([ADR 0186](ADR/0186-a-date-stops-at-a-currency-sign-and-a-line-break-a-total-read-past-an-aside-or-under-a-count-is-flagged-and-a-shared-file-lands-in-the-upload-area.md),
+     [ADR 0187](ADR/0187-repeated-controls-name-their-item-the-upload-area-has-one-button-and-numbers-photos-among-photos-resting-text-is-a-token-sentences-end-in-the-readers-stop-and-a-spec-that-expects-nothing-fails.md)).
    - **The refused are named in the dropzone's own alert**, one sentence a
      file, after any refusal the user's own pick left standing there:
      *{name} is larger than the 10 MB limit*, *{name} is a backup: pick it

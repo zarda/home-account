@@ -7,7 +7,7 @@ import { MatDialog } from '@angular/material/dialog';
 import { MatTooltip } from '@angular/material/tooltip';
 import { Sort } from '@angular/material/sort';
 import { Timestamp } from '@angular/fire/firestore';
-import { of } from 'rxjs';
+import { firstValueFrom, of } from 'rxjs';
 import { TransactionListComponent } from './transaction-list.component';
 import { TransactionRowComponent } from '../../../shared/components/transaction-row/transaction-row.component';
 import { EmptyStateComponent } from '../../../shared/components/empty-state/empty-state.component';
@@ -27,14 +27,22 @@ import { NotificationService } from '../../../core/services/notification.service
 import { AnnouncerService } from '../../../core/services/announcer.service';
 import { PwaService } from '../../../core/services/pwa.service';
 import { AnalyticsService } from '../../../core/services/analytics.service';
+import { RowSharingService } from '../../../core/services/row-sharing.service';
 import { ShareDialogComponent, ShareDialogData } from '../sharing/share-dialog.component';
 import { MAX_BULK_SHARE, Transaction } from '../../../models';
+import { provideAppDialogs } from '../../../core/config/dialog.config';
 import {
+  accessibleName,
+  catalogTranslator,
+  closeEveryDialog,
   createTransaction,
+  createTranslationStub,
   createUser,
+  echoTranslation,
   hoverValue,
   paintedBackground,
   paintedColor,
+  pressMenuEntry,
   provideNoMotion,
   ratio,
   runAxe,
@@ -46,6 +54,9 @@ import {
 
 /** An account in no household: its index, as the share controls read it, is empty. */
 const NO_HOUSEHOLDS = { subscribeToCollection: () => of([]) };
+
+/** Quotation marks a sentence puts round a name: straight, curly and corner. */
+const QUOTES = /["“”「」『』]/;
 
 // Signal-based stand-in for the page-provided window source.
 function createMockWindowSource() {
@@ -664,6 +675,30 @@ describe('TransactionListComponent desktop note doors', () => {
     fixture.detectChanges();
   }
 
+  /**
+   * The confirm the row menu's Delete opened, as the dialog was asked for it.
+   * A closed menu's panel stays in the DOM until a later task, so the newest
+   * panel's Delete is the one this row's menu opened: call it once per row,
+   * in row order, and never reopen an earlier row.
+   */
+  function deleteConfirm(row: number): ConfirmDialogData {
+    dialog.open.calls.reset();
+    openActionsMenu(row);
+    const item = Array.from(
+      document.querySelectorAll<HTMLElement>('.mat-mdc-menu-panel .menu-item-destructive')
+    ).at(-1);
+    expect(item).withContext('the menu route to Delete').toBeDefined();
+    item!.click();
+    fixture.detectChanges();
+    expect(dialog.open).toHaveBeenCalledOnceWith(ConfirmDialogComponent, jasmine.any(Object));
+    return (dialog.open.calls.mostRecent().args[1] as { data: ConfirmDialogData }).data;
+  }
+
+  /** Has the list speak a locale from its catalog, from the next translation on. */
+  function speak(locale: 'en' | 'ja' | 'tc'): void {
+    (TestBed.inject(TranslationService) as jasmine.SpyObj<TranslationService>).t.and.callFake(catalogTranslator(locale));
+  }
+
   beforeEach(async () => {
     const currency = jasmine.createSpyObj('CurrencyService', ['formatCurrency', 'amountInBase']);
     currency.amountInBase.and.callFake(
@@ -680,7 +715,7 @@ describe('TransactionListComponent desktop note doors', () => {
     categoryHelper.getCategoryIcon.and.returnValue('icon');
     categoryHelper.getCategoryColor.and.returnValue('#000');
     const translation = jasmine.createSpyObj('TranslationService', ['t']);
-    translation.t.and.callFake((k: string, p?: Record<string, unknown>) => (p ? `${k}:${JSON.stringify(p)}` : k));
+    translation.t.and.callFake(echoTranslation);
     dialog = jasmine.createSpyObj('MatDialog', ['open']);
 
     await TestBed.configureTestingModule({
@@ -712,7 +747,7 @@ describe('TransactionListComponent desktop note doors', () => {
     expect(button).withContext('the note icon was a decoration nothing could open').not.toBeNull();
     expect(button!.tagName).toBe('BUTTON');
     // Its visible content is one glyph, so the name has to come from the label.
-    expect(button!.getAttribute('aria-label')).toBe('transactions.viewNote');
+    expect(button!.getAttribute('aria-label')).toBe('transactions.viewNoteFor:{"description":"Banana"}');
   });
 
   it('shows no note control on a row that has no note', () => {
@@ -797,6 +832,136 @@ describe('TransactionListComponent desktop note doors', () => {
       'common.moreActionsFor:{"description":"Apple"}',
     ]);
   });
+
+  // tc quotes a row's description in 「」 in its note and receipt buttons'
+  // names, and the catalog's words for an untitled row would read, in
+  // quotes, as its name: an untitled row is named by those words bare.
+  for (const blank of ['', '   ']) {
+    it(`names a row whose description is ${JSON.stringify(blank)} by the catalog's words, unquoted, in its note and receipt buttons in tc, and a titled row in quotes`, () => {
+      const t = catalogTranslator('tc', { strict: true });
+      (TestBed.inject(TranslationService) as jasmine.SpyObj<TranslationService>).t.and.callFake(catalogTranslator('tc'));
+      const untitled = createTransaction({
+        id: 'c',
+        amount: 5,
+        description: blank,
+        note: 'no idea what this was',
+        receiptUrl: 'https://storage.example.com/c.jpg',
+      });
+      fixture = TestBed.createComponent(TransactionListComponent);
+      fixture.componentRef.setInput('transactions', [withNote, untitled]);
+      fixture.detectChanges();
+
+      const named = (selector: string) =>
+        Array.from(fixture.nativeElement.querySelectorAll(selector)).map(button => accessibleName(button as HTMLElement));
+      const [notes, receipts] = [named('.note-button'), named('.receipt-icon-button')];
+      const nameless = t('transactions.untitledRow');
+      expect([notes[0], receipts[0]]).withContext('Banana keeps its quotes (pin)')
+        .toEqual(['查看「Banana」的備註', '查看「Banana」的收據']);
+      expect([notes[1], receipts[1]].filter(name => !name?.includes(nameless)))
+        .withContext("each names it by the catalog's words")
+        .toEqual([]);
+      expect([notes[1], receipts[1]].filter(name => name?.includes(`「${nameless}」`)))
+        .withContext("the catalog's words in quotes")
+        .toEqual([]);
+    });
+  }
+
+  // The note and receipt icons repeat down the description column as well,
+  // so each names the row it opens, and an untitled row by the catalog's
+  // words for one rather than by nothing.
+  for (const locale of ['en', 'ja', 'tc'] as const) {
+    it(`names each row's note and receipt button by the row's description in ${locale}`, () => {
+      const t = catalogTranslator(locale, { strict: true });
+      const translation = TestBed.inject(TranslationService) as jasmine.SpyObj<TranslationService>;
+      translation.t.and.callFake(catalogTranslator(locale));
+      const untitled = createTransaction({
+        id: 'c',
+        amount: 5,
+        description: '  ',
+        note: 'no idea what this was',
+        receiptUrl: 'https://storage.example.com/c.jpg',
+      });
+      fixture = TestBed.createComponent(TransactionListComponent);
+      fixture.componentRef.setInput('transactions', [withNote, withoutNote, untitled]);
+      fixture.detectChanges();
+
+      const named = (selector: string) =>
+        Array.from(fixture.nativeElement.querySelectorAll(selector)).map(button => accessibleName(button as HTMLElement));
+      const nameless = t('transactions.untitledRow');
+      const banana = t('common.quotedName', { name: 'Banana' });
+      expect(named('.note-button')).toEqual([
+        t('transactions.viewNoteFor', { description: banana }),
+        t('transactions.viewNoteFor', { description: nameless }),
+      ]);
+      expect(named('.receipt-icon-button')).toEqual([
+        t('transactions.viewReceiptFor', { description: banana }),
+        t('transactions.viewReceiptFor', { description: nameless }),
+      ]);
+    });
+  }
+
+  // A row with a description is quoted by its delete confirm, trimmed, in
+  // every locale: a split part by the part's own description.
+  for (const locale of ['en', 'ja', 'tc'] as const) {
+    it(`quotes a titled row's description in its delete confirm in ${locale}`, () => {
+      const say = catalogTranslator(locale, { strict: true });
+      dialog.open.and.returnValue({ afterClosed: () => of(false) } as never);
+      speak(locale);
+      const part = createTransaction({ id: 'd', amount: 2, description: ' Groceries  ', splitGroupId: 'group-1' });
+      fixture = TestBed.createComponent(TransactionListComponent);
+      fixture.componentRef.setInput('transactions', [withNote, part]);
+      fixture.detectChanges();
+
+      expect(deleteConfirm(0).message).toBe(say('transactions.deleteConfirmMessage', { description: 'Banana' }));
+      expect(deleteConfirm(1).message).toBe(say('transactions.deleteSplitPartMessage', { description: 'Groceries' }));
+    });
+  }
+
+  // The note a row opens is handed the description as stored and names the
+  // row itself, as its buttons do, so the name follows a language switch
+  // made while the note is open (note-dialog.component.spec.ts). Its delete
+  // confirm, a sentence that quotes a titled row's description, asks about
+  // this untitled transaction instead, since the catalog's words in quotes
+  // would read as the row's own name.
+  for (const blank of ['', '   ']) {
+    describe(`a row whose description is ${JSON.stringify(blank)}`, () => {
+      const untitled = createTransaction({ id: 'c', amount: 5, description: blank, note: 'no idea what this was' });
+      const part = createTransaction({ id: 'd', amount: 2, description: blank, splitGroupId: 'group-1' });
+
+      beforeEach(() => {
+        speak('en');
+        dialog.open.and.returnValue({ afterClosed: () => of(false) } as never);
+        fixture = TestBed.createComponent(TransactionListComponent);
+        fixture.componentRef.setInput('transactions', [untitled, part]);
+        fixture.detectChanges();
+      });
+
+      it('hands its note dialog the description as stored, for the dialog to name in the language it is read in', () => {
+        noteButton()!.click();
+
+        expect(dialog.open).toHaveBeenCalledWith(
+          NoteDialogComponent,
+          jasmine.objectContaining({ data: { note: 'no idea what this was', description: blank } })
+        );
+      });
+
+      // The menu was rendered in en; the confirm is read in the locale when
+      // Delete is clicked, and Delete is found by its class, not its words.
+      for (const locale of ['en', 'ja', 'tc'] as const) {
+        it(`asks in its delete confirm in ${locale} about this untitled transaction, quoting nothing`, () => {
+          const say = catalogTranslator(locale, { strict: true });
+          speak(locale);
+
+          const whole = deleteConfirm(0).message;
+          const piece = deleteConfirm(1).message;
+
+          expect(whole).toBe(say('transactions.deleteUntitledMessage'));
+          expect(piece).toBe(say('transactions.deleteUntitledSplitPartMessage'));
+          expect([whole, piece].filter(message => QUOTES.test(message))).toEqual([]);
+        });
+      }
+    });
+  }
 });
 
 /**
@@ -845,7 +1010,7 @@ describe('TransactionListComponent desktop receipt doors', () => {
     categoryHelper.getCategoryIcon.and.returnValue('icon');
     categoryHelper.getCategoryColor.and.returnValue('#000');
     const translation = jasmine.createSpyObj('TranslationService', ['t']);
-    translation.t.and.callFake((k: string) => k);
+    translation.t.and.callFake(echoTranslation);
     dialog = jasmine.createSpyObj('MatDialog', ['open']);
 
     await TestBed.configureTestingModule({
@@ -872,11 +1037,12 @@ describe('TransactionListComponent desktop receipt doors', () => {
 
   it('renders a real button for a row with a receipt, never a link', () => {
     const buttons = receiptButtons();
-    expect(buttons.length).withContext('one button per row that has a receipt').toBeGreaterThan(0);
-    for (const button of buttons) {
-      expect(button.tagName).toBe('BUTTON');
-      expect(button.getAttribute('aria-label')).toBe('transactions.viewReceipt');
-    }
+    expect(buttons.map(button => button.tagName)).withContext('one button per row that has a receipt')
+      .toEqual(['BUTTON', 'BUTTON']);
+    expect(buttons.map(button => button.getAttribute('aria-label'))).toEqual([
+      'transactions.viewReceiptFor:{"description":"Banana"}',
+      'transactions.viewReceiptFor:{"description":"Cherry"}',
+    ]);
     expect(fixture.nativeElement.querySelector('a.receipt-icon-link')).toBeNull();
     expect(fixture.nativeElement.querySelector('.receipt-icon-button[target]')).toBeNull();
   });
@@ -913,6 +1079,89 @@ describe('TransactionListComponent desktop receipt doors', () => {
 
     expect(editSpy).not.toHaveBeenCalled();
   });
+});
+
+/**
+ * Where focus goes once a dialog a row's menu opened has closed: back to that
+ * row's menu trigger, never to the document. The real MatDialog renders the
+ * confirm under the app's own dialog providers, so the container's restore
+ * runs as it does in the app, and the menu's entry has left the page by the
+ * time the confirm is cancelled. Two rows, so the trigger focus lands on is
+ * the one whose menu was opened, not merely the first on the page.
+ */
+describe('TransactionListComponent focus after a dialog a row menu opened (real template)', () => {
+  let fixture: ComponentFixture<TransactionListComponent>;
+
+  const txns: Transaction[] = [
+    createTransaction({ id: 'a', amount: 30, description: 'Banana' }),
+    createTransaction({ id: 'b', amount: 10, description: 'Apple' }),
+  ];
+
+  for (const [door, desktop, triggerSelector] of [
+    ['the desktop actions menu', true, '.action-btn'],
+    ["the phone's trailing menu", false, '.row-menu-btn'],
+  ] as const) {
+    describe(door, () => {
+      beforeEach(async () => {
+        const currency = jasmine.createSpyObj('CurrencyService', ['formatCurrency', 'amountInBase']);
+        currency.amountInBase.and.callFake(
+          (t: { amount: number; amountInBaseCurrency?: number }) => t.amountInBaseCurrency ?? t.amount
+        );
+        currency.formatCurrency.and.callFake((a: number, c: string) => `${c} ${a}`);
+        const dateFormat = jasmine.createSpyObj('DateFormatService', ['formatDate', 'formatRelativeDate']);
+        dateFormat.formatDate.and.returnValue('date');
+        dateFormat.formatRelativeDate.and.returnValue('rel');
+        const categoryHelper = jasmine.createSpyObj('CategoryHelperService', [
+          'getCategoryName', 'getCategoryIcon', 'getCategoryColor',
+        ]);
+        categoryHelper.getCategoryName.and.returnValue('Cat');
+        categoryHelper.getCategoryIcon.and.returnValue('icon');
+        categoryHelper.getCategoryColor.and.returnValue('#000');
+
+        await TestBed.configureTestingModule({
+          imports: [TransactionListComponent],
+          providers: [
+            { provide: TransactionWindowService, useValue: createMockWindowSource() },
+            { provide: BreakpointObserver, useValue: { observe: () => of({ matches: desktop, breakpoints: {} }) } },
+            { provide: CurrencyService, useValue: currency },
+            { provide: AuthService, useValue: { currentUser: signal(createUser()) } },
+            { provide: DateFormatService, useValue: dateFormat },
+            { provide: CategoryHelperService, useValue: categoryHelper },
+            { provide: TranslationService, useValue: createTranslationStub() },
+            { provide: QuickAddService, useValue: jasmine.createSpyObj('QuickAddService', ['openAddTransaction']) },
+            { provide: FirestoreService, useValue: NO_HOUSEHOLDS },
+            provideAppDialogs(),
+            provideNoMotion(),
+          ],
+        }).compileComponents();
+
+        fixture = TestBed.createComponent(TransactionListComponent);
+        fixture.componentRef.setInput('transactions', txns);
+        fixture.detectChanges();
+      });
+
+      afterEach(closeEveryDialog);
+
+      it("hands focus back to the row's menu trigger when its Delete confirm is cancelled", async () => {
+        const triggers = Array.from((fixture.nativeElement as HTMLElement).querySelectorAll<HTMLElement>(triggerSelector));
+        expect(triggers.length).withContext("each row's menu trigger").toBe(2);
+        const trigger = triggers[1];
+
+        const ref = await pressMenuEntry(fixture, trigger, '.menu-item-destructive');
+        const cancel = document.getElementById(ref.id)?.querySelector<HTMLElement>('mat-dialog-actions button');
+        expect(cancel?.textContent?.trim()).withContext("the confirm's Cancel").toBe('common.cancel');
+        const closed = firstValueFrom(ref.afterClosed());
+        cancel!.click();
+        TestBed.tick();
+
+        expect(await closed).withContext('cancelled').toBeFalse();
+        fixture.detectChanges();
+        expect(document.activeElement)
+          .withContext("focus, on the second row's menu trigger, not the first on the page")
+          .toBe(trigger);
+      });
+    });
+  }
 });
 
 /**
@@ -1316,6 +1565,36 @@ describe('TransactionListComponent desktop table width floor', () => {
   });
 });
 
+/** How long a case waits for the sharing code before it fails on that rather than on its own timeout. */
+const SHARING_LOAD_BOUND_MS = 2_000;
+
+/**
+ * Records each load of the sharing code RowSharingService starts from now on
+ * (its dynamic import of LedgerShareService), and returns a wait that ends
+ * once every load recorded so far has arrived. A case waits on the load
+ * itself rather than a count of turns: the first case to load the code waits
+ * on the module's fetch, which no zone tracks, and on a loaded machine that
+ * outlasts any fixed count. A load still out after SHARING_LOAD_BOUND_MS
+ * fails an expectation that says so. Call it once the component is created.
+ */
+function recordSharingLoads(): () => Promise<void> {
+  // The loader is private; the spy only records what it returns.
+  const sharing = TestBed.inject(RowSharingService) as unknown as {
+    loadLedger: (failed: () => string) => Promise<unknown>;
+  };
+  const loads = spyOn(sharing, 'loadLedger').and.callThrough();
+  return async () => {
+    let bound: ReturnType<typeof setTimeout> | undefined;
+    const outOfTime = new Promise<'still loading'>(resolve => {
+      bound = setTimeout(() => resolve('still loading'), SHARING_LOAD_BOUND_MS);
+    });
+    const arrived = Promise.all(loads.calls.all().map(call => call.returnValue)).then(() => 'arrived' as const);
+    const outcome = await Promise.race([arrived, outOfTime]);
+    clearTimeout(bound);
+    expect(outcome).withContext('the sharing code each share run loads').toBe('arrived');
+  };
+}
+
 /**
  * The row menu's door to sharing, on both views. The memberships come from
  * the account's own index (FirestoreService stands in for it); the shares
@@ -1332,6 +1611,7 @@ describe('TransactionListComponent sharing', () => {
   let desktop: boolean;
   let online: ReturnType<typeof signal<boolean>>;
   let analytics: jasmine.SpyObj<AnalyticsService>;
+  let sharingLoaded: () => Promise<void>;
 
   const joined = Timestamp.fromMillis(1_000);
   const HOME = { id: 'h1', name: 'Home', role: 'owner', since: joined, joinedAt: joined };
@@ -1406,14 +1686,16 @@ describe('TransactionListComponent sharing', () => {
     }).compileComponents();
 
     fixture = TestBed.createComponent(TransactionListComponent);
+    sharingLoaded = recordSharingLoads();
     fixture.componentRef.setInput('transactions', txns);
     fixture.detectChanges();
   }
 
-  /** Lets the lazily loaded sharing code resolve and its calls settle. */
+  /** Waits for the sharing code a share run loads (recordSharingLoads), then for the run's calls to settle. */
   async function settle(): Promise<void> {
     await fixture.whenStable();
-    for (let i = 0; i < 5; i++) await new Promise(resolve => setTimeout(resolve));
+    await sharingLoaded();
+    await fixture.whenStable();
     fixture.detectChanges();
   }
 
@@ -1580,6 +1862,86 @@ describe('TransactionListComponent sharing', () => {
       expect(stopConfirm().message).toBe('transactions.share.stopMessageOffline:{"description":"Banana"}');
       expect(ledger.unshare).toHaveBeenCalledOnceWith(['a'], 'h1');
     });
+
+    /**
+     * Renders the list in a locale with one shared row, the only row whose
+     * menu a case opens: a closed menu's panel stays in the DOM until a later
+     * task, so a second row's lookup would find the first row's items.
+     */
+    async function renderOneRow(locale: 'en' | 'ja' | 'tc', description: string): Promise<void> {
+      TestBed.overrideProvider(TranslationService, { useValue: { t: catalogTranslator(locale) } });
+      dialog.open.and.returnValue({ afterClosed: () => of(undefined) } as never);
+      await render();
+      fixture.componentRef.setInput('transactions', [
+        createTransaction({ id: 'u', amount: 5, description, sharedWith: ['households/h1'] }),
+      ]);
+      fixture.detectChanges();
+    }
+
+    /** The message the one row's Stop sharing confirm opened with, found by its words in the locale. */
+    function stopMessage(say: (key: string) => string): string {
+      dialog.open.calls.reset();
+      openRowMenu(0);
+      const item = menuItems().find(each => each.textContent!.includes(say('transactions.share.stop')));
+      expect(item).withContext('the menu route to Stop sharing').toBeDefined();
+      item!.click();
+      return stopConfirm().message;
+    }
+
+    // The share dialog is handed the row's description as stored and names it
+    // itself, by the rule its menu reads, so the name follows a language
+    // switch made while the dialog is open (share-dialog.component.spec.ts).
+    // Its stop-sharing confirms, sentences that quote a titled row's
+    // description, say this untitled transaction instead, unquoted, since
+    // the catalog's words in quotes would read as the row's own name.
+    for (const blank of ['', '   ']) {
+      for (const locale of ['en', 'ja', 'tc'] as const) {
+        it(`hands its share dialog the description ${JSON.stringify(blank)} as stored, and asks about this untitled transaction in its stop-sharing confirms in ${locale}`, async () => {
+          const say = catalogTranslator(locale, { strict: true });
+          await renderOneRow(locale, blank);
+
+          openRowMenu(0);
+          const share = menuItems().find(each => each.textContent!.includes(say('transactions.share.menu')));
+          expect(share).withContext('the menu route to Share').toBeDefined();
+          share!.click();
+          expect(dialog.open).toHaveBeenCalledWith(
+            ShareDialogComponent,
+            jasmine.objectContaining({
+              data: {
+                description: blank,
+                targets: [{ householdId: 'h1', name: 'Home' }, { householdId: 'h2', name: 'Office' }],
+                shared: ['h1'],
+              },
+            })
+          );
+
+          const untitledOnline = stopMessage(say);
+          online.set(false);
+          const untitledOffline = stopMessage(say);
+
+          expect(untitledOnline).withContext('online').toBe(say('transactions.share.stopUntitledMessage'));
+          expect(untitledOffline).withContext('offline').toBe(say('transactions.share.stopUntitledMessageOffline'));
+          expect([untitledOnline, untitledOffline].filter(message => QUOTES.test(message))).toEqual([]);
+        });
+      }
+    }
+
+    // A row with a description is quoted by both confirms, trimmed.
+    for (const locale of ['en', 'ja', 'tc'] as const) {
+      it(`quotes a titled row's description in its stop-sharing confirms in ${locale}`, async () => {
+        const say = catalogTranslator(locale, { strict: true });
+        await renderOneRow(locale, ' Banana ');
+
+        const titledOnline = stopMessage(say);
+        online.set(false);
+        const titledOffline = stopMessage(say);
+
+        expect(titledOnline).withContext('online').toBe(say('transactions.share.stopMessage', { description: 'Banana' }));
+        expect(titledOffline)
+          .withContext('offline')
+          .toBe(say('transactions.share.stopMessageOffline', { description: 'Banana' }));
+      });
+    }
 
     /**
      * One event per kind the menu's change went through for, however many
@@ -1751,6 +2113,7 @@ describe('TransactionListComponent select mode', () => {
   let edited: jasmine.Spy;
   let labels: Record<string, string>;
   let analytics: jasmine.SpyObj<AnalyticsService>;
+  let sharingLoaded: () => Promise<void>;
 
   const joined = Timestamp.fromMillis(1_000);
   const HOME = { id: 'h1', name: 'Home', role: 'owner', since: joined, joinedAt: joined };
@@ -1803,6 +2166,7 @@ describe('TransactionListComponent select mode', () => {
     }).compileComponents();
 
     fixture = TestBed.createComponent(TransactionListComponent);
+    sharingLoaded = recordSharingLoads();
     host = fixture.nativeElement as HTMLElement;
     document.body.appendChild(host);
     fixture.componentInstance.edit.subscribe(edited);
@@ -1810,14 +2174,11 @@ describe('TransactionListComponent select mode', () => {
     fixture.detectChanges();
   }
 
-  /**
-   * Lets the lazily loaded sharing code resolve and its calls settle. The
-   * first test to load it waits on the module's fetch, which no zone tracks,
-   * so this waits in real time rather than a count of turns.
-   */
+  /** Waits for the sharing code a share run loads (recordSharingLoads), then for the run's calls to settle. */
   async function settle(): Promise<void> {
     await fixture.whenStable();
-    for (let i = 0; i < 10; i++) await new Promise(resolve => setTimeout(resolve, 10));
+    await sharingLoaded();
+    await fixture.whenStable();
     fixture.detectChanges();
   }
 
@@ -1924,6 +2285,26 @@ describe('TransactionListComponent select mode', () => {
         expect(button).withContext(`${id}: the row button is named`).toBeTruthy();
         expect(boxOf(id).getAttribute('aria-label')).withContext(id).toBe(button);
       }
+    });
+
+    // An untitled row is named by the catalog's words for one on every
+    // control that names it, so its menu never reads "More actions for "
+    // and its checkbox and row button never open on a bare comma.
+    it("names an untitled row's menu, checkbox and row button by the catalog's words for one", async () => {
+      const t = catalogTranslator('en', { strict: true });
+      TestBed.overrideProvider(TranslationService, { useValue: { t: catalogTranslator('en') } });
+      rows = [createTransaction({ id: 'u', amount: 5, currency: 'USD', description: '  ' })];
+      await render();
+      const nameless = t('transactions.untitledRow');
+
+      const menu = rowOf('u').querySelector<HTMLElement>('.row-menu-btn');
+      expect(menu).withContext('the row menu, outside the mode').not.toBeNull();
+      expect(accessibleName(menu!)).withContext('the row menu').toBe(t('common.moreActionsFor', { description: nameless }));
+
+      enter();
+      const row = t('transactions.rowLabel', { description: nameless, amount: '-USD 5', date: 'rel' });
+      expect(accessibleName(boxOf('u'))).withContext('the checkbox').toBe(row);
+      expect(accessibleName(rowOf('u').querySelector<HTMLElement>('.row-activate')!)).withContext('the row button').toBe(row);
     });
 
     it('gives each row checkbox a 40px target', async () => {
@@ -2500,6 +2881,47 @@ describe('TransactionListComponent select mode', () => {
       expect(host.querySelector('th.col-select')).toBeNull();
       rowOf('b').click();
       expect(edited).toHaveBeenCalledOnceWith(rows[1]);
+    });
+
+    // As on a phone: the actions column's menu and the select column's
+    // checkbox name an untitled row by the catalog's words for one.
+    it("names an untitled row's menu and checkbox by the catalog's words for one", async () => {
+      const t = catalogTranslator('en', { strict: true });
+      TestBed.overrideProvider(TranslationService, { useValue: { t: catalogTranslator('en') } });
+      rows = [createTransaction({ id: 'u', amount: 5, currency: 'USD', description: '  ' })];
+      await render();
+      const nameless = t('transactions.untitledRow');
+
+      const menu = rowOf('u').querySelector<HTMLElement>('.action-btn');
+      expect(menu).withContext('the row menu').not.toBeNull();
+      expect(accessibleName(menu!)).withContext('the row menu').toBe(t('common.moreActionsFor', { description: nameless }));
+
+      enter();
+      expect(accessibleName(boxOf('u'))).withContext('the checkbox')
+        .toBe(t('transactions.rowLabel', { description: nameless, amount: '-USD 5', date: 'rel' }));
+    });
+
+    // The select column's header shows no words, and the hidden ones are its
+    // only name. They are clipped by the a11y mixin's inset(50%), not by
+    // Tailwind's screen-reader utility, whose clip: rect() leaves clip-path at
+    // none, and clipped in place they still name the header. The pin reads
+    // the clip's computed shape, not where it is declared, so a hand-written
+    // copy of the mixin's rules would read the same here.
+    // A pin. Mutations: the class dropped (clip none, a box wider than 1px),
+    // the mixin swapped for Tailwind's screen-reader utility (clip none, the
+    // box still 1px), the mixin swapped for display: none (clip none, the
+    // name empty).
+    it("clips the select column header's words as every visually hidden label is, and keeps them its name", async () => {
+      await render();
+      enter();
+
+      const header = host.querySelector<HTMLElement>('th.col-select');
+      expect(header).withContext('the select column').not.toBeNull();
+      const words = header!.querySelector<HTMLElement>(':scope > span');
+      expect(words).withContext("the header's words").not.toBeNull();
+      expect(getComputedStyle(words!).clipPath).withContext("the mixin's clip").toBe('inset(50%)');
+      expect(words!.getBoundingClientRect().width).withContext("the words' box, px").toBeLessThanOrEqual(1);
+      expect(accessibleName(header!)).withContext("the header's name").toBe('transactions.select.start');
     });
 
     it('lets Escape close a note\'s tooltip without leaving the mode or dropping the selection', async () => {

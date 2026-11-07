@@ -37,13 +37,17 @@ import type { EffectiveTheme, ThemeService } from '../theme.service';
  * Each is disabled by name rather than by dropping a whole tag, so everything
  * else in wcag2a/wcag2aa still runs — and the list is short enough to read.
  *
- * Two more limits would make a pass read clean where it never looked, and
+ * Three more limits would make a pass read clean where it never looked, and
  * each has a helper below rather than a caveat:
  *
  *   - **The fold.** Every page renders inside the shell's fixed scroller,
  *     and under a fixed ancestor axe skips whatever starts at or below the
  *     viewport's bottom. Karma's frame is a few hundred pixels tall.
  *     `auditInView` scrolls a node into the band axe can score first.
+ *   - **Body's box.** A fixture rendered without the shell runs on below
+ *     body, whose box is the frame's height, and axe leaves text down there
+ *     with no fill of its own unscored. `standOnThePage` paints the
+ *     fixture's host as body is painted.
  *   - **The scheme.** A pass renders the host's `prefers-color-scheme`:
  *     dark on a dark Mac, light on CI. `withScheme` forces each of
  *     `AUDIT_SCHEMES` through the real ThemeService.
@@ -137,10 +141,167 @@ export function settleAnimations(doc: Document): void {
   }
 }
 
+/** Runs `options` over one element, once its motion has settled. */
+function runSettled(element: Element, options: RunOptions): Promise<AxeResults> {
+  settleAnimations(element.ownerDocument);
+  return axe.run(element, options);
+}
+
 /** Runs the shared pass over one element, once its motion has settled. */
 export function runAxe(element: Element): Promise<AxeResults> {
-  settleAnimations(element.ownerDocument);
-  return axe.run(element, axeOptions());
+  return runSettled(element, axeOptions());
+}
+
+/**
+ * The shared pass cut to `color-contrast`. A `rule` runOnly runs the rules it
+ * names whatever `enabled` flag the `rules` map gives them, but axe still reads
+ * a running rule's check options from that map, so the map is kept whole.
+ * Every node that passed or was left incomplete is kept, each with its
+ * element, so a result can be read back to the part that holds it.
+ */
+function contrastOptions(): RunOptions {
+  return {
+    ...axeOptions(),
+    runOnly: { type: 'rule', values: ['color-contrast'] },
+    resultTypes: ['passes', 'incomplete'],
+    elementRef: true,
+  };
+}
+
+/** One element to score for contrast, and the label a failure names it by. */
+export type ContrastPart = readonly [element: Element, label: string];
+
+/**
+ * Runs `color-contrast` once over every part's element and gives, for each
+ * part none of whose text passed, its label and, when axe left the rule
+ * `incomplete` there, why. An empty list means every part was scored.
+ *
+ * A part's pass is a node of the rule's passes inside its element (the
+ * element itself or a descendant), so a part is not held by the text of
+ * another part, nor by text around it.
+ */
+export async function contrastUnscored(parts: readonly ContrastPart[]): Promise<string[]> {
+  const [first] = parts;
+  if (!first) return [];
+  settleAnimations(first[0].ownerDocument);
+  const results = await axe.run({ include: parts.map(([element]) => element) }, contrastOptions());
+  const inside = (element: Element, kind: Result[]) =>
+    kind
+      .find(result => result.id === 'color-contrast')
+      ?.nodes.filter(node => node.element !== undefined && element.contains(node.element)) ?? [];
+  return parts.flatMap(([element, label]) => {
+    if (inside(element, results.passes).length > 0) return [];
+    const left = inside(element, results.incomplete)[0];
+    const why = left ? `, left incomplete: ${(left.any[0]?.data as { messageKey?: string } | undefined)?.messageKey ?? left.failureSummary ?? 'no reason given'}` : '';
+    return [`${label}: no pass of its own${why}`];
+  });
+}
+
+/**
+ * Runs `color-contrast` once over every part and expects each among the
+ * passes: axe measured text inside the part's element and found it clears AA.
+ * Each failure names its part by its label and says why axe left the rule
+ * `incomplete` there when it did.
+ *
+ * Only a pass inside the part proves that part was scored. `axeOptions`
+ * keeps every violation but one pass node per rule, so a pass over a whole
+ * step holds `color-contrast` as soon as any one node there clears it (over
+ * the upload step, the hidden file input), whether or not the words in
+ * question were measured. Read back to the part, the pass can only come from
+ * inside it. Point each part at what holds the words, apart from any glyph
+ * beside them: Karma serves no icon font, so axe reads a ligature as text,
+ * and a glyph's pass would hold the part by itself.
+ *
+ * One run for the whole sweep, with the one rule, because a run's cost is
+ * mostly axe walking the page: run once per node, a sweep of twenty
+ * outlasted jasmine's five seconds on a loaded full run with coverage, as a
+ * sweep of fifteen did with the whole wcag2a/wcag2aa pass per node. The
+ * other rules cannot change this rule's verdicts. Each rule scores its own
+ * nodes, and the one shared cache whose value depends on who fills it, a
+ * node's background colour (kept with whatever text-shadow bound its first
+ * caller passed), has one other caller, `link-in-text-block`, which axe runs
+ * after this rule.
+ */
+export async function expectEachContrastScored(parts: readonly ContrastPart[]): Promise<void> {
+  expect(parts.length).withContext('the parts to score').toBeGreaterThan(0);
+  expect(await contrastUnscored(parts)).withContext('the parts with no pass of their own').toEqual([]);
+}
+
+/** {@link expectEachContrastScored} for one element. */
+export async function expectContrastScored(el: Element, label: string): Promise<void> {
+  await expectEachContrastScored([[el, label]]);
+}
+
+/**
+ * Gives `host` the fill of the page it stands on, `--surface-background`,
+ * which body paints in both schemes.
+ *
+ * styles.scss holds html and body at the frame's height, and Karma's frame
+ * is short (413px), so a long fixture runs on below body's box. Text down
+ * there with no fill of its own gets no background: axe finds body's fill
+ * behind it, sees that the fill does not reach that far, and leaves the
+ * text's contrast `incomplete` (elmPartiallyObscured), neither passed nor
+ * failed. A pass over it reads clean without having measured it.
+ */
+export function standOnThePage(host: HTMLElement): void {
+  host.style.backgroundColor = 'var(--surface-background)';
+}
+
+/**
+ * Runs `read` over a virtual tree of `el`'s document that axe builds for this
+ * one read and tears down after it.
+ *
+ * axe's text functions read the tree that `axe.setup` or a running pass
+ * builds. `runAxe` calls neither `setup` nor `configure`: `axe.run` builds
+ * its own tree and tears it down when it settles. So a read between passes
+ * leaves nothing behind for the next one. A pass still in flight holds its
+ * tree, and `setup` refuses to build over it; this throws there rather than
+ * tear the pass's tree down under it.
+ */
+function readFromAxeTree<T>(el: Element, read: () => T): T {
+  if (!el.isConnected) {
+    throw new Error('axe: the element is not in the document, so it has no accessible name');
+  }
+  try {
+    axe.setup(el.ownerDocument);
+  } catch (error) {
+    throw new Error(`axe: a pass is still running, so no name can be read until it settles (${error})`);
+  }
+  try {
+    return read();
+  } finally {
+    axe.teardown();
+  }
+}
+
+/**
+ * `el`'s accessible name, as axe computes it for its own rules: a
+ * `display:none` label gives none, a label clipped out of sight keeps its
+ * words, and `aria-labelledby` and `aria-label` win over the content.
+ */
+export function accessibleName(el: Element): string {
+  return readFromAxeTree(el, () => axe.commons.text.accessibleText(el));
+}
+
+/**
+ * `el`'s accessible description: the text of the nodes its
+ * `aria-describedby` names, in the attribute's order and each read by the
+ * same computation as a name, so one that is hidden still counts, as it does
+ * for a screen reader. With no such node it is `aria-description`, or ''. A
+ * `title` used as a description is not read.
+ */
+export function accessibleDescription(el: Element): string {
+  return readFromAxeTree(el, () => {
+    const root = el.getRootNode() as Document | ShadowRoot;
+    const described = (el.getAttribute('aria-describedby') ?? '')
+      .split(/\s+/)
+      .map(id => (id ? root.getElementById(id) : null))
+      .filter((node): node is HTMLElement => node !== null);
+    const text = described.length
+      ? described.map(node => axe.commons.text.accessibleText(node, { inLabelledByContext: true })).join(' ')
+      : (el.getAttribute('aria-description') ?? '');
+    return text.replace(/\s+/g, ' ').trim();
+  });
 }
 
 /** header.component.scss's toolbar height; the header is fixed over the viewport's top. */

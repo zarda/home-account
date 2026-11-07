@@ -1,19 +1,31 @@
 import { ComponentFixture, TestBed } from '@angular/core/testing';
-import { NO_ERRORS_SCHEMA } from '@angular/core';
+import { Component, NO_ERRORS_SCHEMA } from '@angular/core';
+import { By } from '@angular/platform-browser';
+import { InteractivityChecker } from '@angular/cdk/a11y';
+import { CdkDrag, CdkDragDrop } from '@angular/cdk/drag-drop';
 
 import { FileDropzoneComponent } from './file-dropzone.component';
 import { IMPORT_FILE_MAX_BYTES, RefusedShare } from '../../../../core/services/share-intake.service';
 import { TranslationService } from '../../../../core/services/translation.service';
 import {
+  accessibleDescription,
+  accessibleName,
+  catalogTranslationStub,
+  catalogTranslator,
   channels,
   createTranslationStub,
+  expectOneRule,
+  expectPainted,
   hoverValue,
   paintedBackground,
   paintedColor,
+  pressKey,
   provideNoMotion,
   ratio,
   settleAnimations,
+  styleRules,
   textLines,
+  tokenValue,
   type TranslationStub,
   withTheme,
 } from '../../../../core/services/testing';
@@ -303,7 +315,7 @@ describe('FileDropzoneComponent', () => {
         'import.fileEmpty:{"name":"empty.pdf"}',
         'import.shareBackup:{"name":"backup.json"}',
         'import.fileTypeUnsupported:{"name":"notes.txt"}',
-      ].join('common.sentenceSeparator'));
+      ].join('. '));
     });
 
     // A share can land while the banner still names a file the user picked:
@@ -317,7 +329,7 @@ describe('FileDropzoneComponent', () => {
       expect(component.hasError()).toBeTrue();
       expect(component.errorMessage()).toBe(
         ['import.fileTypeUnsupported:{"name":"notes.txt"}', 'import.fileEmpty:{"name":"empty.pdf"}']
-          .join('common.sentenceSeparator')
+          .join('. ')
       );
     });
 
@@ -556,11 +568,18 @@ describe('FileDropzoneComponent, the sentences its alert joins', () => {
 
 /**
  * Every case above overrides the template to `<div></div>`, so none of them
- * touches the zone a user actually drops on: the empty state's own
- * `role`/`tabindex`/`aria-label` gate, the per-file row, the reorder controls
+ * touches the zone a user actually drops on: the empty state's one control
+ * and what it is described by, the per-file row, the reorder controls
  * that only exist for a multi-image pick, or the error banner. This is the
  * one place the real template renders and its controls are clicked.
  */
+/** The zone inside a link of the page's own, which is no control of the zone's. */
+@Component({
+  imports: [FileDropzoneComponent],
+  template: '<a class="page-link"><app-file-dropzone /></a>',
+})
+class ZoneInsideALink {}
+
 describe('FileDropzoneComponent, through its own template', () => {
   let fixture: ComponentFixture<FileDropzoneComponent>;
   let component: FileDropzoneComponent;
@@ -580,6 +599,30 @@ describe('FileDropzoneComponent, through its own template', () => {
   const el = () => fixture.nativeElement as HTMLElement;
   const text = (selector: string) => el().querySelector(selector)?.textContent?.trim() ?? null;
   const all = (selector: string) => Array.from(el().querySelectorAll(selector)) as HTMLElement[];
+  /** The hidden input whose own click is the picker. */
+  const fileInput = () => el().querySelector('input[type="file"]') as HTMLInputElement;
+  const rowNames = () => all('.file-name').map(n => n.textContent?.trim());
+  /** The up and down arrows of the row at `row`, in that order. */
+  const arrows = (row: number) =>
+    Array.from(all('.file-item')[row]?.querySelectorAll<HTMLButtonElement>('.reorder-btn') ?? []);
+  const focusedName = () =>
+    document.activeElement instanceof HTMLButtonElement ? accessibleName(document.activeElement) : null;
+
+  /**
+   * Enter on a focused button, or with `key` absent a pointer click, which
+   * focuses a button before it presses too; then the render the press asks
+   * for and its render hooks, where a focus request lands.
+   */
+  function pressFocused(button: HTMLButtonElement | null | undefined, key?: 'Enter'): void {
+    expect(button).withContext('the button pressed').toBeTruthy();
+    if (!button) return;
+    button.focus();
+    expect(document.activeElement).withContext('the button, focused before the press').toBe(button);
+    if (key) pressKey(button, key);
+    else button.click();
+    fixture.detectChanges();
+    TestBed.tick();
+  }
 
   beforeEach(async () => {
     await TestBed.configureTestingModule({
@@ -600,19 +643,33 @@ describe('FileDropzoneComponent, through its own template', () => {
     fixture.destroy();
   });
 
-  it('offers the empty zone as a keyboard-reachable button', () => {
+  // A role="button" zone around Browse made Browse, the hint and the file
+  // types a button's presentational children, axe's nested-interactive, and
+  // gave the keyboard two stops that did one thing. The zone is a plain frame
+  // now, as the transaction row's wrapper is: the host answers a pointer
+  // click on it, and Browse is the one control a keyboard or a screen reader
+  // meets, with the hint read as its description.
+  it('offers Browse as the empty zone\'s one control, described by the hint', () => {
     fixture.detectChanges();
 
-    const zone = el().querySelector('.dropzone') as HTMLElement;
-    expect(zone.getAttribute('role')).toBe('button');
-    expect(zone.getAttribute('tabindex')).toBe('0');
-    expect(zone.getAttribute('aria-label')).toBe('import.dropzoneTitle');
+    const zone = fixture.debugElement.query(By.css('.dropzone'));
+    const frame = zone.nativeElement as HTMLElement;
+    expect(frame.getAttribute('role')).withContext('not a button').toBeNull();
+    expect(frame.getAttribute('tabindex')).withContext('not a tab stop').toBeNull();
+    expect(frame.getAttribute('aria-label')).withContext('no name of its own').toBeNull();
+    expect(zone.listeners.map(listener => listener.name))
+      .withContext('the pointer is answered on the host, the keyboard by Browse')
+      .toEqual([]);
+
+    const browse = el().querySelector('.browse-btn') as HTMLElement;
+    expect(accessibleName(browse)).withContext('Browse, by its own words').toBe('import.browseFiles');
+    expect(accessibleDescription(browse)).withContext('Browse, described by the hint').toBe('import.dropzoneHint');
     expect(text('.title')).toBe('import.dropzoneTitle');
     expect(text('.hint')).toBe('import.dropzoneHint');
     expect(all('.file-type').length).toBe(4);
   });
 
-  it('stops being a button once a file is picked', () => {
+  it('shows the file list in the empty zone\'s place once a file is picked', () => {
     fixture.detectChanges();
     dropFiles([csvFile()]);
 
@@ -621,6 +678,141 @@ describe('FileDropzoneComponent, through its own template', () => {
     expect(zone.getAttribute('tabindex')).toBeNull();
     expect(el().querySelector('.dropzone-content')).toBeNull();
     expect(el().querySelector('.selected-files')).not.toBeNull();
+  });
+
+  // Tab met the zone and then Browse, two stops that opened the same picker.
+  it('keeps one tab stop on the empty zone, Browse', () => {
+    fixture.detectChanges();
+    const checker = TestBed.inject(InteractivityChecker);
+    const stop = (node: HTMLElement) =>
+      node.classList.contains('dropzone') ? 'zone' : node.classList.contains('browse-btn') ? 'browse' : node.outerHTML;
+
+    const stops = Array.from(el().querySelectorAll<HTMLElement>('*'))
+      .filter(node => checker.isFocusable(node) && checker.isTabbable(node))
+      .map(stop);
+    expect(stops).toEqual(['browse']);
+  });
+
+  describe('a key pressed on Browse', () => {
+    let browse: HTMLElement;
+    let picker: jasmine.Spy;
+
+    beforeEach(() => {
+      fixture.detectChanges();
+      browse = el().querySelector('.browse-btn') as HTMLElement;
+      picker = spyOn(fileInput(), 'click');
+    });
+
+    // The zone's own keydown handler opened the picker, and then Browse's
+    // press opened it again: one Enter, two requests.
+    it('opens the picker once for Enter', () => {
+      const keydown = pressKey(browse, 'Enter');
+      expect(picker).withContext('picker requests').toHaveBeenCalledTimes(1);
+      expect(keydown.defaultPrevented).withContext('the key left to Browse').toBeFalse();
+    });
+
+    // The zone cancelled Space on its way out and opened the picker itself,
+    // so Browse never pressed: the key was the zone's, not the button's.
+    it('opens the picker once for Space, through Browse\'s own press', () => {
+      const keydown = pressKey(browse, ' ');
+      expect(picker).withContext('picker requests').toHaveBeenCalledTimes(1);
+      expect(keydown.defaultPrevented).withContext('the key left to Browse').toBeFalse();
+    });
+  });
+
+  // A pin. Mutation: onZoneClick's guard against a click from inside a
+  // button dropped, so Browse's click reaches the host and asks again.
+  it('opens the picker once for a click on Browse', () => {
+    fixture.detectChanges();
+    const picker = spyOn(fileInput(), 'click');
+
+    for (const selector of ['.browse-btn', '.browse-btn mat-icon']) {
+      const before = picker.calls.count();
+      (el().querySelector(selector) as HTMLElement).click();
+      expect(picker.calls.count() - before).withContext(`picker requests from ${selector}`).toBe(1);
+    }
+  });
+
+  // The picker is the input's own click, and that click bubbles: out through
+  // the zone to the host that asked for it, which would ask again. The spy
+  // lets it through here, so the click the input dispatches is real.
+  // Mutation: onZoneClick's guard against a click from inside an input
+  // dropped.
+  it('asks the input once a click, though the input\'s own click bubbles back out through the zone', () => {
+    fixture.detectChanges();
+    const picker = spyOn(fileInput(), 'click').and.callThrough();
+
+    (el().querySelector('.title') as HTMLElement).click();
+    expect(picker).withContext('from the zone').toHaveBeenCalledTimes(1);
+    (el().querySelector('.browse-btn') as HTMLElement).click();
+    expect(picker).withContext('from the zone, then Browse').toHaveBeenCalledTimes(2);
+  });
+
+  // The banner sits beside the zone, inside the frame a file is dropped on:
+  // it is read, not pressed. A pin. Mutation: onZoneClick's guard that the
+  // click came from inside .dropzone dropped.
+  it('opens nothing from the refusal banner', () => {
+    fixture.detectChanges();
+    dropFiles([new File(['x'], 'notes.txt', { type: 'text/plain' })]);
+    expect(component.selectedFiles().length).withContext('nothing picked').toBe(0);
+    expect(el().querySelector('.error-banner')).withContext('the banner').not.toBeNull();
+    const picker = spyOn(fileInput(), 'click');
+
+    for (const selector of ['.error-banner', '.error-message', '.error-banner mat-icon']) {
+      (el().querySelector(selector) as HTMLElement).click();
+    }
+    expect(picker).not.toHaveBeenCalled();
+  });
+
+  // A click from inside a control is that control's own, but only a control
+  // inside the zone: a zone rendered inside a link of the page's own met
+  // that link on every click and opened nothing. Browse still opens it once.
+  it('opens the picker from a zone rendered inside a link of the page\'s own', () => {
+    const page = TestBed.createComponent(ZoneInsideALink);
+    page.detectChanges();
+    const root = page.nativeElement as HTMLElement;
+    expect(root.querySelector('a.page-link app-file-dropzone .title')).withContext('the zone, inside the link').toBeTruthy();
+    const picker = spyOn(root.querySelector('input[type="file"]') as HTMLInputElement, 'click');
+
+    (root.querySelector('.title') as HTMLElement).click();
+    expect(picker).withContext('from the zone\'s title').toHaveBeenCalledTimes(1);
+    (root.querySelector('.browse-btn') as HTMLElement).click();
+    expect(picker).withContext('from the title, then Browse').toHaveBeenCalledTimes(2);
+  });
+
+  // The zone is no control, so it is never :focus-visible itself, and the
+  // ring styles.scss draws would go round Browse alone. What a keyboard user
+  // is choosing is the zone, so the ring goes round it while Browse has
+  // keyboard focus, at the 2px outline and 2px offset of every other ring (3px
+  // under high contrast, which styles.scss widens by :focus-visible alone):
+  // the room the wizard leaves round its step, 5px, is cut to that ring.
+  // Browse's own ring is cleared, so one ring shows.
+  it('rings the zone while Browse has keyboard focus, 3px under high contrast, and clears Browse\'s own', () => {
+    fixture.detectChanges();
+    const rules = styleRules()
+      .filter(({ media }) => media === null)
+      .map(({ rule }) => rule);
+    // The zone itself, its own attribute and then :has( at once: a ring on
+    // anything inside it (.dropzone-content, or a bare :has() nested in
+    // .dropzone without &) goes round that instead. Angular scopes nothing
+    // inside :has(), so Browse in it carries no attribute.
+    const zoneRing = rules.filter(rule =>
+      /(?:^|[\s,])\.dropzone\[_ngcontent-[^\]]+\]:has\(\.browse-btn(?:\[_ngcontent-[^\]]+\])?:focus-visible\)/
+        .test(rule.selectorText));
+    const plain = zoneRing.filter(rule => !rule.selectorText.includes('.high-contrast'));
+    const wide = zoneRing.filter(rule => rule.selectorText.includes('.high-contrast'));
+    const browseRing = rules.filter(rule => /^\.browse-btn\[_ngcontent-[^\]]+\]:focus-visible$/.test(rule.selectorText));
+
+    expectOneRule(plain);
+    // A shorthand holding a var() leaves its longhands unread in the CSSOM,
+    // so the ring is read whole.
+    expect([plain[0]?.style.outline, plain[0]?.style.outlineOffset])
+      .withContext('the zone\'s ring, then its offset')
+      .toEqual(['2px solid var(--color-primary)', '2px']);
+    expectOneRule(wide);
+    expect(wide[0]?.style.outlineWidth).withContext('the zone\'s ring under high contrast').toBe('3px');
+    expectOneRule(browseRing);
+    expect(browseRing[0]?.style.outlineStyle).withContext('Browse\'s own ring').toBe('none');
   });
 
   it('renders a dropped file as a row carrying its name, size and type', () => {
@@ -723,24 +915,26 @@ describe('FileDropzoneComponent, through its own template', () => {
   });
 
   // Two iOS captures are both image.jpg. Each row's buttons name the file
-  // they act on by its place in the list and its name, the way the badge and
-  // the thumbnail tell the rows apart by sight: "Remove", "Move up" and
-  // "Move down" alone gave every row the same three names.
+  // they act on by its place and its name, the way the badge and the
+  // thumbnail tell the rows apart by sight: "Remove", "Move up" and "Move
+  // down" alone gave every row the same three names. A photo's place is its
+  // number among the photos, the badge's; any other file's is its number
+  // among the other files, so two CSVs of one name stay apart too.
   it('names each row\'s remove and move buttons by the file\'s place and name', () => {
     fixture.detectChanges();
     dropFiles([imageFile('image.jpg'), imageFile('image.jpg'), csvFile('rows.csv')]);
     const labels = (selector: string) => all(selector).map(b => b.getAttribute('aria-label'));
 
     expect(labels('.remove-btn')).withContext('the remove buttons').toEqual([
-      'import.removeFileLabel:{"position":1,"name":"image.jpg"}',
-      'import.removeFileLabel:{"position":2,"name":"image.jpg"}',
-      'import.removeFileLabel:{"position":3,"name":"rows.csv"}',
+      'import.removePhotoLabel:{"position":1,"name":"image.jpg"}',
+      'import.removePhotoLabel:{"position":2,"name":"image.jpg"}',
+      'import.removeFileLabel:{"position":1,"name":"rows.csv"}',
     ]);
     expect(labels('.reorder-btn')).withContext('the move buttons').toEqual([
-      'import.moveFileUpLabel:{"position":1,"name":"image.jpg"}',
-      'import.moveFileDownLabel:{"position":1,"name":"image.jpg"}',
-      'import.moveFileUpLabel:{"position":2,"name":"image.jpg"}',
-      'import.moveFileDownLabel:{"position":2,"name":"image.jpg"}',
+      'import.movePhotoUpLabel:{"position":1,"name":"image.jpg"}',
+      'import.movePhotoDownLabel:{"position":1,"name":"image.jpg"}',
+      'import.movePhotoUpLabel:{"position":2,"name":"image.jpg"}',
+      'import.movePhotoDownLabel:{"position":2,"name":"image.jpg"}',
     ]);
   });
 
@@ -752,9 +946,360 @@ describe('FileDropzoneComponent, through its own template', () => {
     fixture.detectChanges();
 
     expect(all('.remove-btn').map(b => b.getAttribute('aria-label'))).toEqual([
-      'import.removeFileLabel:{"position":1,"name":"second.png"}',
-      'import.removeFileLabel:{"position":2,"name":"first.png"}',
+      'import.removePhotoLabel:{"position":1,"name":"second.png"}',
+      'import.removePhotoLabel:{"position":2,"name":"first.png"}',
     ]);
+  });
+
+  // A photo's place is its place among the photos: the badge, the arrows'
+  // bounds, a move and a drop all count photos alone, and a CSV picked
+  // between them keeps its row. The wizard sends the photos in the order the
+  // zone lists them, so the badges are the order they are read in.
+  describe('a pick that mixes photos and a CSV', () => {
+    const badges = () => all('.image-number').map(n => n.textContent?.trim());
+
+    it('with a CSV first, the badges read 1 and 2 and the first photo\'s up arrow is disabled', () => {
+      fixture.detectChanges();
+      dropFiles([csvFile(), imageFile('a.png'), imageFile('b.png')]);
+
+      expect(badges()).withContext('the badges').toEqual(['1', '2']);
+      const [up, down] = arrows(1);
+      expect(up).withContext('the first photo\'s up arrow').toBeDefined();
+      expect(up?.disabled).withContext('the first photo\'s up arrow, disabled').toBeTrue();
+      expect(down?.disabled).withContext('the first photo\'s down arrow, disabled').toBeFalse();
+    });
+
+    it('with two photos before a CSV, the second photo\'s down arrow is disabled', () => {
+      fixture.detectChanges();
+      dropFiles([imageFile('a.png'), imageFile('b.png'), csvFile()]);
+
+      expect(badges()).withContext('the badges').toEqual(['1', '2']);
+      const [up, down] = arrows(1);
+      expect(down).withContext('the second photo\'s down arrow').toBeDefined();
+      expect(up?.disabled).withContext('the second photo\'s up arrow, disabled').toBeFalse();
+      expect(down?.disabled).withContext('the second photo\'s down arrow, disabled').toBeTrue();
+    });
+
+    it('a photo\'s arrow steps past a CSV and leaves it in place', () => {
+      const emitted: File[][] = [];
+      component.filesSelected.subscribe(files => emitted.push(files));
+      fixture.detectChanges();
+      dropFiles([imageFile('a.png'), csvFile(), imageFile('b.png')]);
+
+      const up = arrows(2)[0];
+      expect(up).withContext('b\'s up arrow').toBeDefined();
+      up?.click();
+      fixture.detectChanges();
+
+      expect(rowNames()).withContext('the rows, b moved up').toEqual(['b.png', 'rows.csv', 'a.png']);
+      expect(emitted.at(-1)?.map(f => f.name)).withContext('what the zone emits, b moved up')
+        .toEqual(['b.png', 'rows.csv', 'a.png']);
+      expect(badges()).withContext('the badges, b moved up').toEqual(['1', '2']);
+
+      arrows(0)[1]?.click();
+      fixture.detectChanges();
+
+      expect(rowNames()).withContext('the rows, b moved back down').toEqual(['a.png', 'rows.csv', 'b.png']);
+      expect(emitted.at(-1)?.map(f => f.name)).withContext('what the zone emits, b moved back down')
+        .toEqual(['a.png', 'rows.csv', 'b.png']);
+    });
+
+    // CDK sorts every row the pointer passes, a CSV's too, and reports only
+    // where the dragged row started and where it landed. The zone reads the
+    // photos off in the order CDK left them and writes them back into the
+    // photos' own rows.
+    it('a drop reorders photos among themselves', () => {
+      const emitted: File[][] = [];
+      component.filesSelected.subscribe(files => emitted.push(files));
+      fixture.detectChanges();
+      dropFiles([imageFile('a.png'), csvFile(), imageFile('b.png')]);
+
+      component.onFileDrop({ previousIndex: 2, currentIndex: 0 } as CdkDragDrop<File[]>);
+      fixture.detectChanges();
+
+      expect(rowNames()).withContext('the rows').toEqual(['b.png', 'rows.csv', 'a.png']);
+      expect(emitted.at(-1)?.map(f => f.name)).withContext('what the zone emits').toEqual(['b.png', 'rows.csv', 'a.png']);
+    });
+
+    // A pin. Mutation: onFileDrop back to a plain moveItemInArray on the list.
+    // CDK leaves a dragged down past the CSV and b as [csv, b, a]; the photos
+    // read b then a, and go back into the photos' rows.
+    it('a downward drop reorders photos among themselves', () => {
+      const emitted: File[][] = [];
+      component.filesSelected.subscribe(files => emitted.push(files));
+      fixture.detectChanges();
+      dropFiles([imageFile('a.png'), csvFile(), imageFile('b.png')]);
+
+      component.onFileDrop({ previousIndex: 0, currentIndex: 2 } as CdkDragDrop<File[]>);
+      fixture.detectChanges();
+
+      expect(rowNames()).withContext('the rows').toEqual(['b.png', 'rows.csv', 'a.png']);
+      expect(emitted.at(-1)?.map(f => f.name)).withContext('what the zone emits').toEqual(['b.png', 'rows.csv', 'a.png']);
+    });
+
+    // A pin. Mutation: onFileDrop back to a plain moveItemInArray on the list.
+    // A photo dropped on the CSV's own row passes no other photo: CDK leaves
+    // b in the CSV's slot, [a, b, csv], and the photos still read a then b.
+    // So the list is unchanged, and the CSV keeps its row.
+    it('a drop on the CSV\'s row leaves the list as it was', () => {
+      const emitted: File[][] = [];
+      component.filesSelected.subscribe(files => emitted.push(files));
+      fixture.detectChanges();
+      dropFiles([imageFile('a.png'), csvFile(), imageFile('b.png')]);
+
+      component.onFileDrop({ previousIndex: 2, currentIndex: 1 } as CdkDragDrop<File[]>);
+      fixture.detectChanges();
+
+      expect(rowNames()).withContext('the rows').toEqual(['a.png', 'rows.csv', 'b.png']);
+      expect(emitted.at(-1)?.map(f => f.name)).withContext('what the zone emits').toEqual(['a.png', 'rows.csv', 'b.png']);
+    });
+
+    it('offers no drag on a non-photo row', () => {
+      const dragsDisabled = () =>
+        fixture.debugElement.queryAll(By.directive(CdkDrag)).map(row => row.injector.get(CdkDrag).disabled);
+      fixture.detectChanges();
+      dropFiles([imageFile('a.png'), csvFile(), imageFile('b.png')]);
+
+      expect(dragsDisabled()).withContext('two photos and a CSV').toEqual([false, true, false]);
+
+      arrows(2)[0]?.click();
+      fixture.detectChanges();
+      all('.file-item')[2]?.querySelector<HTMLButtonElement>('.remove-btn')?.click();
+      fixture.detectChanges();
+
+      expect(rowNames()).withContext('the rows left').toEqual(['b.png', 'rows.csv']);
+      expect(dragsDisabled()).withContext('one photo and a CSV').toEqual([true, true]);
+    });
+
+    // A pin. Mutation: otherNumber counting every file listed, so the second
+    // CSV, behind the photo, is numbered 3. The CSVs are numbered among the
+    // files that are not photos, so two of one name stay apart, and the photo
+    // among the photos.
+    it('names two CSVs of one name apart, and the photo among the photos', () => {
+      fixture.detectChanges();
+      dropFiles([csvFile('rows.csv'), imageFile('image.jpg'), csvFile('rows.csv')]);
+
+      expect(all('.remove-btn').map(b => b.getAttribute('aria-label'))).toEqual([
+        'import.removeFileLabel:{"position":1,"name":"rows.csv"}',
+        'import.removePhotoLabel:{"position":1,"name":"image.jpg"}',
+        'import.removeFileLabel:{"position":2,"name":"rows.csv"}',
+      ]);
+    });
+
+    for (const locale of ['en', 'ja', 'tc'] as const) {
+      it(`names carry the badge's number in ${locale}`, () => {
+        const stub = TestBed.inject(TranslationService) as unknown as TranslationStub;
+        const words = catalogTranslationStub(locale);
+        stub.t = words.t;
+        stub.currentLocale.set(words.currentLocale());
+        const t = catalogTranslator(locale, { strict: true });
+        fixture.detectChanges();
+        dropFiles([csvFile('rows.csv'), imageFile('image.jpg'), imageFile('image.jpg')]);
+
+        expect(badges()).withContext('the badges').toEqual(['1', '2']);
+        const photo = (position: number) => ({ position, name: 'image.jpg' });
+        expect(all('.reorder-btn, .remove-btn').map(button => accessibleName(button))).toEqual([
+          t('import.removeFileLabel', { position: 1, name: 'rows.csv' }),
+          t('import.movePhotoUpLabel', photo(1)),
+          t('import.movePhotoDownLabel', photo(1)),
+          t('import.removePhotoLabel', photo(1)),
+          t('import.movePhotoUpLabel', photo(2)),
+          t('import.movePhotoDownLabel', photo(2)),
+          t('import.removePhotoLabel', photo(2)),
+        ]);
+      });
+    }
+  });
+
+  // An arrow is disabled once its photo reaches that end of the list, and a
+  // disabled button cannot hold focus: a keyboard user who moved a photo to
+  // either end was left on the page itself, and with two photos every move
+  // ends at an end. Focus stays with the moved photo: on the arrow pressed
+  // while the photo can still go that way, on its other arrow once it cannot.
+  describe('focus after a photo moves', () => {
+    it('hands focus to Move up when Enter moves a photo to the last place', () => {
+      fixture.detectChanges();
+      dropFiles([imageFile('first.png'), imageFile('second.png')]);
+
+      pressFocused(arrows(0)[1], 'Enter');
+
+      expect(rowNames()).withContext('the rows, first moved down').toEqual(['second.png', 'first.png']);
+      const [up, down] = arrows(1);
+      expect(down?.disabled).withContext('the moved photo\'s down arrow').toBeTrue();
+      expect(document.activeElement).withContext('focus, on the moved photo\'s up arrow').toBe(up ?? null);
+      expect(focusedName()).withContext('the focused control\'s name')
+        .toBe('import.movePhotoUpLabel:{"position":2,"name":"first.png"}');
+    });
+
+    it('hands focus to Move down when Enter moves a photo to the first place', () => {
+      fixture.detectChanges();
+      dropFiles([imageFile('first.png'), imageFile('second.png')]);
+
+      pressFocused(arrows(1)[0], 'Enter');
+
+      expect(rowNames()).withContext('the rows, second moved up').toEqual(['second.png', 'first.png']);
+      const [up, down] = arrows(0);
+      expect(up?.disabled).withContext('the moved photo\'s up arrow').toBeTrue();
+      expect(document.activeElement).withContext('focus, on the moved photo\'s down arrow').toBe(down ?? null);
+      expect(focusedName()).withContext('the focused control\'s name')
+        .toBe('import.movePhotoDownLabel:{"position":1,"name":"second.png"}');
+    });
+
+    // A pin. Mutation: the moved photo's other arrow asked for before the one pressed.
+    it('keeps focus on Move down while the photo can still go down', () => {
+      fixture.detectChanges();
+      dropFiles([imageFile('a.png'), imageFile('b.png'), imageFile('c.png')]);
+
+      pressFocused(arrows(0)[1], 'Enter');
+
+      expect(rowNames()).withContext('the rows, a moved down').toEqual(['b.png', 'a.png', 'c.png']);
+      const [, down] = arrows(1);
+      expect(down?.disabled).withContext('the moved photo\'s down arrow').toBeFalse();
+      expect(document.activeElement).withContext('focus, on the moved photo\'s down arrow').toBe(down ?? null);
+      expect(focusedName()).withContext('the focused control\'s name')
+        .toBe('import.movePhotoDownLabel:{"position":2,"name":"a.png"}');
+    });
+
+    // @for swaps two neighbouring rows by taking the lower one out of the
+    // page and putting it back above the other, and a button taken out of
+    // the page loses focus: a photo moved up lost it with its arrow enabled.
+    it('keeps focus on Move up while the photo can still go up', () => {
+      fixture.detectChanges();
+      dropFiles([imageFile('a.png'), imageFile('b.png'), imageFile('c.png')]);
+
+      pressFocused(arrows(2)[0], 'Enter');
+
+      expect(rowNames()).withContext('the rows, c moved up').toEqual(['a.png', 'c.png', 'b.png']);
+      const [up] = arrows(1);
+      expect(up?.disabled).withContext('the moved photo\'s up arrow').toBeFalse();
+      expect(document.activeElement).withContext('focus, on the moved photo\'s up arrow').toBe(up ?? null);
+      expect(focusedName()).withContext('the focused control\'s name')
+        .toBe('import.movePhotoUpLabel:{"position":2,"name":"c.png"}');
+    });
+
+    // The photo's row is found by its place in the list, a CSV's rows
+    // counted, not by its number among the photos.
+    it('follows a photo a click moves past a CSV to the first place', () => {
+      fixture.detectChanges();
+      dropFiles([imageFile('a.png'), csvFile(), imageFile('b.png')]);
+
+      pressFocused(arrows(2)[0]);
+
+      expect(rowNames()).withContext('the rows, b moved up').toEqual(['b.png', 'rows.csv', 'a.png']);
+      const [up, down] = arrows(0);
+      expect(up?.disabled).withContext('the moved photo\'s up arrow').toBeTrue();
+      expect(document.activeElement).withContext('focus, on the moved photo\'s down arrow').toBe(down ?? null);
+      expect(focusedName()).withContext('the focused control\'s name')
+        .toBe('import.movePhotoDownLabel:{"position":1,"name":"b.png"}');
+    });
+
+    // A held Enter's repeats reach the arrow focus landed on, and a photo at
+    // an end hands focus to its other arrow: each repeat sent it back the
+    // way it came, to one end and back for as long as the key was held.
+    it('moves a photo one place for an Enter held down on its arrow', () => {
+      fixture.detectChanges();
+      dropFiles([imageFile('first.png'), imageFile('second.png')]);
+
+      pressFocused(arrows(1)[0], 'Enter');
+      expect(rowNames()).withContext('the rows, second moved up').toEqual(['second.png', 'first.png']);
+
+      for (const n of [1, 2, 3]) {
+        const repeat = pressKey(document.activeElement!, 'Enter', { repeat: true });
+        fixture.detectChanges();
+        TestBed.tick();
+        expect(repeat.defaultPrevented).withContext(`repeat ${n}, cancelled`).toBeTrue();
+        expect(rowNames()).withContext(`the rows, after repeat ${n}`).toEqual(['second.png', 'first.png']);
+      }
+      expect(focusedName()).withContext('the focused control\'s name')
+        .toBe('import.movePhotoDownLabel:{"position":1,"name":"second.png"}');
+    });
+  });
+
+  // The remove pressed goes with its row, and a focused button taken out of
+  // the page drops focus to the page itself; the last file's remove takes the
+  // whole list with it. Focus goes on to the remove of the row that takes the
+  // removed one's place, else of the row before it, and to Browse, back with
+  // the empty zone, once nothing is left.
+  describe('focus after a row is removed', () => {
+    /** The remove button of the row at `row`, or null once there is no such row. */
+    const removeOf = (row: number) =>
+      all('.file-item')[row]?.querySelector<HTMLButtonElement>('.remove-btn') ?? null;
+
+    it('hands focus to the next row\'s remove when Enter removes a row between two', () => {
+      fixture.detectChanges();
+      dropFiles([imageFile('a.png'), imageFile('b.png'), imageFile('c.png')]);
+
+      pressFocused(removeOf(1), 'Enter');
+
+      expect(rowNames()).withContext('the rows, b removed').toEqual(['a.png', 'c.png']);
+      expect(document.activeElement).withContext('focus, on c\'s remove, in b\'s place').toBe(removeOf(1));
+      expect(focusedName()).withContext('the focused control\'s name')
+        .toBe('import.removePhotoLabel:{"position":2,"name":"c.png"}');
+    });
+
+    // A click moves focus as Enter does, as a click on an arrow does. With
+    // two photos down to one the arrows go, so the row before is reached by
+    // its remove, the one control every row keeps.
+    it('hands focus to the row before when a click removes the last row', () => {
+      fixture.detectChanges();
+      dropFiles([imageFile('a.png'), csvFile(), imageFile('b.png')]);
+
+      pressFocused(removeOf(2));
+
+      expect(rowNames()).withContext('the rows, b removed').toEqual(['a.png', 'rows.csv']);
+      expect(el().querySelector('.reorder-controls')).withContext('one photo left, no arrows').toBeNull();
+      expect(document.activeElement).withContext('focus, on the CSV\'s remove, the row before').toBe(removeOf(1));
+      expect(focusedName()).withContext('the focused control\'s name')
+        .toBe('import.removeFileLabel:{"position":1,"name":"rows.csv"}');
+    });
+
+    it('hands focus to Browse when Enter removes the only file', () => {
+      fixture.detectChanges();
+      dropFiles([csvFile()]);
+
+      pressFocused(removeOf(0), 'Enter');
+
+      expect(all('.file-item').length).withContext('the rows left').toBe(0);
+      const browse = el().querySelector<HTMLButtonElement>('.browse-btn');
+      expect(browse).withContext('Browse, back with the empty zone').not.toBeNull();
+      expect(document.activeElement).withContext('focus, on Browse').toBe(browse);
+      expect(focusedName()).withContext('the focused control\'s name').toBe('import.browseFiles');
+    });
+
+    // A held Enter's repeats reach the remove focus landed on: each removed
+    // the next file, down to Browse, and the next repeat opened the picker.
+    it('removes one file for an Enter held down on a remove', () => {
+      fixture.detectChanges();
+      dropFiles([imageFile('a.png'), imageFile('b.png'), imageFile('c.png')]);
+      const picker = spyOn(fileInput(), 'click');
+
+      pressFocused(removeOf(0), 'Enter');
+      expect(rowNames()).withContext('the rows, a removed').toEqual(['b.png', 'c.png']);
+
+      for (const n of [1, 2, 3]) {
+        const repeat = pressKey(document.activeElement!, 'Enter', { repeat: true });
+        fixture.detectChanges();
+        TestBed.tick();
+        expect(repeat.defaultPrevented).withContext(`repeat ${n}, cancelled`).toBeTrue();
+        expect(rowNames()).withContext(`the rows, after repeat ${n}`).toEqual(['b.png', 'c.png']);
+      }
+      expect(picker).withContext('the picker').not.toHaveBeenCalled();
+      expect(document.activeElement).withContext('focus, on b\'s remove').toBe(removeOf(0));
+    });
+
+    // A pin. Mutation: the held key's guard never lets go, so it cancels a
+    // fresh Enter as it does a repeat.
+    it('removes the next file on a fresh Enter once the held one is let go (pin)', () => {
+      fixture.detectChanges();
+      dropFiles([imageFile('a.png'), imageFile('b.png'), imageFile('c.png')]);
+
+      pressFocused(removeOf(0), 'Enter');
+      document.activeElement!.dispatchEvent(new KeyboardEvent('keyup', { key: 'Enter', bubbles: true }));
+      pressFocused(removeOf(0), 'Enter');
+
+      expect(rowNames()).withContext('the rows, a and then b removed').toEqual(['c.png']);
+      expect(document.activeElement).withContext('focus, on c\'s remove').toBe(removeOf(0));
+    });
   });
 
   it('shows the error banner when a dropped file is refused', () => {
@@ -783,11 +1328,10 @@ describe('FileDropzoneComponent, through its own template', () => {
     expect(banner.textContent).toContain('import.fileTooLarge:{"name":"big-statement.csv","limit":"10 MB"}');
     expect(banner.querySelector('mat-icon')?.getAttribute('aria-hidden')).toBe('true');
 
-    // A refusal leaves nothing picked, so the zone is a role="button" right
-    // now, and a button's children are presentational: an alert inside one
-    // is each engine's to keep or prune. The banner sits beside the zone.
-    expect(el().querySelector('.dropzone')?.getAttribute('role')).toBe('button');
-    expect(banner.closest('[role="button"]')).toBeNull();
+    // A refusal leaves nothing picked, the state the zone was a role="button"
+    // in, and a button's children are presentational: an alert inside one is
+    // each engine's to keep or prune. No role="button" stands anywhere now.
+    expect(el().querySelector('[role="button"]')).withContext('a role="button" in the zone').toBeNull();
   });
 
   // Beside the zone, the banner still sits inside the frame that takes the
@@ -983,17 +1527,44 @@ describe('FileDropzoneComponent, through its own template', () => {
     expect(zone.classList).not.toContain('dragover');
   });
 
-  it('opens the picker from the empty zone but not from the file list', () => {
+  // A pointer still opens the picker from anywhere on the empty zone. Once
+  // files are picked, the list of rows must not re-open it on every stray
+  // click; adding more is Add more's. A pin. Mutations: onZoneClick's guard
+  // that nothing is picked dropped; the host's click binding removed.
+  it('opens the picker once for a click anywhere on the empty zone, and not from the file list', () => {
     fixture.detectChanges();
-    const input = el().querySelector('input[type="file"]') as HTMLInputElement;
-    const click = spyOn(input, 'click');
+    const picker = spyOn(fileInput(), 'click');
 
-    (el().querySelector('.dropzone') as HTMLElement).click();
-    expect(click).toHaveBeenCalledTimes(1);
+    const empty = ['.dropzone', '.dropzone-content', '.icon-container', '.upload-icon', '.title', '.hint', '.file-type'];
+    for (const selector of empty) {
+      const before = picker.calls.count();
+      (el().querySelector(selector) as HTMLElement).click();
+      expect(picker.calls.count() - before).withContext(`picker requests from ${selector}`).toBe(1);
+    }
 
     dropFiles([csvFile()]);
-    (el().querySelector('.dropzone') as HTMLElement).click();
-    expect(click).toHaveBeenCalledTimes(1);
+    for (const selector of ['.dropzone', '.selected-files', '.file-item', '.file-name']) {
+      (el().querySelector(selector) as HTMLElement).click();
+    }
+    expect(picker.calls.count()).withContext('none from the file list').toBe(empty.length);
+  });
+
+  // Add more's click bubbles out through the zone to the host, as Browse's
+  // does, and the input's own click after it. A pin. Mutation: onZoneClick's
+  // guard that nothing is picked and its guard against a click from inside a
+  // button both dropped.
+  it('opens the picker once for a click on Add more', () => {
+    fixture.detectChanges();
+    dropFiles([csvFile()]);
+    const picker = spyOn(fileInput(), 'click').and.callThrough();
+
+    for (const selector of ['.add-more-btn', '.add-more-btn mat-icon']) {
+      const before = picker.calls.count();
+      const node = el().querySelector<HTMLElement>(selector);
+      expect(node).withContext(selector).toBeTruthy();
+      node?.click();
+      expect(picker.calls.count() - before).withContext(`picker requests from ${selector}`).toBe(1);
+    }
   });
 
   it('takes a file through the hidden input the browse button reaches', () => {
@@ -1108,9 +1679,9 @@ describe('FileDropzoneComponent, through its own template', () => {
 
       const row = all('.file-item')[0];
       const info = box(row, '.file-info');
-      const arrows = box(row, '.reorder-controls');
+      const controls = box(row, '.reorder-controls');
       expect(getComputedStyle(row).display).withContext('the row').toBe('flex');
-      expect(arrows.top < info.bottom && arrows.bottom > info.top)
+      expect(controls.top < info.bottom && controls.bottom > info.top)
         .withContext('the arrows beside the name').toBeTrue();
     });
 
@@ -1128,29 +1699,6 @@ describe('FileDropzoneComponent, through its own template', () => {
 
   describe('colours, as painted', () => {
     const THEMES = ['light', 'dark'] as const;
-
-    /** What `<property>: var(token)` computes to under the theme on <html> now. */
-    function tokenValue(token: string, property = 'color'): string {
-      const probe = document.createElement('span');
-      probe.style.setProperty(property, `var(${token})`);
-      document.body.appendChild(probe);
-      try {
-        settleAnimations(document);
-        return getComputedStyle(probe).getPropertyValue(property);
-      } finally {
-        probe.remove();
-      }
-    }
-
-    /** `node` is `token`, and reads at `floor` or better on what is painted behind it. */
-    function expectPainted(node: HTMLElement | null, token: string, label: string, floor = 4.5): void {
-      expect(node).withContext(label).toBeTruthy();
-      if (!node) return;
-      expect(getComputedStyle(node).color).withContext(label).toBe(tokenValue(token));
-      expect(ratio(paintedColor(node), paintedBackground(node)))
-        .withContext(`${label} on what it sits on`)
-        .toBeGreaterThanOrEqual(floor);
-    }
 
     // A glyph is a graphic, so its floor is 3:1 (WCAG 1.4.11). An image never
     // reaches the wrapper: it gets a thumbnail (the case above).
@@ -1218,6 +1766,24 @@ describe('FileDropzoneComponent, through its own template', () => {
         withTheme(theme, () => {
           settleAnimations(document);
           expectPainted(el().querySelector('.error-banner .error-message'), '--color-error-text', `${theme} message`);
+        });
+      }
+    });
+
+    // A glyph, held here to text's 4.5:1 rather than a graphic's 3:1: that is
+    // the bar docs/accessibility.md sets for a glyph at rest, since Karma
+    // serves no icon font and axe scores the ligature as text, at 4.5:1. The
+    // error fill read 3.04:1 on the banner's tint in light. The glyph takes
+    // the message's text step, as the review step's notices take the
+    // warning's.
+    it('paints a refused file\'s glyph in --color-error-text at text\'s 4.5:1 on its banner, as axe scores its ligature, in both themes', () => {
+      fixture.detectChanges();
+      dropFiles([new File(['x'], 'notes.txt', { type: 'text/plain' })]);
+
+      for (const theme of THEMES) {
+        withTheme(theme, () => {
+          settleAnimations(document);
+          expectPainted(el().querySelector('.error-banner mat-icon'), '--color-error-text', `${theme} glyph`);
         });
       }
     });
@@ -1306,8 +1872,8 @@ describe('FileDropzoneComponent, through its own template', () => {
       const [first, second] = all('.file-item');
       const icon = (control: Element | null | undefined) => control?.querySelector<HTMLElement>('mat-icon') ?? null;
       const contrast = (glyph: HTMLElement) => ratio(paintedColor(glyph), paintedBackground(glyph));
-      const [firstUp, firstDown] = Array.from(first.querySelectorAll<HTMLButtonElement>('.reorder-btn'));
-      const [secondUp, secondDown] = Array.from(second.querySelectorAll<HTMLButtonElement>('.reorder-btn'));
+      const [firstUp, firstDown] = arrows(0);
+      const [secondUp, secondDown] = arrows(1);
       expect([firstUp?.disabled, firstDown?.disabled, secondUp?.disabled, secondDown?.disabled])
         .withContext('the arrows with nowhere to move')
         .toEqual([true, false, false, true]);

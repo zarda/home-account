@@ -85,15 +85,21 @@
       ></mat-datepicker>
     </div>
 
-    <!-- Filter Toggle -->
+    <!-- Filter Toggle: named by what it opens, and by how many filters are set
+         when any are. The badge is aria-hidden because the name already says
+         its number. -->
     <button
       class="filter-toggle"
       [class.has-filters]="activeFilterCount() > 0"
+      [attr.aria-label]="activeFilterCount() > 0
+        ? ('transactions.filtersToggleActive' | translate: { active: activeFilterCount() })
+        : ('transactions.filtersToggle' | translate)"
+      [attr.aria-expanded]="expanded()"
       (click)="expanded.set(!expanded())"
     >
       <mat-icon>tune</mat-icon>
       @if (activeFilterCount() > 0) {
-        <span class="filter-badge">{{ activeFilterCount() }}</span>
+        <span class="filter-badge" aria-hidden="true">{{ activeFilterCount() }}</span>
       }
     </button>
   </div>
@@ -116,11 +122,16 @@
           (focus)="onSearchFocus()"
         >
         @if (filters.searchQuery) {
+          <!-- Save search keeps its name and says with aria-expanded whether
+               its box is open, as the filter toggle says it of the panel: a
+               second press closes the box unsaved, as Cancel does. The box's
+               own button is Save. -->
           <button
             mat-icon-button
             type="button"
             class="save-search-button"
             [attr.aria-label]="'transactions.saveSearch' | translate"
+            [attr.aria-expanded]="saveMode()"
             (click)="toggleSaveMode()"
           >
             <mat-icon>bookmark_add</mat-icon>
@@ -144,7 +155,7 @@
                     mat-icon-button
                     type="button"
                     class="suggestion-remove"
-                    [attr.aria-label]="'transactions.removeSearch' | translate"
+                    [attr.aria-label]="'transactions.removeSavedSearch' | translate: { name: item.label || item.query }"
                     (click)="removeSearch(item, $event)"
                   >
                     <mat-icon>close</mat-icon>
@@ -164,7 +175,7 @@
                     mat-icon-button
                     type="button"
                     class="suggestion-remove"
-                    [attr.aria-label]="'transactions.removeSearch' | translate"
+                    [attr.aria-label]="'transactions.removeRecentSearch' | translate: { query: item.query }"
                     (click)="removeSearch(item, $event)"
                   >
                     <mat-icon>close</mat-icon>
@@ -184,11 +195,12 @@
             [placeholder]="'transactions.searchLabelPlaceholder' | translate"
             [(ngModel)]="saveLabel"
             (keydown.enter)="onSaveLabelEnter($event)"
+            (keydown.escape)="onSaveLabelEscape($event)"
           >
           <button
             mat-icon-button
             type="button"
-            [attr.aria-label]="'transactions.saveSearch' | translate"
+            [attr.aria-label]="'common.save' | translate"
             (click)="confirmSaveSearch()"
           >
             <mat-icon>check</mat-icon>
@@ -197,7 +209,7 @@
             mat-icon-button
             type="button"
             [attr.aria-label]="'common.cancel' | translate"
-            (click)="saveMode.set(false)"
+            (click)="closeSaveMode()"
           >
             <mat-icon>close</mat-icon>
           </button>
@@ -304,7 +316,10 @@
           </mat-form-field>
         }
 
-        <!-- Tags: rows must carry every selected tag -->
+        <!-- Tags: rows must carry every selected tag. The hint is the short one, as on
+             the transaction form: an input's one line cannot wrap, and a track can be
+             as narrow as the grid's floor (docs/ui-overflow.md, "a shorter word, not a
+             smaller one"). -->
         <mat-form-field
           appearance="outline"
           class="compact-field tags-field"
@@ -325,7 +340,7 @@
               </mat-chip-row>
             }
             <input
-              [placeholder]="'transactions.tagsPlaceholder' | translate"
+              [placeholder]="'transactions.tagsPlaceholderShort' | translate"
               [matChipInputFor]="tagFilterGrid"
               [matChipInputSeparatorKeyCodes]="tagSeparatorKeys"
               (matChipInputTokenEnd)="addTagFilter($event)"
@@ -335,7 +350,7 @@
       </div>
 
       @if (activeFilterCount() > 0) {
-        <button class="clear-btn" (click)="clearFilters()">
+        <button class="clear-btn" (click)="clearAll()">
           <mat-icon>clear</mat-icon>
           {{ 'transactions.clearAll' | translate }}
         </button>

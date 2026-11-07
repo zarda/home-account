@@ -191,14 +191,17 @@ describe('App routes (emulator smoke test)', () => {
    * then the spending legend and the budget widget scrolled into view, and
    * once a rule exists, Upcoming), /transactions, /budgets (its Budgets tab,
    * with the overview scrolled into view, then its Recurring tab with an
-   * active rule and a paused one), /reports (its first tab), /settings,
-   * /data, /household (its setup state, then its member view before and
-   * after the household's own budget and goal are made, and the switcher's
-   * open panel over two memberships, once the walkthrough's account forms
-   * its households) and /about. Every other route is **unswept**: /login is
-   * opened by the redirect case but never audited, and /lock, /ai,
-   * /search-history, /import/file and /import/history are never visited —
-   * see docs/emulator-blind-spots.md.
+   * active rule and a paused one, then its Goals tab with a goal's header,
+   * progress, items and note scrolled into view), /reports (its first tab,
+   * then its Forecast tab's header and summary once a rule exists),
+   * /settings, /data, /import/file (its empty upload step, with the upload
+   * area's contents scrolled into view), /household (its setup state, then
+   * its member view before and after the household's own budget and goal
+   * are made, and the switcher's open panel over two memberships, once the
+   * walkthrough's account forms its households) and /about. Every other
+   * route is **unswept**: /login is opened by the redirect case but never
+   * audited, and /lock, /ai, /search-history and /import/history are never
+   * visited — see docs/emulator-blind-spots.md.
    */
   async function expectNoAxeViolations(url: string): Promise<void> {
     const element = harness.routeNativeElement;
@@ -722,6 +725,11 @@ describe('App routes (emulator smoke test)', () => {
         expect(pageText())
           .withContext('bucket caption at one point per day')
           .not.toContain('reports.forecastBucketNote');
+        // The forecast's words, each part scrolled into the band axe can
+        // score: the header's note and horizon toggles, and the summary's
+        // projected net and rate caption.
+        await expectNoAxeViolationsInView('/reports', 'app-forecast .forecast-header');
+        await expectNoAxeViolationsInView('/reports', 'app-forecast .forecast-summary');
 
         // A paused rule beside the active one, in the same orange category:
         // the Recurring tab draws each rule's glyph on a tile of that colour,
@@ -757,6 +765,47 @@ describe('App routes (emulator smoke test)', () => {
         );
         await expectNoAxeViolationsInView('/dashboard', 'app-upcoming-bills');
 
+        // A goal with every part its card draws, written through the client so
+        // the rules check its shape: a target date, linked money beside the
+        // manual contributions, two items with one done, and a note. Each part
+        // of the card is swept in view. Opened from the dashboard rather than
+        // from the Recurring tab: the budgets page reads its ?tab= once, as it
+        // is built, so a second visit that reuses it stays on the tab it was
+        // on. Deleted once swept, so the pages after this one read what they
+        // read before it.
+        const goalRef = await addDoc(collection(firestore, `users/${uid}/goals`), {
+          userId: uid,
+          kind: 'project',
+          name: 'Walkthrough trip',
+          targetAmount: 800,
+          contributedAmount: 120,
+          linkedAmount: 80,
+          currency: 'USD',
+          targetDate: Timestamp.fromDate(addDays(new Date(), 90)),
+          items: [
+            { name: 'Train tickets', amount: 300, done: true },
+            { name: 'Hotel', amount: 500, done: false }
+          ],
+          note: 'Booked once the dates are fixed',
+          isActive: true,
+          createdAt: Timestamp.now(),
+          updatedAt: Timestamp.now()
+        });
+        try {
+          await expectPage('/budgets?tab=goals', 'budget.title', 'Walkthrough trip');
+          await waitForDom('the goal card with its linked money, its items and its note', () => {
+            const card = harness.routeNativeElement?.querySelector('app-goal-progress-card');
+            return !!card?.querySelector('.goal-progress .linked-breakdown')
+              && card.querySelectorAll('.goal-items mat-checkbox').length === 2
+              && !!card.querySelector('.goal-note');
+          });
+          for (const part of ['.goal-header', '.goal-progress', '.goal-items', '.goal-note']) {
+            await expectNoAxeViolationsInView('/budgets?tab=goals', `app-goal-progress-card ${part}`);
+          }
+        } finally {
+          await deleteDoc(goalRef);
+        }
+
         await expectPage('/settings', 'settings.title', 'Test User');
         // The hub counts each stored kind through a server-side aggregate. The
         // seeded categories prove the counts land as numbers rather than as the
@@ -771,6 +820,12 @@ describe('App routes (emulator smoke test)', () => {
               ) ?? []
             ).some(cell => /^\d+$/.test(cell.textContent?.trim() ?? ''))
         );
+        // The upload step at rest, nothing picked: the route has no guard. The
+        // upload area starts below the frame's fold, so its contents are swept
+        // in view as well as by the page's pass. The zone around them is
+        // taller than the band axe can score, by its padding.
+        await expectPage('/import/file', 'import.title', undefined, 'app-import-wizard');
+        await expectNoAxeViolationsInView('/import/file', 'app-file-dropzone .dropzone-content');
         // A signed-in account with no household lands on the setup. The
         // household listeners the page opens close when it is left, and it is
         // left here, well before the app is deleted below: a listener still

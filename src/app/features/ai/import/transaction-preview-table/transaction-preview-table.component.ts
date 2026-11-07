@@ -9,7 +9,6 @@ import {
   Injector,
   Input,
   Output,
-  afterNextRender,
   inject,
 } from '@angular/core';
 import { CommonModule } from '@angular/common';
@@ -66,6 +65,7 @@ import { nextImportRowId } from '../../../../core/utils/import-row-id.utils';
 import { isImeComposition } from '../../../../core/utils/keyboard.utils';
 import { normalizeTag, normalizeTags } from '../../../../core/utils/tag.utils';
 import { CategorySuggestionComponent } from '../category-suggestion/category-suggestion.component';
+import { ImportFocusContext, focusWhenRendered } from '../import-focus';
 import { LocaleDatePipe } from '../../../../shared/pipes/locale-date.pipe';
 import { TranslatePipe } from '../../../../shared/pipes/translate.pipe';
 import { LocationLabelPipe } from '../../../../shared/pipes/location-label.pipe';
@@ -152,12 +152,23 @@ let vocabularyListSeq = 0;
 })
 export class TransactionPreviewTableComponent implements AfterViewInit {
   private translationService = inject(TranslationService);
+  // Read at call time, not bound once, so a spec's spy on the service's `t`
+  // still reaches every sentence the card joins.
+  private readonly t = (key: string, params?: Record<string, string | number>) =>
+    this.translationService.t(key, params);
   private currencyService = inject(CurrencyService);
   private currencySession = inject(CurrencyChoiceSessionService);
   private localeFormat = inject(LocaleFormatService);
-  private injector = inject(Injector);
-  private destroyRef = inject(DestroyRef);
   private host = inject<ElementRef<HTMLElement>>(ElementRef);
+  // A swap's landing is a list of selectors because a control's usual place
+  // is not always on the card: the overrule's is absent while that row's
+  // description is being edited, and the header's bulk Keep may have no card
+  // left beneath it at all.
+  private readonly focus: ImportFocusContext = {
+    host: this.host.nativeElement,
+    injector: inject(Injector),
+    destroyRef: inject(DestroyRef)
+  };
   private cdr = inject(ChangeDetectorRef);
   private notifications = inject(NotificationService);
   private announcer = inject(AnnouncerService);
@@ -457,7 +468,11 @@ export class TransactionPreviewTableComponent implements AfterViewInit {
    */
   typeToggleLabel(row: CategorizedImportTransaction): string {
     const label = this.translationService.t(row.type === 'income' ? 'common.income' : 'common.expense');
-    return joinSentences(this.needsVerification(row, 'type') ? this.verificationTooltip(row, 'type') : '', label);
+    return joinSentences(
+      this.t,
+      this.needsVerification(row, 'type') ? this.verificationTooltip(row, 'type') : '',
+      label
+    );
   }
 
   /**
@@ -660,7 +675,7 @@ export class TransactionPreviewTableComponent implements AfterViewInit {
    */
   currencyChipLabel(row: CategorizedImportTransaction): string {
     const label = this.translationService.t('import.setCurrency', { currency: row.currency });
-    return joinSentences(row.currencyFellBack ? this.currencyFellBackTooltip() : '', label);
+    return joinSentences(this.t, row.currencyFellBack ? this.currencyFellBackTooltip() : '', label);
   }
 
   /**
@@ -673,12 +688,19 @@ export class TransactionPreviewTableComponent implements AfterViewInit {
    * placed or removed before anything is typed into it, and every announce
    * call needs the same answer rather than each deciding on its own whether
    * to say nothing instead. Remove's question and the row's checkbox name
-   * the row the same way, each inside a sentence of its own.
+   * the row the same way, each inside a sentence of its own, and so does
+   * every field and button the card stamps once per row: the template reads
+   * it, which is why it is protected. The fields commit on Enter or blur,
+   * never per keystroke, so a description being typed does not rename the
+   * field it is typed into. A filled row's description goes in the reader's
+   * own quotation marks, `common.quotedName` (none in en and ja, 「」 in tc);
+   * the stand-in never does, since in quotes it would read as the row's
+   * name. The keys it fills hold no quotation marks of their own.
    */
-  private announceDescription(row: CategorizedImportTransaction): string {
+  protected announceDescription(row: CategorizedImportTransaction): string {
     return descriptionIsUnfilled(row)
       ? this.translationService.t('import.untitledRow')
-      : row.description;
+      : this.translationService.t('common.quotedName', { name: row.description });
   }
 
   /**
@@ -702,7 +724,8 @@ export class TransactionPreviewTableComponent implements AfterViewInit {
     // Unless that row's description is being edited, in which case the
     // trigger is not on the card at all and the date button below it is the
     // next control down.
-    this.focusWhenRendered(
+    focusWhenRendered(
+      this.focus,
       this.inRow(transaction, '.description-text'),
       this.inRow(transaction, '.date-chip')
     );
@@ -722,7 +745,7 @@ export class TransactionPreviewTableComponent implements AfterViewInit {
     this.announcer.announce(
       this.translationService.t('import.announceLocationRemoved', { description: this.announceDescription(transaction) })
     );
-    this.focusWhenRendered(this.inRow(transaction, '.location-add'), this.inRow(transaction, '.place-input'));
+    focusWhenRendered(this.focus, this.inRow(transaction, '.location-add'), this.inRow(transaction, '.place-input'));
   }
 
   /**
@@ -819,7 +842,7 @@ export class TransactionPreviewTableComponent implements AfterViewInit {
         this.translationService.t('import.announceCountryRemoved', { description: this.announceDescription(row) })
       );
     }
-    this.focusWhenRendered(this.inRow(row, '.extra-country'), this.inRow(row, '.location-add'));
+    focusWhenRendered(this.focus, this.inRow(row, '.extra-country'), this.inRow(row, '.location-add'));
   }
 
   // The chip goes with the tag; the add trigger is the strip's unconditional
@@ -829,7 +852,7 @@ export class TransactionPreviewTableComponent implements AfterViewInit {
     this.announcer.announce(
       this.translationService.t('import.announceTagRemoved', { description: this.announceDescription(transaction), tag })
     );
-    this.focusWhenRendered(this.inRow(transaction, '.tag-add'), this.inRow(transaction, '.tag-input'));
+    focusWhenRendered(this.focus, this.inRow(transaction, '.tag-add'), this.inRow(transaction, '.tag-input'));
   }
 
   /** Accept = the ordinary currency edit, so one path clears the marks and records the choice. */
@@ -840,13 +863,13 @@ export class TransactionPreviewTableComponent implements AfterViewInit {
     // The offer's own chip goes with the accepted choice, and the currency
     // chip is where the choice now shows — the same landing dismiss names,
     // for the same unmount.
-    this.focusWhenRendered(this.inRow(transaction, '.currency-chip'));
+    focusWhenRendered(this.focus, this.inRow(transaction, '.currency-chip'));
   }
 
   /** Dismiss = drop the mark. The row keeps its fallen-back marker; nothing was applied. */
   dismissCurrencySuggestion(transaction: CategorizedImportTransaction): void {
     this.replaceRow(transaction, { currencySuggestion: undefined });
-    this.focusWhenRendered(this.inRow(transaction, '.currency-chip'));
+    focusWhenRendered(this.focus, this.inRow(transaction, '.currency-chip'));
   }
 
   currencyOfferText(row: CategorizedImportTransaction): string {
@@ -865,13 +888,17 @@ export class TransactionPreviewTableComponent implements AfterViewInit {
     return offer ? this.reasonLabel(offer.reason) : '';
   }
 
-  /** The accept button's name says what it does and why; the visible text alone says neither fully. */
+  /**
+   * The accept button's name opens with the question its chip shows, so a
+   * speech-input user who says the words they see reaches it (WCAG 2.5.3),
+   * and then gives the reason, which the chip does not show — the form's
+   * own offer is named by the same two strings, its text. Its tooltip shows
+   * this whole name: MatTooltip has the CDK describe its host by any
+   * message that is not the host's whole aria-label, so a tooltip of the
+   * reason alone was read again after the name.
+   */
   currencyOfferLabel(row: CategorizedImportTransaction): string {
-    const code = row.currencySuggestion?.code ?? '';
-    return joinSentences(
-      this.translationService.t('import.acceptCurrencySuggestion', { currency: code }),
-      this.currencyOfferReason(row)
-    );
+    return joinSentences(this.t, this.currencyOfferText(row), this.currencyOfferReason(row));
   }
 
   private reasonLabel(reason: CurrencySuggestionReason): string {
@@ -1024,7 +1051,7 @@ export class TransactionPreviewTableComponent implements AfterViewInit {
 
   /** The mark leads the button's name, exactly as currencyChipLabel does. */
   dateChipLabel(row: CategorizedImportTransaction): string {
-    return joinSentences(this.dateTooltip(row), this.changeDateLabel(row));
+    return joinSentences(this.t, this.dateTooltip(row), this.changeDateLabel(row));
   }
 
   dateChipText(row: CategorizedImportTransaction): string {
@@ -1033,12 +1060,15 @@ export class TransactionPreviewTableComponent implements AfterViewInit {
       : this.translationService.t('import.dateNotTodayKeep', { date: this.formattedDate(row) });
   }
 
-  /** The keep button's name says why the row is asked and what it keeps; the visible text says neither fully. */
+  /**
+   * The keep button's name opens with the question its chip shows, so a
+   * speech-input user who says the words they see reaches it (WCAG 2.5.3),
+   * and then says why the row is asked, which the chip does not. Its
+   * tooltip shows this whole name, as currencyOfferLabel's does, so a
+   * screen reader reads the reason once.
+   */
   keepDateLabel(row: CategorizedImportTransaction): string {
-    return joinSentences(
-      this.dateTooltip(row),
-      this.translationService.t('import.keepDate', { date: this.formattedDate(row) })
-    );
+    return joinSentences(this.t, this.dateChipText(row), this.dateTooltip(row));
   }
 
   /**
@@ -1086,7 +1116,7 @@ export class TransactionPreviewTableComponent implements AfterViewInit {
    * the button itself: that is the same element.
    */
   private focusAnsweredDate(row: CategorizedImportTransaction): void {
-    this.focusWhenRendered(this.inRow(row, '.date-chip'));
+    focusWhenRendered(this.focus, this.inRow(row, '.date-chip'));
   }
 
   /**
@@ -1116,7 +1146,8 @@ export class TransactionPreviewTableComponent implements AfterViewInit {
     // The first row's date button is the top of what was just answered; an
     // empty list has none, and the header's own checkbox outlives it.
     const first = this.transactions[0];
-    this.focusWhenRendered(
+    focusWhenRendered(
+      this.focus,
       ...(first ? [this.inRow(first, '.date-chip')] : []),
       '.header-left input[type="checkbox"]'
     );
@@ -1140,7 +1171,7 @@ export class TransactionPreviewTableComponent implements AfterViewInit {
     const unanswered = this.transactions.find(t => needsDateAnswer(t, this.attention(t)));
     if (unanswered) {
       this.scrollRowIntoView(unanswered);
-      this.focusWhenRendered(this.inRow(unanswered, '.date-chip'));
+      focusWhenRendered(this.focus, this.inRow(unanswered, '.date-chip'));
       return true;
     }
     return false;
@@ -1189,37 +1220,7 @@ export class TransactionPreviewTableComponent implements AfterViewInit {
     this.editing.set(row.id, field);
     this.amountRejected.delete(row.id);
     this.cdr.markForCheck();
-    this.focusWhenRendered(this.inRow(row, EDITORS[field].input));
-  }
-
-  /**
-   * Focus the first of these that a swap is about to put on the card. The
-   * target does not exist until the swap has rendered, which is what
-   * afterNextRender waits for; a registration on a destroyed injector throws
-   * NG0911, which is what the guard is for.
-   *
-   * Several selectors rather than one because a control's usual landing
-   * place is not always on the card: the overrule's is absent while that
-   * row's description is being edited, and the header's bulk Keep may have
-   * no card left beneath it at all. A selector that matches nothing drops
-   * focus at the document root exactly as no call would, so the fallbacks
-   * are the point — and they belong here rather than in a second focus path,
-   * which would be a second thing to keep in step with the swaps.
-   */
-  private focusWhenRendered(...selectors: string[]): void {
-    if (this.destroyRef.destroyed) return;
-    afterNextRender(
-      () => {
-        for (const selector of selectors) {
-          const target = this.host.nativeElement.querySelector<HTMLElement>(selector);
-          if (target) {
-            target.focus();
-            return;
-          }
-        }
-      },
-      { injector: this.injector }
-    );
+    focusWhenRendered(this.focus, this.inRow(row, EDITORS[field].input));
   }
 
   /**
@@ -1251,7 +1252,7 @@ export class TransactionPreviewTableComponent implements AfterViewInit {
     this.amountRejected.delete(row.id);
     this.cdr.markForCheck();
     if (restoreFocus && field) {
-      this.focusWhenRendered(...EDITORS[field].triggers.map(selector => this.inRow(row, selector)));
+      focusWhenRendered(this.focus, ...EDITORS[field].triggers.map(selector => this.inRow(row, selector)));
     }
   }
 
@@ -1464,7 +1465,7 @@ export class TransactionPreviewTableComponent implements AfterViewInit {
     ];
     this.emitChanges();
     this.cdr.markForCheck();
-    this.focusWhenRendered(this.inRow(part, EDITORS.description.input));
+    focusWhenRendered(this.focus, this.inRow(part, EDITORS.description.input));
   }
 
   /**
@@ -1627,7 +1628,7 @@ export class TransactionPreviewTableComponent implements AfterViewInit {
     if (filed.suggestedCategoryId !== folded.suggestedCategoryId) {
       this.announceCategoryRefiled(merged, filed.suggestedCategoryId);
     }
-    this.focusWhenRendered(this.inRow(merged, '.merge-trigger'), this.inRow(merged, '.description-section .inline-edit'));
+    focusWhenRendered(this.focus, this.inRow(merged, '.merge-trigger'), this.inRow(merged, '.description-section .inline-edit'));
   }
 
   /**
@@ -1705,7 +1706,8 @@ export class TransactionPreviewTableComponent implements AfterViewInit {
     this.announcer.announce(
       this.translationService.t('import.announceRowRemoved', { description: this.announceDescription(row) })
     );
-    this.focusWhenRendered(
+    focusWhenRendered(
+      this.focus,
       ...(neighbour ? [this.inRow(neighbour, '.remove-trigger')] : []),
       '.add-row'
     );
@@ -1857,7 +1859,7 @@ export class TransactionPreviewTableComponent implements AfterViewInit {
     this.transactions = [...this.transactions, row];
     this.emitChanges();
     this.cdr.markForCheck();
-    this.focusWhenRendered(this.inRow(row, EDITORS.description.input));
+    focusWhenRendered(this.focus, this.inRow(row, EDITORS.description.input));
   }
 
   private emitChanges(): void {

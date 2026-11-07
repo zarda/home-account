@@ -1,4 +1,4 @@
-import { AfterViewInit, ChangeDetectionStrategy, ChangeDetectorRef, Component, ElementRef, EventEmitter, Input, OnChanges, OnDestroy, OnInit, Output, SimpleChanges, ViewChild, computed, inject, input, signal } from '@angular/core';
+import { AfterViewInit, ChangeDetectionStrategy, ChangeDetectorRef, Component, DestroyRef, ElementRef, EventEmitter, Injector, Input, OnChanges, OnDestroy, OnInit, Output, SimpleChanges, ViewChild, afterNextRender, computed, inject, input, signal } from '@angular/core';
 
 import { COMMA, ENTER } from '@angular/cdk/keycodes';
 import { FormsModule } from '@angular/forms';
@@ -32,6 +32,7 @@ import {
   yearWindow,
 } from '../../../core/utils/transaction-date.utils';
 import { TranslatePipe } from '../../../shared/pipes/translate.pipe';
+import { ImportFocusContext, focusWhenRendered } from '../../ai/import/import-focus';
 
 @Component({
   selector: 'app-transaction-filters',
@@ -64,6 +65,14 @@ export class TransactionFiltersComponent implements OnInit, OnChanges, OnDestroy
   private elementRef = inject<ElementRef<HTMLElement>>(ElementRef);
   searchHistory = inject(SearchHistoryService);
   private analytics = inject(AnalyticsService);
+
+  // Where focus goes once Clear all, a suggestion or the save-search box
+  // takes the control holding it off the page (focusWhenRendered).
+  private readonly focus: ImportFocusContext = {
+    host: this.elementRef.nativeElement,
+    injector: inject(Injector),
+    destroyRef: inject(DestroyRef),
+  };
 
   @ViewChild('dayPicker') dayPicker!: MatDatepicker<Date>;
   @ViewChild('startPicker') startPicker!: MatDatepicker<Date>;
@@ -243,9 +252,23 @@ export class TransactionFiltersComponent implements OnInit, OnChanges, OnDestroy
     this.flushSearch();
   }
 
+  // Saving hands focus to Save search, and a button presses itself on the
+  // keypress that follows Enter's keydown to whatever holds focus by then,
+  // so the Enter that saves is cancelled. One that ends a composition is the
+  // IME's and stays as it is. A held Enter's repeats never reach the box:
+  // focusWhenRendered drops them wherever the press that opened it handed
+  // focus.
   onSaveLabelEnter(event: Event): void {
     if (isImeComposition(event)) return;
+    event.preventDefault();
     this.confirmSaveSearch();
+  }
+
+  // Escape closes the box onto Save search; one that ends a composition is
+  // the IME's.
+  onSaveLabelEscape(event: Event): void {
+    if (isImeComposition(event)) return;
+    this.closeSaveMode();
   }
 
   // A keystroke in either amount box. Leaving the box commits straight away
@@ -355,6 +378,9 @@ export class TransactionFiltersComponent implements OnInit, OnChanges, OnDestroy
     this.searchFocused.set(false);
     this.onFilterChange();
     void this.searchHistory.touch(item.id);
+    // Enter on a suggestion reached by ArrowDown took the button holding
+    // focus away with the panel; a pointer tap never left the search box.
+    focusWhenRendered(this.focus, '.search-input');
   }
 
   removeSearch(item: SavedSearch, event: Event): void {
@@ -362,11 +388,39 @@ export class TransactionFiltersComponent implements OnInit, OnChanges, OnDestroy
     void this.searchHistory.deleteSearch(item.id);
   }
 
+  // Save search opens a box whose one job is the name, so focus goes into it,
+  // with the query it offers as the name selected. A second press closes it
+  // as Cancel does: a tap focuses nothing in WebKit, so focus is still in the
+  // box that press takes away.
   toggleSaveMode(): void {
-    this.saveMode.update(open => !open);
     if (this.saveMode()) {
-      this.saveLabel = this.filters.searchQuery ?? '';
+      this.closeSaveMode();
+      return;
     }
+    this.saveMode.set(true);
+    this.saveLabel = this.filters.searchQuery ?? '';
+    focusWhenRendered(this.focus, '.save-label-input');
+    this.selectSaveLabel();
+  }
+
+  /**
+   * Selects the name the box opens with, so a typed name replaces it and
+   * Enter alone keeps it. NgModel hands the box that name a microtask after
+   * the render that made the box, and its write puts the caret at the end, so
+   * a selection made in the render hook itself would be undone. The selection
+   * waits for a microtask queued after NgModel's, by which time the box holds
+   * the focus focusWhenRendered gave it.
+   */
+  private selectSaveLabel(): void {
+    if (this.focus.destroyRef.destroyed) return;
+    afterNextRender(
+      () => {
+        void Promise.resolve().then(() => {
+          this.focus.host.querySelector<HTMLInputElement>('.save-label-input')?.select();
+        });
+      },
+      { injector: this.focus.injector }
+    );
   }
 
   confirmSaveSearch(): void {
@@ -374,7 +428,19 @@ export class TransactionFiltersComponent implements OnInit, OnChanges, OnDestroy
     if (!query) return;
     const label = this.saveLabel.trim() || query;
     void this.searchHistory.saveSearch(query, label);
+    this.closeSaveMode();
+  }
+
+  /**
+   * Saving or cancelling takes the box off the page, and with it the control
+   * in it that held focus. Focus goes back to Save search, which opened the
+   * box, or to the search box once an emptied query has taken Save search
+   * away too; that box's focus opens its suggestions, as it always does
+   * under an empty query.
+   */
+  closeSaveMode(): void {
     this.saveMode.set(false);
+    focusWhenRendered(this.focus, '.save-search-button', '.search-input');
   }
 
   private setupDatepickerListeners(picker: MatDatepicker<Date>): void {
@@ -547,6 +613,18 @@ export class TransactionFiltersComponent implements OnInit, OnChanges, OnDestroy
 
   isQuickFilterActive(filter: string): boolean {
     return this.activeQuickFilter() === filter;
+  }
+
+  /**
+   * Clear all goes once nothing is left to clear, and focus went with it to
+   * the page. It goes to the filter toggle instead: the toggle stays, heads
+   * the panel it opened, and then reads Filters with no count. Not to the
+   * search box, whose focus opens the recent searches under it.
+   * clearFilters() also runs on load under showAll, where no focus moves.
+   */
+  clearAll(): void {
+    this.clearFilters();
+    focusWhenRendered(this.focus, '.filter-toggle');
   }
 
   clearFilters(): void {

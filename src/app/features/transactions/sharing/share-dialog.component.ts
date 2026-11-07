@@ -3,9 +3,11 @@ import { MAT_DIALOG_DATA, MatDialogModule, MatDialogRef } from '@angular/materia
 import { MatButtonModule } from '@angular/material/button';
 import { MatCheckboxModule } from '@angular/material/checkbox';
 import { PwaService } from '../../../core/services/pwa.service';
+import { TranslationService } from '../../../core/services/translation.service';
 import { DialogHeaderComponent } from '../../../shared/components/dialog-header/dialog-header.component';
 import { TranslatePipe } from '../../../shared/pipes/translate.pipe';
 import { ShareTarget, shareChange } from '../../../core/utils/share-change.utils';
+import { transactionDisplayName } from '../../../core/utils/transaction-display.utils';
 
 /**
  * - `row`: who one row is shared with.
@@ -16,8 +18,10 @@ export type ShareDialogMode = 'row' | 'share' | 'unshare';
 
 export interface ShareDialogData {
   /**
-   * The row's description, so the dialog says which row it shares; for many
-   * rows, how many are selected.
+   * For one row, its description as stored, which the dialog names as the
+   * row's controls do (an untitled one by the catalog's words for one), so
+   * it says which row it shares; for many rows, how many are selected, in
+   * the caller's words.
    */
   description: string;
   /** The account's live memberships, one checkbox each. */
@@ -53,6 +57,7 @@ export class ShareDialogComponent {
   readonly data = inject<ShareDialogData>(MAT_DIALOG_DATA);
   private readonly dialogRef = inject<MatDialogRef<ShareDialogComponent, string[]>>(MatDialogRef);
   private readonly pwa = inject(PwaService);
+  private readonly translationService = inject(TranslationService);
 
   readonly mode: ShareDialogMode = this.data.mode ?? 'row';
 
@@ -84,6 +89,18 @@ export class ShareDialogComponent {
 
   /** For many rows there is nothing to do until a household is checked. */
   readonly canSave = computed(() => this.mode === 'row' || this.chosen().length > 0);
+
+  /**
+   * One row as the line above the households names it: its description, or
+   * the catalog's words for an untitled one, through the rule the list's
+   * rows name it by. The template calls it, and the service's t reads its
+   * catalog signal, so it follows a language switch made while the dialog
+   * is open. Many rows are named by the caller's words instead, a count that
+   * is no description, so never by this rule.
+   */
+  protected transactionName(): string {
+    return transactionDisplayName(this.data.description, key => this.translationService.t(key));
+  }
 
   isChosen(householdId: string): boolean {
     return this.chosen().includes(householdId);

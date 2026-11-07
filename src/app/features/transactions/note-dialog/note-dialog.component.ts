@@ -5,10 +5,17 @@ import { MatButtonModule } from '@angular/material/button';
 import { NoteTranslationComponent } from '../../../shared/components/note-translation/note-translation.component';
 import { DialogHeaderComponent } from '../../../shared/components/dialog-header/dialog-header.component';
 import { TranslatePipe } from '../../../shared/pipes/translate.pipe';
+import { TranslationService } from '../../../core/services/translation.service';
+import { transactionDisplayName } from '../../../core/utils/transaction-display.utils';
 
 export interface NoteDialogData {
   note: string;
-  /** The transaction the note belongs to, so the note is not read out of context. */
+  /**
+   * The description of the transaction the note belongs to, as stored, so
+   * the note is not read out of context. The dialog names the transaction
+   * from it as its row's controls do (an untitled one by the catalog's words
+   * for one).
+   */
   description: string;
 }
 
@@ -41,10 +48,22 @@ export interface NoteDialogData {
 })
 export class NoteDialogComponent {
   private dialogRef = inject(MatDialogRef<NoteDialogComponent>);
+  private translationService = inject(TranslationService);
   readonly data: NoteDialogData = inject(MAT_DIALOG_DATA);
 
   /** Owned here, written by the lens: what tells the note to step aside. */
   readonly showingTranslation = signal(false);
+
+  /**
+   * The transaction the subtitle names: its description, or the catalog's
+   * words for an untitled one, through the rule the list's rows name it by.
+   * The template calls it, and the service's t reads its catalog signal, so
+   * it follows a language switch made while the note is open; a name handed
+   * in already translated would keep the language the note opened in.
+   */
+  protected transactionName(): string {
+    return transactionDisplayName(this.data.description, key => this.translationService.t(key));
+  }
 
   close(): void {
     this.dialogRef.close();

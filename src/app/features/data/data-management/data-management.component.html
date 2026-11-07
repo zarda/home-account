@@ -116,14 +116,16 @@
     </div>
 
     @if (!showImportPreview()) {
-      <div class="import-dropzone" role="button" tabindex="0" (click)="fileInput.click()" (keydown.enter)="fileInput.click()" (keydown.space)="fileInput.click()">
-        <input
-          #fileInput
-          type="file"
-          accept=".csv,.json"
-          (change)="onFileSelected($event)"
-          hidden
-        />
+      <!-- Beside the area, not inside it: the input's own click, which is the
+           picker, would bubble back out through the area's click and ask again. -->
+      <input
+        #fileInput
+        type="file"
+        accept=".csv,.json"
+        (change)="onFileSelected($event)"
+        hidden
+      />
+      <div class="import-dropzone" role="button" tabindex="0" (click)="fileInput.click()" (keydown.enter)="fileInput.click()" (keydown.space)="$event.preventDefault(); fileInput.click()">
         @if (isImporting()) {
           <app-loading-spinner [message]="'settings.processingFile' | translate" />
         } @else {

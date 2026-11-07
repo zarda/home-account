@@ -1,0 +1,48 @@
+// The app's one way to take text off the screen and keep it in the
+// accessibility tree. display: none or visibility: hidden takes the text out
+// of every name it is part of too, and a control whose only words were that
+// text is left with no name. Clipped in place rather than pushed out of view,
+// which would need a physical offset.
+//
+// The 1px box stays where its text stood: with its insets left auto, an
+// absolutely positioned box sits at its static position (CSS 2.1 10.3.7 and
+// 10.6.4), so the caller's container needs no position of its own. The
+// nearest positioned ancestor decides only which overflow clips the box and
+// which scroller carries it. min-width: 0 drops a min-width the element is
+// given elsewhere (Material gives a step label 50px).
+@mixin visually-hidden {
+  position: absolute;
+  width: 1px;
+  min-width: 0;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+// The ring round a frame while a control inside it has keyboard focus.
+// The frame is no control, so it is never :focus-visible itself, and the
+// ring styles.scss draws would go round the control alone; what a keyboard
+// user is choosing is the whole frame. The control's own ring is cleared, so
+// one ring shows; any other control in the frame keeps its own focus. The
+// offset is the caller's: inset where the frame's container clips at its
+// edge, outset where there is room. styles.scss widens every ring under high
+// contrast by matching :focus-visible, which the frame never is, so its 3px
+// is stated here.
+//
+// Included at the stylesheet's top level, with the frame's and the
+// control's selectors: `@include a11y.frame-ring('.transaction-row', '.row-activate', -2px)`.
+@mixin frame-ring($frame, $control, $offset) {
+  #{$control}:focus-visible {
+    outline: none;
+  }
+
+  #{$frame}:has(#{$control}:focus-visible) {
+    outline: 2px solid var(--color-primary);
+    outline-offset: $offset;
+  }
+
+  :host-context(.high-contrast) #{$frame}:has(#{$control}:focus-visible) {
+    outline-width: 3px;
+  }
+}

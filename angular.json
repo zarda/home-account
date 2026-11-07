@@ -95,7 +95,7 @@
               "budgets": [
                 {
                   "type": "initial",
-                  "maximumWarning": "2.415MB",
+                  "maximumWarning": "2.417MB",
                   "maximumError": "2.7MB"
                 },
                 {
@@ -121,7 +121,7 @@
               "budgets": [
                 {
                   "type": "initial",
-                  "maximumWarning": "2.415MB",
+                  "maximumWarning": "2.417MB",
                   "maximumError": "2.7MB"
                 },
                 {
@@ -179,6 +179,10 @@
         "test": {
           "builder": "@angular/build:karma",
           "options": {
+            "main": "src/test-main.ts",
+            "codeCoverageExclude": [
+              "src/test-main.ts"
+            ],
             "polyfills": [
               "zone.js",
               "zone.js/testing",
@@ -190,6 +194,11 @@
               {
                 "glob": "**/*",
                 "input": "public"
+              },
+              {
+                "glob": "**/*",
+                "input": "src/assets/icons",
+                "output": "/assets/icons"
               }
             ],
             "styles": [
