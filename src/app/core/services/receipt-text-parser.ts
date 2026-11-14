@@ -916,6 +916,14 @@ function signedSides(line: string, figures: PrintedFigure[], marker: string): Si
  * count beside a price, and a figure printed again proves nothing when the
  * tax beside the total is printed again too (内消費税等 ¥116); a count of what
  * the price beside it buys stands right before it (Pack of 24 $5.00).
+ *
+ * A count the figure read and another figure of its tier add up to is a
+ * rival wherever it stands: a subtotal and its tax make the total, and a
+ * price and another price do not make the count of what one of them buys
+ * (Item $11.04 and Subtotal $11.04 over Total 12 $0.96). The other figure is
+ * one of another value: a price and the total that repeats it add up to
+ * twice the price, which a dozen at 6.00 is by chance (Item 12 $6.00 over
+ * Total $6.00).
  */
 function countsThatMayBeTotal(
   winner: AmountCandidate,
@@ -924,7 +932,16 @@ function countsThatMayBeTotal(
 ): AmountCandidate[] {
   const printedOnce =
     tier.filter(c => Math.abs(c.value - winner.value) <= TENDER_SUM_TOLERANCE).length <= 1;
-  return counts.filter(c => c.value > winner.value && (printedOnce || c.mayBeTotal));
+  const addsUpTo = (count: AmountCandidate) =>
+    tier.some(
+      c =>
+        !c.aside &&
+        Math.abs(c.value - winner.value) > TENDER_SUM_TOLERANCE &&
+        Math.abs(winner.value + c.value - count.value) <= TENDER_SUM_TOLERANCE,
+    );
+  return counts.filter(
+    c => c.value > winner.value && (printedOnce || c.mayBeTotal || addsUpTo(c)),
+  );
 }
 
 /**
