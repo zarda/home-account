@@ -251,6 +251,28 @@ interface AmountCandidate {
   mayBeTotal: boolean;
   /** The line it is printed on, counting from the first. */
   row: number;
+  /**
+   * Its place in reading order, line by line and left to right along a line:
+   * what tells a figure printed after another from one printed before it.
+   */
+  at: number;
+}
+
+/** A figure as its line prints it, before the line's money settles what it is. */
+interface PrintedFigure {
+  candidate: Omit<AmountCandidate, 'at'>;
+  start: number;
+  end: number;
+}
+
+/**
+ * Which side of each figure on a line a currency sign touches, and the pairs
+ * of neighbours one sign touches alike, by their places on the line.
+ */
+interface SignedSides {
+  before: boolean[];
+  after: boolean[];
+  shared: [first: number, second: number][];
 }
 
 interface AmountReading {
@@ -529,13 +551,15 @@ function tenderedDemotion(
 }
 
 function readAmount(lines: string[], marker: string): AmountReading {
-  const candidates: AmountCandidate[] = [];
+  // Every line is read before any figure is settled as money or as a count,
+  // so that what one line prints can be weighed against the others.
+  const printedLines: { figures: PrintedFigure[]; sides: SignedSides }[] = [];
   // The parenthesis the line before left open, for a figure Vision handed
   // back on a line of its own: (Reg / $15.00).
   let opening = '';
   for (const [row, line] of lines.entries()) {
     const printed = CURRENCY_SIGN.test(line) || (marker !== '' && line.includes(marker));
-    const figures: { candidate: AmountCandidate; start: number; end: number }[] = [];
+    const figures: PrintedFigure[] = [];
     for (const match of line.matchAll(NUMBER_TOKEN)) {
       const value = toAmount(match[0]);
       // A zero is never a candidate, which also keeps a "-0.00" change line
@@ -569,6 +593,12 @@ function readAmount(lines: string[], marker: string): AmountReading {
         end: match.index + token.length,
       });
     }
+    printedLines.push({ figures, sides: signedSides(line, figures, marker) });
+    opening = UNCLOSED_OPEN.exec(line)?.[0] ?? '';
+  }
+
+  const candidates: AmountCandidate[] = [];
+  for (const { figures, sides } of printedLines) {
     // A whole number printed bare, with no sign touching it and no cents,
     // grouping or mark, on a line that prints another figure as money, is a
     // count, a size or a code beside a price (Pack of 24 $5.00, SKU 1234
@@ -576,7 +606,7 @@ function readAmount(lines: string[], marker: string): AmountReading {
     // that money's value (TOTAL 14 Card -$14), though it is a copy of it
     // there. It falls to the tier its own shape earns. An aside prices
     // nothing: 合計 980 (内税 ¥72) keeps its 980.
-    const signed = signedFigures(line, figures, marker);
+    const signed = figures.map((_, index) => sides.before[index] || sides.after[index]);
     const money = figures.filter(
       ({ candidate }, index) =>
         candidate.besideCurrency &&
@@ -598,9 +628,9 @@ function readAmount(lines: string[], marker: string): AmountReading {
         // by a word of its own, or printed after the line's money (Tax $1.00
         // Total 9), stands where a total does.
         mayBeTotal: count && (candidate.mayBeTotal || money.some(m => m.start < start)),
+        at: candidates.length,
       });
     }
-    opening = UNCLOSED_OPEN.exec(line)?.[0] ?? '';
   }
 
   // Strongest evidence first: a number the receipt itself marked as money, then
@@ -708,11 +738,7 @@ function isAside(before: string, after: string, marker: string, opening: string)
  * where the other is bare (2,10 € 3). Where nothing tells the two apart
  * (Summe 12 € 3 Artikel, Total 2 $ 8), it touches both, and both are money.
  */
-function signedFigures(
-  line: string,
-  figures: { candidate: AmountCandidate; start: number; end: number }[],
-  marker: string,
-): boolean[] {
+function signedSides(line: string, figures: PrintedFigure[], marker: string): SignedSides {
   const isSign = (text: string) => ONE_SIGN.test(text) || (marker !== '' && text === marker);
   const before = figures.map(({ start }) => {
     const lead = line.slice(0, start).replace(MARK_BEFORE_FIGURE, '');
@@ -722,6 +748,7 @@ function signedFigures(
     const trail = line.slice(end).replace(MARK_AFTER_FIGURE, '');
     return SIGN_FIRST.test(trail) || (marker !== '' && trail.startsWith(marker));
   });
+  const shared: SignedSides['shared'] = [];
   for (let index = 1; index < figures.length; index++) {
     const first = figures[index - 1];
     const second = figures[index];
@@ -742,6 +769,7 @@ function signedFigures(
           ? firstShaped
           : undefined;
     if (firstOwns === undefined) {
+      shared.push([index - 1, index]);
       continue;
     }
     if (firstOwns) {
@@ -750,7 +778,7 @@ function signedFigures(
       after[index - 1] = false;
     }
   }
-  return figures.map((_, index) => before[index] || after[index]);
+  return { before, after, shared };
 }
 
 /**
