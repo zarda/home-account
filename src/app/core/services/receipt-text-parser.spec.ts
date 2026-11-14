@@ -966,6 +966,7 @@ describe('parseReceiptOcrText', () => {
       // 100 + 5 = 105 could be subtotal+tax→total; x=100 is itself tender-shaped, so stand down
       const r = parseReceiptOcrText('Shop\n$100\n$5\n$105');
       expect(r.amount).toBe(105);
+      expect(r.amountConfidence).toBe(0.8);
     });
 
     it('should demote a decimal pair that sums to a round note', () => {
@@ -983,6 +984,76 @@ describe('parseReceiptOcrText', () => {
       // {450, 50, 500}: a taxed total is indistinguishable from a tendered note
       const r = parseReceiptOcrText('Shop\n$450\n$50\n$500');
       expect(r.amount).toBe(500);
+      expect(r.amountConfidence).toBe(0.8);
+    });
+
+    it('reads cash over a round total as cash where the total is printed before it and the change after', () => {
+      // 15 + 5 = 20 is as much a subtotal and its tax as a total and its
+      // change. Where the two are printed settles it: the pick stands between
+      // a total and the change it was given for.
+      const cases: [string, number][] = [
+        ['Shop\nTotal $15.00\nCash $20.00\nChange $5.00', 15],
+        ['Laden\nSumme 5,00 €\nBar 10,00 €\nRückgeld 5,00 €', 5],
+        ['店\n弁当 ¥980\n合計 ¥980\nお預り ¥1,000\nお釣り ¥20', 980],
+        // The change is the larger of the two here, and the total is still
+        // the one printed before the cash.
+        ['店\nコーヒー 2 ¥360\n合計 2点 ¥360\nお預り ¥1,000\nお釣り ¥640', 360],
+        // A coupon above the total makes a second pair, 3 + 2: the larger x
+        // is the change, and the total is the one before the cash.
+        ['Shop\nItem 1 $3.00\nCoupon -$1.00\nTotal $2.00\nCash $5.00\nChange $3.00', 2],
+      ];
+      for (const [text, amount] of cases) {
+        expect(parseReceiptOcrText(text))
+          .withContext(text)
+          .toEqual(jasmine.objectContaining({ amount, amountConfidence: 0.6, amountDemotion: 'tender' }));
+      }
+    });
+
+    it('reads the total, not the larger change, where the change of a tendered note outweighs it', () => {
+      const cases: [string, number][] = [
+        ['Shop\nTotal 319 Tax $25.52\nCash $1000.00\nChange $681.00', 319],
+        ['Shop\nItem $8.00\nSubtotal $8.00\nTax $1.00 Total 9\nCash $20.00\nChange $11.00', 9],
+        ['Shop\nTotal $4.00\nCash $20.00\nChange $16.00', 4],
+      ];
+      for (const [text, amount] of cases) {
+        expect(parseReceiptOcrText(text))
+          .withContext(text)
+          .toEqual(jasmine.objectContaining({ amount, amountConfidence: 0.6, amountDemotion: 'tender' }));
+      }
+    });
+
+    it('keeps a round total whose round parts are printed together, before it or after it', () => {
+      const cases: [string, number][] = [
+        ['Shop\nSubtotal $15.00\nTax $5.00\nTotal $20.00', 20],
+        ['店\n合計 ¥500\n小計 ¥450\n消費税 ¥50', 500],
+        ['店\n合計 ¥500\n消費税 ¥50\n小計 ¥450', 500],
+      ];
+      for (const [text, amount] of cases) {
+        const r = parseReceiptOcrText(text);
+        expect(r).withContext(text).toEqual(jasmine.objectContaining({ amount, amountConfidence: 0.8 }));
+        expect('amountDemotion' in r).withContext(text).toBeFalse();
+      }
+    });
+
+    it('reads the cash where an item equals the change, or the cash is printed above the total, the known gap', () => {
+      // An item of the change's amount makes a pair printed wholly before the
+      // cash, which is what a subtotal and its tax look like; and with the
+      // cash printed first, both the total and the change follow it.
+      const cases = [
+        'Shop\nItem $10.00\nItem $5.00\nTotal $15.00\nCash $20.00\nChange $5.00',
+        'Shop\nCash $20.00\nTotal $15.00\nChange $5.00',
+      ];
+      for (const text of cases) {
+        expect(parseReceiptOcrText(text))
+          .withContext(text)
+          .toEqual(jasmine.objectContaining({ amount: 20, amountConfidence: 0.8 }));
+      }
+    });
+
+    it("does not read a refund's cash and change apart on where they are printed", () => {
+      expect(parseReceiptOcrText('REFUND\nTotal -$15.00\nCash $20.00\nChange $5.00')).toEqual(
+        jasmine.objectContaining({ amount: 20, amountConfidence: 0.8 }),
+      );
     });
 
     it('should keep a duplicated printed figure as a pair candidate', () => {
