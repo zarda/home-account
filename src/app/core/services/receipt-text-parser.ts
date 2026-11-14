@@ -115,7 +115,7 @@ const YEAR_FIRST_DATE = new RegExp(
 // the day of $145.01 01 01 24, and the 27.01 of $27.01 12/5/24 is no date.
 const BEFORE_DATE = `(?:^|[^\\d.,'’\\u00A0\\u202F\\u2009\\p{Sc}]|(?:^|\\D)[.,'’\\u00A0\\u202F\\u2009])`;
 const YEAR_LAST_DATE = new RegExp(
-  `${BEFORE_DATE}((\\d{1,2})${DATE_SEPARATOR}(\\d{1,2})${DATE_SEPARATOR}(\\d{4}|\\d{2}))(?!\\d)`,
+  `${BEFORE_DATE}(?<run>(?<first>\\d{1,2})${DATE_SEPARATOR}(?<second>\\d{1,2})${DATE_SEPARATOR}(?<year>\\d{4}|\\d{2}))(?!\\d)`,
   'gu',
 );
 
@@ -290,6 +290,7 @@ interface AmountReading {
 }
 
 export function parseReceiptOcrText(text: string): ParsedReceiptText {
+  const { currency, confidence: currencyConfidence, marker } = readCurrency(text);
   const { date, confidence: dateConfidence, matched } = readDate(text);
 
   // The date comes out of the text before the amounts are read: 15/01/2026 is
@@ -297,7 +298,6 @@ export function parseReceiptOcrText(text: string): ParsedReceiptText {
   const withoutDate = matched ? text.split(matched).join(' ') : text;
   const lines = withoutDate.split('\n').map(line => line.trim()).filter(line => line.length > 0);
 
-  const { currency, confidence: currencyConfidence, marker } = readCurrency(text);
   const {
     amount,
     confidence: amountConfidence,
@@ -343,23 +343,30 @@ function readDate(text: string): { date: Date; confidence: number; matched: stri
   }
 
   const dayFirst = devicePrefersDayFirst();
-  for (const match of text.matchAll(YEAR_LAST_DATE)) {
-    const first = Number(match[2]);
-    const second = Number(match[3]);
+  // Scanned by hand rather than with matchAll, so that the search can start
+  // again inside a run it has just read.
+  const pattern = new RegExp(YEAR_LAST_DATE.source, YEAR_LAST_DATE.flags);
+  for (let match = pattern.exec(text); match; match = pattern.exec(text)) {
+    const { run, first: firstDigits, second: secondDigits, year: yearDigits } = match.groups as Record<
+      'run' | 'first' | 'second' | 'year',
+      string
+    >;
+    const first = Number(firstDigits);
+    const second = Number(secondDigits);
 
     // Only the receipt's own numbers can settle 03/04: where one of them cannot
     // be a month, the other one is. Where both can, this falls back to how the
     // device writes dates and marks the reading down for it.
     const ambiguous = first <= 12 && second <= 12;
     const readDayFirst = first > 12 || (ambiguous && dayFirst);
-    const year = fullYear(match[4]);
+    const year = fullYear(yearDigits);
     const date = readDayFirst ? toDate(year, second, first) : toDate(year, first, second);
     if (!date) {
       continue;
     }
 
-    const confidence = match[4].length === 4 ? 0.9 : 0.5;
-    return { date, confidence: ambiguous ? confidence * 0.6 : confidence, matched: match[1] };
+    const confidence = yearDigits.length === 4 ? 0.9 : 0.5;
+    return { date, confidence: ambiguous ? confidence * 0.6 : confidence, matched: run };
   }
 
   return { date: new Date(), confidence: 0, matched: '' };
