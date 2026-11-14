@@ -338,20 +338,101 @@ describe('parseReceiptOcrText', () => {
         );
       });
 
-      it('reads the item any figure printed negative (a discount, coupon, gift card, deposit or points) takes the total under, the known gap', () => {
-        // Largest-wins (ADR 0013) reads the item, as 26.10.180 does wherever
-        // the item's line prints no count, and a saving printed unmarked reads
-        // the same. Where the line prints a count, 26.10.180 read the count and
-        // the price as a date and the total was what was left.
+      it('reads the total a figure printed negative (a discount, coupon, gift card, deposit or points) leaves under a larger item or subtotal, graded under the bar', () => {
+        // The item or the subtotal above the discount is the largest figure
+        // beside a currency mark. Less the figure printed negative after it,
+        // it leaves another figure printed after it, and that one is the
+        // total: read, and flagged, since a sum moved the reading.
         const cases: [text: string, amount: number][] = [
-          ['Shop\nItem 1 $3.00\nCoupon -$1.00\nTotal $2.00', 3],
+          ['Shop\nItem 1 $3.00\nCoupon -$1.00\nTotal $2.00', 2],
+          ['Shop\nItem $3.00\nCoupon -$1.00\nTotal $2.00', 2],
+          ['Shop\nItem 1 $3.00\nDiscount ($1.00)\nTotal $2.00', 2],
+          ['Shop\nItem 1 $25.00\nGift card -$10.00\nTotal $15.00', 15],
+          ['Shop\nItem $7.49\nDeposit -$2.00\nTotal $5.49', 5.49],
+          ['Shop\nItem $7.49\nPoints -$1.25\nTotal $6.24', 6.24],
+          ['Laden\nBrot 3,49 €\nRabatt -0,50 €\nSumme 2,99 €', 2.99],
+          // The subtotal above the discount, and the card line repeating the total.
+          ['Shop\nMilk $3.20\nBread $2.10\nSubtotal $5.30\nCoupon -$1.00\nTotal $4.30', 4.3],
+          ['Shop\nMilk $3.20\nBread $2.10\nSubtotal $5.30\nCoupon -$1.00\nTotal $4.30\nCard $4.30', 4.3],
+          ['店\n弁当 ¥598\nお茶 ¥151\n小計 ¥749\n値引 -¥100\n合計 ¥649', 649],
+          ['店\n弁当 ¥598\nお茶 ¥151\n小計 ¥749\n値引 ▲¥100\n合計 ¥649', 649],
+        ];
+        for (const [text, amount] of cases) {
+          expect(parseReceiptOcrText(text))
+            .withContext(text)
+            .toEqual(
+              jasmine.objectContaining({
+                amount,
+                amountConfidence: 0.6,
+                amountDemotion: 'discount',
+                direction: 'debit',
+                directionConfidence: 0,
+              }),
+            );
+        }
+      });
+
+      it('adds one figure printed under the larger one back before the discount leaves the total: a tax, or a second item', () => {
+        const cases: [text: string, amount: number][] = [
+          // 5.30 - 1.00 + 0.34
+          ['Shop\nMilk $3.20\nBread $2.10\nSubtotal $5.30\nCoupon -$1.00\nTax $0.34\nTotal $4.64', 4.64],
+          // 4.80 - 1.50 + 1.10
+          ['Shop\nMilk $4.80\nBread $1.10\nCoupon -$1.50\nTotal $4.40', 4.4],
+        ];
+        for (const [text, amount] of cases) {
+          expect(parseReceiptOcrText(text))
+            .withContext(text)
+            .toEqual(jasmine.objectContaining({ amount, amountConfidence: 0.6, amountDemotion: 'discount' }));
+        }
+      });
+
+      it('keeps a total no figure printed positive outweighs at the tier grade, discount or not', () => {
+        const cases: [text: string, amount: number][] = [
+          ['Shop\nMilk $3.20\nBread $2.10\nCoupon -$1.00\nTotal $4.30', 4.3],
+          ['Shop\nMilk $3.20\nBread $2.10\nCoupon -$1.00\nSubtotal $4.30\nTotal $4.30', 4.3],
+          // The tax outweighs the coupon, so the total is the largest figure.
+          ['Shop\nMilk $3.20\nBread $2.10\nSubtotal $5.30\nCoupon -$0.20\nTax $0.42\nTotal $5.52', 5.52],
+        ];
+        for (const [text, amount] of cases) {
+          const result = parseReceiptOcrText(text);
+          expect(result).withContext(text).toEqual(read(amount, 0.8));
+          expect('amountDemotion' in result).withContext(text).toBeFalse();
+        }
+      });
+
+      it('takes a figure printed negative for a discount only where it is printed after the larger figure', () => {
+        // A refund's total printed negative above its cash is no discount on
+        // the cash: 20 less 15 leaves the 5 of the change, and is not read.
+        expect(parseReceiptOcrText('REFUND\nTotal -$15.00\nCash $20.00\nChange $5.00')).toEqual(read(20, 0.8));
+      });
+
+      it('reads the item where the saving prints no mark of its own, or the larger item is not the first, the known gap', () => {
+        // No label is read (ADR 0008), so a saving printed as a plain figure
+        // is one more priced line. And the sum starts at the largest figure:
+        // with a smaller item printed before it, nothing printed after it
+        // makes up the total.
+        const cases: [text: string, amount: number][] = [
           ['Shop\nItem 1 $3.00\nYou saved $1.00\nTotal $2.00', 3],
-          ['Shop\nItem 1 $3.00\nDiscount ($1.00)\nTotal $2.00', 3],
-          ['Shop\nItem 1 $25.00\nGift card -$10.00\nTotal $15.00', 25],
+          ['Shop\nBread $1.10\nMilk $4.80\nCoupon -$1.50\nTotal $4.40', 4.8],
         ];
         for (const [text, amount] of cases) {
           expect(parseReceiptOcrText(text)).withContext(text).toEqual(read(amount, 0.8));
         }
+      });
+
+      it('reads a saving larger than the total as the total, a refund where it is printed negative, the known gap', () => {
+        // Nothing is left for the sum to find: the saving is the largest
+        // figure, and no label says it is one.
+        for (const text of ['Shop\nTotal $4.50\nYou saved (-$5.00)', 'Shop\nTotal $4.50\nSavings -$5.00']) {
+          expect(parseReceiptOcrText(text))
+            .withContext(text)
+            .toEqual(
+              jasmine.objectContaining({ amount: 5, amountConfidence: 0.8, direction: 'credit', directionConfidence: 0.5 }),
+            );
+        }
+        expect(parseReceiptOcrText('Shop\nTotal $4.50\nYou saved $5.00')).toEqual(
+          jasmine.objectContaining({ amount: 5, amountConfidence: 0.8, direction: 'debit', directionConfidence: 0 }),
+        );
       });
     });
   });
@@ -1094,12 +1175,17 @@ describe('parseReceiptOcrText', () => {
       expect('amountDemotion' in parseReceiptOcrText('Shop\n$100\n$8\n$108')).toBeFalse();
     });
 
-    it('names the first rule that moved the reading: an aside, then a count, then the cash tendered', () => {
+    it('names the first rule that moved the reading: an aside, then a count, then the cash tendered, then a discount', () => {
       // A pin: passing an aside outranks a count that might have been the
       // total, and both outrank the cash-tendered sum, so a model that agrees
       // with such a reading keeps the parser's grade on the device lane. Naming
       // the cash tendered first, or the count before the aside, relabels these.
+      // A discount is looked for only where no cash was tendered, and a count
+      // larger than the total it leaves still names the reading.
       const cases: [text: string, amount: number, amountDemotion: string][] = [
+        ['Shop\nItem $3.00\nCoupon -$1.00\nTotal $2.00', 2, 'discount'],
+        ['Shop\nItem 72 $3.00\nCoupon -$1.00\nTotal $2.00', 2, 'count'],
+        ['Shop\nItem $5.00\nDeposit -$2.00\nTotal $3.00', 3, 'tender'],
         ['Shop\nCash $50.00\n(Total $43.10)\nChange $6.90\nStore 72', 43.1, 'aside'],
         ['Shop\nItem 72 $43.10\nCash $50.00\nChange $6.90', 43.1, 'count'],
         ['Shop\nRoom 412 $89.00\n(Reg $99.00)', 89, 'aside'],

@@ -413,6 +413,31 @@ describe('NativeReceiptService', () => {
         expect(result.transactions[0].fieldConfidence?.amount).toBe(0.6);
       });
 
+      it('flags a model that reads the item a discount was taken from, and keeps the parser\'s grade on one that reads the total', async () => {
+        // The text parser reads the total the coupon leaves, 2, graded 0.6: a
+        // sum picked it, so a model that agrees backs nothing and one that
+        // reads the item, 3, is disputed (ADR 0188).
+        const cases: [amount: number, grade: number][] = [
+          [3, REVIEW_AMOUNT_CONFIDENCE],
+          [2, 0.6],
+        ];
+        for (const [amount, grade] of cases) {
+          visionMock.recognizeText.and.resolveTo({
+            ...ocrResult,
+            text: 'Shop\nItem 1 $3.00\nCoupon -$1.00\nTotal $2.00',
+          });
+          appleMock.parseReceiptText.and.resolveTo({
+            merchant: 'Cafe', date: '2026-01-15', amount, currency: 'USD', category: '', details: '',
+          });
+
+          const result = await service.processImage(imageFile());
+
+          const graded = result.transactions[0].fieldConfidence?.amount;
+          expect(graded).withContext(String(amount)).toBe(grade);
+          expect(graded).withContext(String(amount)).toBeLessThan(VERIFY_FIELD_THRESHOLD);
+        }
+      });
+
       it("keeps the text parser's grade when it read a cash-tendered pick a count or an aside also moved", async () => {
         // A pin: the reading carries the label of the rule that outranks the
         // tendered sum's, and a model that agrees with a rule's pick backs
