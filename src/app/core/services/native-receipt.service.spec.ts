@@ -413,6 +413,31 @@ describe('NativeReceiptService', () => {
         expect(result.transactions[0].fieldConfidence?.amount).toBe(0.6);
       });
 
+      it('flags a model that reads the item a discount was taken from, and keeps the parser\'s grade on one that reads the total', async () => {
+        // The text parser reads the total the coupon leaves, 2, graded 0.6: a
+        // sum picked it, so a model that agrees backs nothing and one that
+        // reads the item, 3, is disputed (ADR 0188).
+        const cases: [amount: number, grade: number][] = [
+          [3, REVIEW_AMOUNT_CONFIDENCE],
+          [2, 0.6],
+        ];
+        for (const [amount, grade] of cases) {
+          visionMock.recognizeText.and.resolveTo({
+            ...ocrResult,
+            text: 'Shop\nItem 1 $3.00\nCoupon -$1.00\nTotal $2.00',
+          });
+          appleMock.parseReceiptText.and.resolveTo({
+            merchant: 'Cafe', date: '2026-01-15', amount, currency: 'USD', category: '', details: '',
+          });
+
+          const result = await service.processImage(imageFile());
+
+          const graded = result.transactions[0].fieldConfidence?.amount;
+          expect(graded).withContext(String(amount)).toBe(grade);
+          expect(graded).withContext(String(amount)).toBeLessThan(VERIFY_FIELD_THRESHOLD);
+        }
+      });
+
       it("keeps the text parser's grade when it read a cash-tendered pick a count or an aside also moved", async () => {
         // A pin: the reading carries the label of the rule that outranks the
         // tendered sum's, and a model that agrees with a rule's pick backs
@@ -457,15 +482,11 @@ describe('NativeReceiptService', () => {
       it('lifts a model total that agrees with a figure the text parser reads wrongly at 0.8, the known gap', async () => {
         // Where the parser reads a wrong figure at its tier's grade, a model
         // that reads the same figure agrees with it: a subtotal over a total
-        // that prints no currency mark, or the cash over a change that prints
-        // none. Before ADR 0186 the parser read another wrong figure in these,
-        // a size or half of a time, and disputed the model by accident.
+        // that prints no currency mark. Before ADR 0186 the parser read
+        // another wrong figure there, a size, and disputed the model by
+        // accident.
         const cases: [text: string, amount: number][] = [
           ['Shop\nEggs 500ml $10.86\nSubtotal $10.86\nTotal 11.73\nTax $0.87', 10.86],
-          [
-            'Shop\nMilk $17.76\nDate: 08/16/25 06:54 Amount Due: $19.18\nTax 8% $1.42\nCASH $20.00\nCHANGE DUE 0.82',
-            20,
-          ],
         ];
         for (const [text, amount] of cases) {
           visionMock.recognizeText.and.resolveTo({ ...ocrResult, text });
@@ -476,6 +497,27 @@ describe('NativeReceiptService', () => {
           const result = await service.processImage(imageFile());
 
           expect(result.transactions[0].fieldConfidence?.amount).withContext(text).toBe(0.8);
+        }
+      });
+
+      it('disputes a model that reads the cash over a change printed with no currency mark, and lifts one that reads the total', async () => {
+        // The text parser pairs the bare change with the total printed before
+        // the cash, so it reads 19.18, graded 0.6 as cash tendered.
+        const text =
+          'Shop\nMilk $17.76\nDate: 08/16/25 06:54 Amount Due: $19.18\nTax 8% $1.42\nCASH $20.00\nCHANGE DUE 0.82';
+        const cases: [amount: number, grade: number][] = [
+          [20, REVIEW_AMOUNT_CONFIDENCE],
+          [19.18, 0.8],
+        ];
+        for (const [amount, grade] of cases) {
+          visionMock.recognizeText.and.resolveTo({ ...ocrResult, text });
+          appleMock.parseReceiptText.and.resolveTo({
+            merchant: 'Cafe', date: '2026-01-15', amount, currency: 'USD', category: '', details: '',
+          });
+
+          const result = await service.processImage(imageFile());
+
+          expect(result.transactions[0].fieldConfidence?.amount).withContext(String(amount)).toBe(grade);
         }
       });
 

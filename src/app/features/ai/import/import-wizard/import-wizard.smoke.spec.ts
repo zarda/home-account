@@ -1657,6 +1657,54 @@ describe('ImportWizardComponent camera handoff (emulator smoke test)', () => {
   );
 
   it(
+    'an on-device scan whose total sits under a coupon and a larger item reaches the review card as that total, with its amount flagged',
+    async () => {
+      // The item above the coupon is the largest figure beside a currency
+      // mark; the total the coupon leaves is read, under the bar, so the card
+      // shows the total and asks about it (ADR 0188).
+      const { rows, fixture } = await reviewOnDevice(
+        'Harbour Supplies\n2026-01-15\nRope 1 $3.00\nCoupon -$1.00\nTotal: $2.00'
+      );
+      expect(rows[0].amount).toBe(2);
+      expect(rows[0].type).toBe('expense');
+      expect(rows[0].fieldConfidence).toEqual({ amount: 0.6, date: 0.9 });
+
+      const host = fixture.nativeElement as HTMLElement;
+      expect(fixture.componentInstance.stepper.selectedIndex).toBe(2);
+      expect(fixture.componentInstance.extractedTransactions()[0].amount).toBe(2);
+      expect(host.querySelector('.amount-section .verify-flag')?.getAttribute('aria-label'))
+        .withContext('the total was read under a discount, under the bar')
+        .toBe(TestBed.inject(TranslationService).t('import.verifyAmountOnDevice'));
+
+      await leaveReview(fixture);
+    },
+    30000
+  );
+
+  it(
+    'an on-device scan of cash over a round total reaches the review card as the total, with its amount flagged',
+    async () => {
+      // 15 and 5 add up to the 20 handed over, and the 20 stands between
+      // them: the total printed before the cash is read, graded as cash
+      // tendered (ADR 0188).
+      const { rows, fixture } = await reviewOnDevice(
+        'Harbour Supplies\n2026-01-15\nTotal: $15.00\nCash $20.00\nChange $5.00'
+      );
+      expect(rows[0].amount).toBe(15);
+      expect(rows[0].fieldConfidence).toEqual({ amount: 0.6, date: 0.9 });
+
+      const host = fixture.nativeElement as HTMLElement;
+      expect(fixture.componentInstance.stepper.selectedIndex).toBe(2);
+      expect(fixture.componentInstance.extractedTransactions()[0].amount).toBe(15);
+      expect(host.querySelector('.amount-section .verify-flag'))
+        .withContext('the total was read past the cash handed over, under the bar').not.toBeNull();
+
+      await leaveReview(fixture);
+    },
+    30000
+  );
+
+  it(
     'an on-device refund and a doubted purchase reach review flagged on the toggle, and a flip files the category on the new side',
     async () => {
       // Two photos the camera read on the device, handed over the way the

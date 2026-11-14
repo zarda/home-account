@@ -916,6 +916,14 @@
   flex-shrink: 0;
 }
 
+// The amount's flag is inline before the figure, with nothing between them
+// but the gap it is given here: flush, its ring runs into the minus or plus
+// that leads the amount and reads as part of the number. The chips' flags
+// get their room from their chip's own gap.
+.amount-section .verify-flag {
+  margin-inline-end: 4px;
+}
+
 .date-chip.needs-verify,
 .date-chip.not-today {
   color: var(--color-warning-text);

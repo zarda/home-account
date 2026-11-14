@@ -2,6 +2,8 @@
 
 **Status:** Accepted, implemented; amended by
 [0187](0187-repeated-controls-name-their-item-the-upload-area-has-one-button-and-numbers-photos-among-photos-resting-text-is-a-token-sentences-end-in-the-readers-stop-and-a-spec-that-expects-nothing-fails.md)
+and
+[0188](0188-a-total-is-read-by-where-its-figures-are-printed-under-a-discount-past-round-cash-and-beside-an-unmarked-change-and-the-parser-is-measured-by-a-harness-that-is-kept.md)
 · **Date:** 2026-10-31 · **Issues:** #515, #516, #518
 
 Reference documentation lives in [../receipt-import.md](../receipt-import.md),
@@ -1095,6 +1097,12 @@ From the count and aside rules:
     between them as that figure or the cash, unflagged where the smaller or the
     read one is printed again or the cash and change follow, the known gap'.
     Battery rows C120, C121 and C178.
+  *Narrowed by
+  [0188](0188-a-total-is-read-by-where-its-figures-are-printed-under-a-discount-past-round-cash-and-beside-an-unmarked-change-and-the-parser-is-measured-by-a-harness-that-is-kept.md):
+  the cash and the change after it now pair with the bare total, which is
+  read, flagged; and a subtotal and a tax that add up to it flag the reading
+  (C121, joined). Over its tax alone (C120, C178), and split onto a line of
+  its own, it reads as before.*
 - **The cash, where no pair of figures beside a currency mark adds up to it**,
   because the total or the change prints no currency mark
   (`Latte 2 $8 / Total 9 / Tax $1 / Cash $10 / Change $1`; `받은돈 ₩100` over a
@@ -1107,6 +1115,12 @@ From the count and aside rules:
     up to it, the known gap'. Battery rows C137, C141 and C142, the last read
     silently on 26.10.180 too, as half of a time, and C139, silent on
     26.10.180 too.
+  *Closed by
+  [0188](0188-a-total-is-read-by-where-its-figures-are-printed-under-a-discount-past-round-cash-and-beside-an-unmarked-change-and-the-parser-is-measured-by-a-harness-that-is-kept.md):
+  a figure with no currency mark pairs with one beside a mark where the cash
+  stands between them, and the one printed before the cash is read, flagged.
+  Where neither the total nor the change is beside a mark of its own, the
+  cash is still read.*
 - **A refund slip whose total is printed inside labelled parentheses beside
   smaller figures** reads the largest other figure as a purchase graded 0
   (C30). One receipt of the second seeded set is new, where 26.10.180 twinned
@@ -1129,6 +1143,11 @@ break had read the receipt right:
   - Pin: 'reads the item any figure printed negative (a discount, coupon, gift
     card, deposit or points) takes the total under, the known gap'. Battery
     rows C151 to C153 and C155.
+  *Narrowed by
+  [0188](0188-a-total-is-read-by-where-its-figures-are-printed-under-a-discount-past-round-cash-and-beside-an-unmarked-change-and-the-parser-is-measured-by-a-harness-that-is-kept.md):
+  the total a figure printed negative leaves, printed after the larger figure,
+  is read and flagged (C151, C153, C155). A saving printed unmarked (C152),
+  and a larger item that is not the first, read as before.*
 - **A total line led by its date that prints no currency mark, under a signed
   line** (`Bagel $4.50 x2` over `1/13/24 Total 45.00`).
   - It reads the signed figure at 0.8. 26.10.180 read a date across the line
@@ -1406,7 +1425,17 @@ each is pinned.
   0.
 - A currency sign spaced from two bare figures, which reads both and so the
   larger (C66, `Item 24 $ 5`).
+  *Narrowed by
+  [0188](0188-a-total-is-read-by-where-its-figures-are-printed-under-a-discount-past-round-cash-and-beside-an-unmarked-change-and-the-parser-is-measured-by-a-harness-that-is-kept.md):
+  the sign goes to the figure the receipt prints again as money on another
+  line (C66, joined). A receipt of one priced line, and the split layout,
+  read as before.*
 - Cash whose change is itself round (C91).
+  *Closed by
+  [0188](0188-a-total-is-read-by-where-its-figures-are-printed-under-a-discount-past-round-cash-and-beside-an-unmarked-change-and-the-parser-is-measured-by-a-harness-that-is-kept.md):
+  the total printed before the cash is read, flagged, where the change is
+  printed after it. An item of the change's own amount, or cash printed above
+  the total, still reads the cash.*
 - A total with cents whose figure starts a date printed after it on its line,
   its sign spaced from it or a code before it (`Total $ 5.15 01/15/26` reads
   26), the run listed above. With the sign glued it reads right: C75.

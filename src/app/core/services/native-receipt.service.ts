@@ -100,7 +100,10 @@ function demotedBesideCurrency(text: ParsedReceiptText): boolean {
 
 /**
  * Whether a rule, rather than the print, picked that total: any demotion but
- * the cash-tendered sum, which is arithmetic on the print.
+ * the cash-tendered sum, which is arithmetic on the print. The total a
+ * discount leaves is a sum too, but it is kept with the rules: it reads past
+ * the largest figure on a receipt that hands over no cash to check it by, so
+ * a model that agrees with it leaves the row flagged (ADR 0188).
  */
 function pickedByRule(text: ParsedReceiptText): boolean {
   return demotedBesideCurrency(text) && text.amountDemotion !== 'tender';

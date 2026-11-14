@@ -42,10 +42,13 @@ export interface ParsedReceiptText {
    * because nothing else in its tier stood beside it while a weaker tier held
    * a figure printed on its own; 'count' when a whole number printed bare
    * beside money, read as a count, a size or a code, is larger than the
-   * figure read and might have been the total (Total 1280 Tax ¥116). Absent
-   * when nothing was demoted.
+   * figure read and might have been the total (Total 1280 Tax ¥116);
+   * 'discount' when the largest figure was read as an item or a subtotal a
+   * discount printed under it was taken from, and the total the discount
+   * leaves won instead (Item $3.00, Coupon -$1.00, Total $2.00). Absent when
+   * nothing was demoted.
    */
-  amountDemotion?: 'tender' | 'aside' | 'count';
+  amountDemotion?: 'tender' | 'aside' | 'count' | 'discount';
   /**
    * Which way the winning total moved, read from typography alone: 'credit'
    * when every copy of that figure carries a negative mark and nothing argues
@@ -249,15 +252,39 @@ interface AmountCandidate {
    * price buys stands before the price (Pack of 24 $5.00, 緑茶 500ml ¥151).
    */
   mayBeTotal: boolean;
+  /** One half of a time, the 14 or the 32 of 14:32. */
+  clock: boolean;
   /** The line it is printed on, counting from the first. */
   row: number;
+  /**
+   * Its place in reading order, line by line and left to right along a line:
+   * what tells a figure printed after another from one printed before it.
+   */
+  at: number;
+}
+
+/** A figure as its line prints it, before the line's money settles what it is. */
+interface PrintedFigure {
+  candidate: Omit<AmountCandidate, 'at'>;
+  start: number;
+  end: number;
+}
+
+/**
+ * Which side of each figure on a line a currency sign touches, and the pairs
+ * of neighbours one sign touches alike, by their places on the line.
+ */
+interface SignedSides {
+  before: boolean[];
+  after: boolean[];
+  shared: [first: number, second: number][];
 }
 
 interface AmountReading {
   amount: number;
   confidence: number;
   /** Why `confidence` sits under the tier's, when it does. */
-  demotion?: 'tender' | 'aside' | 'count';
+  demotion?: 'tender' | 'aside' | 'count' | 'discount';
   direction: 'credit' | 'debit';
   directionConfidence: number;
 }
@@ -483,7 +510,8 @@ function signFor(code: string, display: 'symbol' | 'narrowSymbol'): string {
 
 /**
  * Confidence multiplier when the winning figure was demoted: as cash tendered,
- * past a figure printed as a labelled aside, or under a larger count.
+ * past a figure printed as a labelled aside, under a larger count, or as the
+ * total a discount leaves.
  */
 export const DEMOTION_FACTOR = 0.75;
 /** "x + y ≈ M" tolerance: half a cent absorbs float noise, integers must match exactly. */
@@ -504,38 +532,138 @@ function isTenderShaped(value: number): boolean {
  * ¥462) or where a total stands (Total 12 Tax $0.96, or Tax $0.96 Total 12,
  * over Cash $20.00 and Change $8.00; Cash $20.00 Change 8). A count of what a
  * price buys, on another line, stays out (Item 3 $2.00 over Total $5.00).
- * Among matching pairs the largest x wins; if that x is itself tender-shaped
- * ({450, 50, 500} — a taxed total is indistinguishable from a tendered note)
- * the demotion stands down and the pick holds. Vocabulary-free on purpose:
- * this reads arithmetic, not words.
+ * Among matching pairs the largest x wins.
+ *
+ * Where the pair is printed settles what the sum alone cannot. Change is
+ * printed after the cash it was given for, and the total before it, so a pair
+ * the pick stands between is a total and its change, and the one printed
+ * before the pick is the total, whichever of the two is larger (Total $4.00
+ * over Cash $20.00 and Change $16.00). A subtotal and its tax are printed
+ * together, both before the total they make or both after it, so where the
+ * largest x is itself tender-shaped ({450, 50, 500} — a taxed total is
+ * indistinguishable from a tendered note) and its pair sits wholly on one side
+ * of the pick, the demotion stands down and the pick holds; only a pair the
+ * pick stands between reads as cash there (Total $15.00, Cash $20.00, Change
+ * $5.00). The reading moves to the figure printed before the pick only where
+ * `movable` holds and that figure is printed unmarked: a refund's cash and
+ * change are not read apart on their order.
+ *
+ * Where no such pair adds up at all, the total or the change may be printed
+ * with no currency mark, on a line the receipt does not mark as money (Total
+ * 9 over Cash $10 and Change $1; CASH $20.00 over CHANGE DUE 0.82). `unmarked`
+ * holds those figures, and a count on another line stands with them. One of
+ * them pairs with one of the tier's own figures only where the pick stands
+ * between the two, as cash stands between a total and its change, and the
+ * one printed before the pick is read. A count and the price it counts are
+ * printed together, on one side of the pick, and never pair (Item 3 $2.00
+ * over Total $5.00). Vocabulary-free on purpose: this reads arithmetic and
+ * position, not words.
  */
 function tenderedDemotion(
   pick: AmountCandidate,
   tier: AmountCandidate[],
   counts: AmountCandidate[],
+  unmarked: AmountCandidate[],
+  movable: boolean,
 ): AmountCandidate | undefined {
   if (!isTenderShaped(pick.value)) return undefined;
   const rest = tier.filter(c => c !== pick);
   const pairable = [...rest, ...counts.filter(c => c.row === pick.row || c.mayBeTotal)];
+  const pairs: [x: AmountCandidate, y: AmountCandidate][] = [];
   let bestX: AmountCandidate | undefined;
   for (const x of pairable) {
     for (const y of pairable) {
       if (x === y || y.value > x.value) continue;
       if (Math.abs(x.value + y.value - pick.value) > TENDER_SUM_TOLERANCE) continue;
+      pairs.push([x, y]);
       if (!bestX || x.value > bestX.value) bestX = x;
     }
   }
-  return bestX && !isTenderShaped(bestX.value) ? bestX : undefined;
+  if (!bestX) {
+    if (!movable) return undefined;
+    const others = [...unmarked, ...counts.filter(c => !pairable.includes(c))];
+    const printedBefore = rest.flatMap(marked =>
+      others
+        .filter(
+          other =>
+            Math.abs(marked.value + other.value - pick.value) <= TENDER_SUM_TOLERANCE &&
+            marked.at < pick.at !== other.at < pick.at,
+        )
+        .map(other => (marked.at < pick.at ? marked : other)),
+    );
+    return largestOf(printedBefore.filter(c => !c.credit));
+  }
+  const largestX = bestX.value;
+  const ofLargestX = pairs.filter(([x]) => Math.abs(x.value - largestX) <= TENDER_SUM_TOLERANCE);
+  const around = ofLargestX.filter(([x, y]) => x.at < pick.at !== y.at < pick.at);
+  const printedBefore = movable
+    ? largestOf(around.map(([x, y]) => (x.at < pick.at ? x : y)).filter(c => !c.credit))
+    : undefined;
+  if (!isTenderShaped(largestX)) {
+    const printedAfter = ofLargestX.some(([x, y]) => x.at > pick.at && y.at > pick.at);
+    return printedAfter ? bestX : (printedBefore ?? bestX);
+  }
+  return around.length === ofLargestX.length ? printedBefore : undefined;
+}
+
+/**
+ * The total a discount leaves, when the tier's pick is the figure the
+ * discount was taken from: an item or a subtotal printed above a coupon, a
+ * gift card, a deposit or points, which is larger than the total under it
+ * and so wins on size. A discount is a figure printed negative, by a minus,
+ * a triangle or accounting parentheses, and what it leaves is printed after
+ * it: the pick less the discount is another figure of the tier, printed
+ * unmarked after the pick (Item $3.00, Coupon -$1.00, Total $2.00), or is
+ * that figure once one more, printed after the pick, is added back, a tax
+ * under the discount or a second item (Subtotal $5.30, Coupon -$1.00, Tax
+ * $0.34, Total $4.64). The figure left is read; where several fit, the
+ * largest. The discount is printed after the pick, never before it: a
+ * refund's total printed negative above its cash is no discount on the cash.
+ *
+ * The reading moves only where `movable` holds; where it does not, the pick
+ * is kept and still graded under the bar, since the sum says it may not be
+ * the total. Vocabulary-free on purpose: no label is read, so a saving
+ * printed with no mark of its own (You saved $1.00) is not seen by the sum.
+ */
+function discountDemotion(
+  pick: AmountCandidate,
+  tier: AmountCandidate[],
+  movable: boolean,
+): AmountCandidate | undefined {
+  if (pick.credit || pick.aside) return undefined;
+  const after = tier.filter(c => c.at > pick.at);
+  const discounts = after.filter(c => c.credit);
+  const unmarked = after.filter(c => !c.credit && !c.aside);
+  const adds = (sum: number, to: AmountCandidate) => Math.abs(sum - to.value) <= TENDER_SUM_TOLERANCE;
+  const left = discounts.flatMap(discount => {
+    const less = pick.value - discount.value;
+    const direct = unmarked.filter(total => adds(less, total));
+    if (direct.length > 0) return direct;
+    return unmarked.flatMap(added =>
+      unmarked.filter(
+        total =>
+          total !== added &&
+          total.at > discount.at &&
+          total.at > added.at &&
+          adds(less + added.value, total),
+      ),
+    );
+  });
+  const total = largestOf(left);
+  if (total) return movable ? total : pick;
+  return undefined;
 }
 
 function readAmount(lines: string[], marker: string): AmountReading {
-  const candidates: AmountCandidate[] = [];
+  // Every line is read before any figure is settled as money or as a count,
+  // so that what one line prints can be weighed against the others.
+  const printedLines: { figures: PrintedFigure[]; sides: SignedSides }[] = [];
   // The parenthesis the line before left open, for a figure Vision handed
   // back on a line of its own: (Reg / $15.00).
   let opening = '';
   for (const [row, line] of lines.entries()) {
     const printed = CURRENCY_SIGN.test(line) || (marker !== '' && line.includes(marker));
-    const figures: { candidate: AmountCandidate; start: number; end: number }[] = [];
+    const figures: PrintedFigure[] = [];
     for (const match of line.matchAll(NUMBER_TOKEN)) {
       const value = toAmount(match[0]);
       // A zero is never a candidate, which also keeps a "-0.00" change line
@@ -563,12 +691,21 @@ function readAmount(lines: string[], marker: string): AmountReading {
           aside,
           count: false,
           mayBeTotal: WORD_AFTER.test(after),
+          clock,
           row,
         },
         start: match.index,
         end: match.index + token.length,
       });
     }
+    printedLines.push({ figures, sides: signedSides(line, figures, marker) });
+    opening = UNCLOSED_OPEN.exec(line)?.[0] ?? '';
+  }
+
+  settleSharedSigns(printedLines);
+
+  const candidates: AmountCandidate[] = [];
+  for (const { figures, sides } of printedLines) {
     // A whole number printed bare, with no sign touching it and no cents,
     // grouping or mark, on a line that prints another figure as money, is a
     // count, a size or a code beside a price (Pack of 24 $5.00, SKU 1234
@@ -576,7 +713,7 @@ function readAmount(lines: string[], marker: string): AmountReading {
     // that money's value (TOTAL 14 Card -$14), though it is a copy of it
     // there. It falls to the tier its own shape earns. An aside prices
     // nothing: 合計 980 (内税 ¥72) keeps its 980.
-    const signed = signedFigures(line, figures, marker);
+    const signed = figures.map((_, index) => sides.before[index] || sides.after[index]);
     const money = figures.filter(
       ({ candidate }, index) =>
         candidate.besideCurrency &&
@@ -598,9 +735,9 @@ function readAmount(lines: string[], marker: string): AmountReading {
         // by a word of its own, or printed after the line's money (Tax $1.00
         // Total 9), stands where a total does.
         mayBeTotal: count && (candidate.mayBeTotal || money.some(m => m.start < start)),
+        at: candidates.length,
       });
     }
-    opening = UNCLOSED_OPEN.exec(line)?.[0] ?? '';
   }
 
   // Strongest evidence first: a number the receipt itself marked as money, then
@@ -624,15 +761,35 @@ function readAmount(lines: string[], marker: string): AmountReading {
     // figure printed on its own; where it holds nothing else, it is all the
     // tier gave.
     const pick = largestOf(tier.of.filter(c => !c.aside)) ?? largest;
-    const tendered = tenderedDemotion(pick, tier.of, counts);
-    const winner = tendered ?? pick;
+    // A rule that reads a figure for where it is printed moves the reading
+    // only on a receipt that prints the pick unmarked every time.
+    const movable = !candidates.some(
+      c => c.credit && Math.abs(c.value - pick.value) <= TENDER_SUM_TOLERANCE,
+    );
+    // Only the figures the receipt marks as money look past their own tier
+    // for the total or the change that makes them cash.
+    const unmarked =
+      index === 0
+        ? candidates.filter(
+            c =>
+              !c.printedBesideCurrency &&
+              !c.credit &&
+              !c.aside &&
+              !c.clock &&
+              (isMoneyShaped(c.token) || isPlainNumber(c.token)),
+          )
+        : [];
+    const tendered = tenderedDemotion(pick, tier.of, counts, unmarked, movable);
+    const discounted = tendered ? undefined : discountDemotion(pick, tier.of, movable);
+    const winner = tendered ?? discounted ?? pick;
     const rivals = countsThatMayBeTotal(winner, tier.of, counts);
     // Each of these moves the reading on a rule rather than on anything
     // printed, so each lands under the review bar: passing an aside; keeping
     // one only because its tier holds nothing else while a weaker tier holds
-    // a figure printed on its own (Total 12.50 / (Reg $15.00)); and reading a
+    // a figure printed on its own (Total 12.50 / (Reg $15.00)); reading a
     // figure a larger count might have been the total in place of (Total 1280
-    // Tax ¥116).
+    // Tax ¥116); reading past cash tendered; and reading the total a discount
+    // leaves under a larger figure.
     const passedAside =
       pick.value < largest.value ||
       (winner.aside && tiers.slice(index + 1).some(weaker => weaker.of.some(c => !c.aside)));
@@ -642,7 +799,9 @@ function readAmount(lines: string[], marker: string): AmountReading {
         ? 'count'
         : tendered
           ? 'tender'
-          : undefined;
+          : discounted
+            ? 'discount'
+            : undefined;
     return {
       amount: winner.value,
       confidence: demotion ? tier.confidence * DEMOTION_FACTOR : tier.confidence,
@@ -705,14 +864,12 @@ function isAside(before: string, after: string, marker: string, opening: string)
  * (2,10 €, 64.79 USD). A sign printed between two figures touches one of
  * them: the one it is printed against where a space parts it from the other
  * (the $ of Item 2 $1.00 is the price's), else the one written like money
- * where the other is bare (2,10 € 3). Where nothing tells the two apart
- * (Summe 12 € 3 Artikel, Total 2 $ 8), it touches both, and both are money.
+ * where the other is bare (2,10 € 3). Where nothing on the line tells the
+ * two apart (Summe 12 € 3 Artikel, Total 2 $ 8), it touches both, the pair
+ * is listed as sharing it, and both are money unless the receipt's other
+ * lines settle it (settleSharedSigns).
  */
-function signedFigures(
-  line: string,
-  figures: { candidate: AmountCandidate; start: number; end: number }[],
-  marker: string,
-): boolean[] {
+function signedSides(line: string, figures: PrintedFigure[], marker: string): SignedSides {
   const isSign = (text: string) => ONE_SIGN.test(text) || (marker !== '' && text === marker);
   const before = figures.map(({ start }) => {
     const lead = line.slice(0, start).replace(MARK_BEFORE_FIGURE, '');
@@ -722,6 +879,7 @@ function signedFigures(
     const trail = line.slice(end).replace(MARK_AFTER_FIGURE, '');
     return SIGN_FIRST.test(trail) || (marker !== '' && trail.startsWith(marker));
   });
+  const shared: SignedSides['shared'] = [];
   for (let index = 1; index < figures.length; index++) {
     const first = figures[index - 1];
     const second = figures[index];
@@ -742,6 +900,7 @@ function signedFigures(
           ? firstShaped
           : undefined;
     if (firstOwns === undefined) {
+      shared.push([index - 1, index]);
       continue;
     }
     if (firstOwns) {
@@ -750,7 +909,49 @@ function signedFigures(
       after[index - 1] = false;
     }
   }
-  return figures.map((_, index) => before[index] || after[index]);
+  return { before, after, shared };
+}
+
+/**
+ * Gives a sign two bare figures share on their line (Item 24 $ 5) to the one
+ * the receipt prints again as money on another line (Total $ 5), which leaves
+ * the other a count. A figure is printed again as money where another line
+ * holds its value beside a currency mark, outside an aside, touched by a sign
+ * or written like money, and not itself sharing a sign there: two lines that
+ * each leave the question open settle nothing for each other (Item 2 $ 5 over
+ * Item 2 $ 3). Where neither figure is printed again, or both are, the sign
+ * stays with both and both are money, as on a receipt of one line.
+ */
+function settleSharedSigns(printedLines: { figures: PrintedFigure[]; sides: SignedSides }[]): void {
+  const printedAgain = (value: number, row: number) =>
+    printedLines.some(({ figures, sides }, other) =>
+      other !== row &&
+      figures.some(
+        ({ candidate }, index) =>
+          Math.abs(candidate.value - value) <= TENDER_SUM_TOLERANCE &&
+          candidate.besideCurrency &&
+          !candidate.aside &&
+          (sides.before[index] || sides.after[index] || isMoneyShaped(candidate.token)) &&
+          !sides.shared.some(pair => pair.includes(index)),
+      ),
+    );
+  for (const [row, { figures, sides }] of printedLines.entries()) {
+    for (const [first, second] of sides.shared) {
+      if (isMoneyShaped(figures[first].candidate.token) || isMoneyShaped(figures[second].candidate.token)) {
+        continue;
+      }
+      const firstAgain = printedAgain(figures[first].candidate.value, row);
+      const secondAgain = printedAgain(figures[second].candidate.value, row);
+      if (firstAgain === secondAgain) {
+        continue;
+      }
+      if (firstAgain) {
+        sides.before[second] = false;
+      } else {
+        sides.after[first] = false;
+      }
+    }
+  }
 }
 
 /**
@@ -761,6 +962,14 @@ function signedFigures(
  * count beside a price, and a figure printed again proves nothing when the
  * tax beside the total is printed again too (内消費税等 ¥116); a count of what
  * the price beside it buys stands right before it (Pack of 24 $5.00).
+ *
+ * A count the figure read and another figure of its tier add up to is a
+ * rival wherever it stands: a subtotal and its tax make the total, and a
+ * price and another price do not make the count of what one of them buys
+ * (Item $11.04 and Subtotal $11.04 over Total 12 $0.96). The other figure is
+ * one of another value: a price and the total that repeats it add up to
+ * twice the price, which a dozen at 6.00 is by chance (Item 12 $6.00 over
+ * Total $6.00).
  */
 function countsThatMayBeTotal(
   winner: AmountCandidate,
@@ -769,7 +978,16 @@ function countsThatMayBeTotal(
 ): AmountCandidate[] {
   const printedOnce =
     tier.filter(c => Math.abs(c.value - winner.value) <= TENDER_SUM_TOLERANCE).length <= 1;
-  return counts.filter(c => c.value > winner.value && (printedOnce || c.mayBeTotal));
+  const addsUpTo = (count: AmountCandidate) =>
+    tier.some(
+      c =>
+        !c.aside &&
+        Math.abs(c.value - winner.value) > TENDER_SUM_TOLERANCE &&
+        Math.abs(winner.value + c.value - count.value) <= TENDER_SUM_TOLERANCE,
+    );
+  return counts.filter(
+    c => c.value > winner.value && (printedOnce || c.mayBeTotal || addsUpTo(c)),
+  );
 }
 
 /**

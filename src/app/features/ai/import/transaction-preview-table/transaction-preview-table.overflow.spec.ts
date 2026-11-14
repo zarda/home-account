@@ -61,8 +61,9 @@ class PreviewOverflowProbeComponent {
       date: new Date('2026-06-01'),
       dateAssumed: true,
       type: 'expense',
-      // A type the reader doubted, so the toggle wears its flag at this width.
-      fieldConfidence: { type: 0.5 },
+      // A type the reader doubted, so the toggle wears its flag at this width,
+      // and an amount it doubted, so the longest amount here wears one too.
+      fieldConfidence: { type: 0.5, amount: 0.6 },
       suggestedCategoryId: 'food',
       categoryConfidence: 0.8,
       isDuplicate: false,
@@ -274,6 +275,17 @@ describe('overflow guard: the import review card', () => {
     const amount = el('.amount-text');
     expect(amount.textContent?.trim()).toBe('-¥1,234,567');
     expect(withinWidthOf(clip, amount)).withContext('amount inside the clip').toBeTrue();
+  });
+
+  it('stands the amount\'s flag clear of the amount it asks about, inside the card', () => {
+    // The flag leads the figure on its line. Flush against it, the icon
+    // reads as part of the number: its ring runs into the minus sign.
+    const flag = el('.amount-section .verify-flag');
+    const amount = el('.amount-text');
+    const gap = amount.getBoundingClientRect().left - flag.getBoundingClientRect().right;
+    expect(gap).withContext('room between the flag and the sign of the amount').toBeGreaterThanOrEqual(4);
+    expect(withinWidthOf(clip, flag)).withContext('flag inside the clip').toBeTrue();
+    expect(amount.textContent?.trim()).withContext('the amount is still shown in full').toBe('-¥1,234,567');
   });
 
   it('keeps the currency chip and its fallen-back marker on the card', () => {

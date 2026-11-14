@@ -164,6 +164,16 @@ jobs:
       - name: Self-test the bundle analyzer
         run: node scripts/analyze-bundle.mjs --self-test
 
+      # The receipt-parser harness compares the working tree with another
+      # version of the parser, and this job's checkout is one commit deep, so
+      # there is nothing here to compare against: the measurement is run by
+      # hand and its counts go in the record that changes the parser. Its
+      # --self-test proves what a wrong count would hide behind: the generator
+      # repeats itself, the loader reads the parser from a ref and from the
+      # tree, and a planted regression is counted.
+      - name: Self-test the receipt-parser harness
+        run: node scripts/measure-receipt-parser.mjs --self-test
+
       # G3 in docs/ui-overflow.md: nothing in the app truncates. The script's
       # header always said it ran in CI; now it does. It reads the source, so
       # it catches the text-overflow added next month as well as the sites

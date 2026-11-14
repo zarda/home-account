@@ -99,34 +99,72 @@ None of those questions is "was the amount read correctly".
 **The regex parser** — the last resort when no model can read the receipt, and
 the second witness to the total the on-device model reads — has no field to ask
 for. It takes the largest figure in the strongest evidence tier it found, which
-is the total on all but the odd receipt, with four corrections. Three of them
+is the total on all but the odd receipt, with five corrections. Four of them
 move or keep the reading on something other than its own print — the
-cash-tendered sum's arithmetic, a labelled aside, a larger count that might have
-been the total — and each lands it at 0.75× the tier's confidence, under the
-threshold in every tier, so it is flagged. The fourth, which figures on a line
-are money, moves it at the tier's own grade, because the figure it then reads is
-printed as money, unless a larger count stands beside it.
+cash-tendered sum's arithmetic, the total a discount leaves, a labelled aside, a
+larger count that might have been the total — and each lands it at 0.75× the
+tier's confidence, under the threshold in every tier, so it is flagged. The
+fifth, which figures on a line are money, moves it at the tier's own grade,
+because the figure it then reads is printed as money, unless a larger count
+stands beside it. Two of them read where a figure is printed as well as what it
+adds up to: every figure keeps its place in reading order, and a rule that reads
+a figure for its place moves the reading only on a receipt that prints the
+largest figure unmarked every time, so a refund's figures are never read apart
+on their order
+([ADR 0188](ADR/0188-a-total-is-read-by-where-its-figures-are-printed-under-a-discount-past-round-cash-and-beside-an-unmarked-change-and-the-parser-is-measured-by-a-harness-that-is-kept.md)).
 
 Where the receipt was paid in cash, the largest figure is the note handed over
 rather than the bill, so a winning figure that is a whole number divisible by
-five, with two other figures that add up to it, is read as cash tendered and the
-larger of that pair becomes the amount, flagged. A whole number printed bare can
+five, with two other figures that add up to it, is read as cash tendered and one
+of that pair becomes the amount, flagged. A whole number printed bare can
 stand in that pair, as the total or as the change, where it is printed on the
 cash's own line (`合計 538 ¥1,000 ¥462`) or where a total stands
 (`Total 12 Tax $0.96`, or `Tax $0.96 Total 12`, over `Cash $20.00` and
 `Change $8.00`; `Cash $20.00 Change 8`); a count of what a price buys, on another
-line, does not (`Item 3 $2.00` over `Total $5.00` reads 5.00). The rule stands
-down where the total it would pick is itself round: 450 + 50 = 500 is a total
-plus change from a note, and a subtotal plus tax, and nothing in the arithmetic
-says which. Nor does the arithmetic say which of the pair is the total, so where
-the change is the larger, the change is read, flagged. Reading arithmetic rather
+line, does not (`Item 3 $2.00` over `Total $5.00` reads 5.00).
+
+The arithmetic does not say which of the pair is the total, nor whether a round
+pair is a total with its change or a subtotal with its tax: 450 + 50 = 500 is
+both. Where the pair is printed says it. Change is printed after the cash it
+was given for and the total before it, so where the cash stands between the
+two, the one printed before it is the total, whichever is larger
+(`Total $4.00` over `Cash $20.00` and `Change $16.00` reads 4.00). A subtotal
+and its tax are printed together, so where the larger of the pair is itself
+round and the pair sits wholly on one side of the largest figure — before it
+(`Subtotal $15.00`, `Tax $5.00`, `Total $20.00`) or after it
+(`合計 ¥500`, `小計 ¥450`, `消費税 ¥50`) — the rule stands down and the largest
+figure holds; only a round pair the largest figure stands between reads as
+cash (`Total $15.00`, `Cash $20.00`, `Change $5.00` reads 15.00).
+
+Where no pair beside a currency mark adds up at all, the total or the change may
+be printed with no mark (`Total 9` over `Cash $10` and `Change $1`;
+`CASH $20.00` over `CHANGE DUE 0.82`). Then a figure the receipt does not mark
+as money, a count on another line included, pairs with one it does, where they
+add up to the cash and the cash stands between them, and the one printed before
+the cash is read, flagged as cash tendered. A count and the price it counts
+stand on one side, so they never pair. Reading arithmetic and position rather
 than words is what keeps this workable on a receipt in any language.
+
+Where no cash was tendered, the largest figure may be what a discount was taken
+from: an item or a subtotal printed above a coupon, a gift card, a deposit or
+points. A discount is a figure printed negative — a minus, a triangle or
+accounting parentheses — after the largest figure, and what it leaves is
+printed after it: the largest figure less the discount is another figure
+printed unmarked below (`Item $3.00`, `Coupon -$1.00`, `Total $2.00`;
+`小計 ¥749`, `値引 -¥100`, `合計 ¥649`), or is that figure once one more is added
+back, a tax under the discount or a second item (`Subtotal $5.30`,
+`Coupon -$1.00`, `Tax $0.34`, `Total $4.64`). The figure left is the amount,
+flagged. No label is read, so a saving printed with no mark of its own
+(`You saved $1.00`) is one more priced line, and the limits below list it.
 
 Which figures on a line are money is read figure by figure. A figure is money
 where a currency sign or the receipt's code touches it, or where it is written
 with cents or grouping. A sign printed between two figures belongs to the one it
-is printed against, else to the one written like money; where nothing tells the
-two apart (`Summe 12 € 3 Artikel`, `Total 2 $ 8`), both are money. A whole
+is printed against, else to the one written like money; where nothing on the
+line tells the two apart, the one the receipt prints again as money on another
+line owns it (`Item 24 $ 5` over `Total $ 5` reads 5), and where neither is
+printed again, or both are (`Summe 12 € 3 Artikel`, `Total 2 $ 8`), both are
+money. A whole
 number printed bare beside such a figure is a count, a size or a code
 (`Pack of 24 $5.00`, `SKU 1234 $1.45`, `緑茶 500ml ¥151`), not the line's money,
 even where it repeats that money's value (`TOTAL 14 Card -$14`), and it falls to
@@ -138,14 +176,18 @@ is printed nowhere else in its tier, or where the count stands where a total
 does: followed by a word of its own, past a space, a run of marks, a percent
 figure or the letters of its currency (`Total 1280 Tax ¥116`,
 `Total 9, Tax $1.00`, `Total 120 8% Tax $9.60`, `合計 980円 内税 ¥72`), or printed
-after its line's money (`内税 ¥72 合計 980`). Then the reading is flagged, and the
+after its line's money (`内税 ¥72 合計 980`), or where the figure read and
+another figure of its tier, of another value, add up to the count, as a
+subtotal and its tax make a total (`Item $11.04` and `Subtotal $11.04` over
+`Total 12 $0.96`). Then the reading is flagged, and the
 receipt's marks are not read as a refund's where that count shares a line with a
 copy of the total or stands where a total does (`Total 12 Tax -$0.96`;
 `Coupon -$3.00` over `Tax $1.00 Total 12`). A total printed bare before a
 smaller figure with nothing, or only marks or a percent figure, between them
 (`Total 12 $0.96`, `Total 12 = $0.96`) looks exactly like a count before a
-price; where the smaller figure, or the one read, is printed again, or the cash
-and the change follow, it is read with no flag, and the limits below list it.
+price; over its tax alone, where the smaller figure is printed again, it is read
+with no flag, and the limits below list it. With the cash and the change under
+it, it pairs with the change and is read as the total, flagged.
 
 A figure inside parentheses that hold a word as well — `(Reg $15.00)`,
 `($15.00 reg)`, `（定価 ¥1,580）` — is a labelled aside: a regular price, a balance
@@ -230,12 +272,13 @@ currency was read — the model's first, then the parser's.
 | What the two readers say | Amount grade |
 |---|---|
 | The model read nothing, or nothing above zero | 0 |
-| Both read the same total | the parser's grade or 0.8, whichever is higher — the parser's own 0.6 where a rule (an aside or a count), not the cash-tendered sum, picked that total from the figures it read beside a currency mark, or holds of the cash-tendered sum's pick as well |
+| Both read the same total | the parser's grade or 0.8, whichever is higher — the parser's own 0.6 where a rule (an aside, a count or a discount), not the cash-tendered sum, picked that total from the figures it read beside a currency mark, or holds of the cash-tendered sum's pick as well |
 | They differ, and the parser read its figure beside a currency mark, graded 0.7 or more, or moved there by a rule or by the cash-tendered sum | 0.5 — flagged |
 | They differ, and the parser's own reading is weaker than that | 0.8 |
 
 A total the parser picked by a rule rather than off the print — past a labelled
-aside, or under a count that might have been the total — is a guess a model
+aside, under a count that might have been the total, or as what a discount
+leaves — is a guess a model
 reading the same text can share, so agreeing with it backs nothing, and
 disagreeing with it is a disagreement with a figure the receipt printed as
 money. Agreeing with a cash-tendered pick still lifts it to 0.8, because the
@@ -1546,8 +1589,11 @@ names the image and the status it dropped, with the drain's warning beside it.
   which reads the largest other figure; a count or a size on a priced line of a
   refund's own value (`Pack of 12 -$12.00`), or a time on the total's own line
   that repeats it (`14:14 TOTAL -$14.00`), which copies the total and leaves the
-  refund a purchase graded 0.3; cash whose change is larger than the total,
-  which reads the change; and a date OCR wrapped across two lines, which reads
+  refund a purchase graded 0.3; a bare number printed above a round total with
+  a later figure that completes the sum (`Table 12` over `Total $20.00` and
+  `Tip $8.00`), which reads the bare number; a count that is the total plus a
+  price (`Item 13 $1.00` over `Total $12.00`), which reads the total; and a
+  date OCR wrapped across two lines, which reads
   as none while the amount beside it reads right. Others are read silently — a
   wrong amount with no flag on it, a refund filed as a plain purchase, or a
   purchase filed as income with only its type asked about, as every device
@@ -1556,26 +1602,27 @@ names the image and the status it dropped, with the drain's warning beside it.
   plain purchase; a restated or labelled figure in parentheses, or one whose
   label stands outside them (`Was ($79.99)`) or is glued to its sign
   (`(REG$15.00)`), that outranks the total and reads as a credit, and a saving
-  larger than the total printed negative; any figure printed negative (a
-  discount, coupon, gift card, deposit or points) that takes the total under a
-  priced item, which reads the item; a points line on a receipt that prints no
+  larger than the total printed negative; a saving printed with no mark of its
+  own that takes the total under a priced item (`You saved $1.00`), or a
+  discount under a larger item that is not the first and prints no subtotal,
+  which reads the item; a points line on a receipt that prints no
   currency sign, read as a credit; a reference number glued to a Han label
   (`伝票-1234`) where it wins the amount from the plain numbers, read as a credit;
   an aside whose parentheses OCR dropped or printed as brackets, or a regular
   price printed with no parentheses (`Reg. Price $15.00`); a refund slip whose
   total is labelled in parentheses (`(Total $64.79)`), which reads as a
   purchase; a total printed bare before a smaller figure with nothing, or only
-  marks or a percent figure, between them, where the smaller figure or the one
-  read is printed again or the cash and the change follow (`Total 12 $0.96` or
-  `Total 12 = $0.96` over `Tax $0.96`), which reads the smaller figure, or the
-  cash; any of the bare-total shapes with the total split onto a line of its
+  marks or a percent figure, between them, over its tax printed again
+  (`Total 12 $0.96` or `Total 12 = $0.96` over `Tax $0.96`), which reads the
+  smaller figure; any of the bare-total shapes with the total split onto a line of its
   own; a total line with no sign beside signed lines (`合計 3点 980` over `内税 ¥72`,
   a bare `Total 11.73` under `Subtotal $10.86`, or `1/13/24 Total 45.00` under
-  `Bagel $4.50 x2`), which reads a signed figure; the cash where no pair of
-  figures beside a currency mark adds up to it, because the total or the change
-  prints no mark; cash whose change is itself round (`お預り ¥1,000` and `お釣り ¥640`
-  under a ¥360 total), which reads the cash; a currency sign spaced from two
-  bare figures, which reads both as money (`Item 24 $ 5` reads 24); a date OCR
+  `Bagel $4.50 x2`), which reads a signed figure; the cash where neither the
+  total nor the change is beside a currency mark of its own, where an item
+  equals the change, or where the cash is printed above the total; a currency
+  sign spaced from two bare figures on a receipt of one priced line, or split
+  from them onto lines of its own, which reads both as money (`Item 24 $ 5`
+  reads 24); a date OCR
   wrapped across two lines (`13.01.` over `24`), whose day and month, or a year
   left on a line with a currency code (`2024 14:32 EUR`), read as money; a
   two-digit-year date printed year first that, read day first, falls in the
@@ -1603,9 +1650,10 @@ names the image and the status it dropped, with the drain's warning beside it.
   or time, a model total that differs from the parser's is lifted to 0.8,
   because the parser reads that receipt under the bar.
   [ADR 0162](ADR/0162-a-refund-read-on-the-device-is-filed-as-income-and-the-review-asks-about-it.md),
-  [ADR 0185](ADR/0185-a-refund-is-asked-about-at-every-door-and-a-category-follows-its-rows-side-there-and-back.md)
-  and
+  [ADR 0185](ADR/0185-a-refund-is-asked-about-at-every-door-and-a-category-follows-its-rows-side-there-and-back.md),
   [ADR 0186](ADR/0186-a-date-stops-at-a-currency-sign-and-a-line-break-a-total-read-past-an-aside-or-under-a-count-is-flagged-and-a-shared-file-lands-in-the-upload-area.md)
+  and
+  [ADR 0188](ADR/0188-a-total-is-read-by-where-its-figures-are-printed-under-a-discount-past-round-cash-and-beside-an-unmarked-change-and-the-parser-is-measured-by-a-harness-that-is-kept.md)
   list them, with the evidence for keeping each reading.
 - **Queueing an image while the queue is closed still fails outright.** The
   status writes a drain makes now report whether they landed, but an image
