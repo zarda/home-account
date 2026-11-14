@@ -526,28 +526,54 @@ function isTenderShaped(value: number): boolean {
  * ¥462) or where a total stands (Total 12 Tax $0.96, or Tax $0.96 Total 12,
  * over Cash $20.00 and Change $8.00; Cash $20.00 Change 8). A count of what a
  * price buys, on another line, stays out (Item 3 $2.00 over Total $5.00).
- * Among matching pairs the largest x wins; if that x is itself tender-shaped
- * ({450, 50, 500} — a taxed total is indistinguishable from a tendered note)
- * the demotion stands down and the pick holds. Vocabulary-free on purpose:
- * this reads arithmetic, not words.
+ * Among matching pairs the largest x wins.
+ *
+ * Where the pair is printed settles what the sum alone cannot. Change is
+ * printed after the cash it was given for, and the total before it, so a pair
+ * the pick stands between is a total and its change, and the one printed
+ * before the pick is the total, whichever of the two is larger (Total $4.00
+ * over Cash $20.00 and Change $16.00). A subtotal and its tax are printed
+ * together, both before the total they make or both after it, so where the
+ * largest x is itself tender-shaped ({450, 50, 500} — a taxed total is
+ * indistinguishable from a tendered note) and its pair sits wholly on one side
+ * of the pick, the demotion stands down and the pick holds; only a pair the
+ * pick stands between reads as cash there (Total $15.00, Cash $20.00, Change
+ * $5.00). The reading moves to the figure printed before the pick only where
+ * `movable` holds and that figure is printed unmarked: a refund's cash and
+ * change are not read apart on their order. Vocabulary-free on purpose: this
+ * reads arithmetic and position, not words.
  */
 function tenderedDemotion(
   pick: AmountCandidate,
   tier: AmountCandidate[],
   counts: AmountCandidate[],
+  movable: boolean,
 ): AmountCandidate | undefined {
   if (!isTenderShaped(pick.value)) return undefined;
   const rest = tier.filter(c => c !== pick);
   const pairable = [...rest, ...counts.filter(c => c.row === pick.row || c.mayBeTotal)];
+  const pairs: [x: AmountCandidate, y: AmountCandidate][] = [];
   let bestX: AmountCandidate | undefined;
   for (const x of pairable) {
     for (const y of pairable) {
       if (x === y || y.value > x.value) continue;
       if (Math.abs(x.value + y.value - pick.value) > TENDER_SUM_TOLERANCE) continue;
+      pairs.push([x, y]);
       if (!bestX || x.value > bestX.value) bestX = x;
     }
   }
-  return bestX && !isTenderShaped(bestX.value) ? bestX : undefined;
+  if (!bestX) return undefined;
+  const largestX = bestX.value;
+  const ofLargestX = pairs.filter(([x]) => Math.abs(x.value - largestX) <= TENDER_SUM_TOLERANCE);
+  const around = ofLargestX.filter(([x, y]) => x.at < pick.at !== y.at < pick.at);
+  const printedBefore = movable
+    ? largestOf(around.map(([x, y]) => (x.at < pick.at ? x : y)).filter(c => !c.credit))
+    : undefined;
+  if (!isTenderShaped(largestX)) {
+    const printedAfter = ofLargestX.some(([x, y]) => x.at > pick.at && y.at > pick.at);
+    return printedAfter ? bestX : (printedBefore ?? bestX);
+  }
+  return around.length === ofLargestX.length ? printedBefore : undefined;
 }
 
 function readAmount(lines: string[], marker: string): AmountReading {
@@ -654,7 +680,12 @@ function readAmount(lines: string[], marker: string): AmountReading {
     // figure printed on its own; where it holds nothing else, it is all the
     // tier gave.
     const pick = largestOf(tier.of.filter(c => !c.aside)) ?? largest;
-    const tendered = tenderedDemotion(pick, tier.of, counts);
+    // A rule that reads a figure for where it is printed moves the reading
+    // only on a receipt that prints the pick unmarked every time.
+    const movable = !candidates.some(
+      c => c.credit && Math.abs(c.value - pick.value) <= TENDER_SUM_TOLERANCE,
+    );
+    const tendered = tenderedDemotion(pick, tier.of, counts, movable);
     const winner = tendered ?? pick;
     const rivals = countsThatMayBeTotal(winner, tier.of, counts);
     // Each of these moves the reading on a rule rather than on anything
