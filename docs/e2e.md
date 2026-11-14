@@ -33,7 +33,7 @@ deployed rules — and it is the reason for every constraint below. Read the
 whole thing as one rule: **the run is a reader with thirteen permitted writes,
 each named in *What a run may touch*, and it puts back every one it can.**
 
-**The emulators, on port 4300: journeys 68 to 77, and 79 to 116.** A journey that
+**The emulators, on port 4300: journeys 68 to 77, and 79 to 117.** A journey that
 needs several accounts signed in — one sharing rows into a household, another
 reading them there as copies, members counting them toward the household's own
 budgets and goals, and memberships removed, left, dissolved and erased —
@@ -47,7 +47,7 @@ cannot show — the deployed rules and indexes, the callable's public invoker, a
 mail that arrives — is what journey 78 is for, once, on production after the
 merge. Journey 79 needs one account, but it imports into it, and journey 80
 moves one origin's session between accounts under two open tabs, so both run
-there too; neither touches a household or calls a function. Journeys 81 to 116
+there too; neither touches a household or calls a function. Journeys 81 to 117
 need one account as well, and run there for what they write and what they need
 seeded: categories, rules, budgets and a household whose colours the seed
 fixes, a category made and deleted, a rule paused and resumed, rules due in the
@@ -208,7 +208,13 @@ tell items apart, the resting text and the reader's stop it is the served
 catalog once more:
 `(await fetch('/assets/i18n/en.json').then(r => r.json())).import.removePhotoLabel`
 reads *Remove photo {{position}} ({{name}})* on this branch and `undefined`
-on `133179db`. For another branch it is whatever that branch added. A
+on `133179db`. For the total read under a discount, past round cash and
+beside an unmarked change it is the review card's own stylesheet, read on
+the flagged card journey 117's step 1 leaves:
+`getComputedStyle(document.querySelector('.amount-section .verify-flag')).marginInlineEnd`
+reads `4px` on this branch and `0px` on `63958baf`; the card showing `-$2.00`
+there, where `63958baf` shows `-$3.00`, says the same of the parser. For
+another branch it is whatever that branch added. A
 stale `.angular/cache`, or a server started before the checkout switched,
 shows yesterday's app with today's confidence.
 
@@ -630,7 +636,7 @@ Import never is.
 Everything else is read-only. Every dialog is closed or **cancelled** — the
 edit dialog in journey 5 opens on a real transaction and is left by Cancel,
 never Save — and nothing else is created, edited, deleted or imported.
-Journeys 68 to 77 and 79 to 116 are not in this table: they write freely, but
+Journeys 68 to 77 and 79 to 117 are not in this table: they write freely, but
 only into the local emulators, and the [teardown](#teardown) takes all of it
 with them.
 Journeys 58 to 67 are superseded and write nothing, because they are not run.
@@ -880,7 +886,7 @@ Alex alone, and imports three rows into his account; journey 80 needs Alex
 and Sam, in two tabs of one origin, and moves the session between them
 ([auth.md](auth.md) describes what it drives).
 
-Journeys 81 to 116 use the same seed as Alex alone, and drive the account's own
+Journeys 81 to 117 use the same seed as Alex alone, and drive the account's own
 pages: the theme tokens and a category's colour, measured where they are
 painted in both themes (81 and 82, whose last surface is Chen home's budget
 dialog); the papercuts of
@@ -925,7 +931,11 @@ area and the total flagged past an aside of
 the photos, the resting text, the names that tell items apart and the
 reader's stop of
 [ADR 0187](ADR/0187-repeated-controls-name-their-item-the-upload-area-has-one-button-and-numbers-photos-among-photos-resting-text-is-a-token-sentences-end-in-the-readers-stop-and-a-spec-that-expects-nothing-fails.md)
-(111 to 116), the last with a provider that answers from the page.
+(111 to 116), the last with a provider that answers from the page; and the
+totals the device's parser reads by where their figures are printed, under a
+discount, past round cash and beside an unmarked change, of
+[ADR 0188](ADR/0188-a-total-is-read-by-where-its-figures-are-printed-under-a-discount-past-round-cash-and-beside-an-unmarked-change-and-the-parser-is-measured-by-a-harness-that-is-kept.md)
+(117), which stands in for the device as journey 110 does.
 [accessibility.md](accessibility.md), [dashboard.md](dashboard.md),
 [reminders.md](reminders.md), [shortcuts.md](shortcuts.md),
 [pwa.md](pwa.md), [receipt-import.md](receipt-import.md),
@@ -940,9 +950,9 @@ reader's stop of
 [csv-format.md](csv-format.md), [data.md](data.md) and
 [ui-overflow.md](ui-overflow.md) describe what they drive.
 
-Journeys 87 to 96 build on one another's writes, 97 to 116 on the language
+Journeys 87 to 96 build on one another's writes, 97 to 117 on the language
 each one leaves, 107 on the records 105 and 106 write, and 115 on the goal
-113 writes, so 87 to 116 run in one emulator session, in this order:
+113 writes, so 87 to 117 run in one emulator session, in this order:
 
 1. journey 87's steps 4 and 5, which queue a scan and fail its drain;
 2. journey 88, which reads that drain's record in Import History;
@@ -1009,7 +1019,10 @@ each one leaves, 107 on the records 105 and 106 write, and 115 on the goal
 30. journey 116, which switches the language to 日本語, arms the provider,
     reads a receipt on the review card and in the form without importing or
     saving, and ends in English with the arm gone;
-31. journey 103, **last**, which empties Alex's name and types one in, and
+31. journey 117, which reads seven receipts on the review card through
+    journey 110's stand-in for the device, switches the language to 日本語 and
+    繁體中文 and back, imports nothing, and ends in English;
+32. journey 103, **last**, which empties Alex's name and types one in, and
     whose visit to the household page rewrites his member document there,
     and ends with both restored.
 
@@ -1056,7 +1069,7 @@ edit, with the shots `95-cold-refresh-unknown-ja`,
 `94-refused-after-rows-ja-r3` and `93-edit-day-unset-r3`. Every step it ran
 passed, and it found no further defect.
 
-Journeys 97 to 116 rest on none of the earlier journeys' writes, though 107
+Journeys 97 to 117 rest on none of the earlier journeys' writes, though 107
 reads the records 105 and 106 write, and 115 the goal 113 writes. A run of
 them alone starts from a fresh seed, in English, and journey 99's Sync Now
 then drains the one scan it queued; journey 108 then finds the queue as
@@ -1875,9 +1888,25 @@ that has drifted from its row — a catalog entry or the projection changed
 since the seed was written — is rewritten by the app's sweep the first time
 its author opens the app, since a fresh origin holds no record of a full pass.
 
+The run of journey 117, on 2026-11-14, drove the branch with #527, #528 and
+#530 in this venue, served from that branch's own checkout, alone on a fresh
+seed and a clean origin, with the functions emulator left out; the bundle
+named `demo-home-account` only, and the console held no error from the first
+load to the teardown. Every step passed as written. Journey 110's steps 1 to
+3 were read again after it and held, and the upload area still held its one
+button. The run met one defect older than the branch: on every flagged card
+the amount's flag stood flush against the amount, 0px between the icon's ring
+and the minus that leads the figure, at 1024px and at 375px. It has 4px now,
+read again at both widths and in both themes, and
+`transaction-preview-table.overflow.spec.ts` holds it at the 288px card. The
+session record was fetched by the page from a loopback server that answered
+this origin alone, rather than pasted, so no token crossed the console.
+[ADR 0188](ADR/0188-a-total-is-read-by-where-its-figures-are-printed-under-a-discount-past-round-cash-and-beside-an-unmarked-change-and-the-parser-is-measured-by-a-harness-that-is-kept.md)
+records the run.
+
 ### Pre-flight
 
-Journeys 79 to 116 call no function, and neither do 72 and 73. A run of only
+Journeys 79 to 117 call no function, and neither do 72 and 73. A run of only
 those skips checks 2 and 3 and starts the emulators without the functions
 emulator, `--only auth,firestore,storage` in check 4 — which is also how they
 start in a checkout without `functions/.secret.local`, whose functions that
@@ -2517,6 +2546,7 @@ removes the first, and the second is deleted here. Both are gitignored.
 | 114 | The forecast's notes (emulators) | The forecast's note, its bucket note over a long range and its rate caption painted in the muted token at full opacity in four palettes, beside a chart drawn in the palette the page is in | `114-forecast-30d-light.png`, `114-forecast-year-90d-light.png`, `114-forecast-year-90d-dark.png`, `114-forecast-year-90d-dark-hc.png`, `114-forecast-year-90d-light-hc.png` |
 | 115 | Names that tell items apart (emulators) | A slider and a switch named by their words, Sign out named at a real 375px, a review card's fields and overrule, the search removes, the list's note and receipt buttons and a goal's item deletes each named for its item, and the filters' toggle saying what it opens and Save search whether its box is open, all read in a real layout | `115-budget-slider.png`, `115-ai-auto-sync.png`, `115-settings-375-sign-out.png`, `115-review-two-rows.png`, `115-not-a-duplicate.png`, `115-save-search-ring.png`, `115-search-suggestions.png`, `115-list-note-receipt.png`, `115-goal-item-deletes.png`, `115-filter-toggle.png` |
 | 116 | Sentences end in the reader's stop (emulators) | A Japanese reader's date sentences joined by 。 on a real review card and on the form's scan flag and its tooltip, read through the provider's real prompt answered from the page, the keep button named first by the words it shows, and focus back on the menu's button once the form its entry opened is cancelled | `116-card-keep-date-ja.png`, `116-form-verify-tooltip-ja.png` |
+| 117 | Totals read by where their figures are printed (emulators, diagnostic-grade) | A coupon, round cash, an unmarked change and a bare total over its parts each reach a real review card as the total with the scan's flag on the amount, in three languages; a spaced sign and a subtotal with its tax reach it unflagged; and the flag stands clear of the figure it asks about | `117-coupon-flag.png`, `117-round-cash.png`, `117-spaced-sign.png` |
 
 Screenshot names are the journey number and what is on screen; a re-run
 overwrites rather than accumulating. A partial re-check after a fix adds
@@ -13189,6 +13219,134 @@ that reached the emulators, and they go at the [teardown](#teardown).
 Two shots: the card's keep button in Japanese, and the form's flag and its
 tooltip.
 
+### 117. Totals read by where their figures are printed (diagnostic-grade)
+
+**Emulators**, as Alex, at the pane's own width of 1024px, after journey 116,
+in English ([the run order](#emulator-journeys)), with no provider, on
+`/import/file`. The device's text parser read the largest figure beside a
+currency mark as the total on five kinds of receipt where it is not: the item
+or the subtotal above a coupon, the cash over a round total, the cash beside
+a total or a change that prints no currency mark, the subtotal under a total
+printed as a bare whole number, and the count beside a sign spaced from two
+bare figures. It now reads where the figures are printed: the total before
+the cash and the change after it, the total a discount leaves after the
+figure it was taken from, a subtotal and its tax together
+([ADR 0188](ADR/0188-a-total-is-read-by-where-its-figures-are-printed-under-a-discount-past-round-cash-and-beside-an-unmarked-change-and-the-parser-is-measured-by-a-harness-that-is-kept.md),
+[receipt-import.md](receipt-import.md)). Each reading it moves on a sum is
+graded under the bar, so the card asks about the amount. No browser has
+Vision or Apple's on-device model, so every step stands in for the two
+Capacitor bridges exactly as [journey 110](#110-the-shipped-parser-on-a-rendered-review-card-diagnostic-grade)
+does, and the whole journey is state only, diagnostic-grade, and recorded as
+such.
+
+Every step is journey 110's step 1 evaluation with its `text` replaced and
+the photo named `e2e-117.jpg`, then a reload and journey 110's card read.
+`${day}` is today's date, as there.
+
+1. **A coupon under its item.** `text`:
+   `` `e2e-527 Harbour Supplies\n${day}\nRope 1 $3.00\nCoupon -$1.00\nTotal: $2.00` ``.
+   **Pass:** `[2, '{"amount":0.6,"date":0.9}', true]`: the total the coupon
+   leaves, graded under the bar. The parser used to read the item, 3 at 0.8.
+   Reload. **Pass:** amount `'-$2.00'`; `flag` *Double-check this amount —
+   the scan could not read it for certain*; `dateFlag` `false`. Then the
+   flag's own room:
+
+   ```js
+   const card = document.querySelector('.transaction-card');
+   const flag = card.querySelector('.amount-section .verify-flag').getBoundingClientRect();
+   Math.round(card.querySelector('.amount-text').getBoundingClientRect().left - flag.right);
+   ```
+
+   **Pass:** `4`, where it used to read `0`, the icon's ring against the
+   minus. Shot: `117-coupon-flag.png`. Leave without importing:
+   `history.replaceState({}, '')` and a reload.
+2. **The same layout in Japanese.** `text`:
+   `` `e2e-527 弁当屋\n${day}\n弁当 ¥598\nお茶 ¥151\n小計 ¥749\n値引 -¥100\n合計 ¥649` ``.
+   **Pass:** `[649, '{"amount":0.6,"date":0.9}', true]`, where the parser
+   used to read the subtotal, 749 at 0.8. Reload. **Pass:** amount `'-¥649'`
+   and the flag. Switched as journey 109's step 5 does, the flag reads
+   *この金額を確認してください。スキャンでは確実に読み取れませんでした* in Japanese,
+   with the amount `'-￥649'` as that locale writes the sign, and
+   *請再確認此金額，掃描無法確定是否讀取正確* in Traditional Chinese; then back to
+   English. Leave the same way.
+3. **Cash over a round total.** `text`:
+   `` `e2e-530 Harbour Supplies\n${day}\nTotal: $15.00\nCash $20.00\nChange $5.00` ``.
+   **Pass:** `[15, '{"amount":0.6,"date":0.9}', true]`, where the parser used
+   to read the cash, 20 at 0.8. Reload. **Pass:** amount `'-$15.00'` and the
+   flag. Shot: `117-round-cash.png`. Leave the same way.
+4. **A change with no currency mark.** `text`:
+   `` `e2e-530 Corner Shop\n${day}\nMilk $17.76\nAmount Due: $19.18\nTax 8% $1.42\nCASH $20.00\nCHANGE DUE 0.82` ``.
+   **Pass:** `[19.18, '{"amount":0.6,"date":0.9}', true]`, where the parser
+   used to read the cash at 0.8. Reload. **Pass:** amount `'-$19.18'` and the
+   flag. Leave the same way.
+5. **A bare total over its subtotal.** `text`:
+   `` `e2e-528 Diner\n${day}\nItem $11.04\nSubtotal $11.04\nTotal 12 $0.96` ``.
+   **Pass:** `[11.04, '{"amount":0.6,"date":0.9}', true]`: the subtotal is
+   still read, and now asked about, because it and the tax add up to the 12
+   beside them. It used to read at 0.8. Reload. **Pass:** amount `'-$11.04'`
+   and the flag. Leave the same way.
+6. **Two readings that carry no flag.** `text`:
+   `` `e2e-530 Stall\n${day}\nItem 24 $ 5\nTotal $ 5` ``. **Pass:**
+   `[5, '{"amount":0.8,"date":0.9}', true]`, where the parser used to read
+   the 24; reload, amount `'-$5.00'` and `flag` `null`. Shot:
+   `117-spaced-sign.png`. Then
+   `` `e2e-530 Deli\n${day}\nSubtotal $15.00\nTax $5.00\nTotal $20.00` ``.
+   **Pass:** `[20, '{"amount":0.8,"date":0.9}', true]`, as before; reload,
+   amount `'-$20.00'` and `flag` `null`: a round total whose round parts are
+   printed together before it is no cash. Leave the same way.
+7. **The model lane.** Journey 110's step 3 form, without the
+   `history.replaceState`, on step 1's text with the model answering `3`
+   and then `2`, and on step 3's text with it answering `20` and then `15`.
+   **Pass:** `[3, '{"amount":0.5,"date":0.8}', true]`, a model that reads the
+   item, disputed; `[2, '{"amount":0.6,"date":0.8}', true]`, one that agrees
+   with the total a sum picked, still flagged;
+   `[20, '{"amount":0.5,"date":0.8}', true]`, one that reads the cash,
+   disputed; and `[15, '{"amount":0.8,"date":0.8}', true]`, one that agrees
+   with a cash-tendered pick, lifted.
+
+**What stays in the specs, and why.**
+
+- **The readings.** `receipt-text-parser.spec.ts`: *reads the total a figure
+  printed negative … leaves under a larger item or subtotal, graded under the
+  bar*, *adds one figure printed under the larger one back …*, *reads cash
+  over a round total as cash where the total is printed before it and the
+  change after*, *keeps a round total whose round parts are printed
+  together, before it or after it*, *pairs a total or a change that prints no
+  currency mark with the cash that stands between the two*, *grades the
+  figure read under the bar where it and another figure of its tier add up
+  to a larger count*, and *gives a sign spaced between two bare figures to
+  the one the receipt prints again as money on another line*, with each
+  known gap pinned beside them. `receipt-text-parser.battery.spec.ts` records
+  every row that moved and the four lists of rows read silently.
+- **The device lane.** `native-receipt.service.spec.ts`, under *field
+  confidence*: *flags a model that reads the item a discount was taken from,
+  and keeps the parser's grade on one that reads the total* and *disputes a
+  model that reads the cash over a change printed with no currency mark, and
+  lifts one that reads the total*. `native-receipt.service.smoke.spec.ts`
+  holds the discount's two over the live catalog.
+- **The card.** `import-wizard.smoke.spec.ts`, through the real converter and
+  hand-off: *an on-device scan whose total sits under a coupon and a larger
+  item reaches the review card as that total, with its amount flagged* and
+  *an on-device scan of cash over a round total reaches the review card as
+  the total, with its amount flagged*.
+  `transaction-preview-table.overflow.spec.ts`: *stands the amount's flag
+  clear of the amount it asks about, inside the card*.
+- **The counts.** `scripts/measure-receipt-parser.mjs`, which reads generated
+  receipts on two versions of the parser ([testing.md](testing.md)).
+
+**What it does not drive.** A device, as in journey 110: Vision and Apple's
+model answer from the page. An import, which no step makes. The receipts the
+rules still read silently, each pinned as a known gap in
+`receipt-text-parser.spec.ts`.
+
+**Cleanup.** Each card is left without importing, and the duplicate check
+only reads. The language is back on English (step 2), its switches the only
+writes that reached the emulators, and they go at the
+[teardown](#teardown).
+
+Three shots: the coupon's flagged card, round cash, and the spaced sign's
+unflagged one.
+
 ## Evidence
 
 Screenshots go to a scratch folder **outside the repo**, named as above, and
@@ -13285,7 +13443,7 @@ review card's type or category, the camera's converter, or the form's scanned
 type, and journey 80 on one that touches the session: the auth listener and
 its reload (`auth.service.ts`, `page-reload.ts`), where the web keeps the
 session (`appAuthFactory` in `app.config.ts`), the route guards
-(`auth.guard.ts`), or this protocol's session writes. Journeys 81 to 116 follow
+(`auth.guard.ts`), or this protocol's session writes. Journeys 81 to 117 follow
 it on a branch that touches what each one drives: 81 a theme token, a
 stylesheet's colours or the chart palette; 82 a category colour's reader —
 the category chip, the `categoryGlyph` and `readableOn` pipes, a category
@@ -13367,9 +13525,13 @@ mixes kinds (`places`, `photoNumber`, `swapWithPhoto`, `onFileDrop`) or the
 rows' button names; 113 the goal card's or the Goals tab's resting colours,
 or the card's Edit and Delete; 114 the forecast's notes and caption or their
 colours; 115 a control named by its label or by its item on a surface it
-reads, or `visually-hidden` in `src/theme/_a11y.scss`; and 116 how two
+reads, or `visually-hidden` in `src/theme/_a11y.scss`; 116 how two
 sentences join (`joinSentences`, `common.sentenceSeparator`) or a caller's
-translator.
+translator; and 117 how the device's parser picks its total
+(`tenderedDemotion`, `discountDemotion`, `countsThatMayBeTotal`,
+`settleSharedSigns` in `receipt-text-parser.ts`), how the device lane grades
+it (`agreedAmountGrade`, `disputedAmountGrade`), or the amount flag's place
+on the review card.
 **Journey 78 runs once**, on production, after the merge — when the deploys
 it checks have finished — because what it proves is the deployed rules,
 indexes and callable, which exist only then.
