@@ -2,6 +2,8 @@
 
 **Status:** Accepted, implemented; amended by
 [0186](0186-a-date-stops-at-a-currency-sign-and-a-line-break-a-total-read-past-an-aside-or-under-a-count-is-flagged-and-a-shared-file-lands-in-the-upload-area.md)
+and
+[0188](0188-a-total-is-read-by-where-its-figures-are-printed-under-a-discount-past-round-cash-and-beside-an-unmarked-change-and-the-parser-is-measured-by-a-harness-that-is-kept.md)
 · **Date:** 2026-08-05 · **Issues:** #226
 
 Reference documentation lives in [../receipt-import.md](../receipt-import.md). This
@@ -18,6 +20,17 @@ aside, keeps one only because nothing else in its tier stands beside it while a
 weaker tier holds a figure printed on its own, or that a larger count might
 have been the total in place of, is graded at 0.75× its tier, under the review
 bar.
+
+**Amended by
+[0188](0188-a-total-is-read-by-where-its-figures-are-printed-under-a-discount-past-round-cash-and-beside-an-unmarked-change-and-the-parser-is-measured-by-a-harness-that-is-kept.md).**
+The cash-tendered correction reads where its pair is printed as well as what
+it adds up to. A total and its change stand on either side of the cash, so the
+figure printed before the cash is the total, the larger change included, and a
+round total is read past its cash where this record stood down; a subtotal and
+its tax, printed together on one side, still leave the largest figure. A total
+or a change printed with no currency mark stands in the pair. And largest-wins
+gains a fifth correction: the total a discount printed after a larger figure
+leaves, read and graded under the review bar.
 
 ## Context
 
