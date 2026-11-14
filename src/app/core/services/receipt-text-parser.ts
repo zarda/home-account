@@ -702,6 +702,8 @@ function readAmount(lines: string[], marker: string): AmountReading {
     opening = UNCLOSED_OPEN.exec(line)?.[0] ?? '';
   }
 
+  settleSharedSigns(printedLines);
+
   const candidates: AmountCandidate[] = [];
   for (const { figures, sides } of printedLines) {
     // A whole number printed bare, with no sign touching it and no cents,
@@ -862,8 +864,10 @@ function isAside(before: string, after: string, marker: string, opening: string)
  * (2,10 €, 64.79 USD). A sign printed between two figures touches one of
  * them: the one it is printed against where a space parts it from the other
  * (the $ of Item 2 $1.00 is the price's), else the one written like money
- * where the other is bare (2,10 € 3). Where nothing tells the two apart
- * (Summe 12 € 3 Artikel, Total 2 $ 8), it touches both, and both are money.
+ * where the other is bare (2,10 € 3). Where nothing on the line tells the
+ * two apart (Summe 12 € 3 Artikel, Total 2 $ 8), it touches both, the pair
+ * is listed as sharing it, and both are money unless the receipt's other
+ * lines settle it (settleSharedSigns).
  */
 function signedSides(line: string, figures: PrintedFigure[], marker: string): SignedSides {
   const isSign = (text: string) => ONE_SIGN.test(text) || (marker !== '' && text === marker);
@@ -906,6 +910,48 @@ function signedSides(line: string, figures: PrintedFigure[], marker: string): Si
     }
   }
   return { before, after, shared };
+}
+
+/**
+ * Gives a sign two bare figures share on their line (Item 24 $ 5) to the one
+ * the receipt prints again as money on another line (Total $ 5), which leaves
+ * the other a count. A figure is printed again as money where another line
+ * holds its value beside a currency mark, outside an aside, touched by a sign
+ * or written like money, and not itself sharing a sign there: two lines that
+ * each leave the question open settle nothing for each other (Item 2 $ 5 over
+ * Item 2 $ 3). Where neither figure is printed again, or both are, the sign
+ * stays with both and both are money, as on a receipt of one line.
+ */
+function settleSharedSigns(printedLines: { figures: PrintedFigure[]; sides: SignedSides }[]): void {
+  const printedAgain = (value: number, row: number) =>
+    printedLines.some(({ figures, sides }, other) =>
+      other !== row &&
+      figures.some(
+        ({ candidate }, index) =>
+          Math.abs(candidate.value - value) <= TENDER_SUM_TOLERANCE &&
+          candidate.besideCurrency &&
+          !candidate.aside &&
+          (sides.before[index] || sides.after[index] || isMoneyShaped(candidate.token)) &&
+          !sides.shared.some(pair => pair.includes(index)),
+      ),
+    );
+  for (const [row, { figures, sides }] of printedLines.entries()) {
+    for (const [first, second] of sides.shared) {
+      if (isMoneyShaped(figures[first].candidate.token) || isMoneyShaped(figures[second].candidate.token)) {
+        continue;
+      }
+      const firstAgain = printedAgain(figures[first].candidate.value, row);
+      const secondAgain = printedAgain(figures[second].candidate.value, row);
+      if (firstAgain === secondAgain) {
+        continue;
+      }
+      if (firstAgain) {
+        sides.before[second] = false;
+      } else {
+        sides.after[first] = false;
+      }
+    }
+  }
 }
 
 /**
