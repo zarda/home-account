@@ -231,12 +231,28 @@ accepted and has not been measured.
 
 | | Warning | Error |
 |---|---|---|
-| Initial bundle | 2.417 MB | 2.7 MB |
+| Initial bundle | 2.418 MB | 2.7 MB |
 
-Against 2,416,258 bytes (JavaScript 2,384,891, stylesheet 31,367, in 63
-initial files), measured by `npm run build:analyze` from a clean production
-build of `26.11.182` on 2026-11-06, after the fixes for what the work's
-third browser run and a reading of the whole branch found.
+Against 2,417,959 bytes (JavaScript 2,386,592, stylesheet 31,367, in 63
+initial files), measured by `npm run build:analyze` from a production build
+of `26.11.183` on 2026-11-14.
+
+The warning went up, to 2.418 MB, when the work of #527, #528 and #530
+([ADR 0188](ADR/0188-a-total-is-read-by-where-its-figures-are-printed-under-a-discount-past-round-cash-and-beside-an-unmarked-change-and-the-parser-is-measured-by-a-harness-that-is-kept.md):
+the device's text parser reading a total by where its figures are printed,
+under a discount, past round cash and beside an unmarked change) put the
+initial bundle at 2,417,959 bytes, 959 over the 2.417 MB it stood at. The
+parser is initial code, reached through the import strategy the wizard and
+the form both hold, and all 1,701 bytes of the growth are JavaScript: a
+figure's place in reading order and the two-pass line loop, the pair's place
+in the cash-tendered sum, the discount's sum, the count's sum and the shared
+sign's tie-break. The stylesheet did not move; the review card's own, where
+the amount flag's gap went, is lazy. The warning moved to the whole kilobyte
+above the figure and no more, which leaves 41 bytes of headroom (2,418,000
+less 2,417,959). Before it, `26.11.182` read 2,416,258 bytes (JavaScript
+2,384,891, stylesheet 31,367, in 63 initial files) on 2026-11-06, after the
+fixes for what that work's third browser run and a reading of the whole
+branch found.
 
 The warning went up, to 2.416 MB, when the work of #531, #532, #533, #534,
 #536 and #537
