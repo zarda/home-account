@@ -201,7 +201,7 @@ describe('parseReceiptOcrText', () => {
         }
       });
 
-      it('reads a total printed bare beside a smaller figure with no word between them as that figure or the cash, unflagged where the smaller or the read one is printed again or the cash and change follow, the known gap', () => {
+      it('reads a total printed bare beside a smaller figure with no word between them as that figure, unflagged where the smaller or the read one is printed again, the known gap', () => {
         // Typography cannot tell Total 12 $0.96 from Pack 12 $0.96, and only
         // marks or a percent figure between the figures count as nothing
         // (Total 12 = $0.96). Where the smaller figure, or the
@@ -211,7 +211,6 @@ describe('parseReceiptOcrText', () => {
           ['Shop\nTotal 12 $0.96\nTax $0.96', 0.96],
           ['Shop\nTotal 12 = $0.96\nTax $0.96', 0.96],
           ['Shop\nItem $11.04\nSubtotal $11.04\nTotal 12 $0.96', 11.04],
-          ['Shop\nTotal 12 $0.96\nCash $20.00\nChange $8.00', 20],
         ];
         for (const [text, amount] of cases) {
           expect(parseReceiptOcrText(text)).withContext(text).toEqual(read(amount, 0.8));
@@ -231,6 +230,10 @@ describe('parseReceiptOcrText', () => {
           ['Shop\nTax $0.96 Total 12\nCash $20.00\nChange $8.00', 12, 0.6],
           ['店\n合計 538 内税 ¥39\nお預り ¥1,000\nお釣り ¥462', 538, 0.6],
           ['Shop\nTotal $12.00\nCash $20.00 Change 8', 12, 0.6],
+          // With no word after it and its line's money after it, the count
+          // stands where a price's count does, and still pairs with the
+          // change printed after the cash.
+          ['Shop\nTotal 12 $0.96\nCash $20.00\nChange $8.00', 12, 0.6],
           ['Shop\nItem 2 $3.00\nTotal $5.00', 5, 0.8],
           ['Shop\nItem 3 $2.00\nTotal $5.00', 5, 0.8],
         ];
@@ -239,18 +242,37 @@ describe('parseReceiptOcrText', () => {
         }
       });
 
-      it('reads the cash where no pair of figures beside a currency mark adds up to it, the known gap', () => {
-        // The total or the change prints no currency mark, so no pair beside a
-        // sign adds up to the cash. Before ADR 0186 a count, half of a time or
-        // part of a date could complete such a pair by chance (8 + 2 over
-        // $10), and the reading was flagged.
+      it('pairs a total or a change that prints no currency mark with the cash that stands between the two', () => {
+        // No pair beside a sign adds up to the cash, so the figures the
+        // receipt does not mark as money are tried: one of them and one beside
+        // a mark, the cash printed between them, and the one before the cash
+        // is the total.
         const cases: [text: string, amount: number][] = [
-          ['Shop\nLatte 2 $8\nTotal 9\nTax $1\nCash $10\nChange $1', 10],
-          ['店\n21/07 24\n라떼 (12) ₩60\n케이크 Qty 4 ₩20\n케이크 ₩8\n소계 ₩88\n결제금액 ₩88\n받은돈 ₩100\n거스름돈 12', 100],
+          ['Shop\nLatte 2 $8\nTotal 9\nTax $1\nCash $10\nChange $1', 9],
+          ['店\n21/07 24\n라떼 (12) ₩60\n케이크 Qty 4 ₩20\n케이크 ₩8\n소계 ₩88\n결제금액 ₩88\n받은돈 ₩100\n거스름돈 12', 88],
+          ['Shop\nMilk $17.76\nDate: 08/16/25 06:54 Amount Due: $19.18\nTax 8% $1.42\nCASH $20.00\nCHANGE DUE 0.82', 19.18],
+          ['Shop\nBread 2 24,16 €\nTotal 24,16\nCash 50,00 €\nChange 25,84 €', 24.16],
         ];
         for (const [text, amount] of cases) {
-          expect(parseReceiptOcrText(text)).withContext(text).toEqual(read(amount, 0.8));
+          expect(parseReceiptOcrText(text))
+            .withContext(text)
+            .toEqual(jasmine.objectContaining({ amount, amountConfidence: 0.6, amountDemotion: 'tender' }));
         }
+      });
+
+      it('reads a bare number over a round total as the total where a later figure completes the sum, graded under the bar, the known gap', () => {
+        // A table or an order number printed above the total, with a tip
+        // under it that happens to make up the difference, is the same print
+        // as a bare total over its cash and change.
+        expect(parseReceiptOcrText('Shop\nTable 12\nTotal $20.00\nTip $8.00')).toEqual(
+          jasmine.objectContaining({ amount: 12, amountConfidence: 0.6, amountDemotion: 'tender' }),
+        );
+      });
+
+      it('reads the cash where neither the total nor the change is beside a currency mark of its own, the known gap', () => {
+        // The count is the total and the change is bare: no figure beside a
+        // sign stands in the pair, so nothing adds up to the cash.
+        expect(parseReceiptOcrText('Shop\nTotal 12 $0.96\nCash $20.00\nChange 8')).toEqual(read(20, 0.8));
       });
 
       it('reads the total its sign is glued to, and the date printed after it on its line', () => {
