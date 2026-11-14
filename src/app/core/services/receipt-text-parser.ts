@@ -42,10 +42,13 @@ export interface ParsedReceiptText {
    * because nothing else in its tier stood beside it while a weaker tier held
    * a figure printed on its own; 'count' when a whole number printed bare
    * beside money, read as a count, a size or a code, is larger than the
-   * figure read and might have been the total (Total 1280 Tax ¥116). Absent
-   * when nothing was demoted.
+   * figure read and might have been the total (Total 1280 Tax ¥116);
+   * 'discount' when the largest figure was read as an item or a subtotal a
+   * discount printed under it was taken from, and the total the discount
+   * leaves won instead (Item $3.00, Coupon -$1.00, Total $2.00). Absent when
+   * nothing was demoted.
    */
-  amountDemotion?: 'tender' | 'aside' | 'count';
+  amountDemotion?: 'tender' | 'aside' | 'count' | 'discount';
   /**
    * Which way the winning total moved, read from typography alone: 'credit'
    * when every copy of that figure carries a negative mark and nothing argues
@@ -281,7 +284,7 @@ interface AmountReading {
   amount: number;
   confidence: number;
   /** Why `confidence` sits under the tier's, when it does. */
-  demotion?: 'tender' | 'aside' | 'count';
+  demotion?: 'tender' | 'aside' | 'count' | 'discount';
   direction: 'credit' | 'debit';
   directionConfidence: number;
 }
@@ -507,7 +510,8 @@ function signFor(code: string, display: 'symbol' | 'narrowSymbol'): string {
 
 /**
  * Confidence multiplier when the winning figure was demoted: as cash tendered,
- * past a figure printed as a labelled aside, or under a larger count.
+ * past a figure printed as a labelled aside, under a larger count, or as the
+ * total a discount leaves.
  */
 export const DEMOTION_FACTOR = 0.75;
 /** "x + y ≈ M" tolerance: half a cent absorbs float noise, integers must match exactly. */
@@ -600,6 +604,54 @@ function tenderedDemotion(
     return printedAfter ? bestX : (printedBefore ?? bestX);
   }
   return around.length === ofLargestX.length ? printedBefore : undefined;
+}
+
+/**
+ * The total a discount leaves, when the tier's pick is the figure the
+ * discount was taken from: an item or a subtotal printed above a coupon, a
+ * gift card, a deposit or points, which is larger than the total under it
+ * and so wins on size. A discount is a figure printed negative, by a minus,
+ * a triangle or accounting parentheses, and what it leaves is printed after
+ * it: the pick less the discount is another figure of the tier, printed
+ * unmarked after the pick (Item $3.00, Coupon -$1.00, Total $2.00), or is
+ * that figure once one more, printed after the pick, is added back, a tax
+ * under the discount or a second item (Subtotal $5.30, Coupon -$1.00, Tax
+ * $0.34, Total $4.64). The figure left is read; where several fit, the
+ * largest. The discount is printed after the pick, never before it: a
+ * refund's total printed negative above its cash is no discount on the cash.
+ *
+ * The reading moves only where `movable` holds; where it does not, the pick
+ * is kept and still graded under the bar, since the sum says it may not be
+ * the total. Vocabulary-free on purpose: no label is read, so a saving
+ * printed with no mark of its own (You saved $1.00) is not seen by the sum.
+ */
+function discountDemotion(
+  pick: AmountCandidate,
+  tier: AmountCandidate[],
+  movable: boolean,
+): AmountCandidate | undefined {
+  if (pick.credit || pick.aside) return undefined;
+  const after = tier.filter(c => c.at > pick.at);
+  const discounts = after.filter(c => c.credit);
+  const unmarked = after.filter(c => !c.credit && !c.aside);
+  const adds = (sum: number, to: AmountCandidate) => Math.abs(sum - to.value) <= TENDER_SUM_TOLERANCE;
+  const left = discounts.flatMap(discount => {
+    const less = pick.value - discount.value;
+    const direct = unmarked.filter(total => adds(less, total));
+    if (direct.length > 0) return direct;
+    return unmarked.flatMap(added =>
+      unmarked.filter(
+        total =>
+          total !== added &&
+          total.at > discount.at &&
+          total.at > added.at &&
+          adds(less + added.value, total),
+      ),
+    );
+  });
+  const total = largestOf(left);
+  if (total) return movable ? total : pick;
+  return undefined;
 }
 
 function readAmount(lines: string[], marker: string): AmountReading {
@@ -726,14 +778,16 @@ function readAmount(lines: string[], marker: string): AmountReading {
           )
         : [];
     const tendered = tenderedDemotion(pick, tier.of, counts, unmarked, movable);
-    const winner = tendered ?? pick;
+    const discounted = tendered ? undefined : discountDemotion(pick, tier.of, movable);
+    const winner = tendered ?? discounted ?? pick;
     const rivals = countsThatMayBeTotal(winner, tier.of, counts);
     // Each of these moves the reading on a rule rather than on anything
     // printed, so each lands under the review bar: passing an aside; keeping
     // one only because its tier holds nothing else while a weaker tier holds
-    // a figure printed on its own (Total 12.50 / (Reg $15.00)); and reading a
+    // a figure printed on its own (Total 12.50 / (Reg $15.00)); reading a
     // figure a larger count might have been the total in place of (Total 1280
-    // Tax ¥116).
+    // Tax ¥116); reading past cash tendered; and reading the total a discount
+    // leaves under a larger figure.
     const passedAside =
       pick.value < largest.value ||
       (winner.aside && tiers.slice(index + 1).some(weaker => weaker.of.some(c => !c.aside)));
@@ -743,7 +797,9 @@ function readAmount(lines: string[], marker: string): AmountReading {
         ? 'count'
         : tendered
           ? 'tender'
-          : undefined;
+          : discounted
+            ? 'discount'
+            : undefined;
     return {
       amount: winner.value,
       confidence: demotion ? tier.confidence * DEMOTION_FACTOR : tier.confidence,
