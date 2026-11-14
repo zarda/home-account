@@ -226,6 +226,48 @@ server, over REST and behind the client, and leaves those memberships live.
 - **Not in production.** There an index entry is deleted only once its
   membership has ended, so the rules refuse a stale household's writes.
 
+## The receipt parser is measured as well as pinned
+
+`receipt-text-parser.spec.ts` pins the readings someone wrote down, and
+`receipt-text-parser.battery.spec.ts` records every reading of the receipt
+battery and the lists of rows read silently. Neither says what a change does
+to a receipt nobody wrote down. `scripts/measure-receipt-parser.mjs` does
+([ADR 0188](ADR/0188-a-total-is-read-by-where-its-figures-are-printed-under-a-discount-past-round-cash-and-beside-an-unmarked-change-and-the-parser-is-measured-by-a-harness-that-is-kept.md)):
+it generates seeded receipts, fifteen classes built for the rules that have
+gone wrong before and six mixed sets of 40,000, and reads each on two
+versions of the parser, joined and split.
+
+```bash
+node scripts/measure-receipt-parser.mjs --base origin/main
+node scripts/measure-receipt-parser.mjs --base origin/main --day-first
+TZ=Asia/Tokyo node scripts/measure-receipt-parser.mjs --base origin/main
+```
+
+`--base` is the version to compare against, `HEAD` by default; the other side
+is the working tree. It prints, per class and layout, the receipts read
+silently before and after, those newly silent, the right readings newly
+flagged, right readings gone wrong and wrong ones gone right, and the model
+lane's wrong answers kept and right answers flagged. It exits 1 where any
+receipt newly reads silently: a wrong amount at or over the review bar, a
+refund read as a purchase graded 0, or a purchase read as a credit graded
+0.5 or more. The other columns are costs for the record that changes the
+parser to state.
+
+It is run by hand, in both zones and both day orders, before a parser change
+is recorded. CI runs only `--self-test`, in a step of its own: the job's
+checkout is one commit deep and holds no version to compare against. The
+self-test proves the generator repeats itself, the loader reads the parser at
+`HEAD` and in the tree, and a planted regression is counted. The parser is
+loaded from source text with its one import replaced, so a second import
+added to `receipt-text-parser.ts` fails the loader, and the self-test, until
+the script follows it. The script mirrors the two grade functions of
+`native-receipt.service.ts` by hand; a change there is followed here by hand
+too.
+
+A reading the harness cannot generate is still pinned by a spec: its classes
+never print a count that is twice a repeated price, and a pin was what caught
+a rule flagging `Item 12 $6.00` over `Total $6.00`.
+
 ## The stub-template rule
 
 A spec may replace a component's template:
