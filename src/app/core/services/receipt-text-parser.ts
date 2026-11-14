@@ -114,6 +114,11 @@ const YEAR_FIRST_DATE = new RegExp(
 // figure, nor at a figure its sign is glued to: the cents of $145.01 are not
 // the day of $145.01 01 01 24, and the 27.01 of $27.01 12/5/24 is no date.
 const BEFORE_DATE = `(?:^|[^\\d.,'’\\u00A0\\u202F\\u2009\\p{Sc}]|(?:^|\\D)[.,'’\\u00A0\\u202F\\u2009])`;
+// A date written whole: two short numbers and a year on one mark printed
+// twice, with no space in it (24.07.24, 1/13/24, 15-01-2026). Its shape says
+// date on its own, where a run of spaced numbers (13 24.07) only may be one.
+const DATE_MARK = '[^\\d\\p{L}\\p{Sc}\\s]';
+const WHOLE_DATE_RUN = new RegExp(`^\\d{1,2}(?<mark>${DATE_MARK})\\d{1,2}\\k<mark>(?:\\d{4}|\\d{2})$`, 'u');
 const YEAR_LAST_DATE = new RegExp(
   `${BEFORE_DATE}(?<run>(?<first>\\d{1,2})${DATE_SEPARATOR}(?<second>\\d{1,2})${DATE_SEPARATOR}(?<year>\\d{4}|\\d{2}))(?!\\d)`,
   'gu',
@@ -343,14 +348,29 @@ function readDate(text: string): { date: Date; confidence: number; matched: stri
   }
 
   const dayFirst = devicePrefersDayFirst();
-  // Scanned by hand rather than with matchAll, so that the search can start
-  // again inside a run it has just read.
+  // Scanned by hand rather than with matchAll, so that the search starts
+  // again just after a run's first number: the 13 of Milch 2 € 13 24.07.24
+  // starts a run no date can be made of (13 24.07), and the date printed
+  // after it starts inside that run.
   const pattern = new RegExp(YEAR_LAST_DATE.source, YEAR_LAST_DATE.flags);
+  // A run that makes a date without being written whole waits for a whole
+  // date that starts inside it: the 8 of 8円 27-07-2025 and the day and month
+  // after it make a date too, and the date is the one printed whole.
+  let spaced: { date: Date; confidence: number; matched: string; end: number } | undefined;
   for (let match = pattern.exec(text); match; match = pattern.exec(text)) {
     const { run, first: firstDigits, second: secondDigits, year: yearDigits } = match.groups as Record<
       'run' | 'first' | 'second' | 'year',
       string
     >;
+    const start = match.index + match[0].length - run.length;
+    pattern.lastIndex = start + firstDigits.length;
+    const whole = WHOLE_DATE_RUN.test(run);
+    if (spaced && start >= spaced.end) {
+      break;
+    }
+    if (spaced && !whole) {
+      continue;
+    }
     const first = Number(firstDigits);
     const second = Number(secondDigits);
 
@@ -366,7 +386,14 @@ function readDate(text: string): { date: Date; confidence: number; matched: stri
     }
 
     const confidence = yearDigits.length === 4 ? 0.9 : 0.5;
-    return { date, confidence: ambiguous ? confidence * 0.6 : confidence, matched: run };
+    const found = { date, confidence: ambiguous ? confidence * 0.6 : confidence, matched: run };
+    if (spaced || whole) {
+      return found;
+    }
+    spaced = { ...found, end: start + run.length };
+  }
+  if (spaced) {
+    return { date: spaced.date, confidence: spaced.confidence, matched: spaced.matched };
   }
 
   return { date: new Date(), confidence: 0, matched: '' };
