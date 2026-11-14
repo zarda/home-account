@@ -874,12 +874,12 @@ Both render in the CDK overlay, so the describe removes
 `test:ci` prints console output from paths that deliberately report a failure.
 The floor is a recorded number, not a gate: it exists so a new line is noticed.
 
-| | Base (`7b693953`) | `26.10.175` | `26.10.177` | `26.10.178` | `26.10.179` | `26.10.180` | `26.11.181` | `26.11.182` |
-|---|---|---|---|---|---|---|---|---|
-| ERROR | 40 | 53 | 53 | 44 | 44 | 44 | 44 | 43 |
-| WARN | 38 | 60 | 60 | 60 | 60 | 62 | 63 | 63 |
-| LOG | 26 | **0** | **0** | **0** | **0** | **0** | **0** | **0** |
-| 404 | — | — | — | — | — | — | 26 | 7 |
+| | Base (`7b693953`) | `26.10.175` | `26.10.177` | `26.10.178` | `26.10.179` | `26.10.180` | `26.11.181` | `26.11.182` | `26.11.183` |
+|---|---|---|---|---|---|---|---|---|---|
+| ERROR | 40 | 53 | 53 | 44 | 44 | 44 | 44 | 43 | 43 |
+| WARN | 38 | 60 | 60 | 60 | 60 | 62 | 63 | 63 | 60 |
+| LOG | 26 | **0** | **0** | **0** | **0** | **0** | **0** | **0** | **0** |
+| 404 | — | — | — | — | — | — | 26 | 7 | 7 |
 
 **Counting it.** Karma's progress reporter prints each console line twice, once
 behind an ANSI rewrite and once plain, so `grep -c 'ERROR: '` reports exactly
