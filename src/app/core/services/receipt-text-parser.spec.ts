@@ -106,6 +106,27 @@ describe('parseReceiptOcrText', () => {
         }
       });
 
+      it('gives a sign spaced between two bare figures to the one the receipt prints again as money on another line', () => {
+        // On its own line the sign of Item 24 $ 5 touches both figures alike.
+        // The total below prints the 5 again beside a sign, so the 5 is the
+        // price and the 24 a count, which a price printed again stands down.
+        for (const text of ['Shop\nItem 24 $ 5\nTotal $ 5', 'Shop\nItem 24 $ 5\nTotal $5', 'Shop\nItem 24 $ 5\nTotal 5.00 $']) {
+          const result = parseReceiptOcrText(text);
+          expect(result).withContext(text).toEqual(read(5, 0.8));
+          expect('amountDemotion' in result).withContext(text).toBeFalse();
+        }
+        // Two lines that each share a sign settle nothing for each other, and
+        // the total is still the largest figure.
+        expect(parseReceiptOcrText('Shop\nItem 2 $ 5\nItem 2 $ 3\nTotal $ 8')).toEqual(read(8, 0.8));
+      });
+
+      it('reads the larger of two bare figures a sign is spaced between where neither is printed again, the known gap', () => {
+        // A receipt of one priced line gives nothing to settle the sign by,
+        // and split into a label and a figure the line shares no sign at all.
+        expect(parseReceiptOcrText('Shop\nItem 24 $ 5')).toEqual(read(24, 0.8));
+        expect(parseReceiptOcrText('Shop\nItem 24 $\n5\nTotal $\n5')).toEqual(read(24, 0.8));
+      });
+
       it("reads the figure a sign or the receipt's code touches as the money, and the bare one beside it as a count", () => {
         // A pin. A sign spaced alike from two figures touches the one written
         // like money (2,10 € 3), and the receipt's code touches the figure it
