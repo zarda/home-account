@@ -210,11 +210,35 @@ describe('parseReceiptOcrText', () => {
         const cases: [text: string, amount: number][] = [
           ['Shop\nTotal 12 $0.96\nTax $0.96', 0.96],
           ['Shop\nTotal 12 = $0.96\nTax $0.96', 0.96],
-          ['Shop\nItem $11.04\nSubtotal $11.04\nTotal 12 $0.96', 11.04],
+          ['Shop\nTotal 12 8% $0.96\nTax $0.96', 0.96],
         ];
         for (const [text, amount] of cases) {
           expect(parseReceiptOcrText(text)).withContext(text).toEqual(read(amount, 0.8));
         }
+      });
+
+      it('grades the figure read under the bar where it and another figure of its tier add up to a larger count', () => {
+        // A subtotal and its tax make the total; a price and another price do
+        // not make the count of what one of them buys. So the 12 the subtotal
+        // and the tax add up to might be the total, though the subtotal is
+        // printed twice and the 12 stands where a price's count does.
+        expect(parseReceiptOcrText('Shop\nItem $11.04\nSubtotal $11.04\nTotal 12 $0.96')).toEqual(
+          jasmine.objectContaining({ amount: 11.04, amountConfidence: 0.6, amountDemotion: 'count' }),
+        );
+        // A pin: a count nothing adds up to still stands down before a price
+        // printed again.
+        expect(parseReceiptOcrText('Shop\nPack 12 $0.96\nTotal $0.96')).toEqual(read(0.96, 0.8));
+        expect(parseReceiptOcrText('Shop\nPack of 24 $5.00\nTotal $5.00')).toEqual(read(5, 0.8));
+        expect(parseReceiptOcrText('Shop\nItem 3 $2.00\nTotal $5.00')).toEqual(read(5, 0.8));
+        // Nor does a price and the total that repeats it: twice 6.00 is the
+        // 12 of a dozen only by chance.
+        expect(parseReceiptOcrText('Shop\nItem 12 $6.00\nTotal $6.00')).toEqual(read(6, 0.8));
+      });
+
+      it('flags a right total where a count on a priced line happens to be the total plus that price, the known gap', () => {
+        expect(parseReceiptOcrText('Shop\nItem 13 $1.00\nTotal $12.00\nCard $12.00')).toEqual(
+          jasmine.objectContaining({ amount: 12, amountConfidence: 0.6, amountDemotion: 'count' }),
+        );
       });
 
       it('pairs a total or a change printed bare with the cash it was change for', () => {

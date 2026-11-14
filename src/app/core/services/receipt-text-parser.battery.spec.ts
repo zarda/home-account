@@ -242,7 +242,7 @@ const ADR_0186: readonly Row[] = [
   ['C118', 'Shop\nTotal 32\n14:32 Card -$32.00', 'purchase', 32, '32 0.8 debit 0.3', '32 0.8 credit 0.5'],
   ['C119', 'Shop\nPack of 3 cans $2.00\nTotal $5.00', 'purchase', 5, '3 0.6 tender debit 0', '5 0.8 debit 0'],
   ['C120', 'Shop\nTotal 12 $0.96\nTax $0.96', 'purchase', 12, '0.96 0.8 debit 0', '='],
-  ['C121', 'Shop\nItem $11.04\nSubtotal $11.04\nTotal 12 $0.96', 'purchase', 12, '11.04 0.8 debit 0', '='],
+  ['C121', 'Shop\nItem $11.04\nSubtotal $11.04\nTotal 12 $0.96', 'purchase', 12, '11.04 0.6 count debit 0', '11.04 0.8 debit 0'],
   ['C122', 'Shop\nItem $8.00\nSubtotal $8.00\nTax $1.00 Total 9', 'purchase', 9, '8 0.6 count debit 0', '8 0.8 debit 0'],
   ['C123', '店\n内税 ¥72 合計 980\n内消費税等 ¥72', 'purchase', 980, '72 0.6 count debit 0', '72 0.8 debit 0'],
   ['C124', '가게\n부가세 ₩82 합계 900\n부가세 ₩82', 'purchase', 900, '82 0.6 count debit 0', '82 0.8 debit 0'],
@@ -425,8 +425,8 @@ describe('the receipt battery (ADR 0185, ADR 0186)', () => {
 
   it('leaves silent only the counterexamples ADR 0186 records as known gaps', () => {
     expect(score(ADR_0186, 'joined').silent).toEqual([
-      'C36', 'C37', 'C40', 'C66', 'C92', 'C120', 'C121', 'C138', 'C152', 'C156', 'C158', 'C160',
-      'C161', 'C166', 'C167', 'C168', 'C169', 'C178', 'C180',
+      'C36', 'C37', 'C40', 'C66', 'C92', 'C120', 'C138', 'C152', 'C156', 'C158', 'C160', 'C161',
+      'C166', 'C167', 'C168', 'C169', 'C178', 'C180',
     ]);
     expect(score(ADR_0186, 'split').silent).toEqual([
       'C18', 'C19', 'C36', 'C37', 'C40', 'C41', 'C42', 'C43', 'C44', 'C45', 'C46', 'C47', 'C48',
@@ -447,9 +447,9 @@ describe('the receipt battery (ADR 0185, ADR 0186)', () => {
     expect(silentStrictly(ADR_0185, 'joined')).toEqual(['X12', 'X13']);
     expect(silentStrictly(ADR_0185, 'split')).toEqual(['X6', 'X7', 'X12', 'X13']);
     expect(silentStrictly(ADR_0186, 'joined')).toEqual([
-      'C30', 'C34', 'C35', 'C36', 'C37', 'C40', 'C66', 'C92', 'C120', 'C121', 'C138', 'C152',
-      'C156', 'C157', 'C158', 'C159', 'C160', 'C161', 'C162', 'C166', 'C167', 'C168', 'C169',
-      'C178', 'C179', 'C180',
+      'C30', 'C34', 'C35', 'C36', 'C37', 'C40', 'C66', 'C92', 'C120', 'C138', 'C152', 'C156',
+      'C157', 'C158', 'C159', 'C160', 'C161', 'C162', 'C166', 'C167', 'C168', 'C169', 'C178',
+      'C179', 'C180',
     ]);
     expect(silentStrictly(ADR_0186, 'split')).toEqual([
       'C18', 'C19', 'C30', 'C34', 'C35', 'C36', 'C37', 'C40', 'C41', 'C42', 'C43', 'C44', 'C45',
