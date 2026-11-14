@@ -249,6 +249,8 @@ interface AmountCandidate {
    * price buys stands before the price (Pack of 24 $5.00, 緑茶 500ml ¥151).
    */
   mayBeTotal: boolean;
+  /** One half of a time, the 14 or the 32 of 14:32. */
+  clock: boolean;
   /** The line it is printed on, counting from the first. */
   row: number;
   /**
@@ -540,13 +542,24 @@ function isTenderShaped(value: number): boolean {
  * pick stands between reads as cash there (Total $15.00, Cash $20.00, Change
  * $5.00). The reading moves to the figure printed before the pick only where
  * `movable` holds and that figure is printed unmarked: a refund's cash and
- * change are not read apart on their order. Vocabulary-free on purpose: this
- * reads arithmetic and position, not words.
+ * change are not read apart on their order.
+ *
+ * Where no such pair adds up at all, the total or the change may be printed
+ * with no currency mark, on a line the receipt does not mark as money (Total
+ * 9 over Cash $10 and Change $1; CASH $20.00 over CHANGE DUE 0.82). `unmarked`
+ * holds those figures, and a count on another line stands with them. One of
+ * them pairs with one of the tier's own figures only where the pick stands
+ * between the two, as cash stands between a total and its change, and the
+ * one printed before the pick is read. A count and the price it counts are
+ * printed together, on one side of the pick, and never pair (Item 3 $2.00
+ * over Total $5.00). Vocabulary-free on purpose: this reads arithmetic and
+ * position, not words.
  */
 function tenderedDemotion(
   pick: AmountCandidate,
   tier: AmountCandidate[],
   counts: AmountCandidate[],
+  unmarked: AmountCandidate[],
   movable: boolean,
 ): AmountCandidate | undefined {
   if (!isTenderShaped(pick.value)) return undefined;
@@ -562,7 +575,20 @@ function tenderedDemotion(
       if (!bestX || x.value > bestX.value) bestX = x;
     }
   }
-  if (!bestX) return undefined;
+  if (!bestX) {
+    if (!movable) return undefined;
+    const others = [...unmarked, ...counts.filter(c => !pairable.includes(c))];
+    const printedBefore = rest.flatMap(marked =>
+      others
+        .filter(
+          other =>
+            Math.abs(marked.value + other.value - pick.value) <= TENDER_SUM_TOLERANCE &&
+            marked.at < pick.at !== other.at < pick.at,
+        )
+        .map(other => (marked.at < pick.at ? marked : other)),
+    );
+    return largestOf(printedBefore.filter(c => !c.credit));
+  }
   const largestX = bestX.value;
   const ofLargestX = pairs.filter(([x]) => Math.abs(x.value - largestX) <= TENDER_SUM_TOLERANCE);
   const around = ofLargestX.filter(([x, y]) => x.at < pick.at !== y.at < pick.at);
@@ -613,6 +639,7 @@ function readAmount(lines: string[], marker: string): AmountReading {
           aside,
           count: false,
           mayBeTotal: WORD_AFTER.test(after),
+          clock,
           row,
         },
         start: match.index,
@@ -685,7 +712,20 @@ function readAmount(lines: string[], marker: string): AmountReading {
     const movable = !candidates.some(
       c => c.credit && Math.abs(c.value - pick.value) <= TENDER_SUM_TOLERANCE,
     );
-    const tendered = tenderedDemotion(pick, tier.of, counts, movable);
+    // Only the figures the receipt marks as money look past their own tier
+    // for the total or the change that makes them cash.
+    const unmarked =
+      index === 0
+        ? candidates.filter(
+            c =>
+              !c.printedBesideCurrency &&
+              !c.credit &&
+              !c.aside &&
+              !c.clock &&
+              (isMoneyShaped(c.token) || isPlainNumber(c.token)),
+          )
+        : [];
+    const tendered = tenderedDemotion(pick, tier.of, counts, unmarked, movable);
     const winner = tendered ?? pick;
     const rivals = countsThatMayBeTotal(winner, tier.of, counts);
     // Each of these moves the reading on a rule rather than on anything
