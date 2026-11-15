@@ -21,8 +21,9 @@
  * side is the working tree. `--seed`, `--per-class`, `--sets` and `--size`
  * change how much is generated; the defaults are the ones the records quote.
  * `--day-first` reads an ambiguous date as the day before the month, the way a
- * device outside the US does. The zone is the process's own, so set `TZ`. The
- * clock is held at noon on 30 October 2026, the battery's.
+ * device outside the US does. `--grades-before-0189` grades the base side's
+ * model lane as it was graded before ADR 0189. The zone is the process's own,
+ * so set `TZ`. The clock is held at noon on 30 October 2026, the battery's.
  *
  * Both versions are loaded from source text. The parser's one import is a
  * date helper whose own module reaches for the Firestore SDK, so the import
@@ -859,15 +860,22 @@ function judgeDate(result, made) {
   return right ? 'right' : 'wrong';
 }
 
-/** The amount grade a model answering `answer` ends up with, as NativeReceiptService grades it. */
-function modelGrade(result, answer) {
+/**
+ * The amount grade a model answering `answer` ends up with, as
+ * NativeReceiptService grades it. `codeRule` is ADR 0189's: on a receipt that
+ * prints a currency code and no sign, any total the parser read disputes a
+ * model total that differs. `--grades-before-0189` leaves it off for the base
+ * side, which shows what the rule itself moved.
+ */
+function modelGrade(result, answer, text, codeRule = true) {
   const demotedBesideCurrency =
     result.amountDemotion !== undefined && result.amountConfidence >= VERIFY_FIELD_THRESHOLD * DEMOTION_FACTOR;
   if (sameAmount(result.amount, answer)) {
     const pickedByRule = demotedBesideCurrency && result.amountDemotion !== 'tender';
     return pickedByRule ? result.amountConfidence : Math.max(result.amountConfidence, MODEL_READ_GRADE);
   }
-  return result.amountConfidence >= VERIFY_FIELD_THRESHOLD || demotedBesideCurrency
+  const codeOnly = codeRule && Boolean(result.currency) && !/\p{Sc}/u.test(text) && result.amount > 0;
+  return result.amountConfidence >= VERIFY_FIELD_THRESHOLD || demotedBesideCurrency || codeOnly
     ? REVIEW_AMOUNT_CONFIDENCE
     : MODEL_READ_GRADE;
 }
@@ -897,7 +905,7 @@ function emptyTally() {
 }
 
 /** Reads one receipt on both versions and adds what it shows to the tally. */
-function count(tally, made, text, before, after) {
+function count(tally, made, text, before, after, baseCodeRule = true) {
   const was = before(text);
   const now = after(text);
   const judgedBefore = judge(was, made);
@@ -932,8 +940,8 @@ function count(tally, made, text, before, after) {
   }
   for (const answer of made.figures) {
     const right = sameAmount(answer, made.amount);
-    const gradeBefore = modelGrade(was, answer);
-    const gradeAfter = modelGrade(now, answer);
+    const gradeBefore = modelGrade(was, answer, text, baseCodeRule);
+    const gradeAfter = modelGrade(now, answer, text);
     tally.modelWrongKeptBefore += Number(!right && gradeBefore >= VERIFY_FIELD_THRESHOLD);
     tally.modelWrongKeptAfter += Number(!right && gradeAfter >= VERIFY_FIELD_THRESHOLD);
     tally.modelRightFlaggedBefore += Number(right && gradeBefore < VERIFY_FIELD_THRESHOLD);
@@ -942,15 +950,15 @@ function count(tally, made, text, before, after) {
 }
 
 /** Every class and every seeded set, in both layouts, on both versions. */
-function measure(before, after, { seed, perClass, sets, size }) {
+function measure(before, after, { seed, perClass, sets, size, baseCodeRule = true }) {
   const rows = [];
   for (const [name, make] of Object.entries(CLASSES)) {
     const tallies = Object.fromEntries(LAYOUTS.map(layout => [layout, emptyTally()]));
     const random = mulberry32(seed);
     for (let index = 0; index < perClass; index++) {
       const made = make(writer(random));
-      count(tallies.joined, made, made.text, before, after);
-      count(tallies.split, made, split(made.text), before, after);
+      count(tallies.joined, made, made.text, before, after, baseCodeRule);
+      count(tallies.split, made, split(made.text), before, after, baseCodeRule);
     }
     rows.push(...LAYOUTS.map(layout => ({ name, layout, ...tallies[layout] })));
   }
@@ -959,8 +967,8 @@ function measure(before, after, { seed, perClass, sets, size }) {
     const random = mulberry32(seed + set);
     for (let index = 0; index < size; index++) {
       const made = mixed(random);
-      count(tallies.joined, made, made.text, before, after);
-      count(tallies.split, made, split(made.text), before, after);
+      count(tallies.joined, made, made.text, before, after, baseCodeRule);
+      count(tallies.split, made, split(made.text), before, after, baseCodeRule);
     }
     rows.push(...LAYOUTS.map(layout => ({ name: `set ${set}`, layout, ...tallies[layout] })));
   }
@@ -1010,6 +1018,7 @@ async function main() {
     perClass: Number(option('--per-class', '3000')),
     sets: Number(option('--sets', '6')),
     size: Number(option('--size', '40000')),
+    baseCodeRule: !process.argv.includes('--grades-before-0189'),
   };
   const before = await loadParser(sourceAt(base), dayFirst);
   const after = await loadParser(sourceInTree(), dayFirst);
@@ -1115,21 +1124,26 @@ async function selfTest() {
     JSON.stringify(lost),
   );
 
-  check('a model agreeing with a plain reading is lifted', modelGrade(reading(12.5, 0.5), 12.5) === 0.8);
+  check('a model agreeing with a plain reading is lifted', modelGrade(reading(12.5, 0.5), 12.5, 'Shop') === 0.8);
   check(
     'a model agreeing with a rule pick keeps the parser grade',
-    modelGrade(reading(12.5, 0.6, { amountDemotion: 'aside' }), 12.5) === 0.6,
+    modelGrade(reading(12.5, 0.6, { amountDemotion: 'aside' }), 12.5, 'Shop') === 0.6,
   );
   check(
     'a model agreeing with a tendered pick is lifted',
-    modelGrade(reading(12.5, 0.6, { amountDemotion: 'tender' }), 12.5) === 0.8,
+    modelGrade(reading(12.5, 0.6, { amountDemotion: 'tender' }), 12.5, 'Shop') === 0.8,
   );
-  check('a model disputing a confident reading is flagged', modelGrade(reading(12.5, 0.8), 15) === 0.5);
+  check('a model disputing a confident reading is flagged', modelGrade(reading(12.5, 0.8), 15, 'Shop') === 0.5);
   check(
     'a model disputing a rule pick is flagged',
-    modelGrade(reading(12.5, 0.6, { amountDemotion: 'count' }), 15) === 0.5,
+    modelGrade(reading(12.5, 0.6, { amountDemotion: 'count' }), 15, 'Shop') === 0.5,
   );
-  check('a model disputing a weak reading is lifted', modelGrade(reading(12.5, 0.3), 15) === 0.8);
+  check('a model disputing a weak reading is lifted', modelGrade(reading(12.5, 0.3), 15, 'Shop\n12.50\n15.00') === 0.8);
+  const coded = reading(12.5, 0.5, { currency: 'EUR' });
+  check('but disputed on a receipt that prints a code and no sign', modelGrade(coded, 15, 'Shop\n14:32 EUR\n12,50') === 0.5);
+  check('and lifted there where the receipt prints a sign', modelGrade(coded, 15, 'Shop\n€ 12,50') === 0.8);
+  check('or where the rule is left off', modelGrade(coded, 15, 'Shop\n14:32 EUR\n12,50', false) === 0.8);
+  check('an agreement on such a receipt is lifted', modelGrade(coded, 12.5, 'Shop\n14:32 EUR\n12,50') === 0.8);
 
   const largest = await loadParser(fixtureSource('Math.max(0, ...figures)'), false);
   const first = await loadParser(fixtureSource('figures[0] ?? 0'), false);
