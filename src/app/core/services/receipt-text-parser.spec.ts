@@ -1589,6 +1589,26 @@ describe('parseReceiptOcrText', () => {
         expect(result).toEqual(graded(12.5, 0.6, 'debit', 0));
         expect(result.amountDemotion).toBe('aside');
       });
+
+      it("keeps the capitals a currency is written with as the sign's own", () => {
+        // The platform's own sign (NT$, HK$), the letters a code begins with
+        // (US$, S$), a whole code before its sign (USD$).
+        for (const text of [
+          'Shop\nTotal -HK$12.50',
+          'Shop\nTotal -NT$12.50',
+          'Shop\nTotal (US$12.50)',
+          'Shop\nTotal (S$12.50)',
+          'Shop\nTotal -USD$12.50',
+        ]) {
+          expect(parseReceiptOcrText(text)).withContext(text).toEqual(graded(12.5, 0.8, 'credit', 0.5));
+        }
+      });
+
+      it('reads a word that is also a currency code as the capitals of the sign it is glued to, the known gap', () => {
+        // ALL is the Albanian lek's code, and nothing but its meaning tells
+        // it from a label.
+        expect(parseReceiptOcrText('Shop\nTotal $12.50\n(ALL$15.00)')).toEqual(graded(15, 0.8, 'credit', 0.5));
+      });
     });
   });
 
