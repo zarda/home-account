@@ -1046,21 +1046,31 @@ describe('parseReceiptOcrText', () => {
         expect(dated(text)).toEqual([2024, 1, 1]);
       });
 
-      it('reads no date glued to a figure by a mark, the known gap', () => {
-        // A date never starts inside a figure, so one glued to a code by a mark
-        // that joins digits (4711.13/01/25) is not read, and the code with the
-        // day for its cents outranks the total. On a slip that prints no
-        // currency mark the refund then reads as a purchase. 26.10.180 read
-        // the date, and the refund's total.
-        expect(parseReceiptOcrText('Storno\nBon 4711.13/01/25\nBrot -2,50\nSumme -12,50')).toEqual(
-          jasmine.objectContaining({
-            amount: 4711.13,
-            amountConfidence: 0.5,
-            direction: 'debit',
-            directionConfidence: 0,
-            dateConfidence: 0,
-          }),
-        );
+      it('reads a date written whole that a number is glued to by another mark, and takes the number with it', () => {
+        // A date never starts inside a figure, but cents carry on in the mark
+        // that joined them: a date written whole on a mark of its own, after
+        // the mark that glues it to a code (4711.13/01/25), is a date. The
+        // code used to stand with the day for its cents and outrank the
+        // total, and on a slip that prints no currency mark the refund read
+        // as a purchase.
+        const cases: [text: string, dateConfidence: number][] = [
+          ['Storno\nBon 4711.13/01/25\nBrot -2,50\nSumme -12,50', 0.5],
+          ['Storno\nBon 4711,13.01.2025\nBrot -2,50\nSumme -12,50', 0.9],
+        ];
+        for (const [text, dateConfidence] of cases) {
+          expect(parseReceiptOcrText(text))
+            .withContext(text)
+            .toEqual(
+              jasmine.objectContaining({
+                amount: 12.5,
+                amountConfidence: 0.5,
+                direction: 'credit',
+                directionConfidence: 0.5,
+                dateConfidence,
+              }),
+            );
+          expect(dated(text)).withContext(text).toEqual([2025, 1, 13]);
+        }
       });
 
       it('reads no date glued after a currency sign, and reads a day-first one as one figure of money, the known gap', () => {

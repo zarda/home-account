@@ -114,12 +114,6 @@ const YEAR_FIRST_DATE = new RegExp(
   `(?:^|\\D)((\\d{4})${DATE_SEPARATOR}(\\d{1,2})${DATE_SEPARATOR}(\\d{1,2}))(?!\\d)`,
   'gu',
 );
-// What a date may follow: the start of the text, anything but a digit, a
-// currency sign or a mark that joins digits into one figure, or such a mark
-// with no digit before it (No.15/01/26). So a date never starts inside a
-// figure, nor at a figure its sign is glued to: the cents of $145.01 are not
-// the day of $145.01 01 01 24, and the 27.01 of $27.01 12/5/24 is no date.
-const BEFORE_DATE = `(?:^|[^\\d.,'’\\u00A0\\u202F\\u2009\\p{Sc}]|(?:^|\\D)[.,'’\\u00A0\\u202F\\u2009])`;
 // A date written whole: two short numbers and a year on one mark printed
 // twice, with no space in it (24.07.24, 1/13/24, 15-01-2026). Its shape says
 // date on its own, where a run of spaced numbers (13 24.07) only may be one.
@@ -130,6 +124,20 @@ const WHOLE_DATE_RUN = new RegExp(
   `^\\d{1,2}(?<mark>${DATE_MARK})\\d{1,2}(?:\\k<mark>\\n?|\\n\\k<mark>)(?:\\d{4}|\\d{2})$`,
   'u',
 );
+// What a date may follow: the start of the text, anything but a digit, a
+// currency sign or a mark that joins digits into one figure, or such a mark
+// with no digit before it (No.15/01/26). So a date never starts inside a
+// figure, nor at a figure its sign is glued to: the cents of $145.01 are not
+// the day of $145.01 01 01 24, and the 27.01 of $27.01 12/5/24 is no date.
+// One date does follow a digit and a joining mark: a date written whole on a
+// mark of its own, which a number was glued to (Bon 4711.13/01/25). Cents
+// carry on in the mark that joined them or in a space, never in another.
+const JOINING_MARK = "[.,'’\\u00A0\\u202F\\u2009]";
+const GLUED_TO_A_NUMBER =
+  `\\d(?<join>${JOINING_MARK})` +
+  `(?=\\d{1,2}(?!\\k<join>)(?<own>${DATE_MARK})\\d{1,2}\\k<own>(?:\\d{4}|\\d{2})(?!\\d))`;
+const BEFORE_DATE =
+  `(?:^|[^\\d.,'’\\u00A0\\u202F\\u2009\\p{Sc}]|(?:^|\\D)${JOINING_MARK}|${GLUED_TO_A_NUMBER})`;
 // The mark before a year that wrapped: beside the line break, on either side
 // of it. A minus that starts the next line is the mark of a figure printed
 // negative there, not the date's.
@@ -163,6 +171,7 @@ const ISO_CODE_BESIDE_AMOUNT = [
 // as a negative number.
 const NUMBER_TOKEN = /\d+(?:[.,'’\u00A0\u202F\u2009]\d+)*/gu;
 const GROUPING_MARKS = /['’\u00A0\u202F\u2009]/g;
+const FIGURE_CHARACTER = /[\d.,'’\u00A0\u202F\u2009]/u;
 
 /** Longer runs of digits are phone numbers, receipt numbers and card fragments. */
 const MAX_PLAIN_DIGITS = 6;
@@ -378,10 +387,10 @@ function readDate(text: string, marker: string): { date: Date; confidence: numbe
   let spaced: { date: Date; confidence: number; matched: string; end: number } | undefined;
   const signed = signedFigures(text, marker);
   for (let match = pattern.exec(text); match; match = pattern.exec(text)) {
-    const { run, first: firstDigits, second: secondDigits, year: yearDigits } = match.groups as Record<
+    const { run, first: firstDigits, second: secondDigits, year: yearDigits, join } = match.groups as Record<
       'run' | 'first' | 'second' | 'year',
       string
-    >;
+    > & { join?: string };
     const start = match.index + match[0].length - run.length;
     pattern.lastIndex = start + firstDigits.length;
     const whole = WHOLE_DATE_RUN.test(run);
@@ -430,7 +439,10 @@ function readDate(text: string, marker: string): { date: Date; confidence: numbe
       continue;
     }
 
-    const found = { date, confidence, matched: run };
+    // A number the date was glued to goes with it: the 4711 of 4711.13/01/25
+    // is a code, and left behind it would stand as money.
+    const matched = join === undefined ? run : text.slice(figureStart(text, start), start + run.length);
+    const found = { date, confidence, matched };
     if (spaced || whole) {
       return found;
     }
@@ -441,6 +453,15 @@ function readDate(text: string, marker: string): { date: Date; confidence: numbe
   }
 
   return { date: new Date(), confidence: 0, matched: '' };
+}
+
+/** Where the figure that ends just before `at` starts. */
+function figureStart(text: string, at: number): number {
+  let start = at;
+  while (start > 0 && FIGURE_CHARACTER.test(text[start - 1])) {
+    start--;
+  }
+  return start;
 }
 
 /** A figure a currency sign or the receipt's code touches, by its place in the text. */

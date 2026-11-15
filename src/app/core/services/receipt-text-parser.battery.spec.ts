@@ -300,7 +300,7 @@ const ADR_0186: readonly Row[] = [
   ['C176', 'REFUND\nItem 1 -$10.00\nTotal -$27.01 01/13/25\nVISA $27.01', 'refund', 27.01, '27.01 0.8 debit 0.3', '='],
   ['C177', 'Shop\nItem 1 $10.00\nTotal $27.01 01/13/25\nCard -27.01 USD', 'purchase', 27.01, '27.01 0.8 debit 0.3', '='],
   ['C178', 'Shop\nTotal 12 = $0.96\nTax $0.96', 'purchase', 12, '0.96 0.8 debit 0', '='],
-  ['C179', 'Storno\nBon 4711.13/01/25\nBrot -2,50\nSumme -12,50', 'refund', 12.5, '4711.13 0.5 debit 0', '='],
+  ['C179', 'Storno\nBon 4711.13/01/25\nBrot -2,50\nSumme -12,50', 'refund', 12.5, '12.5 0.5 credit 0.5', '='],
   ['C180', 'Shop\n13.01.\n2024 14:32 EUR\nItem $45.00\nTotal $45.00', 'purchase', 45, '45 0.8 debit 0', '='],
 ];
 
@@ -446,7 +446,7 @@ describe('the receipt battery (ADR 0185, ADR 0186)', () => {
     expect(silentStrictly(ADR_0185, 'split')).toEqual(['X6', 'X7', 'X12', 'X13']);
     expect(silentStrictly(ADR_0186, 'joined')).toEqual([
       'C30', 'C34', 'C35', 'C36', 'C37', 'C40', 'C92', 'C120', 'C138', 'C152', 'C156', 'C157',
-      'C158', 'C168', 'C169', 'C178', 'C179',
+      'C158', 'C168', 'C169', 'C178',
     ]);
     expect(silentStrictly(ADR_0186, 'split')).toEqual([
       'C18', 'C19', 'C30', 'C34', 'C35', 'C36', 'C37', 'C40', 'C41', 'C42', 'C43', 'C44', 'C45',
@@ -454,7 +454,7 @@ describe('the receipt battery (ADR 0185, ADR 0186)', () => {
       'C97', 'C105', 'C106', 'C107', 'C108', 'C109', 'C110', 'C111', 'C112', 'C113', 'C114', 'C115',
       'C116', 'C117', 'C118', 'C120', 'C121', 'C122', 'C123', 'C124', 'C125', 'C126', 'C127',
       'C128', 'C134', 'C135', 'C136', 'C138', 'C149', 'C152', 'C156', 'C157', 'C158', 'C168',
-      'C178', 'C179',
+      'C178',
     ]);
   });
 });
