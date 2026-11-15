@@ -232,6 +232,16 @@ describe('NativeReceiptService', () => {
       expect(transaction.fieldConfidence).toEqual({ amount: 0.6, date: 0 });
     });
 
+    it('should file a refund total printed as a labelled aside as an expense whose type is asked about', async () => {
+      visionMock.recognizeText.and.resolveTo({ ...ocrResult, text: 'REFUND\n2026-01-15\n(Total $64.79)' });
+
+      const transaction = (await service.processImage(imageFile())).transactions[0];
+
+      expect(transaction.type).toBe('expense');
+      expect(transaction.amount).toBe(64.79);
+      expect(transaction.fieldConfidence?.type).toBe(0.3);
+    });
+
     it('should flag a total read past a regular price in parentheses below the verify threshold', async () => {
       visionMock.recognizeText.and.resolveTo({
         ...ocrResult,
@@ -561,6 +571,24 @@ describe('NativeReceiptService', () => {
 
           expect(result.transactions[0].fieldConfidence?.amount).withContext(text).toBe(0.8);
         }
+      });
+
+      it('disputes a model total where the text parser reads a regular price printed with no parenthesis', async () => {
+        // Nothing but its words tells Reg. Price $15.00 from an item, so the
+        // parser reads it as the total at 0.8. A model that reads the total
+        // differs from a figure read beside a currency mark, and the row is
+        // flagged; that is all the device can do for this print.
+        visionMock.recognizeText.and.resolveTo({
+          ...ocrResult,
+          text: 'Shop\nTotal $12.50\nReg. Price $15.00',
+        });
+        appleMock.parseReceiptText.and.resolveTo({
+          merchant: 'Cafe', date: '2026-01-15', amount: 12.5, currency: 'USD', category: '', details: '',
+        });
+
+        const result = await service.processImage(imageFile());
+
+        expect(result.transactions[0].fieldConfidence?.amount).toBe(0.5);
       });
 
       it("keeps the text parser's grade when it read the same total past an aside", async () => {
