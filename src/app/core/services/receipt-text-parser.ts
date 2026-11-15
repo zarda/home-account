@@ -70,7 +70,8 @@ export interface ParsedReceiptText {
    * 0–1, and always under the bar that sends a field for review, because a
    * mark is typography rather than a word saying so: 0.5 for a credit; 0.3
    * when the same figure is printed both marked and unmarked, or marked where
-   * a count might have been the total, where `direction` stays 'debit';
+   * a count might have been the total, or when the figure read is a labelled
+   * aside or the reading passed one, where `direction` stays 'debit';
    * 0 when nothing marks it, the purchase every receipt is by default. It is
    * not folded into the combined `confidence`, so it moves no routing
    * decision.
@@ -1128,11 +1129,20 @@ function readAmount(lines: string[], marker: string): AmountReading {
             : bare
               ? 'unmarked'
               : undefined;
+    const { direction, directionConfidence } = readDirection(winner, candidates, rivals);
+    // Labelled parentheses around a refund's total and around a regular
+    // price are the same print: (Total $64.79) under REFUND, (Reg $15.00)
+    // under a purchase. An aside is never marked, so where the figure read is
+    // one, or the reading passed one, an unmarked purchase is no more than a
+    // guess, and its type is sent to the reviewer as a twinned total's is.
+    const besideAside = winner.aside || pick.value < largest.value;
+    const unasked = direction === 'debit' && directionConfidence === 0;
     return {
       amount: winner.value,
       confidence: demotion ? tier.confidence * DEMOTION_FACTOR : tier.confidence,
       ...(demotion ? { demotion } : {}),
-      ...readDirection(winner, candidates, rivals),
+      direction,
+      directionConfidence: besideAside && unasked ? TWINNED_MARK_GRADE : directionConfidence,
     };
   }
 

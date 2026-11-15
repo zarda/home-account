@@ -76,7 +76,7 @@ const BATTERY: readonly Row[] = [
   ['P5', '店\n合計 1,180\n(1,280)', 'purchase', 1180, '1280 0.5 credit 0.5', '='],
   ['P6', 'Shop\nJacket $59.99\nWas ($79.99)\nTotal $59.99', 'purchase', 59.99, '79.99 0.8 credit 0.5', '='],
   ['P7', '店\n定価(¥1,580)\n割引 -¥300\n合計 ¥1,280', 'purchase', 1280, '1580 0.8 credit 0.5', '='],
-  ['P8', 'Shop\nTotal $12.50\n(Reg $15.00)', 'purchase', 12.5, '12.5 0.6 aside debit 0', '='],
+  ['P8', 'Shop\nTotal $12.50\n(Reg $15.00)', 'purchase', 12.5, '12.5 0.6 aside debit 0.3', '='],
   ['P9', '店\n合計 ¥1,280\n(内消費税 ¥116)', 'purchase', 1280, '1280 0.8 debit 0', '='],
   ['P10', '店\n合計 ¥1,280\n(¥116)', 'purchase', 1280, '1280 0.8 debit 0', '='],
   ['P12', '店\n合計 ¥1,180\n（¥1,298）', 'purchase', 1180, '1298 0.8 credit 0.5', '='],
@@ -95,7 +95,7 @@ const BATTERY: readonly Row[] = [
   ['P44', 'Shop\nTotal $4.50\nYou saved (-$5.00)', 'purchase', 4.5, '5 0.8 credit 0.5', '='],
   ['P45', 'Shop\nTotal $4.50\nSavings -$5.00', 'purchase', 4.5, '5 0.8 credit 0.5', '='],
   ['P46', 'Shop\nItem 4.50\nQty (-1)\nTotal 4.50', 'purchase', 4.5, '4.5 0.5 debit 0', '='],
-  ['P50', '店\n合計 ¥1,180\n(税込¥1,298)', 'purchase', 1298, '1180 0.6 aside debit 0', '='],
+  ['P50', '店\n合計 ¥1,180\n(税込¥1,298)', 'purchase', 1298, '1180 0.6 aside debit 0.3', '='],
   ['P51', '店\n合計 ¥1,298\n(内税 ¥118)', 'purchase', 1298, '1298 0.8 debit 0', '='],
   ['P52', '店\n小計 ¥1,180\n合計 ¥1,298\n(¥1,298)', 'purchase', 1298, '1298 0.8 debit 0.3', '='],
 ];
@@ -144,25 +144,25 @@ const ADR_0186: readonly Row[] = [
   ['C18', 'Shop\nTotal 1280 Tax ¥116', 'purchase', 1280, '116 0.6 count debit 0', '116 0.8 debit 0'],
   ['C19', 'Shop\nTotal 12 Tax $0.96', 'purchase', 12, '0.96 0.6 count debit 0', '0.96 0.8 debit 0'],
   ['C20', 'Shop\nRoom 412 $89.00', 'purchase', 89, '89 0.6 count debit 0', '89 0.8 debit 0'],
-  ['C22', '店\n合計 ¥1,280\n（定価 ¥1,580）', 'purchase', 1280, '1280 0.6 aside debit 0', '='],
-  ['C23', '가게\n합계 ₩12,500\n(정가 ₩15,000)', 'purchase', 12500, '12500 0.6 aside debit 0', '='],
-  ['C24', 'Shop\nGift card $12.50\n(Balance $87.50)', 'purchase', 12.5, '12.5 0.6 aside debit 0', '='],
+  ['C22', '店\n合計 ¥1,280\n（定価 ¥1,580）', 'purchase', 1280, '1280 0.6 aside debit 0.3', '='],
+  ['C23', '가게\n합계 ₩12,500\n(정가 ₩15,000)', 'purchase', 12500, '12500 0.6 aside debit 0.3', '='],
+  ['C24', 'Shop\nGift card $12.50\n(Balance $87.50)', 'purchase', 12.5, '12.5 0.6 aside debit 0.3', '='],
   ['C25', 'REFUND\nTotal -$12.50\n(Reg $15.00)', 'refund', 12.5, '12.5 0.6 aside credit 0.5', '='],
-  ['C26', 'Shop\nTotal 12.50\n(Reg $15.00)', 'purchase', 12.5, '15 0.6 aside debit 0', '='],
-  ['C27', '店\n合計 980\n(内税 ¥72)', 'purchase', 980, '72 0.6 aside debit 0', '='],
+  ['C26', 'Shop\nTotal 12.50\n(Reg $15.00)', 'purchase', 12.5, '15 0.6 aside debit 0.3', '='],
+  ['C27', '店\n合計 980\n(内税 ¥72)', 'purchase', 980, '72 0.6 aside debit 0.3', '='],
   ['C28', 'REFUND\nJacket $59.99\nTax $4.80\n(Refund -$64.79)', 'refund', 64.79, '64.79 0.8 credit 0.5', '='],
   ['C29', '返品\nジャケット ¥5,980\n消費税 ¥598\n(返金 -¥6,578)', 'refund', 6578, '6578 0.8 credit 0.5', '='],
-  ['C30', 'REFUND\nJacket $59.99\nTax $4.80\n(Total $64.79)', 'refund', 64.79, '59.99 0.6 aside debit 0', '='],
-  ['C31', '店\n合計 ¥1,000\n（税込 ¥1,100）', 'purchase', 1100, '1000 0.6 aside debit 0', '='],
-  ['C32', 'Shop\nSubtotal $11.30\n(Total incl. tax $12.50)', 'purchase', 12.5, '11.3 0.6 aside debit 0', '='],
-  ['C33', 'Shop\nItem $5.00\nItem $7.50\nPaid (VISA $12.50)', 'purchase', 12.5, '7.5 0.6 aside debit 0', '='],
-  ['C34', 'Shop\nTotal $12.50\n(REG$15.00)', 'purchase', 12.5, '12.5 0.6 aside debit 0', '='],
-  ['C35', '返品\nジャケット 5,980円\n消費税 598円\n(6,578円)', 'refund', 6578, '5980 0.38 aside debit 0', '='],
-  ['C36', 'Shop\nTotal $12.50\n(Reg $15.00', 'purchase', 12.5, '12.5 0.6 aside debit 0', '='],
+  ['C30', 'REFUND\nJacket $59.99\nTax $4.80\n(Total $64.79)', 'refund', 64.79, '59.99 0.6 aside debit 0.3', '='],
+  ['C31', '店\n合計 ¥1,000\n（税込 ¥1,100）', 'purchase', 1100, '1000 0.6 aside debit 0.3', '='],
+  ['C32', 'Shop\nSubtotal $11.30\n(Total incl. tax $12.50)', 'purchase', 12.5, '11.3 0.6 aside debit 0.3', '='],
+  ['C33', 'Shop\nItem $5.00\nItem $7.50\nPaid (VISA $12.50)', 'purchase', 12.5, '7.5 0.6 aside debit 0.3', '='],
+  ['C34', 'Shop\nTotal $12.50\n(REG$15.00)', 'purchase', 12.5, '12.5 0.6 aside debit 0.3', '='],
+  ['C35', '返品\nジャケット 5,980円\n消費税 598円\n(6,578円)', 'refund', 6578, '5980 0.38 aside debit 0.3', '='],
+  ['C36', 'Shop\nTotal $12.50\n(Reg $15.00', 'purchase', 12.5, '12.5 0.6 aside debit 0.3', '='],
   ['C37', 'Shop\nTotal $12.50\nReg. Price $15.00', 'purchase', 12.5, '15 0.8 debit 0', '='],
-  ['C38', 'Shop\nNote (see back\nTotal $12.50)\nItem $3.00', 'purchase', 12.5, '3 0.6 aside debit 0', '12.5 0.8 debit 0'],
-  ['C39', 'Shop\n2026-01-15 14:32\n(Total $64.79)', 'purchase', 64.79, '64.79 0.6 aside debit 0', '='],
-  ['C40', 'REFUND\n(Total $64.79)', 'refund', 64.79, '64.79 0.8 debit 0', '='],
+  ['C38', 'Shop\nNote (see back\nTotal $12.50)\nItem $3.00', 'purchase', 12.5, '3 0.6 aside debit 0.3', '12.5 0.8 debit 0'],
+  ['C39', 'Shop\n2026-01-15 14:32\n(Total $64.79)', 'purchase', 64.79, '64.79 0.6 aside debit 0.3', '='],
+  ['C40', 'REFUND\n(Total $64.79)', 'refund', 64.79, '64.79 0.8 debit 0.3', '='],
   ['C41', '店\n合計 980 内税 ¥72\n(内消費税等 ¥72)', 'purchase', 980, '72 0.6 count debit 0', '72 0.8 debit 0'],
   ['C42', '店\n合計 1280 内税 ¥116\n内消費税等 ¥116', 'purchase', 1280, '116 0.6 count debit 0', '116 0.8 debit 0'],
   ['C43', 'Shop\nTotal 12 Tax $0.96\n(Tax $0.96)', 'purchase', 12, '0.96 0.6 count debit 0', '0.96 0.8 debit 0'],
@@ -401,19 +401,19 @@ describe('the receipt battery (ADR 0185, ADR 0186)', () => {
     });
   }
 
-  it('scores the sixty joined: refunds 24 / 7 / 0, purchases 16 / 1 / 12, 31 corrections, no silent row', () => {
+  it('scores the sixty joined: refunds 24 / 7 / 0, purchases 14 / 3 / 12, 31 corrections, no silent row', () => {
     expect(score(BATTERY, 'joined')).toEqual({
       refunds: [24, 7, 0],
-      purchases: [16, 1, 12],
+      purchases: [14, 3, 12],
       corrections: 31,
       silent: [],
     });
   });
 
-  it('scores the sixty split: refunds 28 / 3 / 0, purchases 16 / 1 / 12, 27 corrections, no silent row', () => {
+  it('scores the sixty split: refunds 28 / 3 / 0, purchases 14 / 3 / 12, 27 corrections, no silent row', () => {
     expect(score(BATTERY, 'split')).toEqual({
       refunds: [28, 3, 0],
-      purchases: [16, 1, 12],
+      purchases: [14, 3, 12],
       corrections: 27,
       silent: [],
     });
@@ -425,13 +425,13 @@ describe('the receipt battery (ADR 0185, ADR 0186)', () => {
 
   it('leaves silent only the counterexamples ADR 0186 records as known gaps', () => {
     expect(score(ADR_0186, 'joined').silent).toEqual([
-      'C37', 'C40', 'C92', 'C120', 'C152', 'C168', 'C169', 'C178',
+      'C37', 'C92', 'C120', 'C152', 'C168', 'C169', 'C178',
     ]);
     expect(score(ADR_0186, 'split').silent).toEqual([
-      'C18', 'C19', 'C37', 'C40', 'C41', 'C42', 'C43', 'C44', 'C45', 'C46', 'C47', 'C48', 'C49',
-      'C66', 'C92', 'C93', 'C94', 'C95', 'C96', 'C97', 'C105', 'C106', 'C107', 'C108', 'C109',
-      'C110', 'C111', 'C114', 'C115', 'C116', 'C117', 'C120', 'C121', 'C122', 'C123', 'C124',
-      'C126', 'C127', 'C128', 'C152', 'C168', 'C178',
+      'C18', 'C19', 'C37', 'C41', 'C42', 'C43', 'C44', 'C45', 'C46', 'C47', 'C48', 'C49', 'C66',
+      'C92', 'C93', 'C94', 'C95', 'C96', 'C97', 'C105', 'C106', 'C107', 'C108', 'C109', 'C110',
+      'C111', 'C114', 'C115', 'C116', 'C117', 'C120', 'C121', 'C122', 'C123', 'C124', 'C126',
+      'C127', 'C128', 'C152', 'C168', 'C178',
     ]);
   });
 
@@ -445,14 +445,14 @@ describe('the receipt battery (ADR 0185, ADR 0186)', () => {
     expect(silentStrictly(ADR_0185, 'joined')).toEqual(['X12', 'X13']);
     expect(silentStrictly(ADR_0185, 'split')).toEqual(['X6', 'X7', 'X12', 'X13']);
     expect(silentStrictly(ADR_0186, 'joined')).toEqual([
-      'C30', 'C35', 'C37', 'C40', 'C92', 'C120', 'C152', 'C168', 'C169', 'C178',
+      'C37', 'C92', 'C120', 'C152', 'C168', 'C169', 'C178',
     ]);
     expect(silentStrictly(ADR_0186, 'split')).toEqual([
-      'C18', 'C19', 'C30', 'C35', 'C37', 'C40', 'C41', 'C42', 'C43', 'C44', 'C45', 'C46', 'C47',
-      'C48', 'C49', 'C53', 'C54', 'C65', 'C66', 'C92', 'C93', 'C94', 'C95', 'C96', 'C97', 'C105',
-      'C106', 'C107', 'C108', 'C109', 'C110', 'C111', 'C112', 'C113', 'C114', 'C115', 'C116',
-      'C117', 'C118', 'C120', 'C121', 'C122', 'C123', 'C124', 'C125', 'C126', 'C127', 'C128',
-      'C134', 'C135', 'C136', 'C149', 'C152', 'C168', 'C178',
+      'C18', 'C19', 'C37', 'C41', 'C42', 'C43', 'C44', 'C45', 'C46', 'C47', 'C48', 'C49', 'C53',
+      'C54', 'C65', 'C66', 'C92', 'C93', 'C94', 'C95', 'C96', 'C97', 'C105', 'C106', 'C107', 'C108',
+      'C109', 'C110', 'C111', 'C112', 'C113', 'C114', 'C115', 'C116', 'C117', 'C118', 'C120',
+      'C121', 'C122', 'C123', 'C124', 'C125', 'C126', 'C127', 'C128', 'C134', 'C135', 'C136',
+      'C149', 'C152', 'C168', 'C178',
     ]);
   });
 });

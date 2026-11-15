@@ -241,7 +241,7 @@ describe('NativeReceiptService', () => {
       const transaction = (await service.processImage(imageFile())).transactions[0];
 
       expect(transaction.amount).toBe(120.5);
-      expect(transaction.fieldConfidence).toEqual({ amount: 0.6, date: 0.9 });
+      expect(transaction.fieldConfidence).toEqual({ amount: 0.6, date: 0.9, type: 0.3 });
       expect(transaction.fieldConfidence!.amount!).toBeLessThan(VERIFY_FIELD_THRESHOLD);
     });
 
@@ -574,7 +574,8 @@ describe('NativeReceiptService', () => {
 
         const result = await service.processImage(imageFile());
 
-        expect(result.transactions[0].fieldConfidence).toEqual({ amount: 0.6, date: 0.8 });
+        // The reading passed an aside, so its type is asked about as well.
+        expect(result.transactions[0].fieldConfidence).toEqual({ amount: 0.6, date: 0.8, type: 0.3 });
       });
 
       it('grades a read date 0.8', async () => {

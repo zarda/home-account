@@ -1498,7 +1498,7 @@ describe('parseReceiptOcrText', () => {
               amountConfidence: 0.6,
               amountDemotion: 'aside',
               direction: 'debit',
-              directionConfidence: 0,
+              directionConfidence: 0.3,
             }),
           );
       }
@@ -1506,7 +1506,7 @@ describe('parseReceiptOcrText', () => {
 
     it('reads an aside in fullwidth parentheses, in any script', () => {
       expect(parseReceiptOcrText('店\n合計 ¥1,280\n（定価 ¥1,580）')).toEqual(
-        graded(1280, 0.6, 'debit', 0),
+        graded(1280, 0.6, 'debit', 0.3),
       );
     });
 
@@ -1518,34 +1518,54 @@ describe('parseReceiptOcrText', () => {
 
     it('reads an aside Vision handed back across two lines', () => {
       expect(parseReceiptOcrText('Shop\nTotal\n$12.50\n(Reg\n$15.00)')).toEqual(
-        graded(12.5, 0.6, 'debit', 0),
+        graded(12.5, 0.6, 'debit', 0.3),
       );
     });
 
     it('grades an aside it reads for want of anything else in its tier, flagged', () => {
       expect(parseReceiptOcrText('Shop\nTotal 12.50\n(Reg $15.00)')).toEqual(
-        graded(15, 0.6, 'debit', 0),
+        graded(15, 0.6, 'debit', 0.3),
       );
-      expect(parseReceiptOcrText('店\n合計 980\n(内税 ¥72)')).toEqual(graded(72, 0.6, 'debit', 0));
+      expect(parseReceiptOcrText('店\n合計 980\n(内税 ¥72)')).toEqual(graded(72, 0.6, 'debit', 0.3));
     });
 
-    it('reads past a price with tax, or a total, printed as an aside: flagged on a purchase, and on a refund slip read as a purchase, the known gap', () => {
+    it('reads past a price with tax, or a total, printed as an aside, and asks about the amount and the type', () => {
       expect(parseReceiptOcrText('店\n合計 ¥1,180\n(税込¥1,298)')).toEqual(
-        graded(1180, 0.6, 'debit', 0),
+        graded(1180, 0.6, 'debit', 0.3),
       );
       expect(parseReceiptOcrText('店\n合計 ¥1,000\n（税込 ¥1,100）')).toEqual(
-        graded(1000, 0.6, 'debit', 0),
+        graded(1000, 0.6, 'debit', 0.3),
       );
-      // The refund slip's credit is printed on no figure read, so it is filed
-      // as a purchase with no flag on its type.
+      // A refund slip that prints its total as a labelled aside marks no
+      // figure read, so it reads as a purchase. Labelled parentheses around a
+      // refund's total and around a regular price are the same print, so the
+      // type is sent to the reviewer, where it used to carry no flag: with
+      // items above the total, with the total alone, and with the currency
+      // written in letters.
       expect(parseReceiptOcrText('REFUND\nJacket $59.99\nTax $4.80\n(Total $64.79)')).toEqual(
-        graded(59.99, 0.6, 'debit', 0),
+        graded(59.99, 0.6, 'debit', 0.3),
+      );
+      expect(parseReceiptOcrText('REFUND\n(Total $64.79)')).toEqual(graded(64.79, 0.8, 'debit', 0.3));
+      expect(parseReceiptOcrText('返品\nジャケット 5,980円\n消費税 598円\n(6,578円)')).toEqual(
+        graded(5980, 0.38, 'debit', 0.3),
+      );
+    });
+
+    it('keeps a credit printed on the figure read, beside an aside or inside labelled parentheses', () => {
+      for (const text of [
+        'REFUND\nJacket $59.99\nTax $4.80\n($64.79)',
+        'REFUND\nJacket $59.99\nTax $4.80\n(Refund -$64.79)',
+      ]) {
+        expect(parseReceiptOcrText(text)).withContext(text).toEqual(graded(64.79, 0.8, 'credit', 0.5));
+      }
+      expect(parseReceiptOcrText('REFUND\nTotal -$12.50\n(Reg $15.00)')).toEqual(
+        graded(12.5, 0.6, 'credit', 0.5),
       );
     });
 
     describe('what it leaves alone', () => {
       it('keeps an aside that is the only figure on the receipt', () => {
-        expect(parseReceiptOcrText('Shop\n(Reg $15.00)')).toEqual(graded(15, 0.8, 'debit', 0));
+        expect(parseReceiptOcrText('Shop\n(Reg $15.00)')).toEqual(graded(15, 0.8, 'debit', 0.3));
       });
 
       it("reads a sign's capitals and the receipt's currency code as money, not a word", () => {
@@ -1586,7 +1606,7 @@ describe('parseReceiptOcrText', () => {
         // figure back on a line of its own.
         for (const text of ['Shop\nTotal $12.50\n(Reg $15.00', 'Shop\nTotal\n$12.50\n(Reg\n$15.00']) {
           const result = parseReceiptOcrText(text);
-          expect(result).withContext(text).toEqual(graded(12.5, 0.6, 'debit', 0));
+          expect(result).withContext(text).toEqual(graded(12.5, 0.6, 'debit', 0.3));
           expect(result.amountDemotion).withContext(text).toBe('aside');
         }
       });
@@ -1604,7 +1624,7 @@ describe('parseReceiptOcrText', () => {
       it('reads past a total printed after a parenthesis that never closes, flagged, the cost of the rule', () => {
         // As its closed form, Total (incl. tax $12.50), already reads.
         const result = parseReceiptOcrText('Shop\nItem $3.00\nTotal (incl. tax $12.50');
-        expect(result).toEqual(graded(3, 0.6, 'debit', 0));
+        expect(result).toEqual(graded(3, 0.6, 'debit', 0.3));
         expect(result.amountDemotion).toBe('aside');
       });
 
@@ -1617,7 +1637,7 @@ describe('parseReceiptOcrText', () => {
         // (REG$ read as accounting parentheses and the regular price as a
         // refund's total. REG is no currency's letters.
         const result = parseReceiptOcrText('Shop\nTotal $12.50\n(REG$15.00)');
-        expect(result).toEqual(graded(12.5, 0.6, 'debit', 0));
+        expect(result).toEqual(graded(12.5, 0.6, 'debit', 0.3));
         expect(result.amountDemotion).toBe('aside');
       });
 
@@ -1765,8 +1785,7 @@ describe('parseReceiptOcrText', () => {
         // does.
         ['Shop\nRef 12▲1,280', 1280],
         ['Shop\nTEL 03▲3461▲8901', 8901],
-        // Parentheses around words or a count.
-        ['店\n(税込¥1,280)', 1280],
+        // Parentheses around a count.
         ['Shop\nPoints (100)', 100],
       ];
       for (const [text, amount] of cases) {
@@ -1774,6 +1793,9 @@ describe('parseReceiptOcrText', () => {
           .withContext(text)
           .toEqual(reading(amount, 'debit', 0));
       }
+      // Parentheses around words and a figure are no credit either, but the
+      // figure is an aside, and its type is asked about.
+      expect(parseReceiptOcrText('店\n(税込¥1,280)')).toEqual(reading(1280, 'debit', 0.3));
     });
 
     it('reads the mark on the winning figure, not anywhere on its line', () => {
