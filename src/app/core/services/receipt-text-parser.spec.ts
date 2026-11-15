@@ -856,20 +856,33 @@ describe('parseReceiptOcrText', () => {
         );
       });
 
-      it("reads a run that only looks like a date where a price's own figure ends it, and loses that price, the known gap", () => {
-        // No date is printed here at all. A unit price's cents and the line
-        // total's whole part (5,10 10,20), or a count before the total and
-        // the total (2) 12,10), make a run that reads as a date, and the
-        // price it takes in is lost.
-        const cases: [text: string, amount: number][] = [
-          ['Laden\nBrot 1 €2,10\nKaffee 2 x 5,10 10,20 €\nSumme 10,20 €', 20],
-          ['Shop\nItem 1 $10.00\nKaffee €2,10\nSumme (2) 12,10 €', 10],
-        ];
-        for (const [text, amount] of cases) {
-          expect(parseReceiptOcrText(text))
-            .withContext(text)
-            .toEqual(jasmine.objectContaining({ amount, amountConfidence: 0.8 }));
-        }
+      it('reads a price a run would cut as money, and no date', () => {
+        // No date is printed here. A unit price's cents and the line total's
+        // whole part (5,10 10,20 €) made a run that read as a date and cut
+        // the line total in two. A figure a sign touches is no part of a date,
+        // so the run is turned down, on a purchase and on its refund.
+        expect(parseReceiptOcrText('Laden\nBrot 1 €2,10\nKaffee 2 x 5,10 10,20 €\nSumme 10,20 €')).toEqual(
+          jasmine.objectContaining({ amount: 10.2, amountConfidence: 0.8, direction: 'debit', dateConfidence: 0 }),
+        );
+        expect(parseReceiptOcrText('Storno\nBrot 1 -€2,10\nKaffee 2 x 5,10 -10,20 €\nSumme -10,20 €')).toEqual(
+          jasmine.objectContaining({
+            amount: 10.2,
+            amountConfidence: 0.8,
+            direction: 'credit',
+            directionConfidence: 0.5,
+            dateConfidence: 0,
+          }),
+        );
+      });
+
+      it('reads a run that holds a whole price before its sign as a date, and loses that price, the known gap', () => {
+        // A count before the total and the total, (2) 12,10 €, make a run that
+        // holds the price whole, before the sign after it. Barring that run
+        // too reads an item above a discount that only such a run kept out of
+        // the amount hunt (ADR 0189), so it stands.
+        expect(parseReceiptOcrText('Shop\nItem 1 $10.00\nKaffee €2,10\nSumme (2) 12,10 €')).toEqual(
+          jasmine.objectContaining({ amount: 10, amountConfidence: 0.8 }),
+        );
       });
 
       it("twins the direction off a payment line where the total's sign is glued to it, as 26.10.180 does", () => {

@@ -275,6 +275,9 @@ interface PrintedFigure {
   end: number;
 }
 
+/** A figure's digits and its place on its line: all a currency sign is read against. */
+type PlacedFigure = Pick<PrintedFigure, 'start' | 'end'> & { candidate: Pick<AmountCandidate, 'token'> };
+
 /**
  * Which side of each figure on a line a currency sign touches, and the pairs
  * of neighbours one sign touches alike, by their places on the line.
@@ -296,7 +299,7 @@ interface AmountReading {
 
 export function parseReceiptOcrText(text: string): ParsedReceiptText {
   const { currency, confidence: currencyConfidence, marker } = readCurrency(text);
-  const { date, confidence: dateConfidence, matched } = readDate(text);
+  const { date, confidence: dateConfidence, matched } = readDate(text, marker);
 
   // The date comes out of the text before the amounts are read: 15/01/2026 is
   // three numbers, and 2026 is larger than any total the receipt carries.
@@ -339,7 +342,7 @@ export function parseReceiptOcrText(text: string): ParsedReceiptText {
  * The purchase date, plus the text it was read from so the caller can keep its
  * digits out of the amount hunt.
  */
-function readDate(text: string): { date: Date; confidence: number; matched: string } {
+function readDate(text: string, marker: string): { date: Date; confidence: number; matched: string } {
   for (const match of text.matchAll(YEAR_FIRST_DATE)) {
     const date = toDate(Number(match[2]), Number(match[3]), Number(match[4]));
     if (date) {
@@ -357,6 +360,7 @@ function readDate(text: string): { date: Date; confidence: number; matched: stri
   // date that starts inside it: the 8 of 8円 27-07-2025 and the day and month
   // after it make a date too, and the date is the one printed whole.
   let spaced: { date: Date; confidence: number; matched: string; end: number } | undefined;
+  const signed = signedFigures(text, marker);
   for (let match = pattern.exec(text); match; match = pattern.exec(text)) {
     const { run, first: firstDigits, second: secondDigits, year: yearDigits } = match.groups as Record<
       'run' | 'first' | 'second' | 'year',
@@ -369,6 +373,9 @@ function readDate(text: string): { date: Date; confidence: number; matched: stri
       break;
     }
     if (spaced && !whole) {
+      continue;
+    }
+    if (takesInMoney(start, start + run.length, whole, signed)) {
       continue;
     }
     const first = Number(firstDigits);
@@ -397,6 +404,59 @@ function readDate(text: string): { date: Date; confidence: number; matched: stri
   }
 
   return { date: new Date(), confidence: 0, matched: '' };
+}
+
+/** A figure a currency sign or the receipt's code touches, by its place in the text. */
+interface SignedFigure {
+  start: number;
+  end: number;
+  /** The sign stands before the figure ($ 27.01), not after it (10,20 €). */
+  signBefore: boolean;
+}
+
+/**
+ * Every figure the receipt prints as money by touching it with a currency
+ * sign or with the code its currency was read from, glued or one space away,
+ * as the amount hunt reads them (signedSides).
+ */
+function signedFigures(text: string, marker: string): SignedFigure[] {
+  const found: SignedFigure[] = [];
+  let offset = 0;
+  for (const line of text.split('\n')) {
+    const figures: PlacedFigure[] = [...line.matchAll(NUMBER_TOKEN)].map(match => ({
+      candidate: { token: match[0] },
+      start: match.index,
+      end: match.index + match[0].length,
+    }));
+    const sides = signedSides(line, figures, marker);
+    for (const [index, { start, end }] of figures.entries()) {
+      if (sides.before[index] || sides.after[index]) {
+        found.push({ start: offset + start, end: offset + end, signBefore: sides.before[index] });
+      }
+    }
+    offset += line.length + 1;
+  }
+  return found;
+}
+
+/**
+ * Whether a run would take a figure printed as money into a date. A price is
+ * no part of a date: not where the run cuts it (the 10 of 5,10 10,20 €, the
+ * 27.01 of $ 27.01 01 13 25 where the run ends in the next number), nor where
+ * the run holds it whole behind its sign. A run written whole as a date is
+ * one whatever touches it (€ 15.01.26, 15.01.26 €), and a figure the run
+ * holds whole before the sign after it is left to the run: barring that one
+ * too reads an item above a discount that only a run through it kept out of
+ * the amount hunt (ADR 0189).
+ */
+function takesInMoney(start: number, end: number, whole: boolean, signed: SignedFigure[]): boolean {
+  return signed.some(figure => {
+    if (figure.end <= start || figure.start >= end) {
+      return false;
+    }
+    const held = figure.start >= start && figure.end <= end;
+    return !(held && (whole || !figure.signBefore));
+  });
 }
 
 /** `month` is 1-12 here, as it is written on a receipt. */
@@ -903,7 +963,7 @@ function isAside(before: string, after: string, marker: string, opening: string)
  * is listed as sharing it, and both are money unless the receipt's other
  * lines settle it (settleSharedSigns).
  */
-function signedSides(line: string, figures: PrintedFigure[], marker: string): SignedSides {
+function signedSides(line: string, figures: PlacedFigure[], marker: string): SignedSides {
   const isSign = (text: string) => ONE_SIGN.test(text) || (marker !== '' && text === marker);
   const before = figures.map(({ start }) => {
     const lead = line.slice(0, start).replace(MARK_BEFORE_FIGURE, '');
