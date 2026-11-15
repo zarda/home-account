@@ -1082,6 +1082,38 @@ describe('parseReceiptOcrText', () => {
           );
           expect(dated(refund)).toEqual([2023, 1, 27]);
         });
+
+        it("reads this month's date printed year first, and an older one day first as it always did", () => {
+          const today = 'Market\n26.10.30 JPY\nお茶 ¥150\n弁当 ¥480\n合計 ¥630';
+          expect(parseReceiptOcrText(today)).toEqual(
+            jasmine.objectContaining({ amount: 630, amountConfidence: 0.8, dateConfidence: 0.3 }),
+          );
+          expect(dated(today)).toEqual([2026, 10, 30]);
+          // 26.10.15 is a day that has been, read day first: nothing says the
+          // receipt meant 15 October 2026, and the grade stays under the bar.
+          const older = 'Market\n26.10.15 JPY\nお茶 ¥150\n弁当 ¥480\n合計 ¥630';
+          expect(parseReceiptOcrText(older)).toEqual(
+            jasmine.objectContaining({ amount: 630, amountConfidence: 0.8, dateConfidence: 0.5 }),
+          );
+          expect(dated(older)).toEqual([2015, 10, 26]);
+        });
+
+        it('reads a date that lies ahead in one order of day and month in the other', () => {
+          // 11/08/26 is 8 November 2026 month first, nine days ahead, and
+          // 11 August day first; 08/11/26 is the reverse.
+          for (const text of ['Shop\n11/08/26\nTotal $5.00', 'Shop\n08/11/26\nTotal $5.00']) {
+            expect(parseReceiptOcrText(text))
+              .withContext(text)
+              .toEqual(jasmine.objectContaining({ amount: 5, amountConfidence: 0.8, dateConfidence: 0.3 }));
+            expect(dated(text)).withContext(text).toEqual([2026, 8, 11]);
+          }
+        });
+
+        it('reads no date where every reading lies ahead, nor a year first where the first group could be a month', () => {
+          for (const text of ['Shop\n11/12/26\nTotal $5.00', 'Shop\n12.11.27\nTotal $5.00']) {
+            expect(parseReceiptOcrText(text).dateConfidence).withContext(text).toBe(0);
+          }
+        });
       });
 
       it('reads a signed figure over a total line led by its date that prints no currency mark, the known gap', () => {
