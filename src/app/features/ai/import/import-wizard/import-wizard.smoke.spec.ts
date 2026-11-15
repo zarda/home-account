@@ -1638,7 +1638,8 @@ describe('ImportWizardComponent camera handoff (emulator smoke test)', () => {
         'Harbour Supplies\n2026-01-15\nTotal: $120.50\n(Reg $150.00)'
       );
       expect(rows[0].amount).toBe(120.5);
-      expect(rows[0].fieldConfidence).toEqual({ amount: 0.6, date: 0.9 });
+      // A reading that passed an aside asks about its type as well (ADR 0189).
+      expect(rows[0].fieldConfidence).toEqual({ amount: 0.6, date: 0.9, type: 0.3 });
 
       const host = fixture.nativeElement as HTMLElement;
       expect(fixture.componentInstance.stepper.selectedIndex).toBe(2);
@@ -1698,6 +1699,73 @@ describe('ImportWizardComponent camera handoff (emulator smoke test)', () => {
       expect(fixture.componentInstance.extractedTransactions()[0].amount).toBe(15);
       expect(host.querySelector('.amount-section .verify-flag'))
         .withContext('the total was read past the cash handed over, under the bar').not.toBeNull();
+
+      await leaveReview(fixture);
+    },
+    30000
+  );
+
+  it(
+    'an on-device scan whose total prints no currency mark under marked lines reaches the review card as that total, with its amount flagged',
+    async () => {
+      // The item and the tax are the figures the receipt marks as money; the
+      // total they add up to is read, under the bar, so the card shows the
+      // total and asks about it (ADR 0189).
+      const { rows, fixture } = await reviewOnDevice(
+        'Harbour Supplies\n2026-01-15\nEggs $10.86\nTax $0.87\nTotal 11.73'
+      );
+      expect(rows[0].amount).toBe(11.73);
+      expect(rows[0].type).toBe('expense');
+      expect(rows[0].fieldConfidence).toEqual({ amount: 0.6, date: 0.9 });
+
+      const host = fixture.nativeElement as HTMLElement;
+      expect(fixture.componentInstance.stepper.selectedIndex).toBe(2);
+      expect(fixture.componentInstance.extractedTransactions()[0].amount).toBe(11.73);
+      expect(host.querySelector('.amount-section .verify-flag')?.getAttribute('aria-label'))
+        .withContext('the total was read on a sum, under the bar')
+        .toBe(TestBed.inject(TranslationService).t('import.verifyAmountOnDevice'));
+
+      await leaveReview(fixture);
+    },
+    30000
+  );
+
+  it(
+    'an on-device scan of a refund whose total is printed as a labelled aside reaches the review card as an expense, with its type flagged',
+    async () => {
+      // Labelled parentheses mark no credit, so the slip reads as a purchase;
+      // the type is graded under the bar and the toggle asks (ADR 0189).
+      const { rows, fixture } = await reviewOnDevice('REFUND\n2026-01-15\n(Total $64.79)', 'refund-aside.jpg');
+      expect(rows[0].amount).toBe(64.79);
+      expect(rows[0].type).toBe('expense');
+      expect(rows[0].fieldConfidence).toEqual({ amount: 0.8, date: 0.9, type: 0.3 });
+
+      const host = fixture.nativeElement as HTMLElement;
+      expect(fixture.componentInstance.stepper.selectedIndex).toBe(2);
+      expect(host.querySelector('.type-toggle .verify-flag'))
+        .withContext('the total is an aside, so the type is asked about').not.toBeNull();
+      expect(host.querySelector('.amount-section .verify-flag'))
+        .withContext('the amount was read off the print').toBeNull();
+
+      await leaveReview(fixture);
+    },
+    30000
+  );
+
+  it(
+    'an on-device scan whose date wrapped onto two lines reaches the review card dated, with no flag on the amount',
+    async () => {
+      // The year OCR wrapped is read with its day and month, so neither half
+      // is left in the amount hunt as money (ADR 0189).
+      const { rows, fixture } = await reviewOnDevice('Harbour Supplies\n15.01.\n2026\nTotal: $12.50');
+      expect(rows[0].amount).toBe(12.5);
+      expect(rows[0].fieldConfidence).toEqual({ amount: 0.8, date: 0.9 });
+      const date = new Date(rows[0].date as unknown as string | Date);
+      expect([date.getFullYear(), date.getMonth() + 1, date.getDate()]).toEqual([2026, 1, 15]);
+
+      const host = fixture.nativeElement as HTMLElement;
+      expect(fixture.componentInstance.stepper.selectedIndex).toBe(2);
+      expect(host.querySelector('.amount-section .verify-flag')).toBeNull();
 
       await leaveReview(fixture);
     },
