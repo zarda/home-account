@@ -1227,6 +1227,51 @@ describe('parseReceiptOcrText', () => {
         );
       });
 
+      it('keeps a total the receipt marks at its own grade where nothing larger is printed without a mark', () => {
+        const cases: [text: string, amount: number][] = [
+          ['Shop\nEggs $10.86\nTax $0.87\nTotal $11.73', 11.73],
+          // A balance in accounting parentheses carries a mark the total does not.
+          ['Shop\nTotal $12.50\nPoints (1,847.00)', 12.5],
+          // A short group in its middle: a date or a code, not money.
+          ['Shop\nTotal $5.00\nLot 13.01.31', 5],
+          // A round figure between a marked total and its change is the cash.
+          ['Shop\nTotal $49.03\nCash 50.00\nChange $0.97', 49.03],
+        ];
+        for (const [text, amount] of cases) {
+          const result = parseReceiptOcrText(text);
+          expect(result).withContext(text).toEqual(jasmine.objectContaining({ amount, amountConfidence: 0.8 }));
+          expect(result.amountDemotion).withContext(text).toBeUndefined();
+        }
+      });
+
+      it('asks about a right total over a larger balance printed with no mark, the cost of the rule', () => {
+        // Nothing in the print tells a points balance from a total printed
+        // bare, so the total is kept and the reviewer is asked. A balance
+        // that happens to be the total and an item added up is read: the
+        // sum cannot tell it from a total either.
+        expect(parseReceiptOcrText('Shop\nTotal $12.50\nPoints balance 1,847')).toEqual(
+          jasmine.objectContaining({ amount: 12.5, amountConfidence: 0.6, amountDemotion: 'unmarked' }),
+        );
+        expect(parseReceiptOcrText('Shop\nBento $77.57\nMilk $89.96\nTotal $167.53\nCard balance 245.10')).toEqual(
+          jasmine.objectContaining({ amount: 245.1, amountConfidence: 0.6, amountDemotion: 'unmarked' }),
+        );
+      });
+
+      it('moves no reading to an unmarked figure on a receipt that prints the pick negative', () => {
+        // A refund's total is not read apart on a sum: the pick stays, asked about.
+        expect(parseReceiptOcrText('REFUND\nEggs -$10.86\nTax -$0.87\nTotal -11.73')).toEqual(
+          jasmine.objectContaining({ amount: 10.86, amountConfidence: 0.6, amountDemotion: 'unmarked' }),
+        );
+      });
+
+      it('reads a total printed as a bare whole number over its tax as the tax, the known gap', () => {
+        // A whole number with no mark looks the same as a store or receipt
+        // number, so the rule for a figure written like money leaves it.
+        expect(parseReceiptOcrText('店\n合計 3点 980\n内税 ¥72')).toEqual(
+          jasmine.objectContaining({ amount: 72, amountConfidence: 0.8 }),
+        );
+      });
+
       it('reads a bare figure on a line whose only money is a labelled aside as money, the known gap', () => {
         // An aside prices nothing, so a whole number beside it is the line's
         // money (ADR 0186): here a points balance. 26.10.180 read the tax rate
@@ -1402,7 +1447,7 @@ describe('parseReceiptOcrText', () => {
       expect('amountDemotion' in parseReceiptOcrText('Shop\n$100\n$8\n$108')).toBeFalse();
     });
 
-    it('names the first rule that moved the reading: an aside, then a count, then the cash tendered, then a discount', () => {
+    it('names the first rule that moved the reading: an aside, then a count, then the cash tendered, then a discount, then a missing mark', () => {
       // A pin: passing an aside outranks a count that might have been the
       // total, and both outrank the cash-tendered sum, so a model that agrees
       // with such a reading keeps the parser's grade on the device lane. Naming
@@ -1411,6 +1456,11 @@ describe('parseReceiptOcrText', () => {
       // larger than the total it leaves still names the reading.
       const cases: [text: string, amount: number, amountDemotion: string][] = [
         ['Shop\nItem $3.00\nCoupon -$1.00\nTotal $2.00', 2, 'discount'],
+        // A larger figure with no mark names the reading only where no rule
+        // above it did: the discount's and the cash's figures stand.
+        ['Shop\nItem $3.00\nCoupon -$1.00\nTotal $2.00\nBalance 40.00', 2, 'discount'],
+        ['Shop\nTotal $15.00\nCash $20.00\nChange $5.00\nBalance 40.00', 15, 'tender'],
+        ['Shop\nTotal $15.01\nBalance 40.00', 15.01, 'unmarked'],
         ['Shop\nItem 72 $3.00\nCoupon -$1.00\nTotal $2.00', 2, 'count'],
         ['Shop\nItem $5.00\nDeposit -$2.00\nTotal $3.00', 3, 'tender'],
         ['Shop\nCash $50.00\n(Total $43.10)\nChange $6.90\nStore 72', 43.1, 'aside'],
