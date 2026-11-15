@@ -1170,15 +1170,32 @@ function largestOf(candidates: AmountCandidate[]): AmountCandidate | undefined {
  * is a word, and no word is read for what it says (ADR 0008). The capitals of
  * a sign (US$) and the code the receipt's currency was read from (USD) are
  * the figure's money, not a word. A figure whose own line holds no
- * parenthesis is read inside the one the line before left open.
+ * parenthesis is read inside the one the line before left open. A
+ * parenthesis nothing closes is closed by the end of its line.
  */
 function isAside(before: string, after: string, marker: string, opening: string): boolean {
-  const opened = UNCLOSED_OPEN.exec(ANY_PARENS.test(before) ? before : `${opening}\n${before}`);
-  const closed = UNOPENED_CLOSE.exec(after);
-  if (!opened || !closed) {
+  const { signs } = signPatterns();
+  const onItsLine = ANY_PARENS.test(before);
+  const opened = UNCLOSED_OPEN.exec(onItsLine ? before : `${opening}\n${before}`);
+  if (!opened) {
     return false;
   }
-  const inside = `${opened[0].slice(1)} ${closed[0].slice(0, -1)}`.replace(signPatterns().signs, ' ');
+  let closing = UNOPENED_CLOSE.exec(after)?.[0].slice(0, -1);
+  // A parenthesis OCR never closed ends with its line: (Reg $15.00 is the
+  // aside (Reg $15.00) with its last mark lost. One carried from the line
+  // before ends with the figure's line only where that line holds the figure
+  // and no word, as the second half of (Reg / $15.00 does; a line with a
+  // label of its own is a new line of the receipt.
+  if (closing === undefined && !ANY_PARENS.test(after)) {
+    const bare = !LETTER.test(`${before} ${after}`.replace(signs, ' '));
+    if (onItsLine || bare) {
+      closing = after;
+    }
+  }
+  if (closing === undefined) {
+    return false;
+  }
+  const inside = `${opened[0].slice(1)} ${closing}`.replace(signs, ' ');
   return LETTER.test(marker === '' ? inside : inside.split(marker).join(' '));
 }
 
