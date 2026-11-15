@@ -62,6 +62,15 @@
   max-height: 70vh;
   max-height: 70dvh;
   overflow-y: auto;
+
+  // The fold is there so that a long list does not push Continue out of
+  // reach. One card has nothing to scroll past: folded, it is only cut short
+  // and made to scroll inside its own list, which a phone-width card with a
+  // question chip on it is tall enough to do.
+  &.lone {
+    max-height: none;
+    overflow-y: visible;
+  }
 }
 
 // The list's own control, outside the scroller above so it does not walk off
