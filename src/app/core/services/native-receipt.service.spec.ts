@@ -551,17 +551,29 @@ describe('NativeReceiptService', () => {
         expect(result.transactions[0].fieldConfidence?.amount).toBe(0.8);
       });
 
-      it('lifts a model total that differs from a text parser reading under the bar on a receipt that prints no currency sign, the known gap', async () => {
-        // Only a code beside the date marks these receipts as money. 26.10.180
-        // read a figure of the time or the date there at 0.8 and disputed every
-        // other total; now the parser reads the receipt's own figures under the
-        // bar, and a model total it does not back is graded on its own (ADR
-        // 0147), right or wrong.
-        const cases: [text: string, amount: number, currency: string][] = [
-          ['Shop\n15.01.2026 14:32 EUR\nBrot 2,50\nKaffee 3,20\nSumme 5,70\nBar 10,00\nRückgeld 4,30', 10, 'EUR'],
-          ['STORE #72\n13 .01/ 25 JPY\n弁当 480\n合計 2,499\nお預り 3,000\nお釣り 501', 480, 'JPY'],
+      it('disputes a model total the text parser does not back on a receipt that prints a currency code and no sign', async () => {
+        // Only a code beside the date or the time marks these receipts as
+        // money, so the parser reads their figures under the bar, and a model
+        // total that differed used to be graded on its own, right or wrong:
+        // the cash handed over or an item looked as sure as a printed total.
+        // On such a receipt the parser's grade is low for want of a sign, not
+        // of a reading, so what it read disputes the model's.
+        const german = 'Shop\n15.01.2026 14:32 EUR\nBrot 2,50\nKaffee 3,20\nSumme 5,70\nBar 10,00\nRückgeld 4,30';
+        const japanese = 'STORE #72\n13 .01/ 25 JPY\n弁当 480\n合計 2,499\nお預り 3,000\nお釣り 501';
+        const cases: [text: string, amount: number, currency: string, grade: number][] = [
+          // The cash and an item: disputed.
+          [german, 10, 'EUR', 0.5],
+          [japanese, 480, 'JPY', 0.5],
+          // The printed total the parser read too, on the cash-tendered sum: lifted.
+          [german, 5.7, 'EUR', 0.8],
+          // The printed total where the parser read the cash: right, and flagged.
+          [japanese, 2499, 'JPY', 0.5],
+          // The cash, which the parser read too with no rule behind it: an
+          // agreement is graded as any other is, and this one is lifted. The
+          // known gap of the rule.
+          [japanese, 3000, 'JPY', 0.8],
         ];
-        for (const [text, amount, currency] of cases) {
+        for (const [text, amount, currency, grade] of cases) {
           visionMock.recognizeText.and.resolveTo({ ...ocrResult, text });
           appleMock.parseReceiptText.and.resolveTo({
             merchant: 'Cafe', date: '2026-01-15', amount, currency, category: '', details: '',
@@ -569,8 +581,21 @@ describe('NativeReceiptService', () => {
 
           const result = await service.processImage(imageFile());
 
-          expect(result.transactions[0].fieldConfidence?.amount).withContext(text).toBe(0.8);
+          expect(result.transactions[0].fieldConfidence?.amount).withContext(`${text} → ${amount}`).toBe(grade);
         }
+      });
+
+      it('grades a model total on its own where the receipt prints no currency at all', async () => {
+        // No sign and no code: the parser reads no currency, and a model
+        // total it does not back is still lifted (ADR 0147).
+        visionMock.recognizeText.and.resolveTo({ ...ocrResult, text: 'Shop\nBrot 2,50\nKaffee 3,20\nSumme 5,70' });
+        appleMock.parseReceiptText.and.resolveTo({
+          merchant: 'Cafe', date: '2026-01-15', amount: 3.2, currency: 'EUR', category: '', details: '',
+        });
+
+        const result = await service.processImage(imageFile());
+
+        expect(result.transactions[0].fieldConfidence?.amount).toBe(0.8);
       });
 
       it('disputes a model total where the text parser reads a regular price printed with no parenthesis', async () => {
