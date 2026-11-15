@@ -1082,6 +1082,19 @@ describe('parseReceiptOcrText', () => {
         expect(parseReceiptOcrText('Shop\nTotal $12.50.01/15/26').dateConfidence).toBe(0);
       });
 
+      it('reads no figure of money out of a second date the receipt writes whole', () => {
+        // The date after the total used to leave its numbers beside the money
+        // as counts, one larger than the total, which was flagged for it.
+        const dated = parseReceiptOcrText('Shop\n2026-09-28\nTotal $5.15 01/15/26');
+        expect(dated).toEqual(jasmine.objectContaining({ amount: 5.15, amountConfidence: 0.8, dateConfidence: 0.9 }));
+        expect(dated.amountDemotion).toBeUndefined();
+        // On a slip that prints no currency mark, the year of the second date
+        // was the largest number left, and the refund read as a purchase.
+        expect(parseReceiptOcrText('REFUND\nLatte 4 -40원 08/01/26\nTotal -160원\n01/28/2026')).toEqual(
+          jasmine.objectContaining({ amount: 160, direction: 'credit', directionConfidence: 0.5 }),
+        );
+      });
+
       it('reads no date glued after a currency sign, and reads a day-first one as one figure of money, the known gap', () => {
         // A date never starts at a figure its sign is glued to, so a date
         // printed glued after a sign is not read. Day first with dots, its
