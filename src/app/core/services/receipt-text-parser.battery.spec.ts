@@ -259,7 +259,7 @@ const ADR_0186: readonly Row[] = [
   ['C135', 'Shop\nTax $0.96 Total 12\nYou saved -$3.00', 'purchase', 12, '3 0.6 count debit 0.3', '3 0.8 credit 0.5'],
   ['C136', 'REFUND\nItem -$11.04\nTax -$0.96 Total 12', 'refund', 12, '11.04 0.6 count debit 0.3', '11.04 0.8 credit 0.5'],
   ['C137', 'Shop\nLatte 2 $8\nTotal 9\nTax $1\nCash $10\nChange $1', 'purchase', 9, '9 0.6 tender debit 0', '='],
-  ['C138', 'Shop\nEggs 500ml $10.86\nSubtotal $10.86\nTotal 11.73\nTax $0.87', 'purchase', 11.73, '10.86 0.8 debit 0', '='],
+  ['C138', 'Shop\nEggs 500ml $10.86\nSubtotal $10.86\nTotal 11.73\nTax $0.87', 'purchase', 11.73, '11.73 0.6 count debit 0', '11.73 0.6 unmarked debit 0'],
   ['C139', 'Shop\nBread 2 24,16 €\nTotal 24,16\nCash 50,00 €\nChange 25,84 €', 'purchase', 24.16, '24.16 0.6 tender debit 0', '='],
   ['C140', 'Shop\nCoffee 350g $168\nSubtotal $168\nTotal 185 USD\nTax $17', 'purchase', 185, '168 0.6 tender debit 0', '='],
   ['C141', '店\n21/07 24\n라떼 (12) ₩60\n케이크 Qty 4 ₩20\n케이크 ₩8\n소계 ₩88\n결제금액 ₩88\n받은돈 ₩100\n거스름돈 12', 'purchase', 88, '88 0.6 tender debit 0', '='],
@@ -277,9 +277,9 @@ const ADR_0186: readonly Row[] = [
   ['C153', 'Shop\nItem 1 $3.00\nDiscount ($1.00)\nTotal $2.00', 'purchase', 2, '2 0.6 discount debit 0', '='],
   ['C154', 'Shop\nWater 500ml $288\nTea $100\nTotal 388 Card $388', 'purchase', 388, '388 0.6 count debit 0', '388 0.8 debit 0'],
   ['C155', 'Shop\nItem 1 $25.00\nGift card -$10.00\nTotal $15.00', 'purchase', 15, '15 0.6 discount debit 0', '='],
-  ['C156', 'Shop\nTea $2.00\nBagel $4.50 x2\n1/13/24 Total 45.00', 'purchase', 45, '4.5 0.8 debit 0', '='],
-  ['C157', 'REFUND\nTea -$2.00\nBagel -$4.50 x2\n1/13/24 Total -45.00', 'refund', 45, '4.5 0.8 credit 0.5', '='],
-  ['C158', 'Laden\nBrot 1 €2,10\nKaffee 2 x 5,10 10,20\nSumme 10,20', 'purchase', 10.2, '2.1 0.8 debit 0', '='],
+  ['C156', 'Shop\nTea $2.00\nBagel $4.50 x2\n1/13/24 Total 45.00', 'purchase', 45, '4.5 0.6 unmarked debit 0', '='],
+  ['C157', 'REFUND\nTea -$2.00\nBagel -$4.50 x2\n1/13/24 Total -45.00', 'refund', 45, '4.5 0.6 unmarked credit 0.5', '='],
+  ['C158', 'Laden\nBrot 1 €2,10\nKaffee 2 x 5,10 10,20\nSumme 10,20', 'purchase', 10.2, '2.1 0.6 unmarked debit 0', '='],
   ['C159', 'REFUND\n13.01.\n24\nItem -4.50\nTotal -4.50', 'refund', 4.5, '4.5 0.5 credit 0.5', '='],
   ['C160', 'Shop\nItem 4.50\nTotal 4.50 EUR 13.01.\n24', 'purchase', 4.5, '4.5 0.8 debit 0', '='],
   ['C161', 'Market 7\n23.01.27 JPY\nお茶 ¥150\n弁当 ¥480\n合計 ¥630', 'purchase', 630, '630 0.8 debit 0', '='],
@@ -425,13 +425,13 @@ describe('the receipt battery (ADR 0185, ADR 0186)', () => {
 
   it('leaves silent only the counterexamples ADR 0186 records as known gaps', () => {
     expect(score(ADR_0186, 'joined').silent).toEqual([
-      'C36', 'C37', 'C40', 'C92', 'C120', 'C138', 'C152', 'C156', 'C158', 'C168', 'C169', 'C178',
+      'C36', 'C37', 'C40', 'C92', 'C120', 'C152', 'C168', 'C169', 'C178',
     ]);
     expect(score(ADR_0186, 'split').silent).toEqual([
       'C18', 'C19', 'C36', 'C37', 'C40', 'C41', 'C42', 'C43', 'C44', 'C45', 'C46', 'C47', 'C48',
       'C49', 'C66', 'C92', 'C93', 'C94', 'C95', 'C96', 'C97', 'C105', 'C106', 'C107', 'C108',
       'C109', 'C110', 'C111', 'C114', 'C115', 'C116', 'C117', 'C120', 'C121', 'C122', 'C123',
-      'C124', 'C126', 'C127', 'C128', 'C138', 'C152', 'C156', 'C158', 'C168', 'C178',
+      'C124', 'C126', 'C127', 'C128', 'C152', 'C168', 'C178',
     ]);
   });
 
@@ -445,16 +445,14 @@ describe('the receipt battery (ADR 0185, ADR 0186)', () => {
     expect(silentStrictly(ADR_0185, 'joined')).toEqual(['X12', 'X13']);
     expect(silentStrictly(ADR_0185, 'split')).toEqual(['X6', 'X7', 'X12', 'X13']);
     expect(silentStrictly(ADR_0186, 'joined')).toEqual([
-      'C30', 'C34', 'C35', 'C36', 'C37', 'C40', 'C92', 'C120', 'C138', 'C152', 'C156', 'C157',
-      'C158', 'C168', 'C169', 'C178',
+      'C30', 'C34', 'C35', 'C36', 'C37', 'C40', 'C92', 'C120', 'C152', 'C168', 'C169', 'C178',
     ]);
     expect(silentStrictly(ADR_0186, 'split')).toEqual([
       'C18', 'C19', 'C30', 'C34', 'C35', 'C36', 'C37', 'C40', 'C41', 'C42', 'C43', 'C44', 'C45',
       'C46', 'C47', 'C48', 'C49', 'C53', 'C54', 'C65', 'C66', 'C92', 'C93', 'C94', 'C95', 'C96',
       'C97', 'C105', 'C106', 'C107', 'C108', 'C109', 'C110', 'C111', 'C112', 'C113', 'C114', 'C115',
       'C116', 'C117', 'C118', 'C120', 'C121', 'C122', 'C123', 'C124', 'C125', 'C126', 'C127',
-      'C128', 'C134', 'C135', 'C136', 'C138', 'C149', 'C152', 'C156', 'C157', 'C158', 'C168',
-      'C178',
+      'C128', 'C134', 'C135', 'C136', 'C149', 'C152', 'C168', 'C178',
     ]);
   });
 });

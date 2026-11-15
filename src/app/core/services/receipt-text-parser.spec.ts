@@ -180,7 +180,6 @@ describe('parseReceiptOcrText', () => {
         const cases: [text: string, amount: number][] = [
           ['Shop\nTax 8% $0.96\nTotal 12', 0.96],
           ['Shop\nTax 8% $0.40\nTotal 5.40', 0.4],
-          ['Diner\nFood $12.00\nTip 18% $2.16\nTotal 14.16', 12],
         ];
         for (const [text, amount] of cases) {
           expect(parseReceiptOcrText(text))
@@ -1183,31 +1182,49 @@ describe('parseReceiptOcrText', () => {
         });
       });
 
-      it('reads a signed figure over a total line led by its date that prints no currency mark, the known gap', () => {
-        // 26.10.180 read a date across the line break (the 2 of x2 and the
-        // 1/13 below it), which joined the total to the signed line above.
-        // Read on its own line, the date leaves the total bare, in a weaker
-        // tier than the signed item.
-        expect(parseReceiptOcrText('Shop\nTea $2.00\nBagel $4.50 x2\n1/13/24 Total 45.00')).toEqual(
-          jasmine.objectContaining({ amount: 4.5, amountConfidence: 0.8, direction: 'debit' }),
-        );
-        expect(
-          parseReceiptOcrText('REFUND\nTea -$2.00\nBagel -$4.50 x2\n1/13/24 Total -45.00'),
-        ).toEqual(jasmine.objectContaining({ amount: 4.5, amountConfidence: 0.8, direction: 'credit' }));
-      });
-
-      it('reads a signed figure over a total that prints no currency mark, the known gap', () => {
-        // 26.10.180 read the signed figure's count and price as a date, which
-        // left the bare total the largest figure written like money.
+      it('reads a total that prints no currency mark where a marked figure and one more add up to it', () => {
+        // The marked figures outrank a total written like money on a line
+        // with no mark, so the largest of them used to be read at 0.8: the
+        // subtotal, an item or the tax. Where one of them and one more figure
+        // of money add up to the unmarked one, it is read, under the bar.
         const cases: [text: string, amount: number][] = [
-          ['Laden\nBrot 1 €2,10\nKaffee 2 x 5,10 10,20\nSumme 10,20', 2.1],
-          ['Market 7\nCrisps 87.78 6\nScone Qty 3 £13.20\nTotal 100.98', 13.2],
+          ['Shop\nEggs $10.86\nTax $0.87\nTotal 11.73', 11.73],
+          ['Shop\nEggs $10.86\nSubtotal $10.86\nTotal 11.73\nTax $0.87', 11.73],
+          ['Shop\nTotal 11.73\nSubtotal $10.86\nTax $0.87', 11.73],
+          ['Market 7\nCrisps 87.78 6\nScone Qty 3 £13.20\nTotal 100.98', 100.98],
         ];
         for (const [text, amount] of cases) {
           expect(parseReceiptOcrText(text))
             .withContext(text)
-            .toEqual(jasmine.objectContaining({ amount, amountConfidence: 0.8 }));
+            .toEqual(jasmine.objectContaining({ amount, amountConfidence: 0.6, amountDemotion: 'unmarked' }));
         }
+      });
+
+      it('keeps the marked figure, under the bar, where nothing adds up to a larger one printed with no mark', () => {
+        // 45.00 is no sum of what the receipt marks as money, so the item is
+        // still read, and the reviewer is asked: on a purchase, on its refund,
+        // with the date leading the total's line or without it.
+        const cases: [text: string, amount: number, direction: 'credit' | 'debit'][] = [
+          ['Shop\nTea $2.00\nBagel $4.50 x2\n1/13/24 Total 45.00', 4.5, 'debit'],
+          ['Shop\nTea $2.00\nBagel $4.50 x2\nTotal 45.00', 4.5, 'debit'],
+          ['REFUND\nTea -$2.00\nBagel -$4.50 x2\n1/13/24 Total -45.00', 4.5, 'credit'],
+          ['Laden\nBrot 1 €2,10\nKaffee 2 x 5,10 10,20\nSumme 10,20', 2.1, 'debit'],
+        ];
+        for (const [text, amount, direction] of cases) {
+          expect(parseReceiptOcrText(text))
+            .withContext(text)
+            .toEqual(
+              jasmine.objectContaining({ amount, amountConfidence: 0.6, amountDemotion: 'unmarked', direction }),
+            );
+        }
+      });
+
+      it('reads a total printed bare under a tip rate, flagged by the rate before the missing mark', () => {
+        // The rate is a count larger than the item, so the reading is graded
+        // as a count's; the sum moves it to the total all the same.
+        expect(parseReceiptOcrText('Diner\nFood $12.00\nTip 18% $2.16\nTotal 14.16')).toEqual(
+          jasmine.objectContaining({ amount: 14.16, amountConfidence: 0.6, amountDemotion: 'count' }),
+        );
       });
 
       it('reads a bare figure on a line whose only money is a labelled aside as money, the known gap', () => {

@@ -479,16 +479,18 @@ describe('NativeReceiptService', () => {
         }
       });
 
-      it('lifts a model total that agrees with a figure the text parser reads wrongly at 0.8, the known gap', async () => {
-        // Where the parser reads a wrong figure at its tier's grade, a model
-        // that reads the same figure agrees with it: a subtotal over a total
-        // that prints no currency mark. Before ADR 0186 the parser read
-        // another wrong figure there, a size, and disputed the model by
-        // accident.
-        const cases: [text: string, amount: number][] = [
-          ['Shop\nEggs 500ml $10.86\nSubtotal $10.86\nTotal 11.73\nTax $0.87', 10.86],
+      it('disputes a model that reads the subtotal over a total that prints no currency mark', async () => {
+        // The text parser used to read the subtotal there at 0.8, so a model
+        // that read the same figure agreed with it and was lifted. It reads
+        // the total now, on a sum and under the bar: a model that reads the
+        // subtotal is disputed, and one that reads the total leaves the row
+        // flagged, since a rule picked it.
+        const text = 'Shop\nEggs 500ml $10.86\nSubtotal $10.86\nTotal 11.73\nTax $0.87';
+        const cases: [amount: number, grade: number][] = [
+          [10.86, 0.5],
+          [11.73, 0.6],
         ];
-        for (const [text, amount] of cases) {
+        for (const [amount, grade] of cases) {
           visionMock.recognizeText.and.resolveTo({ ...ocrResult, text });
           appleMock.parseReceiptText.and.resolveTo({
             merchant: 'Cafe', date: '2026-01-15', amount, currency: 'USD', category: '', details: '',
@@ -496,7 +498,7 @@ describe('NativeReceiptService', () => {
 
           const result = await service.processImage(imageFile());
 
-          expect(result.transactions[0].fieldConfidence?.amount).withContext(text).toBe(0.8);
+          expect(result.transactions[0].fieldConfidence?.amount).withContext(String(amount)).toBe(grade);
         }
       });
 

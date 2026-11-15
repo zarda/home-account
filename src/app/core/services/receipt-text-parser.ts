@@ -45,10 +45,15 @@ export interface ParsedReceiptText {
    * figure read and might have been the total (Total 1280 Tax ¥116);
    * 'discount' when the largest figure was read as an item or a subtotal a
    * discount printed under it was taken from, and the total the discount
-   * leaves won instead (Item $3.00, Coupon -$1.00, Total $2.00). Absent when
-   * nothing was demoted.
+   * leaves won instead (Item $3.00, Coupon -$1.00, Total $2.00); 'unmarked'
+   * when a figure written like money on a line with no currency mark is
+   * larger than every figure the receipt marks as money, and was read as the
+   * total because a marked figure and one more add up to it, or was passed
+   * over for the marked figure because nothing does (Eggs $10.86, Tax $0.87,
+   * Total 11.73; Total $12.50, Points balance 1,847). Absent when nothing was
+   * demoted.
    */
-  amountDemotion?: 'tender' | 'aside' | 'count' | 'discount';
+  amountDemotion?: 'tender' | 'aside' | 'count' | 'discount' | 'unmarked';
   /**
    * Which way the winning total moved, read from typography alone: 'credit'
    * when every copy of that figure carries a negative mark and nothing argues
@@ -172,6 +177,9 @@ const ISO_CODE_BESIDE_AMOUNT = [
 const NUMBER_TOKEN = /\d+(?:[.,'’\u00A0\u202F\u2009]\d+)*/gu;
 const GROUPING_MARKS = /['’\u00A0\u202F\u2009]/g;
 const FIGURE_CHARACTER = /[\d.,'’\u00A0\u202F\u2009]/u;
+// One or two digits between two marks: the 01 of 13.01.31. Money has one
+// decimal mark, after groups of three, so this is a date or a code.
+const SHORT_GROUP_INSIDE = /[.,'’\u00A0\u202F\u2009]\d{1,2}[.,'’\u00A0\u202F\u2009]/u;
 
 /** Longer runs of digits are phone numbers, receipt numbers and card fragments. */
 const MAX_PLAIN_DIGITS = 6;
@@ -317,7 +325,7 @@ interface AmountReading {
   amount: number;
   confidence: number;
   /** Why `confidence` sits under the tier's, when it does. */
-  demotion?: 'tender' | 'aside' | 'count' | 'discount';
+  demotion?: 'tender' | 'aside' | 'count' | 'discount' | 'unmarked';
   direction: 'credit' | 'debit';
   directionConfidence: number;
 }
@@ -699,8 +707,9 @@ function signFor(code: string, display: 'symbol' | 'narrowSymbol'): string {
 
 /**
  * Confidence multiplier when the winning figure was demoted: as cash tendered,
- * past a figure printed as a labelled aside, under a larger count, or as the
- * total a discount leaves.
+ * past a figure printed as a labelled aside, under a larger count, as the
+ * total a discount leaves, or beside a larger figure printed with no
+ * currency mark.
  */
 export const DEMOTION_FACTOR = 0.75;
 /** "x + y ≈ M" tolerance: half a cent absorbs float noise, integers must match exactly. */
@@ -843,6 +852,79 @@ function discountDemotion(
   return undefined;
 }
 
+/**
+ * A total printed with no currency mark on a receipt whose other lines print
+ * one: a figure written like money, on a line the receipt does not mark as
+ * money, larger than every figure it does (Eggs $10.86, Tax $0.87, Total
+ * 11.73). The marked figures outrank it by their tier, so the largest of them,
+ * an item, the subtotal or the tax, would be read with nothing to say the
+ * receipt prints a larger one. Nothing in the print tells such a total from a
+ * points balance or a running count written the same way (Total $12.50,
+ * Points balance 1,847), so the reading is graded under the bar either way.
+ *
+ * It moves to the unmarked figure only where a sum backs it: one of the
+ * tier's figures and one more figure of money, marked or written like it, add
+ * up to it, as a subtotal and its tax, or two items, make a total. And only
+ * where `movable` holds and the figure is printed unmarked, as every reading
+ * moved on position is. Otherwise the pick is kept.
+ *
+ * Three figures written like money are no such total. One that carries
+ * another mark than the pick does: a balance in accounting parentheses under
+ * an unmarked total is no rival to it. One with a short group in its middle
+ * (Lot 13.01.31), which is a date or a code: money has one decimal mark, after
+ * groups of three. And cash: a round figure that a marked figure printed
+ * before it and a figure printed after it add up to is the cash between a
+ * total and its change (Total $49.03, Cash 50.00, Change $0.97), and the
+ * total beside the mark is the total. Vocabulary-free on purpose: no label is
+ * read, so a whole number printed bare (合計 980 over 内税 ¥72), which a store
+ * or receipt number looks the same as, is not seen.
+ */
+function unmarkedTotal(
+  pick: AmountCandidate,
+  tier: AmountCandidate[],
+  candidates: AmountCandidate[],
+  movable: boolean,
+): { read: AmountCandidate | undefined } | undefined {
+  const top = Math.max(...tier.map(c => c.value));
+  const money = candidates.filter(
+    c => !c.aside && !c.clock && !c.count && !c.credit && (c.besideCurrency || isMoneyShaped(c.token)),
+  );
+  const parts = tier.filter(c => !c.aside && !c.credit);
+  /** The pairs, one of the tier's figures and one more of money, that add up to this figure. */
+  const sumsTo = (total: AmountCandidate): [part: AmountCandidate, added: AmountCandidate][] =>
+    parts.flatMap(part =>
+      money
+        .filter(
+          added =>
+            added !== total &&
+            added !== part &&
+            Math.abs(part.value + added.value - total.value) <= TENDER_SUM_TOLERANCE,
+        )
+        .map((added): [AmountCandidate, AmountCandidate] => [part, added]),
+    );
+  const isCash = (figure: AmountCandidate) =>
+    isTenderShaped(figure.value) &&
+    sumsTo(figure).some(([part, added]) => part.at < figure.at !== added.at < figure.at);
+  const larger = candidates.filter(
+    c =>
+      !c.printedBesideCurrency &&
+      !c.aside &&
+      !c.clock &&
+      isMoneyShaped(c.token) &&
+      !SHORT_GROUP_INSIDE.test(c.token) &&
+      c.value > top + TENDER_SUM_TOLERANCE &&
+      c.credit === pick.credit &&
+      !isCash(c),
+  );
+  if (larger.length === 0) {
+    return undefined;
+  }
+  if (!movable) {
+    return { read: undefined };
+  }
+  return { read: largestOf(larger.filter(total => !total.credit && sumsTo(total).length > 0)) };
+}
+
 function readAmount(lines: string[], marker: string): AmountReading {
   // Every line is read before any figure is settled as money or as a count,
   // so that what one line prints can be weighed against the others.
@@ -970,7 +1052,10 @@ function readAmount(lines: string[], marker: string): AmountReading {
         : [];
     const tendered = tenderedDemotion(pick, tier.of, counts, unmarked, movable);
     const discounted = tendered ? undefined : discountDemotion(pick, tier.of, movable);
-    const winner = tendered ?? discounted ?? pick;
+    // Only the strongest tier is outranked by print: a figure the receipt
+    // marks as money beats one it only writes like money.
+    const bare = index === 0 ? unmarkedTotal(pick, tier.of, candidates, movable) : undefined;
+    const winner = tendered ?? discounted ?? bare?.read ?? pick;
     const rivals = countsThatMayBeTotal(winner, tier.of, counts);
     // Each of these moves the reading on a rule rather than on anything
     // printed, so each lands under the review bar: passing an aside; keeping
@@ -978,7 +1063,8 @@ function readAmount(lines: string[], marker: string): AmountReading {
     // a figure printed on its own (Total 12.50 / (Reg $15.00)); reading a
     // figure a larger count might have been the total in place of (Total 1280
     // Tax ¥116); reading past cash tendered; and reading the total a discount
-    // leaves under a larger figure.
+    // leaves under a larger figure; and reading, or passing over, a larger
+    // figure printed with no currency mark.
     const passedAside =
       pick.value < largest.value ||
       (winner.aside && tiers.slice(index + 1).some(weaker => weaker.of.some(c => !c.aside)));
@@ -990,7 +1076,9 @@ function readAmount(lines: string[], marker: string): AmountReading {
           ? 'tender'
           : discounted
             ? 'discount'
-            : undefined;
+            : bare
+              ? 'unmarked'
+              : undefined;
     return {
       amount: winner.value,
       confidence: demotion ? tier.confidence * DEMOTION_FACTOR : tier.confidence,
