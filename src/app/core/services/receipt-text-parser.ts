@@ -124,6 +124,9 @@ const YEAR_LAST_DATE = new RegExp(
   'gu',
 );
 
+/** A two-digit-year date read year first because day first it would lie ahead. */
+const YEAR_FIRST_GUESS_GRADE = 0.3;
+
 const CURRENCY_SIGN = /\p{Sc}/u;
 
 // A three-letter code only means a currency where it sits against the money.
@@ -387,13 +390,29 @@ function readDate(text: string, marker: string): { date: Date; confidence: numbe
     const ambiguous = first <= 12 && second <= 12;
     const readDayFirst = first > 12 || (ambiguous && dayFirst);
     const year = fullYear(yearDigits);
-    const date = readDayFirst ? toDate(year, second, first) : toDate(year, first, second);
+    const [month, day] = readDayFirst ? [second, first] : [first, second];
+    let date = toDate(year, month, day);
+    let confidence = (yearDigits.length === 4 ? 0.9 : 0.5) * (ambiguous ? 0.6 : 1);
+    if (!date && liesAhead(year, month, day)) {
+      // Nothing is dated ahead, so a date that would be was not read the way
+      // it was written. Where both numbers could be a month, it is the other
+      // way round from how this device writes dates (11/08/26 on 30 October
+      // 2026 is 8 November to one device and 11 August to the receipt).
+      // Where the first cannot be a month and the year has two digits, the
+      // date written whole is printed year first (23.01.27, 26.10.30), which
+      // is one more guess than a date read in order, and graded so.
+      if (ambiguous) {
+        date = toDate(year, day, month);
+      } else if (whole && yearDigits.length === 2 && first > 12) {
+        date = toDate(2000 + first, second, Number(yearDigits));
+        confidence = YEAR_FIRST_GUESS_GRADE;
+      }
+    }
     if (!date) {
       continue;
     }
 
-    const confidence = yearDigits.length === 4 ? 0.9 : 0.5;
-    const found = { date, confidence: ambiguous ? confidence * 0.6 : confidence, matched: run };
+    const found = { date, confidence, matched: run };
     if (spaced || whole) {
       return found;
     }
@@ -471,6 +490,12 @@ function toDate(year: number, month: number, day: number): Date | undefined {
     return undefined;
   }
   return date;
+}
+
+/** Whether these parts make a real day that nothing can have been bought on yet. */
+function liesAhead(year: number, month: number, day: number): boolean {
+  const date = localDateFromParts(year, month - 1, day);
+  return !!date && date.getTime() > Date.now() + DAY_MS;
 }
 
 /** A two-digit year on a receipt is this century: 26 is 2026, not 1926. */

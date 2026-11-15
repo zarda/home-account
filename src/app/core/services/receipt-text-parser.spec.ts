@@ -1060,21 +1060,27 @@ describe('parseReceiptOcrText', () => {
           jasmine.clock().uninstall();
         });
 
-        it('reads a two-digit-year date printed year first as one figure of money, the known gap', () => {
-          // Read day first, 23.01.27 is a date in 2027, so the reader turns it
-          // down and the three groups are left as one figure written like money.
-          // 26.10.180 read a date across the line break above it (7 / 23.01).
-          expect(parseReceiptOcrText('Market 7\n23.01.27 JPY\nお茶 ¥150\n弁当 ¥480\n合計 ¥630')).toEqual(
-            jasmine.objectContaining({ amount: 2301.27, amountConfidence: 0.8, dateConfidence: 0 }),
+        it('reads a two-digit-year date printed year first where day first it would lie ahead', () => {
+          // Read day first, 23.01.27 is a date in 2027, which nothing is dated
+          // yet. Its three groups used to be left as one figure written like
+          // money, larger than the total; they are read year first now, graded
+          // as the guess it is.
+          const purchase = 'Market 7\n23.01.27 JPY\nお茶 ¥150\n弁当 ¥480\n合計 ¥630';
+          expect(parseReceiptOcrText(purchase)).toEqual(
+            jasmine.objectContaining({ amount: 630, amountConfidence: 0.8, dateConfidence: 0.3 }),
           );
-          expect(parseReceiptOcrText('Market 7\n23.01.27\nREFUND\nItem -12.50\nTotal -12.50')).toEqual(
+          expect(dated(purchase)).toEqual([2023, 1, 27]);
+          const refund = 'Market 7\n23.01.27\nREFUND\nItem -12.50\nTotal -12.50';
+          expect(parseReceiptOcrText(refund)).toEqual(
             jasmine.objectContaining({
-              amount: 2301.27,
+              amount: 12.5,
               amountConfidence: 0.5,
-              direction: 'debit',
-              directionConfidence: 0,
+              direction: 'credit',
+              directionConfidence: 0.5,
+              dateConfidence: 0.3,
             }),
           );
+          expect(dated(refund)).toEqual([2023, 1, 27]);
         });
       });
 

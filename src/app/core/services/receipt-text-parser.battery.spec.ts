@@ -282,8 +282,8 @@ const ADR_0186: readonly Row[] = [
   ['C158', 'Laden\nBrot 1 €2,10\nKaffee 2 x 5,10 10,20\nSumme 10,20', 'purchase', 10.2, '2.1 0.8 debit 0', '='],
   ['C159', 'REFUND\n13.01.\n24\nItem -4.50\nTotal -4.50', 'refund', 4.5, '13.01 0.5 debit 0', '='],
   ['C160', 'Shop\nItem 4.50\nTotal 4.50 EUR 13.01.\n24', 'purchase', 4.5, '13.01 0.8 debit 0', '4.5 0.8 debit 0'],
-  ['C161', 'Market 7\n23.01.27 JPY\nお茶 ¥150\n弁当 ¥480\n合計 ¥630', 'purchase', 630, '2301.27 0.8 debit 0', '='],
-  ['C162', 'Market 7\n23.01.27\nREFUND\nItem -12.50\nTotal -12.50', 'refund', 12.5, '2301.27 0.5 debit 0', '='],
+  ['C161', 'Market 7\n23.01.27 JPY\nお茶 ¥150\n弁当 ¥480\n合計 ¥630', 'purchase', 630, '630 0.8 debit 0', '='],
+  ['C162', 'Market 7\n23.01.27\nREFUND\nItem -12.50\nTotal -12.50', 'refund', 12.5, '12.5 0.5 credit 0.5', '='],
   ['C163', 'Shop\nItem 1 $10.00\nTotal $27.01 12/5/24', 'purchase', 27.01, '27.01 0.8 debit 0', '='],
   ['C164', 'Shop\nItem 1 $10.00\nTotal $27.01 12/5/24\nCash $50.00\nChange $22.99', 'purchase', 27.01, '27.01 0.6 tender debit 0', '='],
   ['C165', 'Shop\nItem $3\nTotal $3\nCard ****1234 $3 1/13/24', 'purchase', 3, '3 0.8 debit 0', '='],
@@ -425,15 +425,14 @@ describe('the receipt battery (ADR 0185, ADR 0186)', () => {
 
   it('leaves silent only the counterexamples ADR 0186 records as known gaps', () => {
     expect(score(ADR_0186, 'joined').silent).toEqual([
-      'C36', 'C37', 'C40', 'C92', 'C120', 'C138', 'C152', 'C156', 'C158', 'C160', 'C161', 'C168',
-      'C169', 'C178', 'C180',
+      'C36', 'C37', 'C40', 'C92', 'C120', 'C138', 'C152', 'C156', 'C158', 'C160', 'C168', 'C169',
+      'C178', 'C180',
     ]);
     expect(score(ADR_0186, 'split').silent).toEqual([
       'C18', 'C19', 'C36', 'C37', 'C40', 'C41', 'C42', 'C43', 'C44', 'C45', 'C46', 'C47', 'C48',
       'C49', 'C66', 'C92', 'C93', 'C94', 'C95', 'C96', 'C97', 'C105', 'C106', 'C107', 'C108',
       'C109', 'C110', 'C111', 'C114', 'C115', 'C116', 'C117', 'C120', 'C121', 'C122', 'C123',
-      'C124', 'C126', 'C127', 'C128', 'C138', 'C152', 'C156', 'C158', 'C161', 'C168', 'C178',
-      'C180',
+      'C124', 'C126', 'C127', 'C128', 'C138', 'C152', 'C156', 'C158', 'C168', 'C178', 'C180',
     ]);
   });
 
@@ -448,7 +447,7 @@ describe('the receipt battery (ADR 0185, ADR 0186)', () => {
     expect(silentStrictly(ADR_0185, 'split')).toEqual(['X6', 'X7', 'X12', 'X13']);
     expect(silentStrictly(ADR_0186, 'joined')).toEqual([
       'C30', 'C34', 'C35', 'C36', 'C37', 'C40', 'C92', 'C120', 'C138', 'C152', 'C156', 'C157',
-      'C158', 'C159', 'C160', 'C161', 'C162', 'C168', 'C169', 'C178', 'C179', 'C180',
+      'C158', 'C159', 'C160', 'C168', 'C169', 'C178', 'C179', 'C180',
     ]);
     expect(silentStrictly(ADR_0186, 'split')).toEqual([
       'C18', 'C19', 'C30', 'C34', 'C35', 'C36', 'C37', 'C40', 'C41', 'C42', 'C43', 'C44', 'C45',
@@ -456,7 +455,7 @@ describe('the receipt battery (ADR 0185, ADR 0186)', () => {
       'C97', 'C105', 'C106', 'C107', 'C108', 'C109', 'C110', 'C111', 'C112', 'C113', 'C114', 'C115',
       'C116', 'C117', 'C118', 'C120', 'C121', 'C122', 'C123', 'C124', 'C125', 'C126', 'C127',
       'C128', 'C134', 'C135', 'C136', 'C138', 'C149', 'C152', 'C156', 'C157', 'C158', 'C159',
-      'C161', 'C162', 'C168', 'C178', 'C179', 'C180',
+      'C168', 'C178', 'C179', 'C180',
     ]);
   });
 });
