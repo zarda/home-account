@@ -324,11 +324,16 @@ interface AmountReading {
 
 export function parseReceiptOcrText(text: string): ParsedReceiptText {
   const { currency, confidence: currencyConfidence, marker } = readCurrency(text);
-  const { date, confidence: dateConfidence, matched } = readDate(text, marker);
+  const { date, confidence: dateConfidence, matched, others } = readDate(text, marker);
 
   // The date comes out of the text before the amounts are read: 15/01/2026 is
-  // three numbers, and 2026 is larger than any total the receipt carries.
-  const withoutDate = matched ? text.split(matched).join(' ') : text;
+  // three numbers, and 2026 is larger than any total the receipt carries. So
+  // does every other date the receipt writes whole, a return-by date or the
+  // day a card was charged: only one is the receipt's date, none is money.
+  // A date read across a line break leaves the break where it was.
+  const withoutDate = [matched, ...others]
+    .filter(printed => printed !== '')
+    .reduce((rest, printed) => rest.split(printed).join(printed.includes('\n') ? '\n' : ' '), text);
   const lines = withoutDate.split('\n').map(line => line.trim()).filter(line => line.length > 0);
 
   const {
@@ -367,45 +372,79 @@ export function parseReceiptOcrText(text: string): ParsedReceiptText {
  * The purchase date, plus the text it was read from so the caller can keep its
  * digits out of the amount hunt.
  */
-function readDate(text: string, marker: string): { date: Date; confidence: number; matched: string } {
+interface DateReading {
+  date: Date;
+  confidence: number;
+  /** The text the date was read from. */
+  matched: string;
+  /** Every other date the receipt writes whole, as printed. */
+  others: string[];
+}
+
+/** A run of numbers a date can be made of, and where it stands in the text. */
+interface DatedRun {
+  date: Date;
+  confidence: number;
+  matched: string;
+  /** Written whole: two short numbers and a year on one mark printed twice. */
+  whole: boolean;
+  start: number;
+  end: number;
+}
+
+function readDate(text: string, marker: string): DateReading {
+  const yearFirst: Omit<DatedRun, 'whole' | 'start' | 'end'>[] = [];
   for (const match of text.matchAll(YEAR_FIRST_DATE)) {
     const date = toDate(Number(match[2]), Number(match[3]), Number(match[4]));
     if (date) {
-      return { date, confidence: 0.9, matched: match[1] };
+      yearFirst.push({ date, confidence: 0.9, matched: match[1] });
     }
   }
+  const runs = yearLastRuns(text, marker);
+  const writtenWhole = (except?: DatedRun) =>
+    runs.filter(run => run.whole && run !== except && !run.matched.includes('\n')).map(run => run.matched);
+  if (yearFirst.length > 0) {
+    const [{ date, confidence, matched }, ...rest] = yearFirst;
+    return { date, confidence, matched, others: [...rest.map(other => other.matched), ...writtenWhole()] };
+  }
 
-  const dayFirst = devicePrefersDayFirst();
-  // Scanned by hand rather than with matchAll, so that the search starts
-  // again just after a run's first number: the 13 of Milch 2 € 13 24.07.24
-  // starts a run no date can be made of (13 24.07), and the date printed
-  // after it starts inside that run.
-  const pattern = new RegExp(YEAR_LAST_DATE.source, YEAR_LAST_DATE.flags);
   // A run that makes a date without being written whole waits for a whole
   // date that starts inside it: the 8 of 8円 27-07-2025 and the day and month
   // after it make a date too, and the date is the one printed whole.
-  let spaced: { date: Date; confidence: number; matched: string; end: number } | undefined;
+  const first = runs.at(0);
+  const read = first && !first.whole ? (runs.find(run => run.whole && run.start < first.end) ?? first) : first;
+  if (!read) {
+    return { date: new Date(), confidence: 0, matched: '', others: [] };
+  }
+  return { date: read.date, confidence: read.confidence, matched: read.matched, others: writtenWhole(read) };
+}
+
+/**
+ * Every run of two short numbers and a year that a date can be made of, in
+ * the order printed. The search starts again just after each run's first
+ * number: the 13 of Milch 2 € 13 24.07.24 starts a run no date can be made of
+ * (13 24.07), and the date printed after it starts inside that run.
+ */
+function yearLastRuns(text: string, marker: string): DatedRun[] {
+  const dayFirst = devicePrefersDayFirst();
   const signed = signedFigures(text, marker);
+  const pattern = new RegExp(YEAR_LAST_DATE.source, YEAR_LAST_DATE.flags);
+  const runs: DatedRun[] = [];
   for (let match = pattern.exec(text); match; match = pattern.exec(text)) {
     const { run, first: firstDigits, second: secondDigits, year: yearDigits, join } = match.groups as Record<
       'run' | 'first' | 'second' | 'year',
       string
     > & { join?: string };
     const start = match.index + match[0].length - run.length;
+    const end = start + run.length;
     pattern.lastIndex = start + firstDigits.length;
     const whole = WHOLE_DATE_RUN.test(run);
-    if (spaced && start >= spaced.end) {
-      break;
-    }
-    if (spaced && !whole) {
-      continue;
-    }
     // A date is printed on one line. Only one written whole is read across
     // a line break, and only where the number on the next line ends there.
-    if (run.includes('\n') && (!whole || RUNS_ON_AS_A_FIGURE.test(text.slice(start + run.length)))) {
+    if (run.includes('\n') && (!whole || RUNS_ON_AS_A_FIGURE.test(text.slice(end)))) {
       continue;
     }
-    if (takesInMoney(start, start + run.length, whole, signed)) {
+    if (takesInMoney(start, end, whole, signed)) {
       continue;
     }
     const first = Number(firstDigits);
@@ -441,18 +480,10 @@ function readDate(text: string, marker: string): { date: Date; confidence: numbe
 
     // A number the date was glued to goes with it: the 4711 of 4711.13/01/25
     // is a code, and left behind it would stand as money.
-    const matched = join === undefined ? run : text.slice(figureStart(text, start), start + run.length);
-    const found = { date, confidence, matched };
-    if (spaced || whole) {
-      return found;
-    }
-    spaced = { ...found, end: start + run.length };
+    const matched = join === undefined ? run : text.slice(figureStart(text, start), end);
+    runs.push({ date, confidence, matched, whole, start, end });
   }
-  if (spaced) {
-    return { date: spaced.date, confidence: spaced.confidence, matched: spaced.matched };
-  }
-
-  return { date: new Date(), confidence: 0, matched: '' };
+  return runs;
 }
 
 /** Where the figure that ends just before `at` starts. */
