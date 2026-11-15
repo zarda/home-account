@@ -163,9 +163,9 @@ const ADR_0186: readonly Row[] = [
   ['C38', 'Shop\nNote (see back\nTotal $12.50)\nItem $3.00', 'purchase', 12.5, '3 0.6 aside debit 0.3', '12.5 0.8 debit 0'],
   ['C39', 'Shop\n2026-01-15 14:32\n(Total $64.79)', 'purchase', 64.79, '64.79 0.6 aside debit 0.3', '='],
   ['C40', 'REFUND\n(Total $64.79)', 'refund', 64.79, '64.79 0.8 debit 0.3', '='],
-  ['C41', '店\n合計 980 内税 ¥72\n(内消費税等 ¥72)', 'purchase', 980, '72 0.6 count debit 0', '72 0.8 debit 0'],
+  ['C41', '店\n合計 980 内税 ¥72\n(内消費税等 ¥72)', 'purchase', 980, '72 0.6 count debit 0.3', '72 0.8 debit 0.3'],
   ['C42', '店\n合計 1280 内税 ¥116\n内消費税等 ¥116', 'purchase', 1280, '116 0.6 count debit 0', '116 0.8 debit 0'],
-  ['C43', 'Shop\nTotal 12 Tax $0.96\n(Tax $0.96)', 'purchase', 12, '0.96 0.6 count debit 0', '0.96 0.8 debit 0'],
+  ['C43', 'Shop\nTotal 12 Tax $0.96\n(Tax $0.96)', 'purchase', 12, '0.96 0.6 count debit 0.3', '0.96 0.8 debit 0.3'],
   ['C44', 'Shop\nBurger $8.00\nFries $3.04\nTotal 12 Tax $0.96', 'purchase', 12, '8 0.6 count debit 0', '8 0.8 debit 0'],
   ['C45', '店\nおにぎり ¥168\nお茶 ¥151\n合計 319 内税 ¥23', 'purchase', 319, '168 0.6 count debit 0', '168 0.8 debit 0'],
   ['C46', '店\n小計 ¥296\n合計 319 内税 ¥23', 'purchase', 319, '296 0.6 count debit 0', '296 0.8 debit 0'],
@@ -203,7 +203,7 @@ const ADR_0186: readonly Row[] = [
   ['C79', 'Shop\nTOTAL USD 15 2 ITEMS', 'purchase', 15, '15 0.8 debit 0', '='],
   ['C80', 'Shop\nTotal 15 USD (2 items)', 'purchase', 15, '15 0.8 debit 0', '='],
   ['C81', 'Shop\nTotal ¥1,280 / USD 8.50', 'purchase', 1280, '1280 0.8 debit 0', '='],
-  ['C82', '店\n合計 ¥1,080\n(8%対象 ¥1,080 内消費税 ¥80)', 'purchase', 1080, '1080 0.8 debit 0', '='],
+  ['C82', '店\n合計 ¥1,080\n(8%対象 ¥1,080 内消費税 ¥80)', 'purchase', 1080, '1080 0.8 debit 0.3', '='],
   ['C83', '店\n合計 ¥2,180\n(8%対象 ¥1,080 内消費税 ¥80)\n(10%対象 ¥1,100 内消費税 ¥100)', 'purchase', 2180, '2180 0.8 debit 0', '='],
   ['C84', '店\nおにぎり ¥150\n合計 ¥162\n(税抜 ¥150)', 'purchase', 162, '162 0.8 debit 0', '='],
   ['C85', '店\n小計 ¥150\n(税抜)\n合計 ¥162', 'purchase', 162, '162 0.8 debit 0', '='],
@@ -428,10 +428,10 @@ describe('the receipt battery (ADR 0185, ADR 0186)', () => {
       'C37', 'C92', 'C120', 'C152', 'C168', 'C169', 'C178',
     ]);
     expect(score(ADR_0186, 'split').silent).toEqual([
-      'C18', 'C19', 'C37', 'C41', 'C42', 'C43', 'C44', 'C45', 'C46', 'C47', 'C48', 'C49', 'C66',
-      'C92', 'C93', 'C94', 'C95', 'C96', 'C97', 'C105', 'C106', 'C107', 'C108', 'C109', 'C110',
-      'C111', 'C114', 'C115', 'C116', 'C117', 'C120', 'C121', 'C122', 'C123', 'C124', 'C126',
-      'C127', 'C128', 'C152', 'C168', 'C178',
+      'C18', 'C19', 'C37', 'C42', 'C44', 'C45', 'C46', 'C47', 'C48', 'C49', 'C66', 'C92', 'C93',
+      'C94', 'C95', 'C96', 'C97', 'C105', 'C106', 'C107', 'C108', 'C109', 'C110', 'C111', 'C114',
+      'C115', 'C116', 'C117', 'C120', 'C121', 'C122', 'C123', 'C124', 'C126', 'C127', 'C128',
+      'C152', 'C168', 'C178',
     ]);
   });
 

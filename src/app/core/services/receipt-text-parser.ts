@@ -1135,7 +1135,12 @@ function readAmount(lines: string[], marker: string): AmountReading {
     // under a purchase. An aside is never marked, so where the figure read is
     // one, or the reading passed one, an unmarked purchase is no more than a
     // guess, and its type is sent to the reviewer as a twinned total's is.
-    const besideAside = winner.aside || pick.value < largest.value;
+    // The same holds where the figure read is printed again as an aside:
+    // one item, and (Total ¥4,493) repeating it.
+    const besideAside =
+      winner.aside ||
+      pick.value < largest.value ||
+      candidates.some(c => c.aside && Math.abs(c.value - winner.value) <= TENDER_SUM_TOLERANCE);
     const unasked = direction === 'debit' && directionConfidence === 0;
     return {
       amount: winner.value,

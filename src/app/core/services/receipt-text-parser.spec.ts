@@ -1551,6 +1551,15 @@ describe('parseReceiptOcrText', () => {
       );
     });
 
+    it('asks about the type where the figure read is printed again as a labelled aside', () => {
+      // One item, and the total in labelled parentheses repeating it: the
+      // figure read is the item's, printed on its own, and its copy is the
+      // aside. A refund slip prints its total that way too.
+      for (const text of ['REFUND\nTea ¥4,493\n(Total ¥4,493)', 'REFUND\nTea\n¥4,493\n(Total\n¥4,493)']) {
+        expect(parseReceiptOcrText(text)).withContext(text).toEqual(graded(4493, 0.8, 'debit', 0.3));
+      }
+    });
+
     it('keeps a credit printed on the figure read, beside an aside or inside labelled parentheses', () => {
       for (const text of [
         'REFUND\nJacket $59.99\nTax $4.80\n($64.79)',
