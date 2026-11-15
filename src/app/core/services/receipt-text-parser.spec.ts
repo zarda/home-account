@@ -782,6 +782,31 @@ describe('parseReceiptOcrText', () => {
         }
       });
 
+      it('reads a wrapped date whose second mark went to the next line with the year', () => {
+        const text = 'Shop\n15/01\n/2026\nTotal $5.00';
+        expect(parseReceiptOcrText(text)).toEqual(
+          jasmine.objectContaining({ amount: 5, amountConfidence: 0.8, dateConfidence: 0.9 }),
+        );
+        expect(dated(text)).toEqual([2026, 1, 15]);
+      });
+
+      it('reads no date across a line break where the next line starts a price, a negative figure or a bare year', () => {
+        const cases: [text: string, amount: number][] = [
+          // 24.50 runs on as a figure: it is a price, not the year 24.
+          ['Shop\nItem 13.01.\n24.50\nTotal 24.50', 24.5],
+          // A minus that starts the next line marks its figure, not the date.
+          ['Shop\nItem 12.01\n-24.00\nTotal -24.00', 24],
+          // No mark beside the break: 28.09 over 26 is two lines, the known gap
+          // the battery records for a split line (C149).
+          ['REFUND\n28.09\n26\nItem\n-12.50\nTotal\n-12.50', 28.09],
+        ];
+        for (const [text, amount] of cases) {
+          expect(parseReceiptOcrText(text))
+            .withContext(text)
+            .toEqual(jasmine.objectContaining({ amount, dateConfidence: 0 }));
+        }
+      });
+
       it('reads a date wherever one to three marks or spaces part three short numbers, the known gap', () => {
         expect(parseReceiptOcrText('Shop\nItem 2 5 10\nTotal 10').dateConfidence).toBe(0.3);
         const time = parseReceiptOcrText('Shop\n10:15:26 01/15/2026\nTotal $5');
