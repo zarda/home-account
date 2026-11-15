@@ -962,6 +962,22 @@ describe('parseReceiptOcrText', () => {
         }
       });
 
+      it('reads the date written whole where a figure before it makes a run of its own', () => {
+        // The 8 of 8円 and the day and month after it make a date as well
+        // (27 August 2007); the date is the one printed whole, on one mark.
+        const text = 'Shop\n8円 27-07-2025\nTotal 8円';
+        expect(parseReceiptOcrText(text).dateConfidence).toBe(0.9);
+        expect(dated(text)).toEqual([2025, 7, 27]);
+      });
+
+      it('keeps a run of spaced numbers as the date where no whole date starts inside it', () => {
+        const text = 'Shop\nTotal $38.01 01 01 24';
+        expect(parseReceiptOcrText(text)).toEqual(
+          jasmine.objectContaining({ amount: 38.01, amountConfidence: 0.8, dateConfidence: 0.3 }),
+        );
+        expect(dated(text)).toEqual([2024, 1, 1]);
+      });
+
       it('reads no date glued to a figure by a mark, the known gap', () => {
         // A date never starts inside a figure, so one glued to a code by a mark
         // that joins digits (4711.13/01/25) is not read, and the code with the
