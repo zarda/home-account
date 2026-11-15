@@ -875,6 +875,26 @@ describe('parseReceiptOcrText', () => {
         );
       });
 
+      it('reads the date after a price a sign is spaced from where neither is written whole', () => {
+        // 27.01 01 is a run a date could be made of, and the price is the
+        // figure the sign touches: the date is the three numbers after it.
+        for (const text of ['Shop\nTotal $ 27.01 01 13 25', 'Shop\nTotal 27,01 € 01 13 25']) {
+          expect(parseReceiptOcrText(text))
+            .withContext(text)
+            .toEqual(jasmine.objectContaining({ amount: 27.01, amountConfidence: 0.8, dateConfidence: 0.5 }));
+          expect(dated(text)).withContext(text).toEqual([2025, 1, 13]);
+        }
+      });
+
+      it('reads a date written whole that a sign touches', () => {
+        for (const text of ['Shop\n€ 15.01.26\nSumme €5,00', 'Shop\nTotal 5,00 € 15.01.26']) {
+          expect(parseReceiptOcrText(text))
+            .withContext(text)
+            .toEqual(jasmine.objectContaining({ amount: 5, amountConfidence: 0.8, dateConfidence: 0.5 }));
+          expect(dated(text)).withContext(text).toEqual([2026, 1, 15]);
+        }
+      });
+
       it('reads a run that holds a whole price before its sign as a date, and loses that price, the known gap', () => {
         // A count before the total and the total, (2) 12,10 €, make a run that
         // holds the price whole, before the sign after it. Barring that run
