@@ -1073,6 +1073,15 @@ describe('parseReceiptOcrText', () => {
         }
       });
 
+      it('starts no date after a joining mark where the same mark carries on, or a price would be cut', () => {
+        // 1.234,56 is one figure, and so is a price OCR glued a date to: the
+        // sign touches all of it, and a price is no part of a date.
+        expect(parseReceiptOcrText('Shop\nTotal 1.234,56 €')).toEqual(
+          jasmine.objectContaining({ amount: 1234.56, amountConfidence: 0.8, dateConfidence: 0 }),
+        );
+        expect(parseReceiptOcrText('Shop\nTotal $12.50.01/15/26').dateConfidence).toBe(0);
+      });
+
       it('reads no date glued after a currency sign, and reads a day-first one as one figure of money, the known gap', () => {
         // A date never starts at a figure its sign is glued to, so a date
         // printed glued after a sign is not read. Day first with dots, its
