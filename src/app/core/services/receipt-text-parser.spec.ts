@@ -1581,6 +1581,37 @@ describe('parseReceiptOcrText', () => {
         );
       });
 
+      it('reads a figure after a parenthesis nothing closes as an aside', () => {
+        // OCR lost the closing parenthesis, joined and where Vision hands the
+        // figure back on a line of its own.
+        for (const text of ['Shop\nTotal $12.50\n(Reg $15.00', 'Shop\nTotal\n$12.50\n(Reg\n$15.00']) {
+          const result = parseReceiptOcrText(text);
+          expect(result).withContext(text).toEqual(graded(12.5, 0.6, 'debit', 0));
+          expect(result.amountDemotion).withContext(text).toBe('aside');
+        }
+      });
+
+      it('reads no aside into the line after an unclosed parenthesis where that line has a word of its own', () => {
+        // (Open 9-5 never closes; Total $12.50 is a new line of the receipt.
+        // Nor are parentheses that hold a figure and its sign alone an aside.
+        for (const text of ['Shop\n(Open 9-5\nTotal $12.50', 'Shop\nItem $3.00\nTotal ($12.50']) {
+          const result = parseReceiptOcrText(text);
+          expect(result).withContext(text).toEqual(jasmine.objectContaining({ amount: 12.5, amountConfidence: 0.8 }));
+          expect(result.amountDemotion).withContext(text).toBeUndefined();
+        }
+      });
+
+      it('reads past a total printed after a parenthesis that never closes, flagged, the cost of the rule', () => {
+        // As its closed form, Total (incl. tax $12.50), already reads.
+        const result = parseReceiptOcrText('Shop\nItem $3.00\nTotal (incl. tax $12.50');
+        expect(result).toEqual(graded(3, 0.6, 'debit', 0));
+        expect(result.amountDemotion).toBe('aside');
+      });
+
+      it('reads a regular price printed with no parenthesis as the total, the known gap', () => {
+        expect(parseReceiptOcrText('Shop\nTotal $12.50\nReg. Price $15.00')).toEqual(graded(15, 0.8, 'debit', 0));
+      });
+
       it('reads a label glued to its sign as a label, and the figure as an aside', () => {
         // Any three capitals before a sign used to be the sign's own, so
         // (REG$ read as accounting parentheses and the regular price as a
