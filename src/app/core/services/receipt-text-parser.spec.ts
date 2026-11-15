@@ -1581,10 +1581,13 @@ describe('parseReceiptOcrText', () => {
         );
       });
 
-      it("reads a label glued to its sign as the sign's capitals, the known gap", () => {
-        expect(parseReceiptOcrText('Shop\nTotal $12.50\n(REG$15.00)')).toEqual(
-          graded(15, 0.8, 'credit', 0.5),
-        );
+      it('reads a label glued to its sign as a label, and the figure as an aside', () => {
+        // Any three capitals before a sign used to be the sign's own, so
+        // (REG$ read as accounting parentheses and the regular price as a
+        // refund's total. REG is no currency's letters.
+        const result = parseReceiptOcrText('Shop\nTotal $12.50\n(REG$15.00)');
+        expect(result).toEqual(graded(12.5, 0.6, 'debit', 0));
+        expect(result.amountDemotion).toBe('aside');
       });
     });
   });

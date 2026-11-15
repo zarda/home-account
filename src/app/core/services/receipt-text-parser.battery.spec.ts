@@ -156,7 +156,7 @@ const ADR_0186: readonly Row[] = [
   ['C31', '店\n合計 ¥1,000\n（税込 ¥1,100）', 'purchase', 1100, '1000 0.6 aside debit 0', '='],
   ['C32', 'Shop\nSubtotal $11.30\n(Total incl. tax $12.50)', 'purchase', 12.5, '11.3 0.6 aside debit 0', '='],
   ['C33', 'Shop\nItem $5.00\nItem $7.50\nPaid (VISA $12.50)', 'purchase', 12.5, '7.5 0.6 aside debit 0', '='],
-  ['C34', 'Shop\nTotal $12.50\n(REG$15.00)', 'purchase', 12.5, '15 0.8 credit 0.5', '='],
+  ['C34', 'Shop\nTotal $12.50\n(REG$15.00)', 'purchase', 12.5, '12.5 0.6 aside debit 0', '='],
   ['C35', '返品\nジャケット 5,980円\n消費税 598円\n(6,578円)', 'refund', 6578, '5980 0.38 aside debit 0', '='],
   ['C36', 'Shop\nTotal $12.50\n(Reg $15.00', 'purchase', 12.5, '15 0.8 debit 0', '='],
   ['C37', 'Shop\nTotal $12.50\nReg. Price $15.00', 'purchase', 12.5, '15 0.8 debit 0', '='],
@@ -445,12 +445,12 @@ describe('the receipt battery (ADR 0185, ADR 0186)', () => {
     expect(silentStrictly(ADR_0185, 'joined')).toEqual(['X12', 'X13']);
     expect(silentStrictly(ADR_0185, 'split')).toEqual(['X6', 'X7', 'X12', 'X13']);
     expect(silentStrictly(ADR_0186, 'joined')).toEqual([
-      'C30', 'C34', 'C35', 'C36', 'C37', 'C40', 'C92', 'C120', 'C152', 'C168', 'C169', 'C178',
+      'C30', 'C35', 'C36', 'C37', 'C40', 'C92', 'C120', 'C152', 'C168', 'C169', 'C178',
     ]);
     expect(silentStrictly(ADR_0186, 'split')).toEqual([
-      'C18', 'C19', 'C30', 'C34', 'C35', 'C36', 'C37', 'C40', 'C41', 'C42', 'C43', 'C44', 'C45',
-      'C46', 'C47', 'C48', 'C49', 'C53', 'C54', 'C65', 'C66', 'C92', 'C93', 'C94', 'C95', 'C96',
-      'C97', 'C105', 'C106', 'C107', 'C108', 'C109', 'C110', 'C111', 'C112', 'C113', 'C114', 'C115',
+      'C18', 'C19', 'C30', 'C35', 'C36', 'C37', 'C40', 'C41', 'C42', 'C43', 'C44', 'C45', 'C46',
+      'C47', 'C48', 'C49', 'C53', 'C54', 'C65', 'C66', 'C92', 'C93', 'C94', 'C95', 'C96', 'C97',
+      'C105', 'C106', 'C107', 'C108', 'C109', 'C110', 'C111', 'C112', 'C113', 'C114', 'C115',
       'C116', 'C117', 'C118', 'C120', 'C121', 'C122', 'C123', 'C124', 'C125', 'C126', 'C127',
       'C128', 'C134', 'C135', 'C136', 'C149', 'C152', 'C168', 'C178',
     ]);

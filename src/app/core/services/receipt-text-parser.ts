@@ -184,9 +184,6 @@ const SHORT_GROUP_INSIDE = /[.,'’\u00A0\u202F\u2009]\d{1,2}[.,'’\u00A0\u202F
 /** Longer runs of digits are phone numbers, receipt numbers and card fragments. */
 const MAX_PLAIN_DIGITS = 6;
 
-// A currency sign, after up to three capitals (HK$, NT$, US$). Capitals only:
-// a CJK or lowercase letter there is a word (税込¥1,280), not part of the sign.
-const SIGN = '\\p{Lu}{0,3}\\p{Sc}';
 // The two forms of parenthesis a receipt prints, as class bodies without the
 // brackets so that one copy serves every pattern built from them.
 const OPEN_PARENS = '(\\uFF08';
@@ -214,22 +211,74 @@ const MINUS_FOLLOWS =
 // digit, where a mark between two runs of digits joins them, as the dashes in
 // 03-3461-8901 do. A dash after the figure is the stop a Japanese receipt
 // prints against alteration (¥10,000-), so nothing after it is read.
-const NEGATIVE_BEFORE = new RegExp(
-  `(?:(?:^|${MINUS_FOLLOWS})${MINUS}(?:${SIGN}\\s?)?` +
-    `|(?:^|[^\\p{N}])${TRIANGLE}\\s?(?:${SIGN}\\s?)?` +
-    `|\\p{Sc}${MINUS})$`,
-  'u',
-);
-const OPENS_BEFORE = new RegExp(`[${OPEN_PARENS}](${SIGN})?$`, 'u');
+const negativeBefore = (sign: string) =>
+  new RegExp(
+    `(?:(?:^|${MINUS_FOLLOWS})${MINUS}(?:${sign}\\s?)?` +
+      `|(?:^|[^\\p{N}])${TRIANGLE}\\s?(?:${sign}\\s?)?` +
+      `|\\p{Sc}${MINUS})$`,
+    'u',
+  );
+const opensBefore = (sign: string) => new RegExp(`[${OPEN_PARENS}](${sign})?$`, 'u');
 const CLOSES_AFTER = new RegExp(`^(\\p{Sc})?[${CLOSE_PARENS}]`, 'u');
 // The parentheses a figure sits inside: the last opening one before it that
 // nothing closes, and the first closing one after it that nothing opens.
 const UNCLOSED_OPEN = new RegExp(`[${OPEN_PARENS}][^${OPEN_PARENS}${CLOSE_PARENS}]*$`, 'u');
 const UNOPENED_CLOSE = new RegExp(`^[^${OPEN_PARENS}${CLOSE_PARENS}]*[${CLOSE_PARENS}]`, 'u');
 const ANY_PARENS = new RegExp(`[${OPEN_PARENS}${CLOSE_PARENS}]`, 'u');
-// A sign with the capitals it may carry: the US of US$ is money, not a word.
-const SIGNS = new RegExp(SIGN, 'gu');
-const ONE_SIGN = new RegExp(`^${SIGN}$`, 'u');
+
+/** The patterns that read a currency sign together with the capitals it carries. */
+interface SignPatterns {
+  /** What must sit right before a figure for it to be negative. */
+  negativeBefore: RegExp;
+  /** An opening parenthesis, and a sign after it, right before a figure. */
+  opensBefore: RegExp;
+  /** Every sign with its capitals: the US of US$ is money, not a word. */
+  signs: RegExp;
+  /** A sign with its capitals and nothing else. */
+  oneSign: RegExp;
+}
+
+let cachedSignPatterns: SignPatterns | undefined;
+
+/**
+ * A currency sign after the capitals that belong to it (HK$, NT$, US$).
+ * Capitals only: a CJK or lowercase letter there is a word (税込¥1,280). And
+ * only capitals a currency is written with: those the platform itself prints
+ * in a sign (A$, CA$, NT$, CN¥), a currency code it knows, or the letters one
+ * begins with (the US of US$, the S of S$). Any three capitals used to pass,
+ * so a label glued to its sign was the sign's own, and (REG$15.00) read as
+ * accounting parentheses around a refund. No word is listed: the capitals come
+ * from the platform's currency data (ADR 0008).
+ *
+ * Built on the first receipt read, not when the module loads: asking the
+ * platform for every currency's sign is work the web build, which never runs
+ * this parser, should not do at startup.
+ */
+function signPatterns(): SignPatterns {
+  if (!cachedSignPatterns) {
+    const capitals = new Set<string>();
+    for (const code of currencyCodes()) {
+      capitals.add(code).add(code.slice(0, 2)).add(code.slice(0, 1));
+      for (const display of ['symbol', 'narrowSymbol'] as const) {
+        const printed = CAPITALS_OF_A_SIGN.exec(signFor(code, display));
+        if (printed) {
+          capitals.add(printed[1]);
+        }
+      }
+    }
+    // Longest first, so that USD$ is not read as US and a stray D.
+    const known = [...capitals].sort((a, b) => b.length - a.length || a.localeCompare(b)).join('|');
+    const sign = known === '' ? '\\p{Sc}' : `(?:${known})?\\p{Sc}`;
+    cachedSignPatterns = {
+      negativeBefore: negativeBefore(sign),
+      opensBefore: opensBefore(sign),
+      signs: new RegExp(sign, 'gu'),
+      oneSign: new RegExp(`^${sign}$`, 'u'),
+    };
+  }
+  return cachedSignPatterns;
+}
+const CAPITALS_OF_A_SIGN = /^(\p{Lu}{1,3})\p{Sc}$/u;
 // A letter of any script, read as a class and never for what it says.
 const LETTER = /\p{L}/u;
 // What may stand between a currency sign and its figure and leave the two
@@ -1097,10 +1146,10 @@ function readAmount(lines: string[], marker: string): AmountReading {
  * `(-$1.00 saved)` beside the total say nothing about the total.
  */
 function isCreditMarked(before: string, token: string, after: string): boolean {
-  if (NEGATIVE_BEFORE.test(before)) {
+  if (signPatterns().negativeBefore.test(before)) {
     return true;
   }
-  const opens = OPENS_BEFORE.exec(before);
+  const opens = signPatterns().opensBefore.exec(before);
   const closes = CLOSES_AFTER.exec(after);
   // A bare (2) or (100) is a quantity or a count; parentheses negate money only.
   return !!opens && !!closes && (!!opens[1] || !!closes[1] || isMoneyShaped(token));
@@ -1129,7 +1178,7 @@ function isAside(before: string, after: string, marker: string, opening: string)
   if (!opened || !closed) {
     return false;
   }
-  const inside = `${opened[0].slice(1)} ${closed[0].slice(0, -1)}`.replace(SIGNS, ' ');
+  const inside = `${opened[0].slice(1)} ${closed[0].slice(0, -1)}`.replace(signPatterns().signs, ' ');
   return LETTER.test(marker === '' ? inside : inside.split(marker).join(' '));
 }
 
@@ -1147,7 +1196,7 @@ function isAside(before: string, after: string, marker: string, opening: string)
  * lines settle it (settleSharedSigns).
  */
 function signedSides(line: string, figures: PlacedFigure[], marker: string): SignedSides {
-  const isSign = (text: string) => ONE_SIGN.test(text) || (marker !== '' && text === marker);
+  const isSign = (text: string) => signPatterns().oneSign.test(text) || (marker !== '' && text === marker);
   const before = figures.map(({ start }) => {
     const lead = line.slice(0, start).replace(MARK_BEFORE_FIGURE, '');
     return SIGN_LAST.test(lead) || (marker !== '' && lead.endsWith(marker));
