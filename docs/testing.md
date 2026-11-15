@@ -232,10 +232,12 @@ server, over REST and behind the client, and leaves those memberships live.
 `receipt-text-parser.battery.spec.ts` records every reading of the receipt
 battery and the lists of rows read silently. Neither says what a change does
 to a receipt nobody wrote down. `scripts/measure-receipt-parser.mjs` does
-([ADR 0188](ADR/0188-a-total-is-read-by-where-its-figures-are-printed-under-a-discount-past-round-cash-and-beside-an-unmarked-change-and-the-parser-is-measured-by-a-harness-that-is-kept.md)):
-it generates seeded receipts, fifteen classes built for the rules that have
-gone wrong before and six mixed sets of 40,000, and reads each on two
-versions of the parser, joined and split.
+([ADR 0188](ADR/0188-a-total-is-read-by-where-its-figures-are-printed-under-a-discount-past-round-cash-and-beside-an-unmarked-change-and-the-parser-is-measured-by-a-harness-that-is-kept.md),
+[ADR 0189](ADR/0189-a-price-is-no-part-of-a-date-a-total-with-no-currency-mark-is-read-on-a-sum-a-reading-past-an-aside-asks-its-type-and-a-receipt-that-prints-a-code-and-no-sign-disputes-the-model.md)):
+it generates seeded receipts, thirty-one classes built for the rules that
+have gone wrong before and six mixed sets of 40,000, and reads each on two
+versions of the parser, joined and split. Nine of the classes print a date
+the class knows, or none, and are judged on the date as well.
 
 ```bash
 node scripts/measure-receipt-parser.mjs --base origin/main
@@ -245,9 +247,15 @@ TZ=Asia/Tokyo node scripts/measure-receipt-parser.mjs --base origin/main
 
 `--base` is the version to compare against, `HEAD` by default; the other side
 is the working tree. It prints, per class and layout, the receipts read
-silently before and after, those newly silent, the right readings newly
-flagged, right readings gone wrong and wrong ones gone right, and the model
-lane's wrong answers kept and right answers flagged. It exits 1 where any
+silently before and after, those newly silent and how many of them read right
+before (the rest were wrong already and only lost a flag), the right readings
+newly flagged, right readings gone wrong and wrong ones gone right, the model
+lane's wrong answers kept and right answers flagged, the purchases whose type
+is newly asked about, and, where the class knows its date, the dates read
+right, lost, and newly read wrong at or over the bar. `--grades-before-0189`
+grades the base side's model lane as it was before a receipt that prints a
+code and no sign disputed the model, which shows what that rule moved. It
+exits 1 where any
 receipt newly reads silently: a wrong amount at or over the review bar, a
 refund read as a purchase graded 0, or a purchase read as a credit graded
 0.5 or more. The other columns are costs for the record that changes the
@@ -262,7 +270,10 @@ loaded from source text with its one import replaced, so a second import
 added to `receipt-text-parser.ts` fails the loader, and the self-test, until
 the script follows it. The script mirrors the two grade functions of
 `native-receipt.service.ts` by hand; a change there is followed here by hand
-too.
+too. A set's noise prints no date later than the held clock and puts no line
+between the two halves of a wrapped date; a class added to the script joins
+the sets, so a record's set counts are comparable only with counts taken on
+the same classes.
 
 A reading the harness cannot generate is still pinned by a spec: its classes
 never print a count that is twice a repeated price, and a pin was what caught
