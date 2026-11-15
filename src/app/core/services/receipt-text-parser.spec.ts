@@ -747,28 +747,38 @@ describe('parseReceiptOcrText', () => {
         expect(result.date.getFullYear()).toBe(2025);
       });
 
-      it('reads no date OCR wrapped across two lines, and reads a part it leaves as money, the known gap', () => {
-        expect(parseReceiptOcrText('Shop\n15/01/\n2026').dateConfidence).toBe(0);
-        // The day and month, written like money, outrank the total: on a slip
-        // that prints no currency mark the refund reads as a purchase. A year
-        // left on a line with a currency code outranks the total too.
-        const cases: [text: string, amount: number, amountConfidence: number][] = [
-          ['REFUND\n13.01.\n24\nItem -4.50\nTotal -4.50', 13.01, 0.5],
-          ['Shop\nItem 4.50\nTotal 4.50 EUR 13.01.\n24', 13.01, 0.8],
-          ['Shop\n13.01.\n2024 14:32 EUR\nItem $45.00\nTotal $45.00', 2024, 0.8],
+      it('reads a date written whole whose year OCR wrapped onto the next line', () => {
+        const alone = 'Shop\n15/01/\n2026';
+        expect(parseReceiptOcrText(alone).dateConfidence).toBe(0.9);
+        expect(dated(alone)).toEqual([2026, 1, 15]);
+        // The day and month, written like money, used to outrank the total: on
+        // a slip that prints no currency mark the refund read as a purchase.
+        // A year left on a line with a currency code outranked it too.
+        const cases: [text: string, amount: number, extra: Record<string, unknown>, date: number[]][] = [
+          [
+            'REFUND\n13.01.\n24\nItem -4.50\nTotal -4.50',
+            4.5,
+            { amountConfidence: 0.5, direction: 'credit', directionConfidence: 0.5, dateConfidence: 0.5 },
+            [2024, 1, 13],
+          ],
+          [
+            'Shop\nItem 4.50\nTotal 4.50 EUR 13.01.\n24',
+            4.5,
+            { amountConfidence: 0.8, direction: 'debit', directionConfidence: 0, dateConfidence: 0.5 },
+            [2024, 1, 13],
+          ],
+          [
+            'Shop\n13.01.\n2024 14:32 EUR\nItem $45.00\nTotal $45.00',
+            45,
+            { amountConfidence: 0.8, direction: 'debit', directionConfidence: 0, dateConfidence: 0.9 },
+            [2024, 1, 13],
+          ],
         ];
-        for (const [text, amount, amountConfidence] of cases) {
+        for (const [text, amount, extra, date] of cases) {
           expect(parseReceiptOcrText(text))
             .withContext(text)
-            .toEqual(
-              jasmine.objectContaining({
-                amount,
-                amountConfidence,
-                direction: 'debit',
-                directionConfidence: 0,
-                dateConfidence: 0,
-              }),
-            );
+            .toEqual(jasmine.objectContaining({ amount, ...extra }));
+          expect(dated(text)).withContext(text).toEqual(date);
         }
       });
 

@@ -97,6 +97,12 @@ const CURRENCY_WEIGHT = 0.15;
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
+// The marks a receipt prints to negate a figure: a minus in each form OCR hands
+// it back as (hyphen-minus, minus sign, en dash, small and fullwidth
+// hyphen-minus), and the triangles East Asian accounting prints for a negative.
+const MINUS = '[\\-\\u2212\\u2013\\uFE63\\uFF0D]';
+const TRIANGLE = '[\\u25B2\\u25B3]';
+
 // Anything that is neither a digit, a cased letter, a currency sign nor a line
 // break separates date parts, so 2026-01-15, 2026/01/15, 2026年1月15日 and
 // 2026년 1월 15일 all read on one pattern. Cased letters are excluded so that
@@ -117,12 +123,24 @@ const BEFORE_DATE = `(?:^|[^\\d.,'’\\u00A0\\u202F\\u2009\\p{Sc}]|(?:^|\\D)[.,'
 // A date written whole: two short numbers and a year on one mark printed
 // twice, with no space in it (24.07.24, 1/13/24, 15-01-2026). Its shape says
 // date on its own, where a run of spaced numbers (13 24.07) only may be one.
+// OCR may wrap its year onto the next line, the second mark staying behind
+// (13.01. over 24) or going with the year (15/01 over /2026).
 const DATE_MARK = '[^\\d\\p{L}\\p{Sc}\\s]';
-const WHOLE_DATE_RUN = new RegExp(`^\\d{1,2}(?<mark>${DATE_MARK})\\d{1,2}\\k<mark>(?:\\d{4}|\\d{2})$`, 'u');
+const WHOLE_DATE_RUN = new RegExp(
+  `^\\d{1,2}(?<mark>${DATE_MARK})\\d{1,2}(?:\\k<mark>\\n?|\\n\\k<mark>)(?:\\d{4}|\\d{2})$`,
+  'u',
+);
+// The mark before a year that wrapped: beside the line break, on either side
+// of it. A minus that starts the next line is the mark of a figure printed
+// negative there, not the date's.
+const WRAPPED_BEFORE_YEAR = `${DATE_MARK}\\n|\\n(?!${MINUS})${DATE_MARK}`;
 const YEAR_LAST_DATE = new RegExp(
-  `${BEFORE_DATE}(?<run>(?<first>\\d{1,2})${DATE_SEPARATOR}(?<second>\\d{1,2})${DATE_SEPARATOR}(?<year>\\d{4}|\\d{2}))(?!\\d)`,
+  `${BEFORE_DATE}(?<run>(?<first>\\d{1,2})${DATE_SEPARATOR}(?<second>\\d{1,2})(?:${DATE_SEPARATOR}|${WRAPPED_BEFORE_YEAR})(?<year>\\d{4}|\\d{2}))(?!\\d)`,
   'gu',
 );
+// What makes the number after a line break a price and not a wrapped year:
+// a decimal mark and more digits (13.01. over 24.50).
+const RUNS_ON_AS_A_FIGURE = /^[.,]\d/u;
 
 /** A two-digit-year date read year first because day first it would lie ahead. */
 const YEAR_FIRST_GUESS_GRADE = 0.3;
@@ -149,11 +167,6 @@ const GROUPING_MARKS = /['’\u00A0\u202F\u2009]/g;
 /** Longer runs of digits are phone numbers, receipt numbers and card fragments. */
 const MAX_PLAIN_DIGITS = 6;
 
-// The marks a receipt prints to negate a figure: a minus in each form OCR hands
-// it back as (hyphen-minus, minus sign, en dash, small and fullwidth
-// hyphen-minus), and the triangles East Asian accounting prints for a negative.
-const MINUS = '[\\-\\u2212\\u2013\\uFE63\\uFF0D]';
-const TRIANGLE = '[\\u25B2\\u25B3]';
 // A currency sign, after up to three capitals (HK$, NT$, US$). Capitals only:
 // a CJK or lowercase letter there is a word (税込¥1,280), not part of the sign.
 const SIGN = '\\p{Lu}{0,3}\\p{Sc}';
@@ -376,6 +389,11 @@ function readDate(text: string, marker: string): { date: Date; confidence: numbe
       break;
     }
     if (spaced && !whole) {
+      continue;
+    }
+    // A date is printed on one line. Only one written whole is read across
+    // a line break, and only where the number on the next line ends there.
+    if (run.includes('\n') && (!whole || RUNS_ON_AS_A_FIGURE.test(text.slice(start + run.length)))) {
       continue;
     }
     if (takesInMoney(start, start + run.length, whole, signed)) {
