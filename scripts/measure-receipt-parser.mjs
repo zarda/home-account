@@ -777,6 +777,10 @@ const NOISE = [
   w => `No. ${w.int(100000, 999999)}`,
 ];
 
+/** A line that ends in a date's mark, and one that starts with it: the two halves of a wrapped date. */
+const WRAPS_ON = /\d[./-]$/;
+const WRAPPED_FROM = /^[./-]\d/;
+
 /**
  * One receipt of a seeded set: any class, with the lines a real receipt
  * prints around its money, and now and then with every currency sign gone.
@@ -787,7 +791,12 @@ function mixed(random) {
   const made = CLASSES[w.of(names)](w);
   const lines = made.text.split('\n');
   for (let extra = w.int(0, 3); extra > 0; extra--) {
-    lines.splice(w.int(1, lines.length), 0, w.of(NOISE)(w));
+    const at = w.int(1, lines.length);
+    const line = w.of(NOISE)(w);
+    // A date OCR wrapped is two lines of one print: nothing comes between them.
+    if (!WRAPS_ON.test(lines[at - 1]) && !WRAPPED_FROM.test(lines[at] ?? '')) {
+      lines.splice(at, 0, line);
+    }
   }
   const text = lines.join('\n');
   // The noise prints dates of its own, so a set judges no date.
@@ -869,6 +878,7 @@ function emptyTally() {
     silentBefore: 0,
     silentAfter: 0,
     newlySilent: 0,
+    newlySilentWasRight: 0,
     rightNewlyFlagged: 0,
     rightToWrong: 0,
     wrongToRight: 0,
@@ -897,6 +907,9 @@ function count(tally, made, text, before, after) {
   tally.silentAfter += Number(judgedAfter.silent);
   if (judgedAfter.silent && !judgedBefore.silent) {
     tally.newlySilent++;
+    // Read right before, or wrong and flagged only: the second is a flag lost,
+    // on a reading that was already wrong.
+    tally.newlySilentWasRight += Number(!judgedBefore.wrongAmount);
     if (tally.examples.length < 3) {
       tally.examples.push(text.split('\n').join(' / '));
     }
@@ -961,6 +974,7 @@ function report(rows) {
     ['receipts', row => row.receipts],
     ['silent', row => `${row.silentBefore} → ${row.silentAfter}`],
     ['newly silent', row => row.newlySilent],
+    ['of them right before', row => row.newlySilentWasRight],
     ['right, newly flagged', row => row.rightNewlyFlagged],
     ['right → wrong', row => row.rightToWrong],
     ['wrong → right', row => row.wrongToRight],
@@ -1128,6 +1142,7 @@ async function selfTest() {
   const row = rows => rows.find(each => each.name === 'totalAboveParts' && each.layout === 'joined');
   const planted = row(measure(largest, first, settings));
   check('a planted regression is counted as newly silent', planted.newlySilent > 0, JSON.stringify(planted));
+  check('all of them read right before', planted.newlySilentWasRight === planted.newlySilent);
   check('and as right readings gone wrong', planted.rightToWrong === planted.newlySilent);
   const repaired = row(measure(first, largest, settings));
   check(
