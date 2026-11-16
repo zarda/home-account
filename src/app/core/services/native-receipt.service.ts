@@ -34,6 +34,8 @@ const AGREED_INCOME_GRADE = 0.6;
  * negative prints on a total the model did not read.
  */
 const DISPUTED_TYPE_GRADE = 0.3;
+/** Any currency sign, of any currency. */
+const CURRENCY_SIGN = /\p{Sc}/u;
 
 /**
  * Which way the money moved, and the grade the row carries for it (ADR 0162).
@@ -123,15 +125,30 @@ function agreedAmountGrade(text: ParsedReceiptText): number {
 }
 
 /**
+ * Whether the receipt prints its currency as a code and no currency sign
+ * anywhere: 15.01.2026 14:32 EUR over figures with nothing beside them. The
+ * parser has no sign to read a figure beside there, so every figure falls
+ * under the bar however plainly the receipt prints its total.
+ */
+function printsACodeAndNoSign(text: ParsedReceiptText, ocrText: string): boolean {
+  return text.currency !== '' && !CURRENCY_SIGN.test(ocrText);
+}
+
+/**
  * The amount grade when the two read different totals. A parser that read its
  * figure beside a currency mark disputes the model's, and the row is flagged,
  * a figure a rule or the cash-tendered sum moved there included: a model that
  * reads the cash handed over or the change is wrong as surely as one that
  * reads a count. A disagreement with a parser that did not trust its own
- * reading is no evidence against the model.
+ * reading is no evidence against the model, with one exception: on a receipt
+ * that prints a code and no sign the parser's grade is low for want of a
+ * sign, not for want of a reading, so any total it read disputes the model's
+ * (ADR 0189). An agreement there is graded as any other is.
  */
-function disputedAmountGrade(text: ParsedReceiptText): number {
-  return text.amountConfidence >= VERIFY_FIELD_THRESHOLD || demotedBesideCurrency(text)
+function disputedAmountGrade(text: ParsedReceiptText, ocrText: string): number {
+  return text.amountConfidence >= VERIFY_FIELD_THRESHOLD ||
+    demotedBesideCurrency(text) ||
+    (printsACodeAndNoSign(text, ocrText) && text.amount > 0)
     ? REVIEW_AMOUNT_CONFIDENCE
     : MODEL_READ_GRADE;
 }
@@ -308,7 +325,7 @@ export class NativeReceiptService {
           ? 0
           : sameTotal
             ? agreedAmountGrade(text)
-            : disputedAmountGrade(text),
+            : disputedAmountGrade(text, ocrResult.text),
         date: parsedDate === null ? 0 : MODEL_READ_GRADE,
         ...(verdict.grade !== undefined ? { type: verdict.grade } : {}),
       },

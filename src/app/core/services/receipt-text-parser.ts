@@ -45,10 +45,15 @@ export interface ParsedReceiptText {
    * figure read and might have been the total (Total 1280 Tax ¥116);
    * 'discount' when the largest figure was read as an item or a subtotal a
    * discount printed under it was taken from, and the total the discount
-   * leaves won instead (Item $3.00, Coupon -$1.00, Total $2.00). Absent when
-   * nothing was demoted.
+   * leaves won instead (Item $3.00, Coupon -$1.00, Total $2.00); 'unmarked'
+   * when a figure written like money on a line with no currency mark is
+   * larger than every figure the receipt marks as money, and was read as the
+   * total because a marked figure and one more add up to it, or was passed
+   * over for the marked figure because nothing does (Eggs $10.86, Tax $0.87,
+   * Total 11.73; Total $12.50, Points balance 1,847). Absent when nothing was
+   * demoted.
    */
-  amountDemotion?: 'tender' | 'aside' | 'count' | 'discount';
+  amountDemotion?: 'tender' | 'aside' | 'count' | 'discount' | 'unmarked';
   /**
    * Which way the winning total moved, read from typography alone: 'credit'
    * when every copy of that figure carries a negative mark and nothing argues
@@ -65,7 +70,8 @@ export interface ParsedReceiptText {
    * 0–1, and always under the bar that sends a field for review, because a
    * mark is typography rather than a word saying so: 0.5 for a credit; 0.3
    * when the same figure is printed both marked and unmarked, or marked where
-   * a count might have been the total, where `direction` stays 'debit';
+   * a count might have been the total, or when the figure read is a labelled
+   * aside or the reading passed one, where `direction` stays 'debit';
    * 0 when nothing marks it, the purchase every receipt is by default. It is
    * not folded into the combined `confidence`, so it moves no routing
    * decision.
@@ -97,6 +103,12 @@ const CURRENCY_WEIGHT = 0.15;
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
+// The marks a receipt prints to negate a figure: a minus in each form OCR hands
+// it back as (hyphen-minus, minus sign, en dash, small and fullwidth
+// hyphen-minus), and the triangles East Asian accounting prints for a negative.
+const MINUS = '[\\-\\u2212\\u2013\\uFE63\\uFF0D]';
+const TRIANGLE = '[\\u25B2\\u25B3]';
+
 // Anything that is neither a digit, a cased letter, a currency sign nor a line
 // break separates date parts, so 2026-01-15, 2026/01/15, 2026年1月15日 and
 // 2026년 1월 15일 all read on one pattern. Cased letters are excluded so that
@@ -108,16 +120,44 @@ const YEAR_FIRST_DATE = new RegExp(
   `(?:^|\\D)((\\d{4})${DATE_SEPARATOR}(\\d{1,2})${DATE_SEPARATOR}(\\d{1,2}))(?!\\d)`,
   'gu',
 );
+// A date written whole: two short numbers and a year on one mark printed
+// twice, with no space in it (24.07.24, 1/13/24, 15-01-2026). Its shape says
+// date on its own, where a run of spaced numbers (13 24.07) only may be one.
+// OCR may wrap its year onto the next line, the second mark staying behind
+// (13.01. over 24) or going with the year (15/01 over /2026).
+const DATE_MARK = '[^\\d\\p{L}\\p{Sc}\\s]';
+const WHOLE_DATE_RUN = new RegExp(
+  `^\\d{1,2}(?<mark>${DATE_MARK})\\d{1,2}(?:\\k<mark>\\n?|\\n\\k<mark>)(?:\\d{4}|\\d{2})$`,
+  'u',
+);
 // What a date may follow: the start of the text, anything but a digit, a
 // currency sign or a mark that joins digits into one figure, or such a mark
 // with no digit before it (No.15/01/26). So a date never starts inside a
 // figure, nor at a figure its sign is glued to: the cents of $145.01 are not
 // the day of $145.01 01 01 24, and the 27.01 of $27.01 12/5/24 is no date.
-const BEFORE_DATE = `(?:^|[^\\d.,'’\\u00A0\\u202F\\u2009\\p{Sc}]|(?:^|\\D)[.,'’\\u00A0\\u202F\\u2009])`;
+// One date does follow a digit and a joining mark: a date written whole on a
+// mark of its own, which a number was glued to (Bon 4711.13/01/25). Cents
+// carry on in the mark that joined them or in a space, never in another.
+const JOINING_MARK = "[.,'’\\u00A0\\u202F\\u2009]";
+const GLUED_TO_A_NUMBER =
+  `\\d(?<join>${JOINING_MARK})` +
+  `(?=\\d{1,2}(?!\\k<join>)(?<own>${DATE_MARK})\\d{1,2}\\k<own>(?:\\d{4}|\\d{2})(?!\\d))`;
+const BEFORE_DATE =
+  `(?:^|[^\\d.,'’\\u00A0\\u202F\\u2009\\p{Sc}]|(?:^|\\D)${JOINING_MARK}|${GLUED_TO_A_NUMBER})`;
+// The mark before a year that wrapped: beside the line break, on either side
+// of it. A minus that starts the next line is the mark of a figure printed
+// negative there, not the date's.
+const WRAPPED_BEFORE_YEAR = `${DATE_MARK}\\n|\\n(?!${MINUS})${DATE_MARK}`;
 const YEAR_LAST_DATE = new RegExp(
-  `${BEFORE_DATE}((\\d{1,2})${DATE_SEPARATOR}(\\d{1,2})${DATE_SEPARATOR}(\\d{4}|\\d{2}))(?!\\d)`,
+  `${BEFORE_DATE}(?<run>(?<first>\\d{1,2})${DATE_SEPARATOR}(?<second>\\d{1,2})(?:${DATE_SEPARATOR}|${WRAPPED_BEFORE_YEAR})(?<year>\\d{4}|\\d{2}))(?!\\d)`,
   'gu',
 );
+// What makes the number after a line break a price and not a wrapped year:
+// a decimal mark and more digits (13.01. over 24.50).
+const RUNS_ON_AS_A_FIGURE = /^[.,]\d/u;
+
+/** A two-digit-year date read year first because day first it would lie ahead. */
+const YEAR_FIRST_GUESS_GRADE = 0.3;
 
 const CURRENCY_SIGN = /\p{Sc}/u;
 
@@ -137,18 +177,14 @@ const ISO_CODE_BESIDE_AMOUNT = [
 // as a negative number.
 const NUMBER_TOKEN = /\d+(?:[.,'’\u00A0\u202F\u2009]\d+)*/gu;
 const GROUPING_MARKS = /['’\u00A0\u202F\u2009]/g;
+const FIGURE_CHARACTER = /[\d.,'’\u00A0\u202F\u2009]/u;
+// One or two digits between two marks: the 01 of 13.01.31. Money has one
+// decimal mark, after groups of three, so this is a date or a code.
+const SHORT_GROUP_INSIDE = /[.,'’\u00A0\u202F\u2009]\d{1,2}[.,'’\u00A0\u202F\u2009]/u;
 
 /** Longer runs of digits are phone numbers, receipt numbers and card fragments. */
 const MAX_PLAIN_DIGITS = 6;
 
-// The marks a receipt prints to negate a figure: a minus in each form OCR hands
-// it back as (hyphen-minus, minus sign, en dash, small and fullwidth
-// hyphen-minus), and the triangles East Asian accounting prints for a negative.
-const MINUS = '[\\-\\u2212\\u2013\\uFE63\\uFF0D]';
-const TRIANGLE = '[\\u25B2\\u25B3]';
-// A currency sign, after up to three capitals (HK$, NT$, US$). Capitals only:
-// a CJK or lowercase letter there is a word (税込¥1,280), not part of the sign.
-const SIGN = '\\p{Lu}{0,3}\\p{Sc}';
 // The two forms of parenthesis a receipt prints, as class bodies without the
 // brackets so that one copy serves every pattern built from them.
 const OPEN_PARENS = '(\\uFF08';
@@ -176,22 +212,74 @@ const MINUS_FOLLOWS =
 // digit, where a mark between two runs of digits joins them, as the dashes in
 // 03-3461-8901 do. A dash after the figure is the stop a Japanese receipt
 // prints against alteration (¥10,000-), so nothing after it is read.
-const NEGATIVE_BEFORE = new RegExp(
-  `(?:(?:^|${MINUS_FOLLOWS})${MINUS}(?:${SIGN}\\s?)?` +
-    `|(?:^|[^\\p{N}])${TRIANGLE}\\s?(?:${SIGN}\\s?)?` +
-    `|\\p{Sc}${MINUS})$`,
-  'u',
-);
-const OPENS_BEFORE = new RegExp(`[${OPEN_PARENS}](${SIGN})?$`, 'u');
+const negativeBefore = (sign: string) =>
+  new RegExp(
+    `(?:(?:^|${MINUS_FOLLOWS})${MINUS}(?:${sign}\\s?)?` +
+      `|(?:^|[^\\p{N}])${TRIANGLE}\\s?(?:${sign}\\s?)?` +
+      `|\\p{Sc}${MINUS})$`,
+    'u',
+  );
+const opensBefore = (sign: string) => new RegExp(`[${OPEN_PARENS}](${sign})?$`, 'u');
 const CLOSES_AFTER = new RegExp(`^(\\p{Sc})?[${CLOSE_PARENS}]`, 'u');
 // The parentheses a figure sits inside: the last opening one before it that
 // nothing closes, and the first closing one after it that nothing opens.
 const UNCLOSED_OPEN = new RegExp(`[${OPEN_PARENS}][^${OPEN_PARENS}${CLOSE_PARENS}]*$`, 'u');
 const UNOPENED_CLOSE = new RegExp(`^[^${OPEN_PARENS}${CLOSE_PARENS}]*[${CLOSE_PARENS}]`, 'u');
 const ANY_PARENS = new RegExp(`[${OPEN_PARENS}${CLOSE_PARENS}]`, 'u');
-// A sign with the capitals it may carry: the US of US$ is money, not a word.
-const SIGNS = new RegExp(SIGN, 'gu');
-const ONE_SIGN = new RegExp(`^${SIGN}$`, 'u');
+
+/** The patterns that read a currency sign together with the capitals it carries. */
+interface SignPatterns {
+  /** What must sit right before a figure for it to be negative. */
+  negativeBefore: RegExp;
+  /** An opening parenthesis, and a sign after it, right before a figure. */
+  opensBefore: RegExp;
+  /** Every sign with its capitals: the US of US$ is money, not a word. */
+  signs: RegExp;
+  /** A sign with its capitals and nothing else. */
+  oneSign: RegExp;
+}
+
+let cachedSignPatterns: SignPatterns | undefined;
+
+/**
+ * A currency sign after the capitals that belong to it (HK$, NT$, US$).
+ * Capitals only: a CJK or lowercase letter there is a word (税込¥1,280). And
+ * only capitals a currency is written with: those the platform itself prints
+ * in a sign (A$, CA$, NT$, CN¥), a currency code it knows, or the letters one
+ * begins with (the US of US$, the S of S$). Any three capitals used to pass,
+ * so a label glued to its sign was the sign's own, and (REG$15.00) read as
+ * accounting parentheses around a refund. No word is listed: the capitals come
+ * from the platform's currency data (ADR 0008).
+ *
+ * Built on the first receipt read, not when the module loads: asking the
+ * platform for every currency's sign is work the web build, which never runs
+ * this parser, should not do at startup.
+ */
+function signPatterns(): SignPatterns {
+  if (!cachedSignPatterns) {
+    const capitals = new Set<string>();
+    for (const code of currencyCodes()) {
+      capitals.add(code).add(code.slice(0, 2)).add(code.slice(0, 1));
+      for (const display of ['symbol', 'narrowSymbol'] as const) {
+        const printed = CAPITALS_OF_A_SIGN.exec(signFor(code, display));
+        if (printed) {
+          capitals.add(printed[1]);
+        }
+      }
+    }
+    // Longest first, so that USD$ is not read as US and a stray D.
+    const known = [...capitals].sort((a, b) => b.length - a.length || a.localeCompare(b)).join('|');
+    const sign = known === '' ? '\\p{Sc}' : `(?:${known})?\\p{Sc}`;
+    cachedSignPatterns = {
+      negativeBefore: negativeBefore(sign),
+      opensBefore: opensBefore(sign),
+      signs: new RegExp(sign, 'gu'),
+      oneSign: new RegExp(`^${sign}$`, 'u'),
+    };
+  }
+  return cachedSignPatterns;
+}
+const CAPITALS_OF_A_SIGN = /^(\p{Lu}{1,3})\p{Sc}$/u;
 // A letter of any script, read as a class and never for what it says.
 const LETTER = /\p{L}/u;
 // What may stand between a currency sign and its figure and leave the two
@@ -270,6 +358,9 @@ interface PrintedFigure {
   end: number;
 }
 
+/** A figure's digits and its place on its line: all a currency sign is read against. */
+type PlacedFigure = Pick<PrintedFigure, 'start' | 'end'> & { candidate: Pick<AmountCandidate, 'token'> };
+
 /**
  * Which side of each figure on a line a currency sign touches, and the pairs
  * of neighbours one sign touches alike, by their places on the line.
@@ -284,20 +375,25 @@ interface AmountReading {
   amount: number;
   confidence: number;
   /** Why `confidence` sits under the tier's, when it does. */
-  demotion?: 'tender' | 'aside' | 'count' | 'discount';
+  demotion?: 'tender' | 'aside' | 'count' | 'discount' | 'unmarked';
   direction: 'credit' | 'debit';
   directionConfidence: number;
 }
 
 export function parseReceiptOcrText(text: string): ParsedReceiptText {
-  const { date, confidence: dateConfidence, matched } = readDate(text);
+  const { currency, confidence: currencyConfidence, marker } = readCurrency(text);
+  const { date, confidence: dateConfidence, matched, others } = readDate(text, marker);
 
   // The date comes out of the text before the amounts are read: 15/01/2026 is
-  // three numbers, and 2026 is larger than any total the receipt carries.
-  const withoutDate = matched ? text.split(matched).join(' ') : text;
+  // three numbers, and 2026 is larger than any total the receipt carries. So
+  // does every other date the receipt writes whole, a return-by date or the
+  // day a card was charged: only one is the receipt's date, none is money.
+  // A date read across a line break leaves the break where it was.
+  const withoutDate = [matched, ...others]
+    .filter(printed => printed !== '')
+    .reduce((rest, printed) => rest.split(printed).join(printed.includes('\n') ? '\n' : ' '), text);
   const lines = withoutDate.split('\n').map(line => line.trim()).filter(line => line.length > 0);
 
-  const { currency, confidence: currencyConfidence, marker } = readCurrency(text);
   const {
     amount,
     confidence: amountConfidence,
@@ -334,35 +430,180 @@ export function parseReceiptOcrText(text: string): ParsedReceiptText {
  * The purchase date, plus the text it was read from so the caller can keep its
  * digits out of the amount hunt.
  */
-function readDate(text: string): { date: Date; confidence: number; matched: string } {
+interface DateReading {
+  date: Date;
+  confidence: number;
+  /** The text the date was read from. */
+  matched: string;
+  /** Every other date the receipt writes whole, as printed. */
+  others: string[];
+}
+
+/** A run of numbers a date can be made of, and where it stands in the text. */
+interface DatedRun {
+  date: Date;
+  confidence: number;
+  matched: string;
+  /** Written whole: two short numbers and a year on one mark printed twice. */
+  whole: boolean;
+  start: number;
+  end: number;
+}
+
+function readDate(text: string, marker: string): DateReading {
+  const yearFirst: Omit<DatedRun, 'whole' | 'start' | 'end'>[] = [];
   for (const match of text.matchAll(YEAR_FIRST_DATE)) {
     const date = toDate(Number(match[2]), Number(match[3]), Number(match[4]));
     if (date) {
-      return { date, confidence: 0.9, matched: match[1] };
+      yearFirst.push({ date, confidence: 0.9, matched: match[1] });
     }
   }
+  const runs = yearLastRuns(text, marker);
+  const writtenWhole = (except?: DatedRun) =>
+    runs.filter(run => run.whole && run !== except && !run.matched.includes('\n')).map(run => run.matched);
+  if (yearFirst.length > 0) {
+    const [{ date, confidence, matched }, ...rest] = yearFirst;
+    return { date, confidence, matched, others: [...rest.map(other => other.matched), ...writtenWhole()] };
+  }
 
+  // A run that makes a date without being written whole waits for a whole
+  // date that starts inside it: the 8 of 8円 27-07-2025 and the day and month
+  // after it make a date too, and the date is the one printed whole.
+  const first = runs.at(0);
+  const read = first && !first.whole ? (runs.find(run => run.whole && run.start < first.end) ?? first) : first;
+  if (!read) {
+    return { date: new Date(), confidence: 0, matched: '', others: [] };
+  }
+  return { date: read.date, confidence: read.confidence, matched: read.matched, others: writtenWhole(read) };
+}
+
+/**
+ * Every run of two short numbers and a year that a date can be made of, in
+ * the order printed. The search starts again just after each run's first
+ * number: the 13 of Milch 2 € 13 24.07.24 starts a run no date can be made of
+ * (13 24.07), and the date printed after it starts inside that run.
+ */
+function yearLastRuns(text: string, marker: string): DatedRun[] {
   const dayFirst = devicePrefersDayFirst();
-  for (const match of text.matchAll(YEAR_LAST_DATE)) {
-    const first = Number(match[2]);
-    const second = Number(match[3]);
+  const signed = signedFigures(text, marker);
+  const pattern = new RegExp(YEAR_LAST_DATE.source, YEAR_LAST_DATE.flags);
+  const runs: DatedRun[] = [];
+  for (let match = pattern.exec(text); match; match = pattern.exec(text)) {
+    const { run, first: firstDigits, second: secondDigits, year: yearDigits, join } = match.groups as Record<
+      'run' | 'first' | 'second' | 'year',
+      string
+    > & { join?: string };
+    const start = match.index + match[0].length - run.length;
+    const end = start + run.length;
+    pattern.lastIndex = start + firstDigits.length;
+    const whole = WHOLE_DATE_RUN.test(run);
+    // A date is printed on one line. Only one written whole is read across
+    // a line break, and only where the number on the next line ends there.
+    if (run.includes('\n') && (!whole || RUNS_ON_AS_A_FIGURE.test(text.slice(end)))) {
+      continue;
+    }
+    if (takesInMoney(start, end, whole, signed)) {
+      continue;
+    }
+    const first = Number(firstDigits);
+    const second = Number(secondDigits);
 
     // Only the receipt's own numbers can settle 03/04: where one of them cannot
     // be a month, the other one is. Where both can, this falls back to how the
     // device writes dates and marks the reading down for it.
     const ambiguous = first <= 12 && second <= 12;
     const readDayFirst = first > 12 || (ambiguous && dayFirst);
-    const year = fullYear(match[4]);
-    const date = readDayFirst ? toDate(year, second, first) : toDate(year, first, second);
+    const year = fullYear(yearDigits);
+    const [month, day] = readDayFirst ? [second, first] : [first, second];
+    let date = toDate(year, month, day);
+    let confidence = (yearDigits.length === 4 ? 0.9 : 0.5) * (ambiguous ? 0.6 : 1);
+    if (!date && liesAhead(year, month, day)) {
+      // Nothing is dated ahead, so a date that would be was not read the way
+      // it was written. Where both numbers could be a month, it is the other
+      // way round from how this device writes dates (11/08/26 on 30 October
+      // 2026 is 8 November to one device and 11 August to the receipt).
+      // Where the first cannot be a month and the year has two digits, the
+      // date written whole is printed year first (23.01.27, 26.10.30), which
+      // is one more guess than a date read in order, and graded so.
+      if (ambiguous) {
+        date = toDate(year, day, month);
+      } else if (whole && yearDigits.length === 2 && first > 12) {
+        date = toDate(2000 + first, second, Number(yearDigits));
+        confidence = YEAR_FIRST_GUESS_GRADE;
+      }
+    }
     if (!date) {
       continue;
     }
 
-    const confidence = match[4].length === 4 ? 0.9 : 0.5;
-    return { date, confidence: ambiguous ? confidence * 0.6 : confidence, matched: match[1] };
+    // A number the date was glued to goes with it: the 4711 of 4711.13/01/25
+    // is a code, and left behind it would stand as money.
+    const matched = join === undefined ? run : text.slice(figureStart(text, start), end);
+    runs.push({ date, confidence, matched, whole, start, end });
   }
+  return runs;
+}
 
-  return { date: new Date(), confidence: 0, matched: '' };
+/** Where the figure that ends just before `at` starts. */
+function figureStart(text: string, at: number): number {
+  let start = at;
+  while (start > 0 && FIGURE_CHARACTER.test(text[start - 1])) {
+    start--;
+  }
+  return start;
+}
+
+/** A figure a currency sign or the receipt's code touches, by its place in the text. */
+interface SignedFigure {
+  start: number;
+  end: number;
+  /** The sign stands before the figure ($ 27.01), not after it (10,20 €). */
+  signBefore: boolean;
+}
+
+/**
+ * Every figure the receipt prints as money by touching it with a currency
+ * sign or with the code its currency was read from, glued or one space away,
+ * as the amount hunt reads them (signedSides).
+ */
+function signedFigures(text: string, marker: string): SignedFigure[] {
+  const found: SignedFigure[] = [];
+  let offset = 0;
+  for (const line of text.split('\n')) {
+    const figures: PlacedFigure[] = [...line.matchAll(NUMBER_TOKEN)].map(match => ({
+      candidate: { token: match[0] },
+      start: match.index,
+      end: match.index + match[0].length,
+    }));
+    const sides = signedSides(line, figures, marker);
+    for (const [index, { start, end }] of figures.entries()) {
+      if (sides.before[index] || sides.after[index]) {
+        found.push({ start: offset + start, end: offset + end, signBefore: sides.before[index] });
+      }
+    }
+    offset += line.length + 1;
+  }
+  return found;
+}
+
+/**
+ * Whether a run would take a figure printed as money into a date. A price is
+ * no part of a date: not where the run cuts it (the 10 of 5,10 10,20 €, the
+ * 27.01 of $ 27.01 01 13 25 where the run ends in the next number), nor where
+ * the run holds it whole behind its sign. A run written whole as a date is
+ * one whatever touches it (€ 15.01.26, 15.01.26 €), and a figure the run
+ * holds whole before the sign after it is left to the run: barring that one
+ * too reads an item above a discount that only a run through it kept out of
+ * the amount hunt (ADR 0189).
+ */
+function takesInMoney(start: number, end: number, whole: boolean, signed: SignedFigure[]): boolean {
+  return signed.some(figure => {
+    if (figure.end <= start || figure.start >= end) {
+      return false;
+    }
+    const held = figure.start >= start && figure.end <= end;
+    return !(held && (whole || !figure.signBefore));
+  });
 }
 
 /** `month` is 1-12 here, as it is written on a receipt. */
@@ -377,6 +618,12 @@ function toDate(year: number, month: number, day: number): Date | undefined {
     return undefined;
   }
   return date;
+}
+
+/** Whether these parts make a real day that nothing can have been bought on yet. */
+function liesAhead(year: number, month: number, day: number): boolean {
+  const date = localDateFromParts(year, month - 1, day);
+  return !!date && date.getTime() > Date.now() + DAY_MS;
 }
 
 /** A two-digit year on a receipt is this century: 26 is 2026, not 1926. */
@@ -510,8 +757,9 @@ function signFor(code: string, display: 'symbol' | 'narrowSymbol'): string {
 
 /**
  * Confidence multiplier when the winning figure was demoted: as cash tendered,
- * past a figure printed as a labelled aside, under a larger count, or as the
- * total a discount leaves.
+ * past a figure printed as a labelled aside, under a larger count, as the
+ * total a discount leaves, or beside a larger figure printed with no
+ * currency mark.
  */
 export const DEMOTION_FACTOR = 0.75;
 /** "x + y ≈ M" tolerance: half a cent absorbs float noise, integers must match exactly. */
@@ -654,6 +902,79 @@ function discountDemotion(
   return undefined;
 }
 
+/**
+ * A total printed with no currency mark on a receipt whose other lines print
+ * one: a figure written like money, on a line the receipt does not mark as
+ * money, larger than every figure it does (Eggs $10.86, Tax $0.87, Total
+ * 11.73). The marked figures outrank it by their tier, so the largest of them,
+ * an item, the subtotal or the tax, would be read with nothing to say the
+ * receipt prints a larger one. Nothing in the print tells such a total from a
+ * points balance or a running count written the same way (Total $12.50,
+ * Points balance 1,847), so the reading is graded under the bar either way.
+ *
+ * It moves to the unmarked figure only where a sum backs it: one of the
+ * tier's figures and one more figure of money, marked or written like it, add
+ * up to it, as a subtotal and its tax, or two items, make a total. And only
+ * where `movable` holds and the figure is printed unmarked, as every reading
+ * moved on position is. Otherwise the pick is kept.
+ *
+ * Three figures written like money are no such total. One that carries
+ * another mark than the pick does: a balance in accounting parentheses under
+ * an unmarked total is no rival to it. One with a short group in its middle
+ * (Lot 13.01.31), which is a date or a code: money has one decimal mark, after
+ * groups of three. And cash: a round figure that a marked figure printed
+ * before it and a figure printed after it add up to is the cash between a
+ * total and its change (Total $49.03, Cash 50.00, Change $0.97), and the
+ * total beside the mark is the total. Vocabulary-free on purpose: no label is
+ * read, so a whole number printed bare (合計 980 over 内税 ¥72), which a store
+ * or receipt number looks the same as, is not seen.
+ */
+function unmarkedTotal(
+  pick: AmountCandidate,
+  tier: AmountCandidate[],
+  candidates: AmountCandidate[],
+  movable: boolean,
+): { read: AmountCandidate | undefined } | undefined {
+  const top = Math.max(...tier.map(c => c.value));
+  const money = candidates.filter(
+    c => !c.aside && !c.clock && !c.count && !c.credit && (c.besideCurrency || isMoneyShaped(c.token)),
+  );
+  const parts = tier.filter(c => !c.aside && !c.credit);
+  /** The pairs, one of the tier's figures and one more of money, that add up to this figure. */
+  const sumsTo = (total: AmountCandidate): [part: AmountCandidate, added: AmountCandidate][] =>
+    parts.flatMap(part =>
+      money
+        .filter(
+          added =>
+            added !== total &&
+            added !== part &&
+            Math.abs(part.value + added.value - total.value) <= TENDER_SUM_TOLERANCE,
+        )
+        .map((added): [AmountCandidate, AmountCandidate] => [part, added]),
+    );
+  const isCash = (figure: AmountCandidate) =>
+    isTenderShaped(figure.value) &&
+    sumsTo(figure).some(([part, added]) => part.at < figure.at !== added.at < figure.at);
+  const larger = candidates.filter(
+    c =>
+      !c.printedBesideCurrency &&
+      !c.aside &&
+      !c.clock &&
+      isMoneyShaped(c.token) &&
+      !SHORT_GROUP_INSIDE.test(c.token) &&
+      c.value > top + TENDER_SUM_TOLERANCE &&
+      c.credit === pick.credit &&
+      !isCash(c),
+  );
+  if (larger.length === 0) {
+    return undefined;
+  }
+  if (!movable) {
+    return { read: undefined };
+  }
+  return { read: largestOf(larger.filter(total => !total.credit && sumsTo(total).length > 0)) };
+}
+
 function readAmount(lines: string[], marker: string): AmountReading {
   // Every line is read before any figure is settled as money or as a count,
   // so that what one line prints can be weighed against the others.
@@ -781,7 +1102,10 @@ function readAmount(lines: string[], marker: string): AmountReading {
         : [];
     const tendered = tenderedDemotion(pick, tier.of, counts, unmarked, movable);
     const discounted = tendered ? undefined : discountDemotion(pick, tier.of, movable);
-    const winner = tendered ?? discounted ?? pick;
+    // Only the strongest tier is outranked by print: a figure the receipt
+    // marks as money beats one it only writes like money.
+    const bare = index === 0 ? unmarkedTotal(pick, tier.of, candidates, movable) : undefined;
+    const winner = tendered ?? discounted ?? bare?.read ?? pick;
     const rivals = countsThatMayBeTotal(winner, tier.of, counts);
     // Each of these moves the reading on a rule rather than on anything
     // printed, so each lands under the review bar: passing an aside; keeping
@@ -789,7 +1113,8 @@ function readAmount(lines: string[], marker: string): AmountReading {
     // a figure printed on its own (Total 12.50 / (Reg $15.00)); reading a
     // figure a larger count might have been the total in place of (Total 1280
     // Tax ¥116); reading past cash tendered; and reading the total a discount
-    // leaves under a larger figure.
+    // leaves under a larger figure; and reading, or passing over, a larger
+    // figure printed with no currency mark.
     const passedAside =
       pick.value < largest.value ||
       (winner.aside && tiers.slice(index + 1).some(weaker => weaker.of.some(c => !c.aside)));
@@ -801,12 +1126,28 @@ function readAmount(lines: string[], marker: string): AmountReading {
           ? 'tender'
           : discounted
             ? 'discount'
-            : undefined;
+            : bare
+              ? 'unmarked'
+              : undefined;
+    const { direction, directionConfidence } = readDirection(winner, candidates, rivals);
+    // Labelled parentheses around a refund's total and around a regular
+    // price are the same print: (Total $64.79) under REFUND, (Reg $15.00)
+    // under a purchase. An aside is never marked, so where the figure read is
+    // one, or the reading passed one, an unmarked purchase is no more than a
+    // guess, and its type is sent to the reviewer as a twinned total's is.
+    // The same holds where the figure read is printed again as an aside:
+    // one item, and (Total ¥4,493) repeating it.
+    const besideAside =
+      winner.aside ||
+      pick.value < largest.value ||
+      candidates.some(c => c.aside && Math.abs(c.value - winner.value) <= TENDER_SUM_TOLERANCE);
+    const unasked = direction === 'debit' && directionConfidence === 0;
     return {
       amount: winner.value,
       confidence: demotion ? tier.confidence * DEMOTION_FACTOR : tier.confidence,
       ...(demotion ? { demotion } : {}),
-      ...readDirection(winner, candidates, rivals),
+      direction,
+      directionConfidence: besideAside && unasked ? TWINNED_MARK_GRADE : directionConfidence,
     };
   }
 
@@ -820,10 +1161,10 @@ function readAmount(lines: string[], marker: string): AmountReading {
  * `(-$1.00 saved)` beside the total say nothing about the total.
  */
 function isCreditMarked(before: string, token: string, after: string): boolean {
-  if (NEGATIVE_BEFORE.test(before)) {
+  if (signPatterns().negativeBefore.test(before)) {
     return true;
   }
-  const opens = OPENS_BEFORE.exec(before);
+  const opens = signPatterns().opensBefore.exec(before);
   const closes = CLOSES_AFTER.exec(after);
   // A bare (2) or (100) is a quantity or a count; parentheses negate money only.
   return !!opens && !!closes && (!!opens[1] || !!closes[1] || isMoneyShaped(token));
@@ -844,15 +1185,32 @@ function largestOf(candidates: AmountCandidate[]): AmountCandidate | undefined {
  * is a word, and no word is read for what it says (ADR 0008). The capitals of
  * a sign (US$) and the code the receipt's currency was read from (USD) are
  * the figure's money, not a word. A figure whose own line holds no
- * parenthesis is read inside the one the line before left open.
+ * parenthesis is read inside the one the line before left open. A
+ * parenthesis nothing closes is closed by the end of its line.
  */
 function isAside(before: string, after: string, marker: string, opening: string): boolean {
-  const opened = UNCLOSED_OPEN.exec(ANY_PARENS.test(before) ? before : `${opening}\n${before}`);
-  const closed = UNOPENED_CLOSE.exec(after);
-  if (!opened || !closed) {
+  const { signs } = signPatterns();
+  const onItsLine = ANY_PARENS.test(before);
+  const opened = UNCLOSED_OPEN.exec(onItsLine ? before : `${opening}\n${before}`);
+  if (!opened) {
     return false;
   }
-  const inside = `${opened[0].slice(1)} ${closed[0].slice(0, -1)}`.replace(SIGNS, ' ');
+  let closing = UNOPENED_CLOSE.exec(after)?.[0].slice(0, -1);
+  // A parenthesis OCR never closed ends with its line: (Reg $15.00 is the
+  // aside (Reg $15.00) with its last mark lost. One carried from the line
+  // before ends with the figure's line only where that line holds the figure
+  // and no word, as the second half of (Reg / $15.00 does; a line with a
+  // label of its own is a new line of the receipt.
+  if (closing === undefined && !ANY_PARENS.test(after)) {
+    const bare = !LETTER.test(`${before} ${after}`.replace(signs, ' '));
+    if (onItsLine || bare) {
+      closing = after;
+    }
+  }
+  if (closing === undefined) {
+    return false;
+  }
+  const inside = `${opened[0].slice(1)} ${closing}`.replace(signs, ' ');
   return LETTER.test(marker === '' ? inside : inside.split(marker).join(' '));
 }
 
@@ -869,8 +1227,8 @@ function isAside(before: string, after: string, marker: string, opening: string)
  * is listed as sharing it, and both are money unless the receipt's other
  * lines settle it (settleSharedSigns).
  */
-function signedSides(line: string, figures: PrintedFigure[], marker: string): SignedSides {
-  const isSign = (text: string) => ONE_SIGN.test(text) || (marker !== '' && text === marker);
+function signedSides(line: string, figures: PlacedFigure[], marker: string): SignedSides {
+  const isSign = (text: string) => signPatterns().oneSign.test(text) || (marker !== '' && text === marker);
   const before = figures.map(({ start }) => {
     const lead = line.slice(0, start).replace(MARK_BEFORE_FIGURE, '');
     return SIGN_LAST.test(lead) || (marker !== '' && lead.endsWith(marker));

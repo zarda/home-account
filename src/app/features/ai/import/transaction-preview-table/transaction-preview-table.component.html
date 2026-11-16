@@ -42,7 +42,7 @@
   </div>
 
   <!-- Card-based layout for transactions -->
-  <div class="transactions-list">
+  <div class="transactions-list" [class.lone]="transactions.length === 1">
     @for (row of transactions; track row.id) {
       <div
         class="transaction-card"

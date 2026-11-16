@@ -3,8 +3,10 @@
 **Status:** Accepted, implemented; amended by
 [0162](0162-a-refund-read-on-the-device-is-filed-as-income-and-the-review-asks-about-it.md),
 [0185](0185-a-refund-is-asked-about-at-every-door-and-a-category-follows-its-rows-side-there-and-back.md)
-and
+,
 [0186](0186-a-date-stops-at-a-currency-sign-and-a-line-break-a-total-read-past-an-aside-or-under-a-count-is-flagged-and-a-shared-file-lands-in-the-upload-area.md)
+and
+[0189](0189-a-price-is-no-part-of-a-date-a-total-with-no-currency-mark-is-read-on-a-sum-a-reading-past-an-aside-asks-its-type-and-a-receipt-that-prints-a-code-and-no-sign-disputes-the-model.md)
 · **Date:** 2026-09-24 · **Issues:** #428, #429
 
 Reference documentation lives in [../import-fields.md](../import-fields.md) and
@@ -55,6 +57,13 @@ sum moved that total there or kept it. A total the cash-tendered sum picked,
 where neither rule also applies to it, still lifts to 0.8 on agreement: that
 sum is arithmetic on the print. A disagreement with a parser whose own reading
 is weaker than that still lifts the model's total to 0.8.
+
+**Amended by
+[0189](0189-a-price-is-no-part-of-a-date-a-total-with-no-currency-mark-is-read-on-a-sum-a-reading-past-an-aside-asks-its-type-and-a-receipt-that-prints-a-code-and-no-sign-disputes-the-model.md).**
+One disagreement with a parser reading under the bar no longer lifts the
+model: on a receipt that prints a currency code and no currency sign, the
+parser's grade is low for want of a sign rather than of a reading, and any
+total it read disputes a model total that differs, at 0.5.
 
 ## Context
 

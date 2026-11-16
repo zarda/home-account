@@ -180,7 +180,6 @@ describe('parseReceiptOcrText', () => {
         const cases: [text: string, amount: number][] = [
           ['Shop\nTax 8% $0.96\nTotal 12', 0.96],
           ['Shop\nTax 8% $0.40\nTotal 5.40', 0.4],
-          ['Diner\nFood $12.00\nTip 18% $2.16\nTotal 14.16', 12],
         ];
         for (const [text, amount] of cases) {
           expect(parseReceiptOcrText(text))
@@ -338,27 +337,25 @@ describe('parseReceiptOcrText', () => {
         }
       });
 
-      it('grades the total under a later count where its sign stands apart and the date printed after it on its line is lost, the known gap', () => {
+      it('reads the total at its own grade where its sign stands apart and a date is printed after it on its line', () => {
         // With a space or a code between the sign and the total, the total's
-        // own figure starts a run that cannot be a date (12.50 01), which takes
-        // the date's first number with it, so the rest of the date stands bare
+        // own figure starts a run (12.50 01). The reader starts again inside
+        // it and reads the date written whole, which used to be left bare
         // beside the money as counts, one larger than the total.
-        const cases: [text: string, amount: number][] = [
-          ['Shop\nTOTAL $ 12.50 01/15/2026', 12.5],
-          ['Shop\nTOTAL USD 12.50 01/15/2026', 12.5],
-          ['Shop\n$ 15.00 01/15/26', 15],
+        const cases: [text: string, amount: number, dateConfidence: number][] = [
+          ['Shop\nTOTAL $ 12.50 01/15/2026', 12.5, 0.9],
+          ['Shop\nTOTAL USD 12.50 01/15/2026', 12.5, 0.9],
+          ['Shop\n$ 15.00 01/15/26', 15, 0.5],
         ];
-        for (const [text, amount] of cases) {
-          expect(parseReceiptOcrText(text))
+        for (const [text, amount, dateConfidence] of cases) {
+          const result = parseReceiptOcrText(text);
+          expect(result)
             .withContext(text)
-            .toEqual(
-              jasmine.objectContaining({
-                amount,
-                amountConfidence: 0.6,
-                amountDemotion: 'count',
-                dateConfidence: 0,
-              }),
-            );
+            .toEqual(jasmine.objectContaining({ amount, amountConfidence: 0.8, dateConfidence }));
+          expect(result.amountDemotion).withContext(text).toBeUndefined();
+          expect([result.date.getFullYear(), result.date.getMonth() + 1, result.date.getDate()])
+            .withContext(text)
+            .toEqual([2026, 1, 15]);
         }
       });
 
@@ -749,28 +746,63 @@ describe('parseReceiptOcrText', () => {
         expect(result.date.getFullYear()).toBe(2025);
       });
 
-      it('reads no date OCR wrapped across two lines, and reads a part it leaves as money, the known gap', () => {
-        expect(parseReceiptOcrText('Shop\n15/01/\n2026').dateConfidence).toBe(0);
-        // The day and month, written like money, outrank the total: on a slip
-        // that prints no currency mark the refund reads as a purchase. A year
-        // left on a line with a currency code outranks the total too.
-        const cases: [text: string, amount: number, amountConfidence: number][] = [
-          ['REFUND\n13.01.\n24\nItem -4.50\nTotal -4.50', 13.01, 0.5],
-          ['Shop\nItem 4.50\nTotal 4.50 EUR 13.01.\n24', 13.01, 0.8],
-          ['Shop\n13.01.\n2024 14:32 EUR\nItem $45.00\nTotal $45.00', 2024, 0.8],
+      it('reads a date written whole whose year OCR wrapped onto the next line', () => {
+        const alone = 'Shop\n15/01/\n2026';
+        expect(parseReceiptOcrText(alone).dateConfidence).toBe(0.9);
+        expect(dated(alone)).toEqual([2026, 1, 15]);
+        // The day and month, written like money, used to outrank the total: on
+        // a slip that prints no currency mark the refund read as a purchase.
+        // A year left on a line with a currency code outranked it too.
+        const cases: [text: string, amount: number, extra: Record<string, unknown>, date: number[]][] = [
+          [
+            'REFUND\n13.01.\n24\nItem -4.50\nTotal -4.50',
+            4.5,
+            { amountConfidence: 0.5, direction: 'credit', directionConfidence: 0.5, dateConfidence: 0.5 },
+            [2024, 1, 13],
+          ],
+          [
+            'Shop\nItem 4.50\nTotal 4.50 EUR 13.01.\n24',
+            4.5,
+            { amountConfidence: 0.8, direction: 'debit', directionConfidence: 0, dateConfidence: 0.5 },
+            [2024, 1, 13],
+          ],
+          [
+            'Shop\n13.01.\n2024 14:32 EUR\nItem $45.00\nTotal $45.00',
+            45,
+            { amountConfidence: 0.8, direction: 'debit', directionConfidence: 0, dateConfidence: 0.9 },
+            [2024, 1, 13],
+          ],
         ];
-        for (const [text, amount, amountConfidence] of cases) {
+        for (const [text, amount, extra, date] of cases) {
           expect(parseReceiptOcrText(text))
             .withContext(text)
-            .toEqual(
-              jasmine.objectContaining({
-                amount,
-                amountConfidence,
-                direction: 'debit',
-                directionConfidence: 0,
-                dateConfidence: 0,
-              }),
-            );
+            .toEqual(jasmine.objectContaining({ amount, ...extra }));
+          expect(dated(text)).withContext(text).toEqual(date);
+        }
+      });
+
+      it('reads a wrapped date whose second mark went to the next line with the year', () => {
+        const text = 'Shop\n15/01\n/2026\nTotal $5.00';
+        expect(parseReceiptOcrText(text)).toEqual(
+          jasmine.objectContaining({ amount: 5, amountConfidence: 0.8, dateConfidence: 0.9 }),
+        );
+        expect(dated(text)).toEqual([2026, 1, 15]);
+      });
+
+      it('reads no date across a line break where the next line starts a price, a negative figure or a bare year', () => {
+        const cases: [text: string, amount: number][] = [
+          // 24.50 runs on as a figure: it is a price, not the year 24.
+          ['Shop\nItem 13.01.\n24.50\nTotal 24.50', 24.5],
+          // A minus that starts the next line marks its figure, not the date.
+          ['Shop\nItem 12.01\n-24.00\nTotal -24.00', 24],
+          // No mark beside the break: 28.09 over 26 is two lines, the known gap
+          // the battery records for a split line (C149).
+          ['REFUND\n28.09\n26\nItem\n-12.50\nTotal\n-12.50', 28.09],
+        ];
+        for (const [text, amount] of cases) {
+          expect(parseReceiptOcrText(text))
+            .withContext(text)
+            .toEqual(jasmine.objectContaining({ amount, dateConfidence: 0 }));
         }
       });
 
@@ -797,11 +829,13 @@ describe('parseReceiptOcrText', () => {
         );
         expect(dated(glued)).toEqual([2024, 1, 1]);
         // Where the sign stands apart, the price's own figure starts a run
-        // that cannot be a date, the date printed after it is lost, and the
-        // price still reads whole.
-        expect(parseReceiptOcrText('Shop\nTotal $ 38.01 01 01 24')).toEqual(
-          jasmine.objectContaining({ amount: 38.01, amountConfidence: 0.8, dateConfidence: 0 }),
+        // that cannot be a date; the reader starts again inside it, and the
+        // date printed after the price is read.
+        const spaced = 'Shop\nTotal $ 38.01 01 01 24';
+        expect(parseReceiptOcrText(spaced)).toEqual(
+          jasmine.objectContaining({ amount: 38.01, amountConfidence: 0.8, dateConfidence: 0.3 }),
         );
+        expect(dated(spaced)).toEqual([2024, 1, 1]);
       });
 
       it('reads a price its sign is glued to as money, and the date printed after it as that date', () => {
@@ -835,30 +869,74 @@ describe('parseReceiptOcrText', () => {
         }
       });
 
-      it("reads a run that only looks like a date where a price's own figure starts it, and loses that price, the known gap", () => {
-        // 26.10.180 read a date through a currency sign above these lines (the
-        // 1 $10.00 of Item 1 $10.00) and stopped there. With the sign parting
-        // the figures, the reader goes on, and a run that starts at a price's
-        // figure takes the price, or its cents, into the date. A sign glued to
-        // the price stops the run from starting there; a sign spaced from it,
-        // a code before it, or no sign at all does not.
+      it("reads the date written whole after a price a sign is spaced from, and the price", () => {
+        // A sign spaced from the price, or a code before it, leaves the
+        // price's own figure free to start a run (27.01 12, 5.15 01, 3 1/13).
+        // The date written whole starts inside that run and is the one read,
+        // so the price, or its cents, stays in the amount hunt.
         const cases: [text: string, amount: number][] = [
-          // The total's whole part, its cents and the date's first number.
-          ['Shop\nItem 1 $10.00\nTotal $ 27.01 12/5/24', 24],
-          ['Shop\nItem 1 $10.00\nTotal USD 27.01 12/5/24', 24],
-          ['Shop\nTotal $ 5.15 01/15/26', 26],
-          // A card line's whole-number amount and the date after it.
-          ['Shop\nItem $3\nTotal $3\nCard ****1234 $ 3 1/13/24', 1234],
-          // A unit price's cents and the line total's whole part.
-          ['Laden\nBrot 1 €2,10\nKaffee 2 x 5,10 10,20 €\nSumme 10,20 €', 20],
-          // A count printed before the total, and the total.
-          ['Shop\nItem 1 $10.00\nKaffee €2,10\nSumme (2) 12,10 €', 10],
+          ['Shop\nItem 1 $10.00\nTotal $ 27.01 12/5/24', 27.01],
+          ['Shop\nItem 1 $10.00\nTotal USD 27.01 12/5/24', 27.01],
+          ['Shop\nTotal $ 5.15 01/15/26', 5.15],
+          ['Shop\nItem $3\nTotal $3\nCard ****1234 $ 3 1/13/24', 3],
         ];
         for (const [text, amount] of cases) {
           expect(parseReceiptOcrText(text))
             .withContext(text)
             .toEqual(jasmine.objectContaining({ amount, amountConfidence: 0.8 }));
         }
+        expect(parseReceiptOcrText('Shop\nItem 1 $10.00\nTotal $ 27.01 12/5/24\nCash $50.00\nChange $22.99')).toEqual(
+          jasmine.objectContaining({ amount: 27.01, amountConfidence: 0.6, amountDemotion: 'tender' }),
+        );
+      });
+
+      it('reads a price a run would cut as money, and no date', () => {
+        // No date is printed here. A unit price's cents and the line total's
+        // whole part (5,10 10,20 €) made a run that read as a date and cut
+        // the line total in two. A figure a sign touches is no part of a date,
+        // so the run is turned down, on a purchase and on its refund.
+        expect(parseReceiptOcrText('Laden\nBrot 1 €2,10\nKaffee 2 x 5,10 10,20 €\nSumme 10,20 €')).toEqual(
+          jasmine.objectContaining({ amount: 10.2, amountConfidence: 0.8, direction: 'debit', dateConfidence: 0 }),
+        );
+        expect(parseReceiptOcrText('Storno\nBrot 1 -€2,10\nKaffee 2 x 5,10 -10,20 €\nSumme -10,20 €')).toEqual(
+          jasmine.objectContaining({
+            amount: 10.2,
+            amountConfidence: 0.8,
+            direction: 'credit',
+            directionConfidence: 0.5,
+            dateConfidence: 0,
+          }),
+        );
+      });
+
+      it('reads the date after a price a sign is spaced from where neither is written whole', () => {
+        // 27.01 01 is a run a date could be made of, and the price is the
+        // figure the sign touches: the date is the three numbers after it.
+        for (const text of ['Shop\nTotal $ 27.01 01 13 25', 'Shop\nTotal 27,01 € 01 13 25']) {
+          expect(parseReceiptOcrText(text))
+            .withContext(text)
+            .toEqual(jasmine.objectContaining({ amount: 27.01, amountConfidence: 0.8, dateConfidence: 0.5 }));
+          expect(dated(text)).withContext(text).toEqual([2025, 1, 13]);
+        }
+      });
+
+      it('reads a date written whole that a sign touches', () => {
+        for (const text of ['Shop\n€ 15.01.26\nSumme €5,00', 'Shop\nTotal 5,00 € 15.01.26']) {
+          expect(parseReceiptOcrText(text))
+            .withContext(text)
+            .toEqual(jasmine.objectContaining({ amount: 5, amountConfidence: 0.8, dateConfidence: 0.5 }));
+          expect(dated(text)).withContext(text).toEqual([2026, 1, 15]);
+        }
+      });
+
+      it('reads a run that holds a whole price before its sign as a date, and loses that price, the known gap', () => {
+        // A count before the total and the total, (2) 12,10 €, make a run that
+        // holds the price whole, before the sign after it. Barring that run
+        // too reads an item above a discount that only such a run kept out of
+        // the amount hunt (ADR 0189), so it stands.
+        expect(parseReceiptOcrText('Shop\nItem 1 $10.00\nKaffee €2,10\nSumme (2) 12,10 €')).toEqual(
+          jasmine.objectContaining({ amount: 10, amountConfidence: 0.8 }),
+        );
       });
 
       it("twins the direction off a payment line where the total's sign is glued to it, as 26.10.180 does", () => {
@@ -884,30 +962,30 @@ describe('parseReceiptOcrText', () => {
         }
       });
 
-      it("reads the direction off a payment line where a run that only looks like a date took the total's own figure, the known gap", () => {
-        // With the sign spaced from the total, the run 27.01 01 takes the
-        // total's own figure into a date, graded under the bar, and the amount
-        // still reads right, off the payment line that repeats it. But that
-        // copy then decides the direction alone: a refund whose card line
-        // prints the total unmarked is filed as a purchase graded 0, and a
-        // sale whose card line prints it negative as a refund. 26.10.180
-        // twinned both at 0.3.
-        const cases: [text: string, direction: 'credit' | 'debit', directionConfidence: number][] = [
-          ['REFUND\nItem 1 -$10.00\nTotal -$ 27.01 01/13/25\nVISA $27.01', 'debit', 0],
-          ['Shop\nItem 1 $10.00\nTotal $ 27.01 01/13/25\nCard -27.01 USD', 'credit', 0.5],
+      it("twins the direction off a payment line where the total's sign is spaced from it", () => {
+        // The run 27.01 01 used to take the total's own figure into a date,
+        // so the payment line's copy decided the direction alone: a refund
+        // whose card line prints the total unmarked was filed as a purchase
+        // graded 0, and a sale whose card line prints it negative as a
+        // refund. The date written whole is read now, the total stays in the
+        // hunt, and the two copies disagree.
+        const cases: string[] = [
+          'REFUND\nItem 1 -$10.00\nTotal -$ 27.01 01/13/25\nVISA $27.01',
+          'Shop\nItem 1 $10.00\nTotal $ 27.01 01/13/25\nCard -27.01 USD',
         ];
-        for (const [text, direction, directionConfidence] of cases) {
+        for (const text of cases) {
           expect(parseReceiptOcrText(text))
             .withContext(text)
             .toEqual(
               jasmine.objectContaining({
                 amount: 27.01,
                 amountConfidence: 0.8,
-                direction,
-                directionConfidence,
+                direction: 'debit',
+                directionConfidence: 0.3,
                 dateConfidence: 0.5,
               }),
             );
+          expect(dated(text)).withContext(text).toEqual([2025, 1, 13]);
         }
       });
 
@@ -929,42 +1007,90 @@ describe('parseReceiptOcrText', () => {
         }
       });
 
-      it('reads a day-first date printed right after a whole-number price as one figure of money, the known gap', () => {
-        // With the sign spaced from the price, the run 13 24.07 is rejected
-        // as a date and consumed: the reader goes on from where the run ends,
-        // so 24.07.24, which starts inside it, is never tried, and it stands
-        // as one figure written like money, larger than the total. 26.10.180
-        // read the first one's date through the sign (2 € 13 24), which split
-        // it.
-        const cases: [text: string, amount: number, extra: Record<string, unknown>][] = [
-          ['Laden\nMilch 2 € 13 24.07.24\nSumme €26,00', 2407.24, { dateConfidence: 0 }],
+      it('reads a day-first date printed right after a whole-number price a sign is spaced from', () => {
+        // The run 13 24.07 makes no date, and the reader starts again just
+        // after its first number, where 24.07.24 begins. It used to go on from
+        // where the run ended, and the date stood as one figure written like
+        // money, larger than the total.
+        const cases: [text: string, amount: number, extra: Record<string, unknown>, date: number[]][] = [
+          ['Laden\nMilch 2 € 13 24.07.24\nSumme €26,00', 26, { dateConfidence: 0.5 }, [2024, 7, 24]],
           [
             'REFUND\nItem 2 -$ 15 24.07.23\nTotal -$30',
-            2407.23,
-            { direction: 'debit', directionConfidence: 0, dateConfidence: 0 },
+            30,
+            { direction: 'credit', directionConfidence: 0.5, dateConfidence: 0.5 },
+            [2023, 7, 24],
           ],
         ];
-        for (const [text, amount, extra] of cases) {
+        for (const [text, amount, extra, date] of cases) {
           expect(parseReceiptOcrText(text))
             .withContext(text)
             .toEqual(jasmine.objectContaining({ amount, amountConfidence: 0.8, ...extra }));
+          expect(dated(text)).withContext(text).toEqual(date);
         }
       });
 
-      it('reads no date glued to a figure by a mark, the known gap', () => {
-        // A date never starts inside a figure, so one glued to a code by a mark
-        // that joins digits (4711.13/01/25) is not read, and the code with the
-        // day for its cents outranks the total. On a slip that prints no
-        // currency mark the refund then reads as a purchase. 26.10.180 read
-        // the date, and the refund's total.
-        expect(parseReceiptOcrText('Storno\nBon 4711.13/01/25\nBrot -2,50\nSumme -12,50')).toEqual(
-          jasmine.objectContaining({
-            amount: 4711.13,
-            amountConfidence: 0.5,
-            direction: 'debit',
-            directionConfidence: 0,
-            dateConfidence: 0,
-          }),
+      it('reads the date written whole where a figure before it makes a run of its own', () => {
+        // The 8 of 8円 and the day and month after it make a date as well
+        // (27 August 2007); the date is the one printed whole, on one mark.
+        const text = 'Shop\n8円 27-07-2025\nTotal 8円';
+        expect(parseReceiptOcrText(text).dateConfidence).toBe(0.9);
+        expect(dated(text)).toEqual([2025, 7, 27]);
+      });
+
+      it('keeps a run of spaced numbers as the date where no whole date starts inside it', () => {
+        const text = 'Shop\nTotal $38.01 01 01 24';
+        expect(parseReceiptOcrText(text)).toEqual(
+          jasmine.objectContaining({ amount: 38.01, amountConfidence: 0.8, dateConfidence: 0.3 }),
+        );
+        expect(dated(text)).toEqual([2024, 1, 1]);
+      });
+
+      it('reads a date written whole that a number is glued to by another mark, and takes the number with it', () => {
+        // A date never starts inside a figure, but cents carry on in the mark
+        // that joined them: a date written whole on a mark of its own, after
+        // the mark that glues it to a code (4711.13/01/25), is a date. The
+        // code used to stand with the day for its cents and outrank the
+        // total, and on a slip that prints no currency mark the refund read
+        // as a purchase.
+        const cases: [text: string, dateConfidence: number][] = [
+          ['Storno\nBon 4711.13/01/25\nBrot -2,50\nSumme -12,50', 0.5],
+          ['Storno\nBon 4711,13.01.2025\nBrot -2,50\nSumme -12,50', 0.9],
+        ];
+        for (const [text, dateConfidence] of cases) {
+          expect(parseReceiptOcrText(text))
+            .withContext(text)
+            .toEqual(
+              jasmine.objectContaining({
+                amount: 12.5,
+                amountConfidence: 0.5,
+                direction: 'credit',
+                directionConfidence: 0.5,
+                dateConfidence,
+              }),
+            );
+          expect(dated(text)).withContext(text).toEqual([2025, 1, 13]);
+        }
+      });
+
+      it('starts no date after a joining mark where the same mark carries on, or a price would be cut', () => {
+        // 1.234,56 is one figure, and so is a price OCR glued a date to: the
+        // sign touches all of it, and a price is no part of a date.
+        expect(parseReceiptOcrText('Shop\nTotal 1.234,56 €')).toEqual(
+          jasmine.objectContaining({ amount: 1234.56, amountConfidence: 0.8, dateConfidence: 0 }),
+        );
+        expect(parseReceiptOcrText('Shop\nTotal $12.50.01/15/26').dateConfidence).toBe(0);
+      });
+
+      it('reads no figure of money out of a second date the receipt writes whole', () => {
+        // The date after the total used to leave its numbers beside the money
+        // as counts, one larger than the total, which was flagged for it.
+        const dated = parseReceiptOcrText('Shop\n2026-09-28\nTotal $5.15 01/15/26');
+        expect(dated).toEqual(jasmine.objectContaining({ amount: 5.15, amountConfidence: 0.8, dateConfidence: 0.9 }));
+        expect(dated.amountDemotion).toBeUndefined();
+        // On a slip that prints no currency mark, the year of the second date
+        // was the largest number left, and the refund read as a purchase.
+        expect(parseReceiptOcrText('REFUND\nLatte 4 -40원 08/01/26\nTotal -160원\n01/28/2026')).toEqual(
+          jasmine.objectContaining({ amount: 160, direction: 'credit', directionConfidence: 0.5 }),
         );
       });
 
@@ -1000,49 +1126,150 @@ describe('parseReceiptOcrText', () => {
           jasmine.clock().uninstall();
         });
 
-        it('reads a two-digit-year date printed year first as one figure of money, the known gap', () => {
-          // Read day first, 23.01.27 is a date in 2027, so the reader turns it
-          // down and the three groups are left as one figure written like money.
-          // 26.10.180 read a date across the line break above it (7 / 23.01).
-          expect(parseReceiptOcrText('Market 7\n23.01.27 JPY\nお茶 ¥150\n弁当 ¥480\n合計 ¥630')).toEqual(
-            jasmine.objectContaining({ amount: 2301.27, amountConfidence: 0.8, dateConfidence: 0 }),
+        it('reads a two-digit-year date printed year first where day first it would lie ahead', () => {
+          // Read day first, 23.01.27 is a date in 2027, which nothing is dated
+          // yet. Its three groups used to be left as one figure written like
+          // money, larger than the total; they are read year first now, graded
+          // as the guess it is.
+          const purchase = 'Market 7\n23.01.27 JPY\nお茶 ¥150\n弁当 ¥480\n合計 ¥630';
+          expect(parseReceiptOcrText(purchase)).toEqual(
+            jasmine.objectContaining({ amount: 630, amountConfidence: 0.8, dateConfidence: 0.3 }),
           );
-          expect(parseReceiptOcrText('Market 7\n23.01.27\nREFUND\nItem -12.50\nTotal -12.50')).toEqual(
+          expect(dated(purchase)).toEqual([2023, 1, 27]);
+          const refund = 'Market 7\n23.01.27\nREFUND\nItem -12.50\nTotal -12.50';
+          expect(parseReceiptOcrText(refund)).toEqual(
             jasmine.objectContaining({
-              amount: 2301.27,
+              amount: 12.5,
               amountConfidence: 0.5,
-              direction: 'debit',
-              directionConfidence: 0,
+              direction: 'credit',
+              directionConfidence: 0.5,
+              dateConfidence: 0.3,
             }),
           );
+          expect(dated(refund)).toEqual([2023, 1, 27]);
+        });
+
+        it("reads this month's date printed year first, and an older one day first as it always did", () => {
+          const today = 'Market\n26.10.30 JPY\nお茶 ¥150\n弁当 ¥480\n合計 ¥630';
+          expect(parseReceiptOcrText(today)).toEqual(
+            jasmine.objectContaining({ amount: 630, amountConfidence: 0.8, dateConfidence: 0.3 }),
+          );
+          expect(dated(today)).toEqual([2026, 10, 30]);
+          // 26.10.15 is a day that has been, read day first: nothing says the
+          // receipt meant 15 October 2026, and the grade stays under the bar.
+          const older = 'Market\n26.10.15 JPY\nお茶 ¥150\n弁当 ¥480\n合計 ¥630';
+          expect(parseReceiptOcrText(older)).toEqual(
+            jasmine.objectContaining({ amount: 630, amountConfidence: 0.8, dateConfidence: 0.5 }),
+          );
+          expect(dated(older)).toEqual([2015, 10, 26]);
+        });
+
+        it('reads a date that lies ahead in one order of day and month in the other', () => {
+          // 11/08/26 is 8 November 2026 month first, nine days ahead, and
+          // 11 August day first; 08/11/26 is the reverse.
+          for (const text of ['Shop\n11/08/26\nTotal $5.00', 'Shop\n08/11/26\nTotal $5.00']) {
+            expect(parseReceiptOcrText(text))
+              .withContext(text)
+              .toEqual(jasmine.objectContaining({ amount: 5, amountConfidence: 0.8, dateConfidence: 0.3 }));
+            expect(dated(text)).withContext(text).toEqual([2026, 8, 11]);
+          }
+        });
+
+        it('reads no date where every reading lies ahead, nor a year first where the first group could be a month', () => {
+          for (const text of ['Shop\n11/12/26\nTotal $5.00', 'Shop\n12.11.27\nTotal $5.00']) {
+            expect(parseReceiptOcrText(text).dateConfidence).withContext(text).toBe(0);
+          }
         });
       });
 
-      it('reads a signed figure over a total line led by its date that prints no currency mark, the known gap', () => {
-        // 26.10.180 read a date across the line break (the 2 of x2 and the
-        // 1/13 below it), which joined the total to the signed line above.
-        // Read on its own line, the date leaves the total bare, in a weaker
-        // tier than the signed item.
-        expect(parseReceiptOcrText('Shop\nTea $2.00\nBagel $4.50 x2\n1/13/24 Total 45.00')).toEqual(
-          jasmine.objectContaining({ amount: 4.5, amountConfidence: 0.8, direction: 'debit' }),
-        );
-        expect(
-          parseReceiptOcrText('REFUND\nTea -$2.00\nBagel -$4.50 x2\n1/13/24 Total -45.00'),
-        ).toEqual(jasmine.objectContaining({ amount: 4.5, amountConfidence: 0.8, direction: 'credit' }));
-      });
-
-      it('reads a signed figure over a total that prints no currency mark, the known gap', () => {
-        // 26.10.180 read the signed figure's count and price as a date, which
-        // left the bare total the largest figure written like money.
+      it('reads a total that prints no currency mark where a marked figure and one more add up to it', () => {
+        // The marked figures outrank a total written like money on a line
+        // with no mark, so the largest of them used to be read at 0.8: the
+        // subtotal, an item or the tax. Where one of them and one more figure
+        // of money add up to the unmarked one, it is read, under the bar.
         const cases: [text: string, amount: number][] = [
-          ['Laden\nBrot 1 €2,10\nKaffee 2 x 5,10 10,20\nSumme 10,20', 2.1],
-          ['Market 7\nCrisps 87.78 6\nScone Qty 3 £13.20\nTotal 100.98', 13.2],
+          ['Shop\nEggs $10.86\nTax $0.87\nTotal 11.73', 11.73],
+          ['Shop\nEggs $10.86\nSubtotal $10.86\nTotal 11.73\nTax $0.87', 11.73],
+          ['Shop\nTotal 11.73\nSubtotal $10.86\nTax $0.87', 11.73],
+          ['Market 7\nCrisps 87.78 6\nScone Qty 3 £13.20\nTotal 100.98', 100.98],
         ];
         for (const [text, amount] of cases) {
           expect(parseReceiptOcrText(text))
             .withContext(text)
-            .toEqual(jasmine.objectContaining({ amount, amountConfidence: 0.8 }));
+            .toEqual(jasmine.objectContaining({ amount, amountConfidence: 0.6, amountDemotion: 'unmarked' }));
         }
+      });
+
+      it('keeps the marked figure, under the bar, where nothing adds up to a larger one printed with no mark', () => {
+        // 45.00 is no sum of what the receipt marks as money, so the item is
+        // still read, and the reviewer is asked: on a purchase, on its refund,
+        // with the date leading the total's line or without it.
+        const cases: [text: string, amount: number, direction: 'credit' | 'debit'][] = [
+          ['Shop\nTea $2.00\nBagel $4.50 x2\n1/13/24 Total 45.00', 4.5, 'debit'],
+          ['Shop\nTea $2.00\nBagel $4.50 x2\nTotal 45.00', 4.5, 'debit'],
+          ['REFUND\nTea -$2.00\nBagel -$4.50 x2\n1/13/24 Total -45.00', 4.5, 'credit'],
+          ['Laden\nBrot 1 €2,10\nKaffee 2 x 5,10 10,20\nSumme 10,20', 2.1, 'debit'],
+        ];
+        for (const [text, amount, direction] of cases) {
+          expect(parseReceiptOcrText(text))
+            .withContext(text)
+            .toEqual(
+              jasmine.objectContaining({ amount, amountConfidence: 0.6, amountDemotion: 'unmarked', direction }),
+            );
+        }
+      });
+
+      it('reads a total printed bare under a tip rate, flagged by the rate before the missing mark', () => {
+        // The rate is a count larger than the item, so the reading is graded
+        // as a count's; the sum moves it to the total all the same.
+        expect(parseReceiptOcrText('Diner\nFood $12.00\nTip 18% $2.16\nTotal 14.16')).toEqual(
+          jasmine.objectContaining({ amount: 14.16, amountConfidence: 0.6, amountDemotion: 'count' }),
+        );
+      });
+
+      it('keeps a total the receipt marks at its own grade where nothing larger is printed without a mark', () => {
+        const cases: [text: string, amount: number][] = [
+          ['Shop\nEggs $10.86\nTax $0.87\nTotal $11.73', 11.73],
+          // A balance in accounting parentheses carries a mark the total does not.
+          ['Shop\nTotal $12.50\nPoints (1,847.00)', 12.5],
+          // A short group in its middle: a date or a code, not money.
+          ['Shop\nTotal $5.00\nLot 13.01.31', 5],
+          // A round figure between a marked total and its change is the cash.
+          ['Shop\nTotal $49.03\nCash 50.00\nChange $0.97', 49.03],
+        ];
+        for (const [text, amount] of cases) {
+          const result = parseReceiptOcrText(text);
+          expect(result).withContext(text).toEqual(jasmine.objectContaining({ amount, amountConfidence: 0.8 }));
+          expect(result.amountDemotion).withContext(text).toBeUndefined();
+        }
+      });
+
+      it('asks about a right total over a larger balance printed with no mark, the cost of the rule', () => {
+        // Nothing in the print tells a points balance from a total printed
+        // bare, so the total is kept and the reviewer is asked. A balance
+        // that happens to be the total and an item added up is read: the
+        // sum cannot tell it from a total either.
+        expect(parseReceiptOcrText('Shop\nTotal $12.50\nPoints balance 1,847')).toEqual(
+          jasmine.objectContaining({ amount: 12.5, amountConfidence: 0.6, amountDemotion: 'unmarked' }),
+        );
+        expect(parseReceiptOcrText('Shop\nBento $77.57\nMilk $89.96\nTotal $167.53\nCard balance 245.10')).toEqual(
+          jasmine.objectContaining({ amount: 245.1, amountConfidence: 0.6, amountDemotion: 'unmarked' }),
+        );
+      });
+
+      it('moves no reading to an unmarked figure on a receipt that prints the pick negative', () => {
+        // A refund's total is not read apart on a sum: the pick stays, asked about.
+        expect(parseReceiptOcrText('REFUND\nEggs -$10.86\nTax -$0.87\nTotal -11.73')).toEqual(
+          jasmine.objectContaining({ amount: 10.86, amountConfidence: 0.6, amountDemotion: 'unmarked' }),
+        );
+      });
+
+      it('reads a total printed as a bare whole number over its tax as the tax, the known gap', () => {
+        // A whole number with no mark looks the same as a store or receipt
+        // number, so the rule for a figure written like money leaves it.
+        expect(parseReceiptOcrText('店\n合計 3点 980\n内税 ¥72')).toEqual(
+          jasmine.objectContaining({ amount: 72, amountConfidence: 0.8 }),
+        );
       });
 
       it('reads a bare figure on a line whose only money is a labelled aside as money, the known gap', () => {
@@ -1220,7 +1447,7 @@ describe('parseReceiptOcrText', () => {
       expect('amountDemotion' in parseReceiptOcrText('Shop\n$100\n$8\n$108')).toBeFalse();
     });
 
-    it('names the first rule that moved the reading: an aside, then a count, then the cash tendered, then a discount', () => {
+    it('names the first rule that moved the reading: an aside, then a count, then the cash tendered, then a discount, then a missing mark', () => {
       // A pin: passing an aside outranks a count that might have been the
       // total, and both outrank the cash-tendered sum, so a model that agrees
       // with such a reading keeps the parser's grade on the device lane. Naming
@@ -1229,6 +1456,11 @@ describe('parseReceiptOcrText', () => {
       // larger than the total it leaves still names the reading.
       const cases: [text: string, amount: number, amountDemotion: string][] = [
         ['Shop\nItem $3.00\nCoupon -$1.00\nTotal $2.00', 2, 'discount'],
+        // A larger figure with no mark names the reading only where no rule
+        // above it did: the discount's and the cash's figures stand.
+        ['Shop\nItem $3.00\nCoupon -$1.00\nTotal $2.00\nBalance 40.00', 2, 'discount'],
+        ['Shop\nTotal $15.00\nCash $20.00\nChange $5.00\nBalance 40.00', 15, 'tender'],
+        ['Shop\nTotal $15.01\nBalance 40.00', 15.01, 'unmarked'],
         ['Shop\nItem 72 $3.00\nCoupon -$1.00\nTotal $2.00', 2, 'count'],
         ['Shop\nItem $5.00\nDeposit -$2.00\nTotal $3.00', 3, 'tender'],
         ['Shop\nCash $50.00\n(Total $43.10)\nChange $6.90\nStore 72', 43.1, 'aside'],
@@ -1266,7 +1498,7 @@ describe('parseReceiptOcrText', () => {
               amountConfidence: 0.6,
               amountDemotion: 'aside',
               direction: 'debit',
-              directionConfidence: 0,
+              directionConfidence: 0.3,
             }),
           );
       }
@@ -1274,7 +1506,7 @@ describe('parseReceiptOcrText', () => {
 
     it('reads an aside in fullwidth parentheses, in any script', () => {
       expect(parseReceiptOcrText('店\n合計 ¥1,280\n（定価 ¥1,580）')).toEqual(
-        graded(1280, 0.6, 'debit', 0),
+        graded(1280, 0.6, 'debit', 0.3),
       );
     });
 
@@ -1286,34 +1518,63 @@ describe('parseReceiptOcrText', () => {
 
     it('reads an aside Vision handed back across two lines', () => {
       expect(parseReceiptOcrText('Shop\nTotal\n$12.50\n(Reg\n$15.00)')).toEqual(
-        graded(12.5, 0.6, 'debit', 0),
+        graded(12.5, 0.6, 'debit', 0.3),
       );
     });
 
     it('grades an aside it reads for want of anything else in its tier, flagged', () => {
       expect(parseReceiptOcrText('Shop\nTotal 12.50\n(Reg $15.00)')).toEqual(
-        graded(15, 0.6, 'debit', 0),
+        graded(15, 0.6, 'debit', 0.3),
       );
-      expect(parseReceiptOcrText('店\n合計 980\n(内税 ¥72)')).toEqual(graded(72, 0.6, 'debit', 0));
+      expect(parseReceiptOcrText('店\n合計 980\n(内税 ¥72)')).toEqual(graded(72, 0.6, 'debit', 0.3));
     });
 
-    it('reads past a price with tax, or a total, printed as an aside: flagged on a purchase, and on a refund slip read as a purchase, the known gap', () => {
+    it('reads past a price with tax, or a total, printed as an aside, and asks about the amount and the type', () => {
       expect(parseReceiptOcrText('店\n合計 ¥1,180\n(税込¥1,298)')).toEqual(
-        graded(1180, 0.6, 'debit', 0),
+        graded(1180, 0.6, 'debit', 0.3),
       );
       expect(parseReceiptOcrText('店\n合計 ¥1,000\n（税込 ¥1,100）')).toEqual(
-        graded(1000, 0.6, 'debit', 0),
+        graded(1000, 0.6, 'debit', 0.3),
       );
-      // The refund slip's credit is printed on no figure read, so it is filed
-      // as a purchase with no flag on its type.
+      // A refund slip that prints its total as a labelled aside marks no
+      // figure read, so it reads as a purchase. Labelled parentheses around a
+      // refund's total and around a regular price are the same print, so the
+      // type is sent to the reviewer, where it used to carry no flag: with
+      // items above the total, with the total alone, and with the currency
+      // written in letters.
       expect(parseReceiptOcrText('REFUND\nJacket $59.99\nTax $4.80\n(Total $64.79)')).toEqual(
-        graded(59.99, 0.6, 'debit', 0),
+        graded(59.99, 0.6, 'debit', 0.3),
+      );
+      expect(parseReceiptOcrText('REFUND\n(Total $64.79)')).toEqual(graded(64.79, 0.8, 'debit', 0.3));
+      expect(parseReceiptOcrText('返品\nジャケット 5,980円\n消費税 598円\n(6,578円)')).toEqual(
+        graded(5980, 0.38, 'debit', 0.3),
+      );
+    });
+
+    it('asks about the type where the figure read is printed again as a labelled aside', () => {
+      // One item, and the total in labelled parentheses repeating it: the
+      // figure read is the item's, printed on its own, and its copy is the
+      // aside. A refund slip prints its total that way too.
+      for (const text of ['REFUND\nTea ¥4,493\n(Total ¥4,493)', 'REFUND\nTea\n¥4,493\n(Total\n¥4,493)']) {
+        expect(parseReceiptOcrText(text)).withContext(text).toEqual(graded(4493, 0.8, 'debit', 0.3));
+      }
+    });
+
+    it('keeps a credit printed on the figure read, beside an aside or inside labelled parentheses', () => {
+      for (const text of [
+        'REFUND\nJacket $59.99\nTax $4.80\n($64.79)',
+        'REFUND\nJacket $59.99\nTax $4.80\n(Refund -$64.79)',
+      ]) {
+        expect(parseReceiptOcrText(text)).withContext(text).toEqual(graded(64.79, 0.8, 'credit', 0.5));
+      }
+      expect(parseReceiptOcrText('REFUND\nTotal -$12.50\n(Reg $15.00)')).toEqual(
+        graded(12.5, 0.6, 'credit', 0.5),
       );
     });
 
     describe('what it leaves alone', () => {
       it('keeps an aside that is the only figure on the receipt', () => {
-        expect(parseReceiptOcrText('Shop\n(Reg $15.00)')).toEqual(graded(15, 0.8, 'debit', 0));
+        expect(parseReceiptOcrText('Shop\n(Reg $15.00)')).toEqual(graded(15, 0.8, 'debit', 0.3));
       });
 
       it("reads a sign's capitals and the receipt's currency code as money, not a word", () => {
@@ -1349,10 +1610,64 @@ describe('parseReceiptOcrText', () => {
         );
       });
 
-      it("reads a label glued to its sign as the sign's capitals, the known gap", () => {
-        expect(parseReceiptOcrText('Shop\nTotal $12.50\n(REG$15.00)')).toEqual(
-          graded(15, 0.8, 'credit', 0.5),
-        );
+      it('reads a figure after a parenthesis nothing closes as an aside', () => {
+        // OCR lost the closing parenthesis, joined and where Vision hands the
+        // figure back on a line of its own.
+        for (const text of ['Shop\nTotal $12.50\n(Reg $15.00', 'Shop\nTotal\n$12.50\n(Reg\n$15.00']) {
+          const result = parseReceiptOcrText(text);
+          expect(result).withContext(text).toEqual(graded(12.5, 0.6, 'debit', 0.3));
+          expect(result.amountDemotion).withContext(text).toBe('aside');
+        }
+      });
+
+      it('reads no aside into the line after an unclosed parenthesis where that line has a word of its own', () => {
+        // (Open 9-5 never closes; Total $12.50 is a new line of the receipt.
+        // Nor are parentheses that hold a figure and its sign alone an aside.
+        for (const text of ['Shop\n(Open 9-5\nTotal $12.50', 'Shop\nItem $3.00\nTotal ($12.50']) {
+          const result = parseReceiptOcrText(text);
+          expect(result).withContext(text).toEqual(jasmine.objectContaining({ amount: 12.5, amountConfidence: 0.8 }));
+          expect(result.amountDemotion).withContext(text).toBeUndefined();
+        }
+      });
+
+      it('reads past a total printed after a parenthesis that never closes, flagged, the cost of the rule', () => {
+        // As its closed form, Total (incl. tax $12.50), already reads.
+        const result = parseReceiptOcrText('Shop\nItem $3.00\nTotal (incl. tax $12.50');
+        expect(result).toEqual(graded(3, 0.6, 'debit', 0.3));
+        expect(result.amountDemotion).toBe('aside');
+      });
+
+      it('reads a regular price printed with no parenthesis as the total, the known gap', () => {
+        expect(parseReceiptOcrText('Shop\nTotal $12.50\nReg. Price $15.00')).toEqual(graded(15, 0.8, 'debit', 0));
+      });
+
+      it('reads a label glued to its sign as a label, and the figure as an aside', () => {
+        // Any three capitals before a sign used to be the sign's own, so
+        // (REG$ read as accounting parentheses and the regular price as a
+        // refund's total. REG is no currency's letters.
+        const result = parseReceiptOcrText('Shop\nTotal $12.50\n(REG$15.00)');
+        expect(result).toEqual(graded(12.5, 0.6, 'debit', 0.3));
+        expect(result.amountDemotion).toBe('aside');
+      });
+
+      it("keeps the capitals a currency is written with as the sign's own", () => {
+        // The platform's own sign (NT$, HK$), the letters a code begins with
+        // (US$, S$), a whole code before its sign (USD$).
+        for (const text of [
+          'Shop\nTotal -HK$12.50',
+          'Shop\nTotal -NT$12.50',
+          'Shop\nTotal (US$12.50)',
+          'Shop\nTotal (S$12.50)',
+          'Shop\nTotal -USD$12.50',
+        ]) {
+          expect(parseReceiptOcrText(text)).withContext(text).toEqual(graded(12.5, 0.8, 'credit', 0.5));
+        }
+      });
+
+      it('reads a word that is also a currency code as the capitals of the sign it is glued to, the known gap', () => {
+        // ALL is the Albanian lek's code, and nothing but its meaning tells
+        // it from a label.
+        expect(parseReceiptOcrText('Shop\nTotal $12.50\n(ALL$15.00)')).toEqual(graded(15, 0.8, 'credit', 0.5));
       });
     });
   });
@@ -1479,8 +1794,7 @@ describe('parseReceiptOcrText', () => {
         // does.
         ['Shop\nRef 12▲1,280', 1280],
         ['Shop\nTEL 03▲3461▲8901', 8901],
-        // Parentheses around words or a count.
-        ['店\n(税込¥1,280)', 1280],
+        // Parentheses around a count.
         ['Shop\nPoints (100)', 100],
       ];
       for (const [text, amount] of cases) {
@@ -1488,6 +1802,9 @@ describe('parseReceiptOcrText', () => {
           .withContext(text)
           .toEqual(reading(amount, 'debit', 0));
       }
+      // Parentheses around words and a figure are no credit either, but the
+      // figure is an aside, and its type is asked about.
+      expect(parseReceiptOcrText('店\n(税込¥1,280)')).toEqual(reading(1280, 'debit', 0.3));
     });
 
     it('reads the mark on the winning figure, not anywhere on its line', () => {

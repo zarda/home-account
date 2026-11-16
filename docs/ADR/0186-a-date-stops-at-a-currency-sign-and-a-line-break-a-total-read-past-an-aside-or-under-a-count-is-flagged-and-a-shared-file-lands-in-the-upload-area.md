@@ -2,8 +2,10 @@
 
 **Status:** Accepted, implemented; amended by
 [0187](0187-repeated-controls-name-their-item-the-upload-area-has-one-button-and-numbers-photos-among-photos-resting-text-is-a-token-sentences-end-in-the-readers-stop-and-a-spec-that-expects-nothing-fails.md)
-and
+,
 [0188](0188-a-total-is-read-by-where-its-figures-are-printed-under-a-discount-past-round-cash-and-beside-an-unmarked-change-and-the-parser-is-measured-by-a-harness-that-is-kept.md)
+and
+[0189](0189-a-price-is-no-part-of-a-date-a-total-with-no-currency-mark-is-read-on-a-sum-a-reading-past-an-aside-asks-its-type-and-a-receipt-that-prints-a-code-and-no-sign-disputes-the-model.md)
 · **Date:** 2026-10-31 · **Issues:** #515, #516, #518
 
 Reference documentation lives in [../receipt-import.md](../receipt-import.md),
@@ -101,6 +103,19 @@ file that is not a photo is numbered among the files that are not, under
 `import.moveFileUpLabel` and `import.moveFileDownLabel` leave the catalogs,
 since only a photo moves. Each Known gap below that 0187 took up says what it
 did.
+
+**Amended by
+[0189](0189-a-price-is-no-part-of-a-date-a-total-with-no-currency-mark-is-read-on-a-sum-a-reading-past-an-aside-asks-its-type-and-a-receipt-that-prints-a-code-and-no-sign-disputes-the-model.md).**
+The date rule below stands and gains a bar and four readings: a date is no
+part of a figure a currency sign or the receipt's code touches, the search
+starts again inside a run it turned down, a date written whole is preferred
+to a run of spaced numbers and is read across a line break where its second
+mark stands beside the break, after a number glued to it by another mark, and
+year first or in the device's other order where it would otherwise lie
+ahead. Every date written whole leaves the amount hunt. The aside rule reads
+a parenthesis nothing closes, takes a sign's capitals from the platform's
+currency data, and grades the type of a reading that is or passed an aside
+0.3. Each Known gap below that 0189 took up says what it did.
 
 ## Context
 
@@ -1127,6 +1142,10 @@ From the count and aside rules:
   the total's mark and flagged it. Pin: 'reads past a price with tax, or a
   total, printed as an aside: flagged on a purchase, and on a refund slip read
   as a purchase, the known gap'.
+  *Closed by
+  [0189](0189-a-price-is-no-part-of-a-date-a-total-with-no-currency-mark-is-read-on-a-sum-a-reading-past-an-aside-asks-its-type-and-a-receipt-that-prints-a-code-and-no-sign-disputes-the-model.md):
+  the slip still reads as a purchase, and its type is graded 0.3, so the
+  review asks about it (C30, C35, C40).*
 
 From the date rule, where 26.10.180's date through a sign or across a line
 break had read the receipt right:
@@ -1157,6 +1176,10 @@ break had read the receipt right:
     figure; 1, 5, 5 and 8 of the second, fourth, fifth and sixth seeded sets.
   - Pin: 'reads a signed figure over a total line led by its date that prints
     no currency mark, the known gap'. Battery rows C156 and C157.
+  *Closed by
+  [0189](0189-a-price-is-no-part-of-a-date-a-total-with-no-currency-mark-is-read-on-a-sum-a-reading-past-an-aside-asks-its-type-and-a-receipt-that-prints-a-code-and-no-sign-disputes-the-model.md):
+  a figure written like money with no mark, larger than every marked
+  figure, puts the reading under the bar (C156, C157).*
 - **A total line that prints no currency mark beside signed lines**, where
   26.10.180 had read the signed figure's count and price as a date
   (`Brot 1 €2,10` over `Kaffee 2 x 5,10 10,20` and `Summe 10,20`).
@@ -1166,6 +1189,11 @@ break had read the receipt right:
     fourth and fifth seeded sets.
   - Pin: 'reads a signed figure over a total that prints no currency mark, the
     known gap'. Battery row C158.
+  *Narrowed by
+  [0189](0189-a-price-is-no-part-of-a-date-a-total-with-no-currency-mark-is-read-on-a-sum-a-reading-past-an-aside-asks-its-type-and-a-receipt-that-prints-a-code-and-no-sign-disputes-the-model.md):
+  such a total is read where a marked figure and one more add up to it
+  (C138), and the marked figure is asked about where nothing does (C158).
+  A total printed as a bare whole number is still not seen (C92).*
 - **A date OCR wrapped across two lines** (`13.01.` over `24`).
   - The date is lost, and what it leaves is read as money: the day and month,
     written like money, or a year left on a line with a currency code. On a
@@ -1177,6 +1205,11 @@ break had read the receipt right:
   - Pin: 'reads no date OCR wrapped across two lines, and reads a part it
     leaves as money, the known gap'. Battery rows C149 (split), C159, C160
     and C180.
+  *Narrowed by
+  [0189](0189-a-price-is-no-part-of-a-date-a-total-with-no-currency-mark-is-read-on-a-sum-a-reading-past-an-aside-asks-its-type-and-a-receipt-that-prints-a-code-and-no-sign-disputes-the-model.md):
+  a date written whole is read across the break where its second mark
+  stands beside it (C159, C160, C180). With no mark beside the break it is
+  still two lines (C149, split).*
 - **A two-digit-year date printed year first** (`23.01.27`) that, read day
   first, falls in the future. The reader turns it down, and the three groups
   read as one figure written like money (2301.27). 26.10.180 read a date
@@ -1188,6 +1221,9 @@ break had read the receipt right:
   - Pin: 'reads a two-digit-year date printed year first as one figure of
     money, the known gap', with the clock held at 30 October 2026. Battery
     rows C161 and C162.
+  *Closed by
+  [0189](0189-a-price-is-no-part-of-a-date-a-total-with-no-currency-mark-is-read-on-a-sum-a-reading-past-an-aside-asks-its-type-and-a-receipt-that-prints-a-code-and-no-sign-disputes-the-model.md):
+  such a date is read year first, at 0.3 (C161, C162).*
 - **A run that only looks like a date, where a price's own figure starts it**,
   its sign spaced from it, a code before it, or no sign at all. 26.10.180
   stopped at a date it read through a sign above these lines (the `1 $10.00`
@@ -1216,6 +1252,11 @@ break had read the receipt right:
     C168; C163 to C165, their signs glued, read right (C164 flagged, as the
     cash-tendered sum's pick). Pin for the glued forms: 'reads a price its
     sign is glued to as money, and the date printed after it as that date'.
+  *Narrowed by
+  [0189](0189-a-price-is-no-part-of-a-date-a-total-with-no-currency-mark-is-read-on-a-sum-a-reading-past-an-aside-asks-its-type-and-a-receipt-that-prints-a-code-and-no-sign-disputes-the-model.md):
+  the date written whole after the price is the one read, and a run that
+  cuts a figure a sign touches is turned down (C166, C167). A run that
+  holds a whole price before the sign after it still reads (C168).*
 - **The same run, where a payment line repeats the total, turns the
   direction instead**, with the amount right. With the total's own figure in
   the run, its sign spaced from it, the payment line's copy alone decides the
@@ -1232,6 +1273,10 @@ break had read the receipt right:
     C176 and C177, their signs glued, twin at 0.3. Pin for the glued forms:
     'twins the direction off a payment line where the total's sign is glued to
     it, as 26.10.180 does'.
+  *Closed by
+  [0189](0189-a-price-is-no-part-of-a-date-a-total-with-no-currency-mark-is-read-on-a-sum-a-reading-past-an-aside-asks-its-type-and-a-receipt-that-prints-a-code-and-no-sign-disputes-the-model.md):
+  the total stays in the amount hunt and its copies disagree, so the
+  direction is twinned at 0.3.*
 - **A day-first date printed right after a whole-number price whose sign
   stands apart from it** (`Laden / Milch 2 € 13 24.07.24 / Summe €26,00`).
   - The reader turns down the run of the price and the date's day and month
@@ -1252,6 +1297,9 @@ break had read the receipt right:
     one figure of money, the known gap'. Battery rows C174 and C175, their
     signs glued, read right. Pin for the glued forms: 'reads a day-first date
     printed right after a whole-number price its sign is glued to'.
+  *Closed by
+  [0189](0189-a-price-is-no-part-of-a-date-a-total-with-no-currency-mark-is-read-on-a-sum-a-reading-past-an-aside-asks-its-type-and-a-receipt-that-prints-a-code-and-no-sign-disputes-the-model.md):
+  the search starts again just after a turned-down run's first number.*
 - **A date glued to a figure by a mark** (`Bon 4711.13/01/25`,
   `Bon 4711,13.01.2025`) is not read: a date whose year comes last never
   starts inside a figure. 720 of 4,800 such dates are lost. On a refund slip
@@ -1261,6 +1309,10 @@ break had read the receipt right:
   0.5): 50 of the 4,800. Pin: 'reads no date glued to a figure by a mark, the
   known gap'. Battery row C179. A date printed year first keeps 26.10.180's
   start, so one glued so is read (`Bon 4711.2025-01-13`).
+  *Closed by
+  [0189](0189-a-price-is-no-part-of-a-date-a-total-with-no-currency-mark-is-read-on-a-sum-a-reading-past-an-aside-asks-its-type-and-a-receipt-that-prints-a-code-and-no-sign-disputes-the-model.md):
+  a date written whole on a mark of its own is read after the joining
+  mark, and the number leaves the amount hunt with it (C179).*
 - **A date glued after a currency sign** (`Shop / €15.01.26 / Summe €5,00`)
   is not read: a date whose year comes last never starts at a figure a sign
   is glued to (Decision 1). Day first with dots, its groups read as one
@@ -1296,6 +1348,11 @@ On the model lane:
   - Pin: 'lifts a model total that differs from a text parser reading under
     the bar on a receipt that prints no currency sign, the known gap'. Battery
     rows C170 and C171.
+  *Narrowed by
+  [0189](0189-a-price-is-no-part-of-a-date-a-total-with-no-currency-mark-is-read-on-a-sum-a-reading-past-an-aside-asks-its-type-and-a-receipt-that-prints-a-code-and-no-sign-disputes-the-model.md):
+  a model total that differs from any total the parser read there is
+  disputed at 0.5. One that agrees with the parser's weak pick is still
+  lifted.*
 - **A model that reads the same wrong figure as the parser** is lifted to 0.8
   where the parser read it at 0.8, or where the cash-tendered sum picked it
   (Decision 5).

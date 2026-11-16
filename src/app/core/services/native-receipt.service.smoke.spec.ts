@@ -433,6 +433,37 @@ describe('on-device receipt categories over the live catalog (smoke test)', () =
     expect(transaction.fieldConfidence!.amount!).toBeLessThan(VERIFY_FIELD_THRESHOLD);
   });
 
+  it('a model total that is the item above a total printed with no currency mark, where the text parser read that total, comes back flagged', async () => {
+    // The item and the tax are marked, the total is not; the parser reads the
+    // total the two add up to, under the bar, and a model that reads the item
+    // disputes it (ADR 0189).
+    visionMock.recognizeText.and.resolveTo({
+      ...ocrResult,
+      text: 'Harbour Supplies\n01/15/2026\nRope $120.50\nTax $9.64\nTotal 130.14',
+    });
+
+    const transaction = await scanAnswering(CUSTOM_NAME);
+
+    expect(transaction.amount).toBe(120.5);
+    expect(transaction.fieldConfidence).toEqual({ amount: REVIEW_AMOUNT_CONFIDENCE, date: 0.8 });
+  });
+
+  it('a model total the text parser does not back on a receipt that prints a currency code and no sign comes back flagged', async () => {
+    // Only the code beside the time marks this receipt as money, so the
+    // parser reads its total under the bar. A model that reads the item
+    // above it used to be lifted to the model grade; what the parser read
+    // disputes it now (ADR 0189).
+    visionMock.recognizeText.and.resolveTo({
+      ...ocrResult,
+      text: 'Harbour Supplies\n15.01.2026 14:32 USD\nRope 120.50\nTax 9.64\nTotal 130.14',
+    });
+
+    const transaction = await scanAnswering(CUSTOM_NAME);
+
+    expect(transaction.amount).toBe(120.5);
+    expect(transaction.fieldConfidence).toEqual({ amount: REVIEW_AMOUNT_CONFIDENCE, date: 0.8 });
+  });
+
   it('a receipt whose only figures are a priced line with its sign before the price comes back with that price as its amount and fieldConfidence.date 0', async () => {
     // Same no-model regex path. A priced line whose sign stands before its
     // price is money and never a date, so the price is the amount and no date

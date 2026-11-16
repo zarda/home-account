@@ -1,6 +1,8 @@
 # 188. A total is read by where its figures are printed: under a discount, past round cash and beside an unmarked change, and the parser is measured by a harness that is kept
 
-**Status:** Accepted, implemented · **Date:** 2026-11-14 · **Issues:** #527, #528, #530
+**Status:** Accepted, implemented; amended by
+[0189](0189-a-price-is-no-part-of-a-date-a-total-with-no-currency-mark-is-read-on-a-sum-a-reading-past-an-aside-asks-its-type-and-a-receipt-that-prints-a-code-and-no-sign-disputes-the-model.md)
+· **Date:** 2026-11-14 · **Issues:** #527, #528, #530
 
 Reference documentation lives in [../receipt-import.md](../receipt-import.md),
 [../testing.md](../testing.md) and [../e2e.md](../e2e.md).
@@ -46,6 +48,14 @@ model lane a fourth label it treats as a rule's.
 
 Applies [0008](0008-universal-receipt-language-support.md) and
 [0145](0145-a-class-found-by-reading-becomes-a-gate.md).
+
+**Amended by
+[0189](0189-a-price-is-no-part-of-a-date-a-total-with-no-currency-mark-is-read-on-a-sum-a-reading-past-an-aside-asks-its-type-and-a-receipt-that-prints-a-code-and-no-sign-disputes-the-model.md).**
+The rules below stand. A sixth correction joins them, for a total printed
+with no currency mark, labelled `'unmarked'` and last in the order of labels.
+The harness gains sixteen classes, a judgment of the date and two columns,
+so its seeded sets no longer print what they printed here, and the counts
+under The score stand for the classes of this record alone.
 
 ## Context
 

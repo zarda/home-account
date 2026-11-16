@@ -101,6 +101,40 @@ class PreviewOverflowProbeComponent {
   ];
 }
 
+/** One receipt, one row: the review a single scanned receipt opens on. */
+@Component({
+  standalone: true,
+  imports: [TransactionPreviewTableComponent],
+  template: `
+    <div class="narrow">
+      <app-transaction-preview-table [transactions]="rows" [categories]="[]" [dateAttentionIds]="attention" />
+    </div>
+  `,
+  styles: ['.narrow { width: 288px; overflow: hidden; }'],
+})
+class LoneCardProbeComponent {
+  readonly attention: ReadonlySet<string> = new Set(['r1']);
+  readonly rows: CategorizedImportTransaction[] = [
+    {
+      id: 'r1',
+      description: 'Weekly grocery run at the farmers market plus pantry staples',
+      amount: 630,
+      currency: 'JPY',
+      date: new Date('2026-06-01'),
+      dateAssumed: true,
+      type: 'expense',
+      fieldConfidence: { type: 0.3, amount: 0.6, date: 0.3 },
+      suggestedCategoryId: 'food',
+      categoryConfidence: 0.8,
+      isDuplicate: false,
+      selected: true,
+      location: { name: '東京都渋谷区道玄坂一丁目二番三号 渋谷マークシティ店' },
+      tags: ['coffee', 'work', 'reimbursable'],
+      notes: 'Market\n26.10.30 JPY\nTea ¥150\nBento ¥480\nTotal ¥630\nThank you\nPlease come again',
+    },
+  ];
+}
+
 describe('overflow guard: the import review card', () => {
   let fixture: ComponentFixture<PreviewOverflowProbeComponent>;
   let host: HTMLElement;
@@ -961,6 +995,31 @@ describe('overflow guard: the import review card', () => {
     expect(add.getBoundingClientRect().top)
       .withContext('under the list rather than inside a card')
       .toBeGreaterThanOrEqual(list.getBoundingClientRect().bottom - 1);
+  });
+
+  it('caps the list at its fold only where there is more than one card to scroll past', () => {
+    // The fold keeps twenty rows from pushing Continue out of reach. With
+    // one row there is nothing to scroll past, and the fold only cut the
+    // end off the one card and made it scroll inside its own list: at 375px
+    // a lone card with a date question stood 618px tall in a 568px list.
+    const list = host.querySelector('.transactions-list') as HTMLElement;
+    expect(getComputedStyle(list).maxHeight).withContext('two rows keep the fold').not.toBe('none');
+
+    const lone = TestBed.createComponent(LoneCardProbeComponent);
+    const loneHost = lone.nativeElement as HTMLElement;
+    document.body.appendChild(loneHost);
+    try {
+      lone.detectChanges();
+      TestBed.inject(FitTextRegistry).flush();
+      const loneList = loneHost.querySelector('.transactions-list') as HTMLElement;
+      expect(loneHost.querySelectorAll('.transaction-card').length).toBe(1);
+      expect(getComputedStyle(loneList).maxHeight).withContext('one row has no fold').toBe('none');
+      expect(loneList.scrollHeight)
+        .withContext('the one card is shown whole, with nothing to scroll inside the list')
+        .toBeLessThanOrEqual(loneList.clientHeight + 1);
+    } finally {
+      loneHost.remove();
+    }
   });
 
   it('keeps the bulk currency button and the count badge on the header', () => {

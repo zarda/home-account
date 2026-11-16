@@ -33,7 +33,7 @@ deployed rules — and it is the reason for every constraint below. Read the
 whole thing as one rule: **the run is a reader with thirteen permitted writes,
 each named in *What a run may touch*, and it puts back every one it can.**
 
-**The emulators, on port 4300: journeys 68 to 77, and 79 to 117.** A journey that
+**The emulators, on port 4300: journeys 68 to 77, and 79 to 118.** A journey that
 needs several accounts signed in — one sharing rows into a household, another
 reading them there as copies, members counting them toward the household's own
 budgets and goals, and memberships removed, left, dissolved and erased —
@@ -47,7 +47,7 @@ cannot show — the deployed rules and indexes, the callable's public invoker, a
 mail that arrives — is what journey 78 is for, once, on production after the
 merge. Journey 79 needs one account, but it imports into it, and journey 80
 moves one origin's session between accounts under two open tabs, so both run
-there too; neither touches a household or calls a function. Journeys 81 to 117
+there too; neither touches a household or calls a function. Journeys 81 to 118
 need one account as well, and run there for what they write and what they need
 seeded: categories, rules, budgets and a household whose colours the seed
 fixes, a category made and deleted, a rule paused and resumed, rules due in the
@@ -214,6 +214,13 @@ the flagged card journey 117's step 1 leaves:
 `getComputedStyle(document.querySelector('.amount-section .verify-flag')).marginInlineEnd`
 reads `4px` on this branch and `0px` on `63958baf`; the card showing `-$2.00`
 there, where `63958baf` shows `-$3.00`, says the same of the parser. For
+the dates that take no price, the total printed with no currency mark, the
+asides and the receipt that prints a code and no sign it is the review list
+itself, read on the one card any step of journey 118 leaves:
+`document.querySelector('.transactions-list').classList.contains('lone')` is
+`true` on this branch and `false` on `b5ac8a86`; the card of its step 4
+showing `-$11.73`, where `b5ac8a86` shows `-$10.86`, says the same of the
+parser. For
 another branch it is whatever that branch added. A
 stale `.angular/cache`, or a server started before the checkout switched,
 shows yesterday's app with today's confidence.
@@ -636,7 +643,7 @@ Import never is.
 Everything else is read-only. Every dialog is closed or **cancelled** — the
 edit dialog in journey 5 opens on a real transaction and is left by Cancel,
 never Save — and nothing else is created, edited, deleted or imported.
-Journeys 68 to 77 and 79 to 117 are not in this table: they write freely, but
+Journeys 68 to 77 and 79 to 118 are not in this table: they write freely, but
 only into the local emulators, and the [teardown](#teardown) takes all of it
 with them.
 Journeys 58 to 67 are superseded and write nothing, because they are not run.
@@ -886,7 +893,7 @@ Alex alone, and imports three rows into his account; journey 80 needs Alex
 and Sam, in two tabs of one origin, and moves the session between them
 ([auth.md](auth.md) describes what it drives).
 
-Journeys 81 to 117 use the same seed as Alex alone, and drive the account's own
+Journeys 81 to 118 use the same seed as Alex alone, and drive the account's own
 pages: the theme tokens and a category's colour, measured where they are
 painted in both themes (81 and 82, whose last surface is Chen home's budget
 dialog); the papercuts of
@@ -935,7 +942,11 @@ reader's stop of
 totals the device's parser reads by where their figures are printed, under a
 discount, past round cash and beside an unmarked change, of
 [ADR 0188](ADR/0188-a-total-is-read-by-where-its-figures-are-printed-under-a-discount-past-round-cash-and-beside-an-unmarked-change-and-the-parser-is-measured-by-a-harness-that-is-kept.md)
-(117), which stands in for the device as journey 110 does.
+(117), which stands in for the device as journey 110 does; and the dates,
+the total printed with no currency mark, the asides and the receipt that
+prints a code and no sign of
+[ADR 0189](ADR/0189-a-price-is-no-part-of-a-date-a-total-with-no-currency-mark-is-read-on-a-sum-a-reading-past-an-aside-asks-its-type-and-a-receipt-that-prints-a-code-and-no-sign-disputes-the-model.md)
+(118), which stands in for it the same way.
 [accessibility.md](accessibility.md), [dashboard.md](dashboard.md),
 [reminders.md](reminders.md), [shortcuts.md](shortcuts.md),
 [pwa.md](pwa.md), [receipt-import.md](receipt-import.md),
@@ -950,9 +961,9 @@ discount, past round cash and beside an unmarked change, of
 [csv-format.md](csv-format.md), [data.md](data.md) and
 [ui-overflow.md](ui-overflow.md) describe what they drive.
 
-Journeys 87 to 96 build on one another's writes, 97 to 117 on the language
+Journeys 87 to 96 build on one another's writes, 97 to 118 on the language
 each one leaves, 107 on the records 105 and 106 write, and 115 on the goal
-113 writes, so 87 to 117 run in one emulator session, in this order:
+113 writes, so 87 to 118 run in one emulator session, in this order:
 
 1. journey 87's steps 4 and 5, which queue a scan and fail its drain;
 2. journey 88, which reads that drain's record in Import History;
@@ -1022,7 +1033,10 @@ each one leaves, 107 on the records 105 and 106 write, and 115 on the goal
 31. journey 117, which reads seven receipts on the review card through
     journey 110's stand-in for the device, switches the language to 日本語 and
     繁體中文 and back, imports nothing, and ends in English;
-32. journey 103, **last**, which empties Alex's name and types one in, and
+32. journey 118, which reads nine receipts on the review card through the
+    same stand-in, switches the language to 日本語 and 繁體中文 and back,
+    imports nothing, and ends in English;
+33. journey 103, **last**, which empties Alex's name and types one in, and
     whose visit to the household page rewrites his member document there,
     and ends with both restored.
 
@@ -1069,7 +1083,7 @@ edit, with the shots `95-cold-refresh-unknown-ja`,
 `94-refused-after-rows-ja-r3` and `93-edit-day-unset-r3`. Every step it ran
 passed, and it found no further defect.
 
-Journeys 97 to 117 rest on none of the earlier journeys' writes, though 107
+Journeys 97 to 118 rest on none of the earlier journeys' writes, though 107
 reads the records 105 and 106 write, and 115 the goal 113 writes. A run of
 them alone starts from a fresh seed, in English, and journey 99's Sync Now
 then drains the one scan it queued; journey 108 then finds the queue as
@@ -1904,9 +1918,28 @@ this origin alone, rather than pasted, so no token crossed the console.
 [ADR 0188](ADR/0188-a-total-is-read-by-where-its-figures-are-printed-under-a-discount-past-round-cash-and-beside-an-unmarked-change-and-the-parser-is-measured-by-a-harness-that-is-kept.md)
 records the run.
 
+The run of journey 118, on 2026-11-15, drove the branch with #524, #525,
+#526 and #529 in this venue the same way: served from that branch's own
+checkout, alone on a fresh seed and a clean origin, the functions emulator
+left out, the bundle naming `demo-home-account` only and the console holding
+no error from the first load to the teardown. The pane was 1024px wide and
+hidden, with 375px by emulation, so every read was flushed first and every
+press but the welcome's **Skip** was made from the console. Every step
+passed as written. Journey 117's steps 1 and 3 to 7 were read again after it
+by state and held. Journey 110's steps 1 and 3 read their amount as before
+and now carry the type's grade as well, `"type":0.3`, because a reading that
+passes an aside asks about its type; the journey says so. The run met one
+defect older than the branch: at 375px the one card of a single receipt,
+618px tall with a date question on it, stood in a review list folded at
+568px and scrolled inside it, its note and lower edge out of sight. A list
+of one card has no fold now, read again at 375px with the card whole, and
+`transaction-preview-table.overflow.spec.ts` holds it.
+[ADR 0189](ADR/0189-a-price-is-no-part-of-a-date-a-total-with-no-currency-mark-is-read-on-a-sum-a-reading-past-an-aside-asks-its-type-and-a-receipt-that-prints-a-code-and-no-sign-disputes-the-model.md)
+records the run.
+
 ### Pre-flight
 
-Journeys 79 to 117 call no function, and neither do 72 and 73. A run of only
+Journeys 79 to 118 call no function, and neither do 72 and 73. A run of only
 those skips checks 2 and 3 and starts the emulators without the functions
 emulator, `--only auth,firestore,storage` in check 4 — which is also how they
 start in a checkout without `functions/.secret.local`, whose functions that
@@ -2547,6 +2580,7 @@ removes the first, and the second is deleted here. Both are gitignored.
 | 115 | Names that tell items apart (emulators) | A slider and a switch named by their words, Sign out named at a real 375px, a review card's fields and overrule, the search removes, the list's note and receipt buttons and a goal's item deletes each named for its item, and the filters' toggle saying what it opens and Save search whether its box is open, all read in a real layout | `115-budget-slider.png`, `115-ai-auto-sync.png`, `115-settings-375-sign-out.png`, `115-review-two-rows.png`, `115-not-a-duplicate.png`, `115-save-search-ring.png`, `115-search-suggestions.png`, `115-list-note-receipt.png`, `115-goal-item-deletes.png`, `115-filter-toggle.png` |
 | 116 | Sentences end in the reader's stop (emulators) | A Japanese reader's date sentences joined by 。 on a real review card and on the form's scan flag and its tooltip, read through the provider's real prompt answered from the page, the keep button named first by the words it shows, and focus back on the menu's button once the form its entry opened is cancelled | `116-card-keep-date-ja.png`, `116-form-verify-tooltip-ja.png` |
 | 117 | Totals read by where their figures are printed (emulators, diagnostic-grade) | A coupon, round cash, an unmarked change and a bare total over its parts each reach a real review card as the total with the scan's flag on the amount, in three languages; a spaced sign and a subtotal with its tax reach it unflagged; and the flag stands clear of the figure it asks about | `117-coupon-flag.png`, `117-round-cash.png`, `117-spaced-sign.png` |
+| 118 | Dates that take no price, a total with no mark, asides and a code-only receipt (emulators, diagnostic-grade) | A date printed after a spaced price, wrapped onto two lines or year first with two digits leaves the total its own; a total printed with no currency mark reaches a real review card as the total, asked about; a lost parenthesis and a refund printed as an aside ask about the type; a model that reads the cash on a receipt with a code and no sign is disputed; and a lone card is shown whole at phone width | `118-bare-total.png`, `118-aside-type.png`, `118-lone-card.png` |
 
 Screenshot names are the journey number and what is on screen; a re-run
 overwrites rather than accumulating. A partial re-check after a fix adds
@@ -11615,8 +11649,11 @@ reaches the parser is the text a step writes, never a photo read.
    [read.transactions[0].amount, JSON.stringify(read.transactions[0].fieldConfidence), rows[0].readOnDevice];
    ```
 
-   **Pass:** `[120.5, '{"amount":0.6,"date":0.9}', true]`: the total read
-   past the aside and graded under the bar of 0.7, the day's date at 0.9,
+   **Pass:** `[120.5, '{"amount":0.6,"date":0.9,"type":0.3}', true]`: the
+   total read past the aside and graded under the bar of 0.7, the day's date
+   at 0.9, the type graded 0.3 because a reading that passes an aside asks
+   which way the money moved
+   ([ADR 0189](ADR/0189-a-price-is-no-part-of-a-date-a-total-with-no-currency-mark-is-read-on-a-sum-a-reading-past-an-aside-asks-its-type-and-a-receipt-that-prints-a-code-and-no-sign-disputes-the-model.md)),
    and the row marked as read on the device. The parser used to read 150
    at 0.8, with no flag. `importService`, `duplicateService`,
    `strategyService` and `nativeReceipt` are private — TypeScript's word,
@@ -11674,8 +11711,8 @@ reaches the parser is the text a step writes, never a photo read.
    } },
    ```
 
-   **Pass:** `[120.5, '{"amount":0.6,"date":0.8}', true]`: the model's
-   agreement keeps the parser's grade for a total read past an aside, so
+   **Pass:** `[120.5, '{"amount":0.6,"date":0.8,"type":0.3}', true]`: the
+   model's agreement keeps the parser's grade for a total read past an aside, so
    the amount stays under the bar, flagged; the date takes the model's 0.8.
    On 26.10.180 the parser read the aside, 150, and disputed the model's
    120.50 at 0.5, flagged. With the aside rule alone, agreement would have
@@ -13347,6 +13384,158 @@ writes that reached the emulators, and they go at the
 Three shots: the coupon's flagged card, round cash, and the spaced sign's
 unflagged one.
 
+### 118. Dates that take no price, a total with no mark, asides and a code-only receipt (diagnostic-grade)
+
+**Emulators**, as Alex, at the pane's own width of 1024px, after journey 117,
+in English ([the run order](#emulator-journeys)), with no provider, on
+`/import/file`. The device's text parser used to take a price into a run of
+numbers that only looked like a date, to lose a date OCR wrapped or printed
+year first with two digits and read what it left as money, to read the
+largest marked figure over a total printed with no currency mark, to read a
+regular price whose parenthesis OCR lost as the total, and to file a refund
+whose total is a labelled aside as a purchase nobody asked about; and the
+device lane lifted any model total on a receipt that prints a currency code
+and no sign. It reads each of them now, or asks
+([ADR 0189](ADR/0189-a-price-is-no-part-of-a-date-a-total-with-no-currency-mark-is-read-on-a-sum-a-reading-past-an-aside-asks-its-type-and-a-receipt-that-prints-a-code-and-no-sign-disputes-the-model.md),
+[receipt-import.md](receipt-import.md), [dates.md](dates.md)). No browser has
+Vision or Apple's on-device model, so every step stands in for the two
+Capacitor bridges exactly as [journey 110](#110-the-shipped-parser-on-a-rendered-review-card-diagnostic-grade)
+does, and the whole journey is state only, diagnostic-grade, and recorded as
+such.
+
+Every step is journey 110's step 1 evaluation with its `text` replaced and
+the photo named `e2e-118.jpg`, read as
+`[amount, fieldConfidence, the row's date as year-month-day]`, then a reload
+and journey 110's card read where the step names one. `${day}` is today's
+date year first, `${us}` the same day as `MM/DD/YYYY` and `${de}` its day and
+month as `DD.MM.`, with the year in `${year}`.
+
+1. **A date after a price a sign is spaced from.** `text`:
+   `` `e2e-524 Harbour Supplies\nRope 1 $10.00\nTotal $ 27.01 ${us}` ``.
+   **Pass:** `[27.01, '{"amount":0.8,"date":0.9}', today]`. The parser used
+   to read the run `27.01` and the month as a date and the year's last two
+   digits as the total.
+2. **A date wrapped onto two lines.** `text`:
+   `` `e2e-524 Harbour Supplies\n${de}\n${year}\nTotal: $12.50` ``.
+   **Pass:** `[12.5, '{"amount":0.8,"date":0.9}', today]`, where the date was
+   lost and the year stood in the amount hunt.
+3. **A two-digit year printed first.** `text`:
+   `` `e2e-524 Market\n26.10.30 JPY\nお茶 ¥150\n弁当 ¥480\n合計 ¥630` ``.
+   **Pass:** `[630, '{"amount":0.8,"date":0.3}', '2026-10-30']`: read day
+   first the date lies in 2030, so it is read year first, at 0.3, and its
+   three groups are no figure of 2,610.30. Reload. **Pass:** amount
+   `'-¥630'`, `flag` `null`, and `dateFlag` `true` on a chip that reads
+   today's date: a date graded under the bar is moved to today and asked
+   about ([dates.md](dates.md)), so what the rule changes on the card is the
+   amount. Then, at 375px:
+
+   ```js
+   const list = document.querySelector('.transactions-list');
+   [list.classList.contains('lone'), getComputedStyle(list).maxHeight, list.scrollHeight <= list.clientHeight + 1];
+   ```
+
+   **Pass:** `[true, 'none', true]`: the one card, with its date question, is
+   shown whole, where it stood 618px tall in a list folded at 568px. Shot:
+   `118-lone-card.png`. Back to 1024px; leave without importing:
+   `history.replaceState({}, '')` and a reload.
+4. **A total printed with no currency mark.** `text`:
+   `` `e2e-526 Corner Shop\n${day}\nEggs $10.86\nTax $0.87\nTotal 11.73` ``.
+   **Pass:** `[11.73, '{"amount":0.6,"date":0.9}', today]`: the item and the
+   tax add up to the figure with no mark, which is read, under the bar. The
+   parser used to read the item, 10.86 at 0.8. Reload. **Pass:** amount
+   `'-$11.73'`; `flag` *Double-check this amount — the scan could not read it
+   for certain*, 4px clear of the amount. Shot: `118-bare-total.png`. Leave
+   the same way.
+5. **A balance under a marked total, the rule's cost.** `text`:
+   `` `e2e-526 Corner Shop\n${day}\nTotal: $12.50\nPoints balance 1,847` ``.
+   **Pass:** `[12.5, '{"amount":0.6,"date":0.9}', today]`: the total is kept,
+   and asked about, because nothing in the print tells the balance from a
+   total printed bare. It used to read at 0.8.
+6. **A regular price whose parenthesis OCR lost.** `text`:
+   `` `e2e-529 Harbour Supplies\n${day}\nTotal: $12.50\n(Reg $15.00` ``.
+   **Pass:** `[12.5, '{"amount":0.6,"date":0.9,"type":0.3}', today]`, where
+   the parser read 15 at 0.8. Reload. **Pass:** amount `'-$12.50'` with the
+   amount's flag, and the type toggle flagged, its name *Double-check income
+   or expense — the scan could not tell a purchase from a refund for certain.
+   Expense*. Switched as journey 109's step 5 does, the toggle reads
+   *収入か支出かを確認してください。スキャンでは購入か返金か確定できませんでした。支出*
+   in Japanese and *請再確認是收入還是支出，掃描無法確定這是消費還是退款。支出* in
+   Traditional Chinese; then back to English. Shot: `118-aside-type.png`.
+   Leave the same way.
+7. **A refund whose total is a labelled aside.** `text`:
+   `` `e2e-529 REFUND\n${day}\n(Total $64.79)` ``. **Pass:**
+   `[64.79, '{"amount":0.6,"date":0.9,"type":0.3}', today]`: still read as a
+   purchase, and its type asked about, where nothing asked. The amount is
+   under the bar here only because the name this protocol gives the receipt
+   holds a number; `REFUND` alone over the aside reads it at 0.8
+   (`native-receipt.service.spec.ts`).
+8. **A total the receipt marks, kept.** `text`:
+   `` `e2e-526 Corner Shop\n${day}\nEggs $10.86\nTax $0.87\nTotal $11.73` ``.
+   **Pass:** `[11.73, '{"amount":0.8,"date":0.9}', today]`, as before, with
+   no flag.
+9. **The model lane, on a receipt that prints a code and no sign.** Journey
+   110's step 3 form, without the `history.replaceState`, on
+   `` `e2e-525 Backerei\n${de}${year} 14:32 EUR\nBrot 2,50\nKaffee 3,20\nSumme 5,70\nBar 10,00\nRuckgeld 4,30` ``
+   with the model answering `10` and then `5.7` in `EUR`. **Pass:**
+   `[10, '{"amount":0.5,"date":0.8}', today]`, a model that reads the cash,
+   disputed where it used to be lifted to 0.8; and
+   `[5.7, '{"amount":0.8,"date":0.8}', today]`, one that reads the total the
+   parser read too, lifted.
+
+**What stays in the specs, and why.**
+
+- **The readings.** `receipt-text-parser.spec.ts`, under *date extraction*,
+  *beside a price*: *reads a day-first date printed right after a
+  whole-number price a sign is spaced from*, *reads a price a run would cut
+  as money, and no date*, *reads a two-digit-year date printed year first
+  where day first it would lie ahead*, *reads a date written whole whose year
+  OCR wrapped onto the next line*, *reads a date written whole that a number
+  is glued to by another mark, and takes the number with it* and *reads no
+  figure of money out of a second date the receipt writes whole*; under
+  *amount extraction*: *reads a total that prints no currency mark where a
+  marked figure and one more add up to it* and *keeps the marked figure,
+  under the bar, where nothing adds up to a larger one printed with no mark*;
+  and under *a labelled aside in parentheses*: *reads a figure after a
+  parenthesis nothing closes as an aside*, *reads a label glued to its sign
+  as a label, and the figure as an aside* and *reads past a price with tax,
+  or a total, printed as an aside, and asks about the amount and the type*,
+  with each known gap pinned beside them.
+  `receipt-text-parser.battery.spec.ts` records every row that moved, the
+  sixty's new score and the four lists of rows read silently.
+- **The device lane.** `native-receipt.service.spec.ts`, under *field
+  confidence*: *disputes a model total the text parser does not back on a
+  receipt that prints a currency code and no sign*, *disputes a model that
+  reads the subtotal over a total that prints no currency mark* and
+  *disputes a model total where the text parser reads a regular price
+  printed with no parenthesis*; under *regex fallback parsing*: *should file
+  a refund total printed as a labelled aside as an expense whose type is
+  asked about*. `native-receipt.service.smoke.spec.ts` holds the bare total
+  and the code-only receipt over the live catalog.
+- **The card.** `import-wizard.smoke.spec.ts`, through the real converter and
+  hand-off: *an on-device scan whose total prints no currency mark under
+  marked lines reaches the review card as that total, with its amount
+  flagged*, *an on-device scan of a refund whose total is printed as a
+  labelled aside reaches the review card as an expense, with its type
+  flagged* and *an on-device scan whose date wrapped onto two lines reaches
+  the review card dated, with no flag on the amount*.
+  `transaction-preview-table.overflow.spec.ts`: *caps the list at its fold
+  only where there is more than one card to scroll past*.
+- **The counts.** `scripts/measure-receipt-parser.mjs`
+  ([testing.md](testing.md)).
+
+**What it does not drive.** A device, as in journey 110: Vision and Apple's
+model answer from the page. An import, which no step makes. The receipts the
+rules still read silently, each pinned as a known gap in
+`receipt-text-parser.spec.ts`.
+
+**Cleanup.** Each card is left without importing, and the duplicate check
+only reads. The language is back on English (step 6), its switches the only
+writes that reached the emulators, and they go at the
+[teardown](#teardown).
+
+Three shots: the bare total's flagged card, the lost parenthesis's two
+flags, and the lone card at 375px.
+
 ## Evidence
 
 Screenshots go to a scratch folder **outside the repo**, named as above, and
@@ -13443,7 +13632,7 @@ review card's type or category, the camera's converter, or the form's scanned
 type, and journey 80 on one that touches the session: the auth listener and
 its reload (`auth.service.ts`, `page-reload.ts`), where the web keeps the
 session (`appAuthFactory` in `app.config.ts`), the route guards
-(`auth.guard.ts`), or this protocol's session writes. Journeys 81 to 117 follow
+(`auth.guard.ts`), or this protocol's session writes. Journeys 81 to 118 follow
 it on a branch that touches what each one drives: 81 a theme token, a
 stylesheet's colours or the chart palette; 82 a category colour's reader —
 the category chip, the `categoryGlyph` and `readableOn` pipes, a category
@@ -13527,11 +13716,15 @@ or the card's Edit and Delete; 114 the forecast's notes and caption or their
 colours; 115 a control named by its label or by its item on a surface it
 reads, or `visually-hidden` in `src/theme/_a11y.scss`; 116 how two
 sentences join (`joinSentences`, `common.sentenceSeparator`) or a caller's
-translator; and 117 how the device's parser picks its total
+translator; 117 how the device's parser picks its total
 (`tenderedDemotion`, `discountDemotion`, `countsThatMayBeTotal`,
 `settleSharedSigns` in `receipt-text-parser.ts`), how the device lane grades
 it (`agreedAmountGrade`, `disputedAmountGrade`), or the amount flag's place
-on the review card.
+on the review card; and 118 how the parser reads a date (`readDate`,
+`yearLastRuns`, `takesInMoney`), a total with no currency mark
+(`unmarkedTotal`), an aside (`isAside`, `signPatterns`) or a direction
+beside one, how the device lane disputes a model on a receipt that prints a
+code and no sign (`printsACodeAndNoSign`), or the review list's fold.
 **Journey 78 runs once**, on production, after the merge — when the deploys
 it checks have finished — because what it proves is the deployed rules,
 indexes and callable, which exist only then.

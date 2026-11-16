@@ -231,11 +231,28 @@ accepted and has not been measured.
 
 | | Warning | Error |
 |---|---|---|
-| Initial bundle | 2.418 MB | 2.7 MB |
+| Initial bundle | 2.422 MB | 2.7 MB |
 
-Against 2,417,959 bytes (JavaScript 2,386,592, stylesheet 31,367, in 63
+Against 2,421,291 bytes (JavaScript 2,389,924, stylesheet 31,367, in 63
 initial files), measured by `npm run build:analyze` from a production build
-of `26.11.183` on 2026-11-14.
+of `26.11.184` on 2026-11-15.
+
+The warning went up, to 2.422 MB, when the work of #524, #525, #526 and #529
+([ADR 0189](ADR/0189-a-price-is-no-part-of-a-date-a-total-with-no-currency-mark-is-read-on-a-sum-a-reading-past-an-aside-asks-its-type-and-a-receipt-that-prints-a-code-and-no-sign-disputes-the-model.md):
+the device's text parser keeping a price out of a date, reading a date that
+wrapped, was glued to a number or was printed year first, reading a total
+printed with no currency mark on a sum, and asking about the type of a
+reading past an aside) put the initial bundle at 2,421,291 bytes, 3,291 over
+the 2.418 MB it stood at. The parser is initial code, and all 3,332 bytes of
+the growth are JavaScript: the date reader's scan, its bar on figures a sign
+touches and its four new readings, the unmarked total's sum, the sign's
+capitals read from the platform's currency data, and the model lane's
+code-only rule. The stylesheet did not move; the review list's fold is in
+the review card's own, which is lazy. The warning moved to the whole
+kilobyte above the figure and no more, which leaves 709 bytes of headroom
+(2,422,000 less 2,421,291). Before it, `26.11.183` read 2,417,959 bytes
+(JavaScript 2,386,592, stylesheet 31,367, in 63 initial files) on
+2026-11-14.
 
 The warning went up, to 2.418 MB, when the work of #527, #528 and #530
 ([ADR 0188](ADR/0188-a-total-is-read-by-where-its-figures-are-printed-under-a-discount-past-round-cash-and-beside-an-unmarked-change-and-the-parser-is-measured-by-a-harness-that-is-kept.md):
