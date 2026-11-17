@@ -11,8 +11,8 @@ import { EmptyStateComponent } from '../../shared/components/empty-state/empty-s
 import { TranslatePipe } from '../../shared/pipes/translate.pipe';
 import { signal } from '@angular/core';
 import { MatDialog } from '@angular/material/dialog';
-import { ActivatedRoute, convertToParamMap } from '@angular/router';
-import { of, throwError } from 'rxjs';
+import { ActivatedRoute, ParamMap, Router, convertToParamMap } from '@angular/router';
+import { BehaviorSubject, of, throwError } from 'rxjs';
 import { BUDGET_TABS, BudgetsComponent } from './budgets.component';
 import { BudgetService } from '../../core/services/budget.service';
 import { CategoryService } from '../../core/services/category.service';
@@ -35,6 +35,8 @@ import {
 
 /** Query params the sibling rendering describe re-points between cases. */
 const budgetQueryParams: { value: Record<string, string> } = { value: {} };
+/** The route's params as a stream, for a link followed while the page is already open. */
+let budgetParamStream: BehaviorSubject<ParamMap>;
 
 describe('BudgetsComponent', () => {
   let budgetService: {
@@ -54,6 +56,11 @@ describe('BudgetsComponent', () => {
   const activatedRouteStub = {
     get snapshot() {
       return { queryParamMap: convertToParamMap(queryParams) };
+    },
+    // What a link followed while the page is open arrives on. None is
+    // followed in this block, which reads the tab the page opens on.
+    get queryParamMap() {
+      return of(convertToParamMap({}));
     }
   };
 
@@ -225,6 +232,7 @@ describe('BudgetsComponent, through its own template', () => {
 
   beforeEach(async () => {
     budgetQueryParams.value = {};
+    budgetParamStream = new BehaviorSubject<ParamMap>(convertToParamMap({}));
     budgets = signal<Budget[]>([createBudget()]);
     dialogSpy = jasmine.createSpyObj('MatDialog', ['open']);
     dialogSpy.open.and.returnValue({ afterClosed: () => of(undefined) } as never);
@@ -232,7 +240,13 @@ describe('BudgetsComponent, through its own template', () => {
     await TestBed.configureTestingModule({
       imports: [BudgetsComponent],
       providers: [
-        { provide: ActivatedRoute, useValue: { get snapshot() { return { queryParamMap: convertToParamMap(budgetQueryParams.value) }; } } },
+        {
+          provide: ActivatedRoute,
+          useValue: {
+            get snapshot() { return { queryParamMap: convertToParamMap(budgetQueryParams.value) }; },
+            get queryParamMap() { return budgetParamStream; },
+          },
+        },
         {
           provide: BudgetService,
           useValue: {
@@ -275,6 +289,98 @@ describe('BudgetsComponent, through its own template', () => {
         },
       })
       .compileComponents();
+  });
+
+  // A budget alert's link is /budgets?tab=budgets. The page read the
+  // parameter once, as it was built, so the link did nothing when the page
+  // was already open on another tab (ADR 0167's Known gaps).
+  describe('a ?tab= link followed while the page is open', () => {
+    const activeTab = () => tabHeaders().findIndex(header => header.classList.contains('mdc-tab--active'));
+    let navigate: jasmine.Spy;
+
+    async function follow(tab: string): Promise<void> {
+      budgetParamStream.next(convertToParamMap({ tab }));
+      fixture.detectChanges();
+      await fixture.whenStable();
+      fixture.detectChanges();
+    }
+
+    /** The strip reports the tab it moved to a turn after the click. */
+    async function choose(index: number): Promise<void> {
+      tabHeaders()[index].click();
+      fixture.detectChanges();
+      await fixture.whenStable();
+      fixture.detectChanges();
+    }
+
+    beforeEach(() => {
+      navigate = spyOn(TestBed.inject(Router), 'navigate').and.resolveTo(true);
+    });
+
+    it('switches to the tab it names, from a tab the reader had chosen', async () => {
+      render();
+      await choose(2);
+      expect(activeTab()).withContext('precondition: on Goals').toBe(2);
+
+      await follow('budgets');
+
+      expect(activeTab()).toBe(0);
+    });
+
+    it('switches even when the link arrives before the strip has reported the reader\'s own choice', () => {
+      // The strip reports a chosen tab a turn after it moves. Inside that
+      // turn the page still holds the tab the last link named, and a binding
+      // alone would write nothing. No await between the click and the link.
+      render();
+      tabHeaders()[2].click();
+      fixture.detectChanges();
+      expect(activeTab()).withContext('precondition: the strip is on Goals').toBe(2);
+      expect(component.selectedTabIndex).withContext('precondition: the page has not heard yet').toBe(0);
+
+      budgetParamStream.next(convertToParamMap({ tab: 'budgets' }));
+      fixture.detectChanges();
+
+      expect(activeTab()).toBe(0);
+    });
+
+    it('switches again for the same link, since each one is taken off the URL once it is read', async () => {
+      // The router ignores a navigation to the URL it is on, so a parameter
+      // left there would make the second tap of one alert do nothing.
+      render();
+      await follow('recurring');
+      expect(activeTab()).toBe(1);
+      expect(navigate).toHaveBeenCalledOnceWith([], jasmine.objectContaining({
+        queryParams: { tab: null }, queryParamsHandling: 'merge', replaceUrl: true,
+      }));
+
+      await choose(2);
+      budgetParamStream.next(convertToParamMap({}));
+      await follow('recurring');
+
+      expect(activeTab()).toBe(1);
+    });
+
+    it('leaves the reader on their tab when the parameters change without naming one', async () => {
+      // Pin. Mutation: read every emission as the first tab.
+      render();
+      await choose(2);
+
+      budgetParamStream.next(convertToParamMap({ other: 'x' }));
+      fixture.detectChanges();
+
+      expect(activeTab()).toBe(2);
+      expect(navigate).not.toHaveBeenCalled();
+    });
+
+    it('opens on the tab a link names and takes it off the URL there too', () => {
+      budgetQueryParams.value = { tab: 'goals' };
+      budgetParamStream.next(convertToParamMap({ tab: 'goals' }));
+
+      render();
+
+      expect(activeTab()).toBe(2);
+      expect(navigate).toHaveBeenCalledTimes(1);
+    });
   });
 
   it('offers all three tabs, labelled and in order', () => {
