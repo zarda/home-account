@@ -35,6 +35,9 @@ import {
 import { TranslatePipe } from '../../../shared/pipes/translate.pipe';
 import { ImportFocusContext, focusWhenRendered } from '../../ai/import/import-focus';
 
+/** Numbers each filter panel's date descriptions, so two panels on one page never share an id. */
+let nextDateErrorId = 0;
+
 @Component({
   selector: 'app-transaction-filters',
   standalone: true,
@@ -59,6 +62,10 @@ import { ImportFocusContext, focusWhenRendered } from '../../ai/import/import-fo
   styleUrl: './transaction-filters.component.scss',
 })
 export class TransactionFiltersComponent implements OnInit, OnChanges, OnDestroy, AfterViewInit {
+  /** The ids of the off-screen text that says why From or To is refused; each input is described by its own. */
+  readonly startDateErrorId = `filters-from-error-${nextDateErrorId}`;
+  readonly endDateErrorId = `filters-to-error-${nextDateErrorId++}`;
+
   private transactionService = inject(TransactionService);
   private cdr = inject(ChangeDetectorRef);
   private currencyService = inject(CurrencyService);

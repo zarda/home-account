@@ -310,6 +310,13 @@
   display: none;
 }
 
+// Why a From or To date is refused, for the reader the outline alone tells
+// nothing: the field's description, kept off the screen because the hidden
+// subscript above is where Material would have put it.
+.date-error {
+  @include a11y.visually-hidden;
+}
+
 ::ng-deep .compact-field .mat-mdc-text-field-wrapper {
   padding: 0 12px !important;
 }
