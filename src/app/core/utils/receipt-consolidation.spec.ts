@@ -222,6 +222,66 @@ describe('consolidateReceiptItems', () => {
       expect(only.amountConfidence).toBe(REVIEW_AMOUNT_CONFIDENCE);
     });
 
+    // The 0.5 is the app's, set so the flag fires. The basis beside it is
+    // what lets the flag say why without quoting the 0.5 as a confidence.
+    describe('the basis of a review grade', () => {
+      it('names the item sum on a merged group with no reported total', () => {
+        const merged = consolidateReceiptItems([item({ amount: 10 }), item({ amount: 5 })])[0];
+        expect(merged.amountBasis).toBe('itemSum');
+      });
+
+      it('names the item sum on a lone line with no reported total, over the grade the line brought', () => {
+        const only = consolidateReceiptItems([item({ amount: 481, amountConfidence: 0.95 })])[0];
+        expect(only.amountConfidence).toBe(REVIEW_AMOUNT_CONFIDENCE);
+        expect(only.amountBasis).toBe('itemSum');
+      });
+
+      it('names the disagreement where the reported total is far from the sum', () => {
+        const merged = consolidateReceiptItems([
+          item({ amount: 10 }),
+          item({ amount: 5, receiptTotal: 100 }),
+        ])[0];
+        expect(merged.amountBasis).toBe('totalDisagrees');
+      });
+
+      it('names no basis where the total agrees, so a grade the reader reported stays its own', () => {
+        const only = consolidateReceiptItems([item({ amount: 481, receiptTotal: 517, amountConfidence: 0.6 })])[0];
+        expect(only.amountConfidence).toBe(0.6);
+        expect('amountBasis' in only).toBeFalse();
+        const merged = consolidateReceiptItems([item({ amount: 10 }), item({ amount: 5, receiptTotal: 15 })])[0];
+        expect('amountBasis' in merged).toBeFalse();
+      });
+
+      it('drops a basis a line arrived with once the total agrees', () => {
+        const only = consolidateReceiptItems([item({ amount: 481, receiptTotal: 517, amountBasis: 'itemSum' })])[0];
+        expect('amountBasis' in only).toBeFalse();
+      });
+    });
+
+    describe('a date nothing read', () => {
+      it('stays marked on a lone line', () => {
+        const only = consolidateReceiptItems([item({ dateConfidence: 0, dateUnread: true })])[0];
+        expect(only.dateUnread).toBeTrue();
+      });
+
+      it('stays marked on a merged group, from the line the date came from', () => {
+        const merged = consolidateReceiptItems([
+          item({ dateConfidence: 0, dateUnread: true }),
+          item({ dateConfidence: 0.9 }),
+        ])[0];
+        expect(merged.dateConfidence).toBe(0);
+        expect(merged.dateUnread).toBeTrue();
+      });
+
+      it('is not borrowed from a later line whose date the group does not use', () => {
+        const merged = consolidateReceiptItems([
+          item({ dateConfidence: 0.9 }),
+          item({ dateConfidence: 0, dateUnread: true }),
+        ])[0];
+        expect('dateUnread' in merged).toBeFalse();
+      });
+    });
+
     it('keeps a wildly deviant total but flags it', () => {
       const merged = consolidateReceiptItems([
         item({ amount: 10 }),

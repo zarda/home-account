@@ -254,6 +254,8 @@ describe('import-review.utils', () => {
           imageIndex: 0, imageId: 'image_0', confidenceScore: 0.9, receiptId: 1,
         },
         fieldConfidence: { amount: 0.2, date: 0.3 },
+        fieldDoubt: { amount: 'itemSum' },
+        categorySource: 'memory',
         dateAssumed: true,
         currencyFellBack: true,
         tags: ['coffee'],
@@ -262,6 +264,8 @@ describe('import-review.utils', () => {
 
       expect(row.imageMetadata).toBeUndefined();
       expect(row.fieldConfidence).toBeUndefined();
+      expect(row.fieldDoubt).toBeUndefined();
+      expect(row.categorySource).toBeUndefined();
       expect(row.dateAssumed).toBeUndefined();
       expect(row.currencyFellBack).toBeUndefined();
       expect(row.tags).toBeUndefined();
@@ -697,6 +701,16 @@ describe('import-review.utils', () => {
       ...overrides,
     });
 
+    it('carries the source of the category grade, and why a grade is the app\'s, on both halves', () => {
+      // Both are review-step marks read by the row's own sentences; a half
+      // that lost one would quote a percentage nothing reported.
+      const [kept, part] = splitImportRow(
+        row({ categorySource: 'memory', fieldConfidence: { date: 0 }, fieldDoubt: { date: 'unread' } }), 1.2, 'split_1'
+      )!;
+      expect([kept.categorySource, part.categorySource]).toEqual(['memory', 'memory']);
+      expect([kept.fieldDoubt, part.fieldDoubt]).toEqual([{ date: 'unread' }, { date: 'unread' }]);
+    });
+
     it('splits the amount so the two halves sum to the original, rounded to cents', () => {
       const [kept, part] = splitImportRow(row(), 1.2, 'split_1')!;
       expect(kept.amount).toBe(4.2);
@@ -946,6 +960,16 @@ describe('import-review.utils', () => {
       isDuplicate: false,
       selected: true,
       ...overrides,
+    });
+
+    it('keeps the target\'s source for the category it keeps, never the source row\'s', () => {
+      const merged = mergeImportRows(
+        target({ categorySource: 'reader' }),
+        source({ categorySource: 'memory', fieldDoubt: { amount: 'itemSum' } })
+      )!;
+      expect(merged.suggestedCategoryId).toBe('food');
+      expect(merged.categorySource).toBe('reader');
+      expect('fieldDoubt' in merged).toBeFalse();
     });
 
     it('sums two expenses', () => {

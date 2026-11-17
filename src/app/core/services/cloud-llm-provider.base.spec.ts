@@ -841,6 +841,8 @@ describe('CloudLLMProviderBase', () => {
         const receipt = await provider.parseReceipt('img');
 
         expect(receipt.fieldConfidence).toEqual({ date: 0 });
+        // The 0 is the provider's own, so it says what it is a grade of.
+        expect(receipt.fieldDoubt).toEqual({ date: 'unread' });
       });
 
       it("keeps the model's date confidence when the date parsed", async () => {
@@ -852,6 +854,7 @@ describe('CloudLLMProviderBase', () => {
         const receipt = await provider.parseReceipt('img');
 
         expect(receipt.fieldConfidence?.date).toBe(0.95);
+        expect('fieldDoubt' in receipt).toBeFalse();
       });
     });
 
@@ -983,6 +986,7 @@ describe('CloudLLMProviderBase', () => {
       // not ride the model's own dateConfidence past detection.
       expect(rows[0].date).toBe(dayKey(today));
       expect(rows[0].dateConfidence).toBe(0);
+      expect(rows[0].dateUnread).toBeTrue();
     });
 
     it("keeps the model's date confidence when a date was reported", async () => {
@@ -996,6 +1000,7 @@ describe('CloudLLMProviderBase', () => {
       const rows = await provider.extractStatementTransactions('img');
 
       expect(rows[0].dateConfidence).toBe(0.9);
+      expect('dateUnread' in rows[0]).toBeFalse();
     });
   });
 
@@ -1023,6 +1028,7 @@ describe('CloudLLMProviderBase', () => {
       // not ride the model's own dateConfidence past detection.
       expect(rows[0].date).toBe(dayKey(today));
       expect(rows[0].dateConfidence).toBe(0);
+      expect(rows[0].dateUnread).toBeTrue();
     });
 
     it("keeps the model's date confidence when a date was reported", async () => {
@@ -1036,6 +1042,7 @@ describe('CloudLLMProviderBase', () => {
       const rows = await provider.extractTransactionsFromMultipleImages(['img']);
 
       expect(rows[0].dateConfidence).toBe(0.9);
+      expect('dateUnread' in rows[0]).toBeFalse();
     });
   });
 

@@ -1,6 +1,7 @@
 import { VERIFY_FIELD_THRESHOLD } from '../../models';
 import {
   extractedFieldConfidence,
+  extractedFieldDoubt,
   MODEL_INCOME_GRADE,
   modelTypeGrade,
   printedLocationSlot,
@@ -190,6 +191,25 @@ describe('modelTypeGrade', () => {
 
   it('grades no purchase, so absence still means nothing said otherwise', () => {
     expect(modelTypeGrade('expense')).toBeUndefined();
+  });
+});
+
+describe('extractedFieldDoubt', () => {
+  it('is undefined when every grade is the reader\'s own', () => {
+    expect(extractedFieldDoubt({})).toBeUndefined();
+    expect(extractedFieldDoubt({}, false)).toBeUndefined();
+  });
+
+  it('carries the basis consolidation stamped on the amount', () => {
+    expect(extractedFieldDoubt({ amountBasis: 'itemSum' })).toEqual({ amount: 'itemSum' });
+    expect(extractedFieldDoubt({ amountBasis: 'totalDisagrees' })).toEqual({ amount: 'totalDisagrees' });
+  });
+
+  it('marks a date the reader never got, and one the caller could not parse', () => {
+    expect(extractedFieldDoubt({ dateUnread: true })).toEqual({ date: 'unread' });
+    expect(extractedFieldDoubt({}, true)).toEqual({ date: 'unread' });
+    expect(extractedFieldDoubt({ amountBasis: 'itemSum', dateUnread: true }, true))
+      .toEqual({ amount: 'itemSum', date: 'unread' });
   });
 });
 
