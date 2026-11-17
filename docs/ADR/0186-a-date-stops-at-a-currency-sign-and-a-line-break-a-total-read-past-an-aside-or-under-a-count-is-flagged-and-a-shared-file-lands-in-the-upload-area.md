@@ -1532,8 +1532,18 @@ them and the follow-ups below, and lists what none of them takes up.
   `REVIEW_AMOUNT_CONFIDENCE`, which reads *50% sure*; and the form grades a
   cloud date that will not parse at 0, which reads *0% sure* of a date
   nothing read. Both are 0045's class, outside the device.
+  *Closed by
+  [0190](0190-a-review-sentence-names-where-its-grade-came-from-and-quotes-a-percentage-only-where-a-model-reported-one.md):
+  consolidation says beside the grade it stamps whether the amount is the sum
+  of the lines or a total far from it, each reader marks a date it never got,
+  and the flag says why and quotes no percentage.*
 - **The category chip's percentage** (*High confidence (95%) — the AI is
   confident…*) is the same class, on every lane. #535 takes up all three.
+  *Closed by
+  [0190](0190-a-review-sentence-names-where-its-grade-came-from-and-quotes-a-percentage-only-where-a-model-reported-one.md):
+  the row carries where its category grade came from, and the chip names
+  memory, the reviewer, a backup, the file, the reader or the device, keeping
+  a percentage for a categorizer answer that carried its own.*
 
 ### The shared file
 

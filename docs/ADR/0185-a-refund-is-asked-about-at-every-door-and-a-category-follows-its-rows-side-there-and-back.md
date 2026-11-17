@@ -1,6 +1,8 @@
 # 185. A refund is asked about at every door, and a category follows its row's side there and back
 
-**Status:** Accepted, implemented · **Date:** 2026-10-27 · **Issues:** #464
+**Status:** Accepted, implemented; amended by
+[0191](0191-sorts-reminders-the-filter-dates-and-an-open-calendar-follow-the-readers-language-the-taxonomy-declares-only-what-is-sent-and-the-budgets-page-follows-its-tab-while-open.md)
+· **Date:** 2026-10-27 · **Issues:** #464
 
 Reference documentation lives in [../receipt-import.md](../receipt-import.md),
 [../import-fields.md](../import-fields.md), [../prompts.md](../prompts.md),
@@ -587,6 +589,10 @@ either that no event declares fails. The list was found missing `action`.
 - **Reusing `transaction_add`.** It counts the form's own saves, not a
   reviewed batch, and has no place for a count. Its `method` already declares
   `ai_import` and its `type` `mixed`, values nothing sends.
+  *Amended by
+  [0191](0191-sorts-reminders-the-filter-dates-and-an-open-calendar-follow-the-readers-language-the-taxonomy-declares-only-what-is-sent-and-the-budgets-page-follows-its-tab-while-open.md):
+  the two values are gone from the taxonomy, and the registry check fails a
+  declared value no code writes.*
 
 ## Consequences
 
