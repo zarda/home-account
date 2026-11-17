@@ -7,7 +7,7 @@
  * parsing of their answers should be too.
  */
 import { isCurrencyCode } from '../../models';
-import type { FieldConfidence, TransactionLocation } from '../../models';
+import type { FieldConfidence, FieldDoubt, TransactionLocation } from '../../models';
 import { locationSlot } from './import-dto.utils';
 
 /**
@@ -249,6 +249,35 @@ export function extractedFieldConfidence(
     ...(dateGrade !== undefined ? { date: dateGrade } : {}),
     ...(row.typeConfidence !== undefined ? { type: row.typeConfidence } : {}),
   };
+}
+
+/**
+ * The marks that say an extracted row's amount or date grade is the app's
+ * and not a reader's: consolidation's `amountBasis`, and a date that was
+ * never given (`dateUnread`) or that the caller could not parse. Beside
+ * {@link extractedFieldConfidence} so the two shapes are built in one place.
+ */
+export function extractedFieldDoubt(
+  row: { amountBasis?: FieldDoubt['amount']; dateUnread?: true },
+  dateUnparsed = false
+): FieldDoubt | undefined {
+  const unread = dateUnparsed || row.dateUnread === true;
+  if (!row.amountBasis && !unread) {
+    return undefined;
+  }
+  return {
+    ...(row.amountBasis ? { amount: row.amountBasis } : {}),
+    ...(unread ? { date: 'unread' as const } : {}),
+  };
+}
+
+/** {@link extractedFieldDoubt} as a spread: the `fieldDoubt` key when there is a doubt to carry, no key otherwise. */
+export function fieldDoubtSlot(
+  row: { amountBasis?: FieldDoubt['amount']; dateUnread?: true },
+  dateUnparsed = false
+): { fieldDoubt?: FieldDoubt } {
+  const fieldDoubt = extractedFieldDoubt(row, dateUnparsed);
+  return fieldDoubt ? { fieldDoubt } : {};
 }
 
 /** Longest address kept; a model echoing the whole receipt body here is not reporting an address. */

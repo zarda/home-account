@@ -58,17 +58,22 @@ function typeGradeSlot(type: 'income' | 'expense'): { typeConfidence?: number } 
   return grade !== undefined ? { typeConfidence: grade } : {};
 }
 
-/** Amount plus optional review flag for one receipt group. */
+/**
+ * Amount plus optional review flag for one receipt group. The review grade
+ * is this file's and no reader's, so each place that stamps it says why
+ * beside it (`amountBasis`): the flag then names the reason and never quotes
+ * the grade as a confidence.
+ */
 function deriveAmount(
   groupItems: MultiImageExtractedTransaction[],
   itemSum: number
-): { amount: number; amountConfidence?: number; receiptTotal?: number } {
+): Pick<MultiImageExtractedTransaction, 'amount' | 'amountConfidence' | 'amountBasis' | 'receiptTotal'> {
   const total = reportedTotalOf(groupItems);
   if (total === undefined) {
-    return { amount: itemSum, amountConfidence: REVIEW_AMOUNT_CONFIDENCE };
+    return { amount: itemSum, amountConfidence: REVIEW_AMOUNT_CONFIDENCE, amountBasis: 'itemSum' };
   }
   return totalDeviatesWildly(total, itemSum)
-    ? { amount: total, amountConfidence: REVIEW_AMOUNT_CONFIDENCE, receiptTotal: total }
+    ? { amount: total, amountConfidence: REVIEW_AMOUNT_CONFIDENCE, amountBasis: 'totalDisagrees', receiptTotal: total }
     : { amount: total, receiptTotal: total };
 }
 
@@ -108,7 +113,11 @@ export function consolidateReceiptItems(
       // A group of one never merged anything, whatever the extraction
       // claimed for the item itself — that verdict is this function's alone
       // to make, and it only makes it in the multi-item branch below.
-      const line = { ...base, ...deriveAmount(groupItems, Math.abs(only.amount)), wasMerged: false };
+      // The basis is this function's verdict like the type grade below: one
+      // the line arrived with is dropped, and deriveAmount's stands or none.
+      const derived = deriveAmount(groupItems, Math.abs(only.amount));
+      const line = { ...base, ...derived, wasMerged: false };
+      if (!derived.amountBasis) delete line.amountBasis;
       // The type grade is this function's verdict as well: a grade the
       // extraction brought is dropped, and the line's own type decides it.
       delete line.typeConfidence;
@@ -157,6 +166,8 @@ export function consolidateReceiptItems(
         // fabricated one — has to come from `first` too, not from a scan
         // across the group the way location and receiptCountry search below.
         dateConfidence: first.dateConfidence,
+        // And with the grade, the mark that says nothing read that date.
+        ...(first.dateUnread ? { dateUnread: true as const } : {}),
         description: merchant,
         ...deriveAmount(groupItems, Math.abs(netAmount)),
         type,

@@ -1,7 +1,7 @@
 /**
  * Shared types for the AI receipt-processing pipeline.
  */
-import type { BudgetPeriod, FieldConfidence, LLMProvider, TransactionLocation } from '../../models';
+import type { BudgetPeriod, FieldConfidence, FieldDoubt, LLMProvider, TransactionLocation } from '../../models';
 import type { AIErrorInfo } from '../utils/ai-error.utils';
 
 export interface ProcessedTransaction {
@@ -32,6 +32,13 @@ export interface ProcessedTransaction {
    * reading to grade at all, as a CSV row does not.
    */
   fieldConfidence?: FieldConfidence;
+  /**
+   * Why an amount or date grade above is under the bar where the app stamped
+   * it and no reader measured it (an item sum, a total that disagrees, a
+   * date nothing read). Absent on a device row, whose grades are all policy
+   * and are named by `source`.
+   */
+  fieldDoubt?: FieldDoubt;
   /**
    * True when `currency` is the account's fallback rather than something read
    * off the receipt. Distinguishing the two is what lets a caller offer a

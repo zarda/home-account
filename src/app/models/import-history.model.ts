@@ -190,6 +190,42 @@ export function gradeNeedsVerification(grade: number | undefined): boolean {
   return grade !== undefined && grade < VERIFY_FIELD_THRESHOLD;
 }
 
+/**
+ * Where a row's category grade came from. A grade is a number on one scale
+ * whatever stamped it, and most of them are policy: only `reported` is a
+ * figure a categorizer returned about the category itself. The review card's
+ * chip chooses its sentence on this and never on the grade's value, and
+ * quotes a percentage for `reported` alone (ADR 0045's rule: a grade names
+ * its source).
+ *
+ * - `memory`: a merchant the reviewer filed before (`CATEGORY_MEMORY_CONFIDENCE`).
+ * - `reviewer`: picked on the card.
+ * - `backup`: a backup's own id, still held by the account on the row's side.
+ * - `file`: a CSV's Category cell, matched exactly against the catalogue.
+ * - `reader`: named by a cloud reader while it read the receipt or statement.
+ * - `device`: named on the device; its grade measures the text, not the category.
+ * - `reported`: a categorizer's answer that carried its own number.
+ *
+ * Absent on a floor or a fallback: nothing named the category the row shows.
+ */
+export type CategorySource = 'memory' | 'reviewer' | 'backup' | 'file' | 'reader' | 'device' | 'reported';
+
+/**
+ * Why a field's grade is under the bar where no reader measured it. The
+ * grade still sends the field to the reviewer; this says what the flag may
+ * claim, so the sentence quotes no confidence nothing reported.
+ *
+ * - `amount: 'itemSum'`: no printed total was read, and the amount is the
+ *   sum of the lines that were.
+ * - `amount: 'totalDisagrees'`: the printed total is far from that sum.
+ * - `date: 'unread'`: no date was given, or the one given does not parse;
+ *   the date shown is today's.
+ */
+export interface FieldDoubt {
+  amount?: 'itemSum' | 'totalDisagrees';
+  date?: 'unread';
+}
+
 /** The rule a row looks like, as offered on the review card. Never written. */
 export interface RecurringMatchSuggestion {
   id: string;
@@ -218,6 +254,13 @@ export interface CategorizedImportTransaction {
   type: 'income' | 'expense';
   suggestedCategoryId: string;
   categoryConfidence: number;
+  /**
+   * A review-step mark, never written: where `categoryConfidence` came from.
+   * Set by whichever site files the category, cleared by one that files a
+   * fallback over it, carried by the spread through a split and a merge's
+   * target. See {@link CategorySource}.
+   */
+  categorySource?: CategorySource;
   /**
    * How sure the reader was that it read the amount and the date correctly
    * (a cloud model's own report, or the device's policy: `readOnDevice`),
@@ -249,6 +292,13 @@ export interface CategorizedImportTransaction {
    * target, and absent on every other door's rows.
    */
   readOnDevice?: true;
+  /**
+   * A review-step mark, never written: why an amount or date grade is under
+   * the bar where the app stamped it and no reader measured it. Travels like
+   * `readOnDevice`. A flag an edit has answered drops its grade and leaves
+   * this behind, where nothing reads it. See {@link FieldDoubt}.
+   */
+  fieldDoubt?: FieldDoubt;
   /**
    * True when `currency` is the account's base currency because the source
    * reported none — a fallback, not a reading. The review step marks it the
@@ -298,7 +348,7 @@ export interface CategorizedImportTransaction {
   editedOnCard?: true;
   /**
    * A review-step mark, never written: the category a change of side moved
-   * off this row, with the grade it held there. A flip that finds the
+   * off this row, with the grade it held there and that grade's source. A flip that finds the
    * row's category on the wrong side files the row on the new side's
    * catch-all and remembers what it had; a flip back restores it at its
    * grade (`categoryOnSide`). A pick on the card forgets it, a split
@@ -307,7 +357,7 @@ export interface CategorizedImportTransaction {
    * follows (`mergeInto`) writes a fresh one only where it moves the
    * survivor's category.
    */
-  movedCategory?: { suggestedCategoryId: string; categoryConfidence: number };
+  movedCategory?: { suggestedCategoryId: string; categoryConfidence: number; categorySource?: CategorySource };
   /**
    * A review-step mark, never written: the type the reader flagged on this
    * row, kept once a flip answers the flag. The flip drops the type grade
