@@ -538,8 +538,12 @@ carry `canSelectNullableOptions`, or Material reads that option as a reset and
 the field shows empty, its label unfloated, while the model holds `null` or
 `undefined`. A spec that renders such a field reads the trigger's text
 (`.mat-mdc-select-value`) and whether the label floats, since a model
-assertion passes either way. The script's `--self-test` runs 64 cases across
-both rules.
+assertion passes either way. A third rule ([ADR 0191](ADR/0191-sorts-reminders-the-filter-dates-and-an-open-calendar-follow-the-readers-language-the-taxonomy-declares-only-what-is-sent-and-the-budgets-page-follows-its-tab-while-open.md)) fails a component whose
+template declares a `<mat-datepicker>` without `RelabelOpenCalendarDirective`
+in its `imports`: the directive gives a calendar open across a change of
+language its close button in the new one, and a host that leaves the import
+out fails in silence. The script's `--self-test` runs 70 cases across the
+three rules.
 
 ### A real reload aborts the whole run
 

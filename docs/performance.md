@@ -78,19 +78,23 @@ reaches it.
 Two gates cover the two halves.
 
 **`npm run material:check`** (`scripts/check-material-imports.mjs`, a CI step
-after *Check direction*) holds two rules. The first parses each
+after *Check direction*) holds three rules. The first parses each
 `@Component`'s `imports:` array and the template it declares, and fails when
 a listed Material module contributes no selector that template uses. The
-second is about one select's empty option (below). What the first proves is
-bounded on purpose:
+second is about one select's empty option (below). The third fails a
+component whose template declares a `<mat-datepicker>` without
+`RelabelOpenCalendarDirective` in its `imports`, since a calendar open across
+a change of language would keep its close button's old words and nothing else
+would say so ([locale-formatting.md](locale-formatting.md#what-a-datepicker-shows-and-reads),
+[ADR 0191](ADR/0191-sorts-reminders-the-filter-dates-and-an-open-calendar-follow-the-readers-language-the-taxonomy-declares-only-what-is-sent-and-the-budgets-page-follows-its-tab-while-open.md)). What the first proves is bounded on purpose:
 
 - A table maps **28 Material modules** to their full transitively-exported
   selector sets, spelled as the installed `@angular/material` spells them.
   `--self-test` asserts every string in it against the selectors the
   installed package actually declares, plus the three re-export edges it
-  leans on (List → Divider, Input → FormField, Select → Option); its 64
-  cases cover the second rule's fixtures too, so it prints
-  `check-material-imports self-test: 64 passed`. A Material upgrade that
+  leans on (List → Divider, Input → FormField, Select → Option); its 70
+  cases cover the second and third rules' fixtures too, so it prints
+  `check-material-imports self-test: 70 passed`. A Material upgrade that
   renames a selector fails the self-test, where the fix is the table — not
   the app, where the fix would look like deleting a live import.
 - Matching is lenient in every direction but one: an attribute selector

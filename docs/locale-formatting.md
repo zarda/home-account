@@ -24,6 +24,19 @@ Formatters are memoized per locale **and** option set. They are reached from
 impure pipes that run on every change-detection cycle, and constructing an
 `Intl.DateTimeFormat` is expensive relative to formatting with one.
 
+### Text is ordered by the account's collator
+
+`compare(a, b)` orders two pieces of text as the account's language orders
+them, with an `Intl.Collator` kept per locale beside the formatters. A bare
+`localeCompare` orders by the device's language instead, so a list an account
+reads in Japanese on a phone set to English was ordered as English orders it.
+The transaction list's description sort and the review card's category menu
+use it; it reads the locale signal, so a computed that sorts with it re-sorts
+on a switch of language, with no second click on the header. An account in
+Traditional Chinese sees Han text before Latin, by stroke; one in Japanese
+sees it after, by reading. Comparisons of ids and keys stay bare, since no
+reader sees their order ([ADR 0191](ADR/0191-sorts-reminders-the-filter-dates-and-an-open-calendar-follow-the-readers-language-the-taxonomy-declares-only-what-is-sent-and-the-budgets-page-follows-its-tab-while-open.md)).
+
 ### Dates take a named style, never a pattern
 
 `short`, `medium`, `long` — a closed set, deliberately. `MMM d, yyyy` hard-
@@ -219,9 +232,15 @@ are dates. A `YYYY-MM-DD` date is that local day in every order, a leading
 four-digit year is always the year, followed by the month and the day, and a
 two-digit year is `20YY`. Text that names no day, `8/19` with no year,
 `Aug 19 2026`, `2026-02-31`, is an Invalid Date, which raises Material's
-`matDatepickerParse` error, and every form a date can be typed into, bar
-the transaction filters, says so in one sentence, `datepicker.dateInvalid`
-(*Enter a valid date.*), ahead of any *required* message. (The period
+`matDatepickerParse` error, and every form a date can be typed into says so
+in one sentence, `datepicker.dateInvalid` (*Enter a valid date.*), ahead of
+any *required* message. The transaction filters' compact From and To have no
+room for it beneath the field, so there it is the input's description,
+off the screen: a text of its own for each, named by `aria-describedby`
+through `MatInput`'s own input (which the form field merges with its other
+ids; the attribute bound directly would be overwritten), filled once the
+reader has left the field and it holds a parse error, and announced politely
+([ADR 0191](ADR/0191-sorts-reminders-the-filter-dates-and-an-open-calendar-follow-the-readers-language-the-taxonomy-declares-only-what-is-sent-and-the-budgets-page-follows-its-tab-while-open.md)). (The period
 selector's and the import review's pickers have hidden inputs and take a
 date only from the calendar.) An emptied field is no date and no error. A
 value handed to an input as a date-only string is read as its local day.
@@ -231,16 +250,23 @@ format when the first picker builds it and follows both from then on: a
 switch of either re-renders every input and the labels with no reload.
 Material re-renders inputs on the adapter's `localeChanges`, which it sends
 on a change of format alone too, and an open calendar on the labels'
-`changes`, which they send only after relabelling. What still lags:
+`changes`, which they send only after relabelling. Material's calendar
+copies its visually hidden *Close calendar* button's words once, when it
+opens, and listens to nothing afterwards, so
+`RelabelOpenCalendarDirective` (`shared/directives/`), whose selector is
+`mat-datepicker`, writes the new words into an open calendar and asks it to
+redraw. It does not close and reopen it: `open()` is ignored for the length
+of the exit animation, and the month the reader had moved to would be lost.
+Every component that declares a `<mat-datepicker>` imports the directive,
+and `npm run material:check` fails one that does not, since a missing import
+fails in silence ([ADR 0191](ADR/0191-sorts-reminders-the-filter-dates-and-an-open-calendar-follow-the-readers-language-the-taxonomy-declares-only-what-is-sent-and-the-budgets-page-follows-its-tab-while-open.md)). What still lags:
 
-- an open calendar's visually hidden *Close calendar* button and its
-  comparison label keep the language it opened in until it is reopened,
-  because Material reads them once;
+- an open calendar's comparison label keeps the language it opened in,
+  because Material reads it once; the app declares no range picker, so
+  nothing reads it;
 - a field that holds unreadable text through a switch is cleared and keeps
   its parse error until the next keystroke (a blur only reformats it), and
   the recurring dialog's **Save** stays disabled until then;
-- the transaction filters' compact From and To have no room for a sentence,
-  so unreadable text there shows the error outline only.
 
 A spec provides the app's adapter through `provideAppDatepickerForTests`,
 never by hand ([testing.md](testing.md#shared-stubs)).

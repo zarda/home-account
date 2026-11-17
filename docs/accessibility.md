@@ -448,6 +448,37 @@ for assistive technology.
   upload area and the filter panel's two pills round their text boxes
   alike, clearing the control's own ring.
 
+## The category dot says where its grade came from
+
+The dot beside a review card's category chip is a graphic with a name of its
+own (`role="img"`), and its name is its tooltip. It used to read *High
+confidence (95%) — the AI is confident about this category* for a category
+answered from memory, and *(100%)* for one the reviewer had picked: a figure
+nothing had measured, said aloud. The name now says where the grade came
+from, *You filed this merchant here before*, *You picked this category*,
+*This category comes from the backup* and the rest, and quotes a percentage
+only for a categorizer answer that carried its own
+([import-fields.md](import-fields.md#what-the-chip-says-of-its-grade),
+[ADR 0190](ADR/0190-a-review-sentence-names-where-its-grade-came-from-and-quotes-a-percentage-only-where-a-model-reported-one.md)). The colour still follows the grade, and still owes 3:1 to the card
+around it in both themes (`category-suggestion.component.spec.ts`).
+
+A flagged amount or date is named the same way: by why it is doubted, with a
+percentage only where a model reported one
+([receipt-import.md](receipt-import.md)).
+
+## A filter date says why it is refused
+
+The transaction filters' compact grid has no room beneath a field, so
+Material's subscript is hidden there, and text that is no date in From or To
+showed the error outline alone. Each input is described by a text of its own,
+kept off the screen with the app's `visually-hidden` mixin: empty while the
+field reads as a date, *Enter a valid date.* once the reader has left it
+holding a parse error, and announced politely as it appears. It is filled
+when the outline is drawn, not on the first keystroke, since every first
+keystroke of a date is text that is no date
+([ADR 0191](ADR/0191-sorts-reminders-the-filter-dates-and-an-open-calendar-follow-the-readers-language-the-taxonomy-declares-only-what-is-sent-and-the-budgets-page-follows-its-tab-while-open.md)). Pinned in `transaction-filters.component.spec.ts` and, on the routed
+page with an axe pass, in `app.smoke.spec.ts`.
+
 ## The filter panel hands focus on when its controls go
 
 A focused control that its own handler takes off the page drops focus to the

@@ -259,6 +259,36 @@ removes it: the `reminders` step of the erasure cascade drops this key on this
 device, beside the `weeklyRecap` step that drops the recap's two
 ([account-deletion.md](account-deletion.md)).
 
+## A change of the account's language
+
+A reminder booked ahead keeps the words it was booked with, and its key does
+not name the language. So the device also records, under
+`home-account.reminders.language.{uid}`, the language its pending reminders
+were booked in. When the catalog in use becomes the account's own and differs
+from that record, a sweep runs, and on a whole sweep the delivery books again
+every reminder that still has a moment ahead of it: the bills due later and
+the Monday nudge. The id is the key's, so the operating system replaces the
+pending notification; nothing is cancelled and no log entry is dropped
+([ADR 0191](ADR/0191-sorts-reminders-the-filter-dates-and-an-open-calendar-follow-the-readers-language-the-taxonomy-declares-only-what-is-sent-and-the-budgets-page-follows-its-tab-while-open.md)).
+
+- **Only what is ahead.** A bill due today and a budget alert are raised with
+  no scheduled moment. They were raised when they were due, and a change of
+  language never raises them again.
+- **Only the account's own catalog counts.** A cold start loads the device's
+  language first and the account's second. On a phone set to another language
+  than its account's, that is no change of language, and nothing is booked
+  again.
+- **A booking ahead records the words it was made in**, whoever's they were.
+  One made before the account's catalog had loaded records the device's
+  language, and is booked again when the account's arrives.
+- **The record is written once the operating system has taken the booking.**
+  A refusal leaves the old language on record, and the next sweep tries again.
+- **The first start on a build that kept no record** books what is ahead once
+  more, in the same words.
+
+Native only: the web books nothing ahead. The record goes with the sent log
+when the account is deleted.
+
 ## Where a tap lands
 
 Every prepared reminder carries a `route`, the in-app path its tap opens,
@@ -267,7 +297,7 @@ built in `core/utils/notification-route.utils.ts`:
 | Kind | Route | What the page does with it |
 |---|---|---|
 | Bill | `/dashboard?bill={recurringId}` | Brings the rule's row on the Upcoming card into view and focuses it, or opens the recurring rules when the card is hidden or has no row for it ([dashboard.md](dashboard.md#links-from-a-notification-bill-and-recap)) |
-| Budget | `/budgets?tab=budgets` | Opens the budgets tab, where the alert's budget is listed |
+| Budget | `/budgets?tab=budgets` | Opens the budgets tab, where the alert's budget is listed, whether the page is being built or is already open on another tab; the page then takes `tab` off the URL, so a second tap on the same alert is followed too ([ADR 0191](ADR/0191-sorts-reminders-the-filter-dates-and-an-open-calendar-follow-the-readers-language-the-taxonomy-declares-only-what-is-sent-and-the-budgets-page-follows-its-tab-while-open.md)) |
 | Recap | `/dashboard?recap={week key}` | Focuses the recap card when it shows that week ([weekly-recap.md](weekly-recap.md#the-monday-nudge)) |
 
 The recap's key is the week the nudge announces, fixed when it is booked, so
@@ -391,9 +421,14 @@ convenience.
   ten-second timeout, or a three-second delay where the browser has none. A
   worker message that reaches a tab before then is dropped. A tap with no tab
   open is not affected: the new tab opens at the route.
-- **A mounted `/budgets` keeps its tab.** The budgets page reads `?tab=` from
-  the route snapshot when it is created, so a budget alert tapped while it
-  shows Recurring or Goals leaves the tab where it was.
+- **A reminder due the same morning keeps the old language.** On its day a
+  bill is produced with no scheduled moment, so a 09:00 notification still
+  pending when the language changes that morning is not booked again.
+- **A switch of language made on another device arrives at the next start.**
+  The account document is read once, at sign-in.
+- **Nothing here was read on a device.** The re-booking is held by the
+  service's spec and by an emulator case that books from stored rules, both
+  against the plugin's stand-in.
 - **A notification raised before routes were carried opens `/`.** On the web
   the worker posts `/` to an open tab, which navigates there; on iOS such a
   tap carries no route and is ignored.

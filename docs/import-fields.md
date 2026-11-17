@@ -104,7 +104,8 @@ carried through a split and a merge's target — see
 [ADR 0186](ADR/0186-a-date-stops-at-a-currency-sign-and-a-line-break-a-total-read-past-an-aside-or-under-a-count-is-flagged-and-a-shared-file-lands-in-the-upload-area.md)). None of them
 reaches the mapper — it names its fields, and its spec pins that `fileRate`,
 `importFailure`, `importAttempts`, `editedOnCard`, `movedCategory`,
-`typeFlaggedAs` and `readOnDevice` never come out of it —
+`typeFlaggedAs`, `readOnDevice`, `categorySource` and `fieldDoubt` never come
+out of it —
 and none of them is ever written to a transaction as itself: `fileRate`
 reaches the write only as the snapshot the confirm step computes from it,
 over the amount actually being written.
@@ -235,7 +236,9 @@ See [receipt-import.md](receipt-import.md#failure-surfacing).
 A grade says what the door that produced the row can vouch for, and no more
 ([ADR 0147](ADR/0147-a-row-is-graded-by-what-its-door-can-vouch-for.md)).
 The review card colours the category chip from `categoryConfidence`, and a
-row under 0.5 wears the low-confidence dot. The dot on each card is the whole
+row under 0.5 wears the low-confidence dot. What the dot *says* is chosen by
+where the grade came from, never by its value (see *What the chip says of its
+grade*, below). The dot on each card is the whole
 of it: the `low_confidence` warning that counted those rows for the batch was
 read by nothing, and it is gone
 ([ADR 0170](ADR/0170-the-animations-runtime-the-unregistered-worker-and-nine-dead-items-come-out.md)).
@@ -299,6 +302,39 @@ is read strictly, exactly `income` or an expense, and a flag on every deposit
 would be noise. A CSV or JSON row carries none of the three: nobody read it,
 so nothing is graded, and `resolveImportDate` skips its plausibility window
 for an ungraded date.
+
+
+### What the chip says of its grade
+
+A grade is one number on one scale whatever stamped it, and most are policy.
+Two review-step marks say which, and neither is ever written
+([ADR 0190](ADR/0190-a-review-sentence-names-where-its-grade-came-from-and-quotes-a-percentage-only-where-a-model-reported-one.md)):
+
+- `categorySource`, beside `categoryConfidence`: what named the category the
+  row shows. Set by the site that files the category, written over by a site
+  that files another over it (the CSV door's exact match over the
+  extraction's name), cleared by one that files a fallback (a flip onto the
+  other side's catch-all, which stashes it in `movedCategory` and restores it
+  on the flip back), and carried by the spread through a split and a merge's
+  target.
+- `fieldDoubt`, beside `fieldConfidence`: why an amount or date grade is under
+  the bar where the app stamped it and no reader measured it
+  ([receipt-import.md](receipt-import.md), *Where the amount comes from*).
+
+| `categorySource` | Set by | Grade | The dot's name |
+|---|---|---|---|
+| `memory` | the categorization ladder, for a merchant filed before | 0.95 | *You filed this merchant here before* |
+| `reviewer` | a pick on the card | 1.0 | *You picked this category* |
+| `backup` | a backup's id the account still holds on the row's side | 1.0 | *This category comes from the backup* |
+| `file` | a CSV's Category cell, matched exactly | 1.0 | *This category is the one the file names* |
+| `reader` | a category a cloud reader named while it read | 0.8, or the row's own | *Suggested when the receipt or statement was read — check that it fits* |
+| `device` | a category named on the device | the row's own, which measures the text | *Suggested by the scan on this device — check that it fits* |
+| `reported` | a categorizer answer that carried its own number | that number | *High*, *Medium* or *Low confidence*, with the percentage |
+| none | a floor, a fallback, an answer graded at the default | 0.8, 0.3, 0.1 or 0 | *Suggested category — check that it fits* at 0.5 and above, *No category could be suggested — please pick one* below |
+
+Only `reported` quotes a percentage: it is the one figure a model reported
+about the category itself. The dot's colour, the needs-review counts and
+every written field follow the grade as before.
 
 ## Photos
 

@@ -29,9 +29,11 @@ straight into a field you are about to submit. Where the total or the date is
 graded low — by a cloud model's own confidence, or by the device's policy
 (see *Where the amount comes from*) — that field is flagged in place, on the
 same 0.7 bar the import wizard's preview table uses. The flag quotes a
-percentage only for a cloud reading, mostly the confidence its model
-reported; a device reading's flag says the scan could not read the figure for
-certain. The form
+percentage only where a cloud model reported one. A grade the app stamped
+itself says why instead (an amount added up from the lines read, a printed
+total far from that sum, a date nothing could read, so today's is filled in),
+and a device reading's flag says the scan could not read the figure for
+certain ([ADR 0190](ADR/0190-a-review-sentence-names-where-its-grade-came-from-and-quotes-a-percentage-only-where-a-model-reported-one.md)). The form
 also flags a scanned date that reads as **any day but today**, however sure
 the reader was of it — the flag clears once you move the date to a different
 **day**, since re-entering the day that was scanned is not an answer to it.
@@ -369,9 +371,18 @@ no percentage, on the review card and in the form, as the type's flag does. The
 form says the same of a doubted date. On the card a doubted device date keeps
 the assumed-date wording instead, because the import dates every grade under
 the bar today (see *Failure surfacing*). A cloud reader's flag quotes a
-percentage: the confidence its model reported, or the app's own where no model
-gave one (50% on an amount consolidation doubted, 0% on a date that will not
-parse). The converter marks a row the device read, `readOnDevice`, from its
+percentage only where its model reported one. Two grades on a cloud row are
+the app's own, and each travels with its reason in `fieldDoubt`: consolidation
+grades an amount 0.5 where it is the sum of the lines read, no printed total
+having been reported (`amount: 'itemSum'`), or where the printed total is more
+than half the larger figure away from that sum (`'totalDisagrees'`); and every
+reader grades 0 a date the answer did not give or gave in a form nothing
+parses (`date: 'unread'`). Their flags say *no printed total was read, so it
+is added up from the lines that were*, *the printed total is far from the sum
+of the lines read* and *no date could be read, so today's is filled in*, where
+they read *only 50% sure* and *only 0% sure*. A cloud grade nobody reported
+and nothing explains reads the scan's sentence, with no figure
+([ADR 0190](ADR/0190-a-review-sentence-names-where-its-grade-came-from-and-quotes-a-percentage-only-where-a-model-reported-one.md)). The converter marks a row the device read, `readOnDevice`, from its
 `source`, and the form reads the scan's own `source`
 ([ADR 0186](ADR/0186-a-date-stops-at-a-currency-sign-and-a-line-break-a-total-read-past-an-aside-or-under-a-count-is-flagged-and-a-shared-file-lands-in-the-upload-area.md)).
 
@@ -1057,8 +1068,9 @@ the bar, or one read clearly that no plausible calendar contains — more than a
 day ahead, or more than ten years back, checked only on a graded row — becomes
 *now* — the actual instant, so the row sorts above every other row dated
 today — and the review card asks about it, in place of the sentence the
-verify tooltip would otherwise say: a cloud model's percentage, or, on a row
-the device read, that the scan could not read the date for certain. An
+verify tooltip would otherwise say: a cloud model's percentage, the app's own
+reason where it stamped the grade, or, on a row the device read, that the
+scan could not read the date for certain. An
 implausible reading gets its own wording in that tooltip, distinct from an
 unreadable one, since the two are different doubts
 ([ADR 0080](ADR/0080-an-impossible-date-lands-on-today-however-well-it-was-read.md)).
