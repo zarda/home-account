@@ -9,6 +9,7 @@
     [animationDuration]="tabAnimationDuration()"
     [mat-stretch-tabs]="false"
     [selectedIndex]="selectedTabIndex"
+    (selectedIndexChange)="selectedTabIndex = $event"
   >
     <!-- Budgets Tab -->
     <mat-tab>
