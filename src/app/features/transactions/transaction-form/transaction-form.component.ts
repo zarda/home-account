@@ -58,6 +58,7 @@ import {
   CurrencySuggestion,
   CurrencySuggestionReason,
   FieldConfidence,
+  FieldDoubt,
   Goal,
   SplitPart,
   baseCurrencyOf,
@@ -326,6 +327,15 @@ export class TransactionFormComponent implements OnInit, AfterViewInit, OnDestro
    * cleared with it.
    */
   scanReadOnDevice = signal(false);
+
+  /**
+   * Why a grade of the last scan is under the bar where the app stamped it
+   * and no reader measured it: a cloud date nothing could read, an amount
+   * summed from the lines read. The flag then says why and quotes no
+   * percentage (verifyFieldTooltip). Set with scanFieldConfidence on every
+   * scan, and cleared with it.
+   */
+  scanFieldDoubt = signal<FieldDoubt | null>(null);
 
   /**
    * The date the last scan put in the field, held until the user moves the
@@ -1333,6 +1343,7 @@ export class TransactionFormComponent implements OnInit, AfterViewInit, OnDestro
 
       this.scanFieldConfidence.set(primary.fieldConfidence ?? null);
       this.scanReadOnDevice.set(primary.source === 'native');
+      this.scanFieldDoubt.set(primary.fieldDoubt ?? null);
 
       // The receipt did not say what money this was, so the account's base
       // currency is sitting in the field. Offer a better guess; never apply it.
@@ -1362,6 +1373,7 @@ export class TransactionFormComponent implements OnInit, AfterViewInit, OnDestro
       this.scanReading = null;
       this.scanFieldConfidence.set(null);
       this.scanReadOnDevice.set(false);
+      this.scanFieldDoubt.set(null);
       this.scanDate.set(null);
       this.suggestedCurrency.set(null);
       this.suggestedCoordinates.set(null);
@@ -1616,8 +1628,9 @@ export class TransactionFormComponent implements OnInit, AfterViewInit, OnDestro
    * card: its grade is the device reader's policy rather than a measurement
    * (ADR 0162), and a percentage would report a reading nothing took. A
    * scan read on the device grades its amount and date by policy too, so
-   * their doubt names the scan; only a cloud reader's doubt quotes the
-   * confidence its model reported. That choice is the card's too, in
+   * their doubt names the scan; a cloud grade the app stamped itself says
+   * why (scanFieldDoubt); only a doubt a cloud model reported quotes its
+   * confidence. That choice is the card's too, in
    * `fieldDoubtSentence`; the form joins its not-today sentence after it.
    */
   verifyFieldTooltip(field: keyof FieldConfidence): string {
@@ -1625,7 +1638,9 @@ export class TransactionFormComponent implements OnInit, AfterViewInit, OnDestro
       return this.translationService.t('import.verifyType');
     }
     const t = this.translationService.t.bind(this.translationService);
-    const doubt = fieldDoubtSentence(t, field, this.scanReadOnDevice(), this.scanFieldConfidence()?.[field]);
+    const doubt = fieldDoubtSentence(
+      t, field, this.scanReadOnDevice(), this.scanFieldConfidence()?.[field], this.scanFieldDoubt()
+    );
     const anotherDay = field === 'date' ? this.scanDateOnAnotherDay() : null;
     if (!anotherDay) {
       return doubt;
@@ -1709,6 +1724,7 @@ export class TransactionFormComponent implements OnInit, AfterViewInit, OnDestro
       this.scanError.set(null);
       this.scanFieldConfidence.set(null);
       this.scanReadOnDevice.set(false);
+      this.scanFieldDoubt.set(null);
       this.scanDate.set(null);
       this.suggestedCurrency.set(null);
       this.scanCurrencyFellBack = false;

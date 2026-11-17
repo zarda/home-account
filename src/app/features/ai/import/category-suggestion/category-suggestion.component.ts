@@ -4,12 +4,26 @@ import { MatIconModule } from '@angular/material/icon';
 import { MatTooltipModule } from '@angular/material/tooltip';
 import { MatMenuModule } from '@angular/material/menu';
 import { MatButtonModule } from '@angular/material/button';
-import { CATEGORY_FALLBACK_COLOR, Category } from '../../../../models';
+import { CATEGORY_FALLBACK_COLOR, Category, CategorySource } from '../../../../models';
 import { TranslationService } from '../../../../core/services/translation.service';
 import { FitTextDirective } from '../../../../shared/directives/fit-text.directive';
 import { CategoryGlyphPipe } from '../../../../shared/pipes/category-glyph.pipe';
 import { CategoryRowType, categoryFitsType } from '../../../../core/utils/categorization.utils';
 import { categoryDisplayName } from '../../../../core/utils/category-display.utils';
+
+/**
+ * The dot's sentence for a grade whose source is known and is not a figure a
+ * categorizer reported. None quotes a percentage: the grade behind each is
+ * policy, or a measure of something other than the category.
+ */
+const SOURCE_SENTENCE_KEYS: Record<Exclude<CategorySource, 'reported'>, string> = {
+  memory: 'import.categoryFromMemory',
+  reviewer: 'import.categoryByYou',
+  backup: 'import.categoryFromBackup',
+  file: 'import.categoryFromFile',
+  reader: 'import.categoryFromReader',
+  device: 'import.categoryFromDevice',
+};
 
 @Component({
   selector: 'app-category-suggestion',
@@ -37,6 +51,10 @@ export class CategorySuggestionComponent {
   // menu's selected mark and left the chip on the model's first guess.
   suggestedCategoryId = input.required<string>();
   confidence = input(0);
+  // Where the grade came from, as the row carries it. It picks the dot's
+  // sentence; the grade alone still picks the dot's colour. Left unset, the
+  // dot says a category was suggested and quotes nothing.
+  source = input<CategorySource | undefined>(undefined);
   categories = input<Category[]>([]);
   // The side the row sits on. The card files a flipped row's category on its
   // new side, so a menu still listing the other side would let the reviewer
@@ -84,16 +102,32 @@ export class CategorySuggestionComponent {
     return Math.round(this.confidence() * 100);
   });
 
+  /**
+   * The dot's tooltip and its accessible name. It chooses on where the grade
+   * came from, never on the grade's value, and quotes a percentage only for
+   * a categorizer answer that carried its own number: a remembered category
+   * is graded 0.95 and a reviewer's pick 1.0 by policy, and a device row's
+   * grade measures how clearly the text was read, so "95%", "100%" and the
+   * rest were figures nothing measured about the category (ADR 0045's rule).
+   */
   confidenceTooltip = computed(() => {
-    const percent = this.confidencePercent();
+    const source = this.source();
     const level = this.confidenceClass();
-    const key =
-      level === 'high-confidence'
-        ? 'import.confidenceHigh'
-        : level === 'medium-confidence'
-          ? 'import.confidenceMedium'
-          : 'import.confidenceLow';
-    return this.translationService.t(key, { percent });
+    if (source === 'reported') {
+      const key =
+        level === 'high-confidence'
+          ? 'import.confidenceHigh'
+          : level === 'medium-confidence'
+            ? 'import.confidenceMedium'
+            : 'import.confidenceLow';
+      return this.translationService.t(key, { percent: this.confidencePercent() });
+    }
+    if (source) {
+      return this.translationService.t(SOURCE_SENTENCE_KEYS[source]);
+    }
+    return this.translationService.t(
+      level === 'low-confidence' ? 'import.categoryUnresolved' : 'import.categorySuggested'
+    );
   });
 
   selectCategory(categoryId: string): void {

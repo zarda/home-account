@@ -977,9 +977,10 @@ export class TransactionPreviewTableComponent implements AfterViewInit {
    * 0162) — and a percentage would report a reading nothing took. A row the
    * device read (`readOnDevice`) grades its amount and date by policy too
    * (the parser's tiers and demotions, the cross-check's 0.5 and 0.8), so
-   * their sentences name the scan, for the same reason. The order is the
-   * point: the type, then an assumed date, then the device, then the
-   * percentage.
+   * their sentences name the scan, for the same reason, and a cloud row
+   * whose grade the app stamped itself (`fieldDoubt`) says why. The order is
+   * the point: the type, then an assumed date, then the device, then the
+   * app's own reason, then the percentage.
    */
   verificationTooltip(
     transaction: CategorizedImportTransaction,
@@ -996,6 +997,7 @@ export class TransactionPreviewTableComponent implements AfterViewInit {
       field,
       !!transaction.readOnDevice,
       transaction.fieldConfidence?.[field],
+      transaction.fieldDoubt,
     );
   }
 
