@@ -17,6 +17,7 @@ import { MatIconModule } from '@angular/material/icon';
 import { MatButtonModule } from '@angular/material/button';
 import { MatMenuModule } from '@angular/material/menu';
 import { MatDatepicker, MatDatepickerInput } from '@angular/material/datepicker';
+import { RelabelOpenCalendarDirective } from '../../../../shared/directives/relabel-open-calendar.directive';
 import { MatDialog } from '@angular/material/dialog';
 import { FormsModule } from '@angular/forms';
 import {
@@ -137,6 +138,7 @@ let vocabularyListSeq = 0;
     MatButtonModule,
     MatMenuModule,
     MatDatepicker,
+    RelabelOpenCalendarDirective,
     MatDatepickerInput,
     FormsModule,
     CategorySuggestionComponent,

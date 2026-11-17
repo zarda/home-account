@@ -11,6 +11,7 @@ import { MatFormFieldModule } from '@angular/material/form-field';
 import { MatInputModule } from '@angular/material/input';
 import { MatSelectChange, MatSelectModule } from '@angular/material/select';
 import { MatDatepicker, MatDatepickerInput, MatDatepickerToggle } from '@angular/material/datepicker';
+import { RelabelOpenCalendarDirective } from '../../../shared/directives/relabel-open-calendar.directive';
 import { Observable, Subscription, debounceTime, distinctUntilChanged, filter } from 'rxjs';
 import { MatButtonModule } from '@angular/material/button';
 import { MatButtonToggleModule } from '@angular/material/button-toggle';
@@ -124,6 +125,7 @@ const OTHER_CURRENCY = 'other-currency';
     MatInputModule,
     MatSelectModule,
     MatDatepicker,
+    RelabelOpenCalendarDirective,
     MatDatepickerInput,
     MatDatepickerToggle,
     MatButtonModule,

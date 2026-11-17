@@ -2,6 +2,7 @@ import { ChangeDetectionStrategy, Component, ViewChild, computed, inject, input,
 
 import { MatButtonToggleModule } from '@angular/material/button-toggle';
 import { MatDatepicker, MatDatepickerInput } from '@angular/material/datepicker';
+import { RelabelOpenCalendarDirective } from '../../directives/relabel-open-calendar.directive';
 import { MatMenuModule } from '@angular/material/menu';
 import { MatIconModule } from '@angular/material/icon';
 import { MatButtonModule } from '@angular/material/button';
@@ -40,6 +41,7 @@ export function defaultPeriodSelection(): PeriodSelection {
   imports: [
     MatButtonToggleModule,
     MatDatepicker,
+    RelabelOpenCalendarDirective,
     MatDatepickerInput,
     MatMenuModule,
     MatIconModule,

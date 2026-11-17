@@ -6,6 +6,7 @@ import { MatFormFieldModule } from '@angular/material/form-field';
 import { MatSelectModule } from '@angular/material/select';
 import { MatInputModule } from '@angular/material/input';
 import { MatDatepicker, MatDatepickerInput, MatDatepickerToggle } from '@angular/material/datepicker';
+import { RelabelOpenCalendarDirective } from '../../../shared/directives/relabel-open-calendar.directive';
 import { MatButtonModule } from '@angular/material/button';
 import { MatChipInputEvent, MatChipsModule } from '@angular/material/chips';
 import { MatIconModule } from '@angular/material/icon';
@@ -43,6 +44,7 @@ import { ImportFocusContext, focusWhenRendered } from '../../ai/import/import-fo
     MatSelectModule,
     MatInputModule,
     MatDatepicker,
+    RelabelOpenCalendarDirective,
     MatDatepickerInput,
     MatDatepickerToggle,
     MatButtonModule,
