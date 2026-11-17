@@ -616,6 +616,17 @@ describe('TransactionPreviewTableComponent', () => {
       expect(component.verificationTooltip(t, 'amount')).toContain('42');
     });
 
+    it('names why the app doubts a cloud amount, and quotes no percentage for a grade it stamped itself', () => {
+      // Consolidation grades an item sum, and a total far from it, 0.5 so
+      // the flag fires. "Only 50% sure" was that policy read as a confidence.
+      const summed = row({ fieldConfidence: { amount: 0.5 }, fieldDoubt: { amount: 'itemSum' } });
+      const strayed = row({ fieldConfidence: { amount: 0.5 }, fieldDoubt: { amount: 'totalDisagrees' } });
+
+      expect(component.needsVerification(summed, 'amount')).withContext('the flag still fires').toBeTrue();
+      expect(component.verificationTooltip(summed, 'amount')).toBe('import.verifyAmountItemSum');
+      expect(component.verificationTooltip(strayed, 'amount')).toBe('import.verifyAmountTotalDisagrees');
+    });
+
     it('flags a type the reader doubted, and leaves an ungraded type alone', () => {
       // A missing type grade says more than a missing amount grade: the
       // device leaves it out for a purchase nothing on the receipt
