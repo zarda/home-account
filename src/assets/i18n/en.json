@@ -161,7 +161,7 @@
     "loading": "Loading transactions...",
     "filterByCategory": "Filter by category",
     "filterByDate": "Filter by date",
-    "sortBy": "Sort by",
+    "sortBy": "Sort the list by this column",
     "date": "Date",
     "amount": "Amount",
     "category": "Category",
