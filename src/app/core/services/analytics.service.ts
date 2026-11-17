@@ -199,10 +199,12 @@ export class AnalyticsService {
    * The one path to the transport.
    *
    * Typed wrappers rather than a public generic log() so the compiler rejects
-   * an unknown event or an off-taxonomy value at the call site, and so the
-   * registry check can read an event name it can trust. The runtime validation
-   * below is not redundant with those types: call sites compute these values
-   * from signals and conditionals, and types are gone by the time they do.
+   * an unknown event or an undeclared parameter at the call site, and so the
+   * registry check can read an event name it can trust. It does not reject an
+   * off-taxonomy value: the taxonomy is JSON, whose arrays the compiler reads
+   * as string[], so a value's type is string. The runtime validation below is
+   * the only thing that holds a value, and the registry check holds the
+   * reverse, that every declared value is written somewhere.
    */
   protected send(name: AnalyticsEventName, params: Record<string, unknown>): void {
     if (!this.collectionEnabled()) {
