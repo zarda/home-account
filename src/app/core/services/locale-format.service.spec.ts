@@ -322,6 +322,49 @@ describe('LocaleFormatService', () => {
     });
   });
 
+  describe('collation', () => {
+    // A bare localeCompare orders by the device's language. A list the
+    // account reads in Japanese on an English phone was then sorted as
+    // English sorts it, kana first and the kanji by code point (#505).
+    const sorted = (words: string[]) => [...words].sort((a, b) => service.compare(a, b));
+
+    it('orders Latin text as the account\'s language does, case beside case', () => {
+      expect(sorted(['banana', 'Cherry', 'apple'])).toEqual(['apple', 'banana', 'Cherry']);
+    });
+
+    it('orders the same two words differently for a Japanese and a Traditional Chinese account', () => {
+      useLocale('ja-JP');
+      expect(sorted(['東京', '家賃'])).toEqual(['家賃', '東京']);
+
+      useLocale('zh-Hant-TW');
+      expect(sorted(['家賃', '東京'])).toEqual(['東京', '家賃']);
+    });
+
+    it('puts Latin text where the account\'s language puts it beside its own script', () => {
+      useLocale('en-US');
+      expect(sorted(['大阪', 'apple'])).toEqual(['apple', '大阪']);
+
+      useLocale('zh-Hant-TW');
+      expect(sorted(['apple', '大阪'])).toEqual(['大阪', 'apple']);
+    });
+
+    it('answers zero for equal text, so a caller\'s tiebreak still runs', () => {
+      expect(service.compare('Coffee', 'Coffee')).toBe(0);
+    });
+
+    it('reuses one collator per locale', () => {
+      const spy = spyOn(Intl, 'Collator').and.callThrough();
+
+      service.compare('a', 'b');
+      service.compare('c', 'd');
+      useLocale('ja-JP');
+      service.compare('a', 'b');
+      service.compare('c', 'd');
+
+      expect(spy).toHaveBeenCalledTimes(2);
+    });
+  });
+
   describe('formatter reuse', () => {
     // These are reached from impure pipes, so a fresh Intl formatter per
     // binding per change-detection cycle is the cost being avoided.

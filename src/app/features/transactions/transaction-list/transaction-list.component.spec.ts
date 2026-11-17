@@ -165,6 +165,25 @@ describe('TransactionListComponent', () => {
       expect(component.sortedTransactions().map((t) => t.description)).toEqual(['Apple', 'Banana', 'Cherry']);
     });
 
+    it('sorts descriptions as the account\'s language orders them, and again when the language changes', () => {
+      // The collator is the account's, read through LocaleFormatService, and
+      // the sort is a computed: a switch of language re-orders the list
+      // without a second click on the header.
+      const locale = signal('ja-JP');
+      (translation as unknown as { getIntlLocale: () => string }).getIntlLocale = () => locale();
+      fixture.componentRef.setInput('transactions', [
+        createTransaction({ id: 'tokyo', description: '東京' }),
+        createTransaction({ id: 'rent', description: '家賃' }),
+      ]);
+      component.onSortChange({ active: 'description', direction: 'asc' } as Sort);
+
+      expect(component.sortedTransactions().map((t) => t.description)).toEqual(['家賃', '東京']);
+
+      locale.set('zh-Hant-TW');
+
+      expect(component.sortedTransactions().map((t) => t.description)).toEqual(['東京', '家賃']);
+    });
+
     it('falls back to the server order when direction is cleared', () => {
       const spy = jasmine.createSpy('dateSortChange');
       component.dateSortChange.subscribe(spy);

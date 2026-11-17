@@ -8,6 +8,7 @@ import { CATEGORY_FALLBACK_COLOR, Category, CategorySource } from '../../../../m
 import { catalogTranslator } from '../../../../core/services/testing';
 import { EffectiveTheme, ThemeService } from '../../../../core/services/theme.service';
 import { TranslationService } from '../../../../core/services/translation.service';
+import { LocaleFormatService } from '../../../../core/services/locale-format.service';
 import {
   AUDIT_SCHEMES,
   GLYPH_PROBE_COLOURS,
@@ -131,6 +132,16 @@ describe('CategorySuggestionComponent', () => {
       expect(sorted[0].name).toBe('Food & Dining');
       expect(sorted[1].name).toBe('Salary');
       expect(sorted[2].name).toBe('Transportation');
+    });
+
+    it('orders the names with the account\'s collator, not the device\'s', () => {
+      // Pin. Mutation: go back to a bare localeCompare. The stand-in orders
+      // backwards, which no device locale does.
+      spyOn(TestBed.inject(LocaleFormatService), 'compare').and.callFake((a, b) => (a < b ? 1 : a > b ? -1 : 0));
+      fixture.componentRef.setInput('categories', mockCategories);
+      fixture.detectChanges();
+
+      expect(component.sortedCategories().map(c => c.name)).toEqual(['Transportation', 'Salary', 'Food & Dining']);
     });
   });
 
