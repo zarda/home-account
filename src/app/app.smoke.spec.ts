@@ -658,9 +658,58 @@ describe('App routes (emulator smoke test)', () => {
           .withContext('the From and To toggles')
           .toEqual(['datepicker.openCalendar', 'datepicker.openCalendar']);
         await expectNoAxeViolationsInView('/transactions', '.filter-grid');
+        // #505: the grid hides Material's subscript, so text that is no date
+        // in From showed the error outline and told a screen reader nothing.
+        // The reason is the field's description, off the screen, once the
+        // reader leaves the field. No catalog is served, so it is the key.
+        const from = fromInput.nativeElement as HTMLInputElement;
+        const describedBy = (input: HTMLInputElement): string =>
+          (input.getAttribute('aria-describedby') ?? '')
+            .split(/\s+/)
+            .filter(Boolean)
+            .map(id => input.ownerDocument.getElementById(id)?.textContent?.trim() ?? '')
+            .join(' ')
+            .trim();
+        const typeIntoFrom = (text: string): void => {
+          from.value = text;
+          from.dispatchEvent(new Event('input'));
+          from.dispatchEvent(new Event('blur'));
+          harness.detectChanges();
+        };
+        const fromDate = from.value;
+        expect(describedBy(from)).withContext('From, holding a date').toBe('');
+        typeIntoFrom('next tuesday');
+        await waitForDom('the reason From is refused', () => describedBy(from) === 'datepicker.dateInvalid');
+        await expectNoAxeViolationsInView('/transactions', '.filter-grid');
+        typeIntoFrom(fromDate);
+        await waitForDom('From described by nothing once it reads as a date', () => describedBy(from) === '');
+        // The description sort is not walked here: at the harness's width the
+        // list is cards, which have no header to sort by. Its collation is
+        // held by the list's own spec and by journey 120.
 
         await expectPage('/budgets', 'budget.title', 'Groceries Budget');
         await expectNoAxeViolationsInView('/budgets', 'app-budget-overview');
+        // #446: a link to a tab is followed while the page is open, from a
+        // tab the reader chose, and the parameter leaves the URL once read,
+        // so the same link taps through a second time.
+        const budgetTabs = (): HTMLElement[] =>
+          Array.from(harness.routeNativeElement?.querySelectorAll<HTMLElement>('.mdc-tab') ?? []);
+        const activeBudgetTab = (): number =>
+          budgetTabs().findIndex(tab => tab.classList.contains('mdc-tab--active'));
+        const goalsTab = BUDGET_TABS.indexOf('goals');
+        for (const visit of ['first', 'second']) {
+          budgetTabs()[goalsTab].click();
+          harness.detectChanges();
+          await waitForDom(`the Goals tab chosen, ${visit} visit`, () => activeBudgetTab() === goalsTab);
+          // At once, with no turn between: the link must not depend on the
+          // strip having reported the reader's own choice back to the page.
+          await harness.navigateByUrl('/budgets?tab=budgets');
+          await waitForDom(`the Budgets tab its link names, ${visit} visit`, () => activeBudgetTab() === 0);
+          await waitForDom(
+            `the tab parameter off the URL, ${visit} visit`,
+            () => !TestBed.inject(Router).url.includes('tab=')
+          );
+        }
         // BUDGET_TABS and REPORT_TABS are what the data hub's ?tab= links are
         // checked against, and this is the only place the real strips render.
         // A tab added to a template without a name added to the list would

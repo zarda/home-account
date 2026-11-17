@@ -38,6 +38,7 @@ import { addDays, budgetPeriodWindow, dayKey, startOfDay } from '../../core/util
 import { MockAuthService, createMockUser, provideNoMotion } from '../../core/services/testing';
 import { DEFAULT_USER_PREFERENCES } from '../../models';
 import { dashboardGridAreas } from './dashboard-layout.utils';
+import { BUDGET_TABS } from '../budgets/budgets.component';
 import { silenceFirebaseWarnings } from '../../core/services/testing/silence-firebase-warnings';
 import { stripProviderKeys } from '../../core/services/testing/provider-keys';
 silenceFirebaseWarnings();
@@ -598,7 +599,13 @@ describe('dashboard card arrangement (emulator smoke test)', () => {
         // its first load still holds every card back, so the card is never
         // put on the page whether or not the preference hides it, and once
         // the router has left no card is.
-        expect(router.url).toBe('/budgets?tab=recurring');
+        // The budgets page opens the tab the link names and takes the name
+        // off the URL, so the tab is what says where the link led.
+        await waitForDom('the recurring rules tab', () => {
+          const tabs = Array.from(document.querySelectorAll('app-budgets .mdc-tab'));
+          return tabs.length > 0 && tabs.findIndex(tab => tab.classList.contains('mdc-tab--active')) === BUDGET_TABS.indexOf('recurring');
+        });
+        expect(router.url).toBe('/budgets');
       },
       CASE_TIMEOUT
     );
@@ -618,7 +625,13 @@ describe('dashboard card arrangement (emulator smoke test)', () => {
         // wrong destination fail on the expectation instead of a timeout.
         await waitForDom('the dashboard to be left', () => !router.url.startsWith('/dashboard'));
 
-        expect(router.url).toBe('/budgets?tab=recurring');
+        // The budgets page opens the tab the link names and takes the name
+        // off the URL, so the tab is what says where the link led.
+        await waitForDom('the recurring rules tab', () => {
+          const tabs = Array.from(document.querySelectorAll('app-budgets .mdc-tab'));
+          return tabs.length > 0 && tabs.findIndex(tab => tab.classList.contains('mdc-tab--active')) === BUDGET_TABS.indexOf('recurring');
+        });
+        expect(router.url).toBe('/budgets');
       },
       CASE_TIMEOUT
     );

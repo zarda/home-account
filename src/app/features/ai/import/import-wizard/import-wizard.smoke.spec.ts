@@ -93,6 +93,7 @@ import {
   provideNoMotion,
 } from '../../../../core/services/testing';
 import { AIImportService, IMPORT_NOT_STARTED } from '../../../../core/services/ai-import.service';
+import { CategoryMemoryService } from '../../../../core/services/category-memory.service';
 import { ImportHistoryService } from '../../../../core/services/import-history.service';
 import { CloudLLMProviderService } from '../../../../core/services/cloud-llm-provider.service';
 import { AIStrategyService } from '../../../../core/services/ai-strategy.service';
@@ -740,6 +741,120 @@ describe('ImportWizardComponent camera handoff (emulator smoke test)', () => {
       const landed = snapshot.docs[0].data();
       expect(landed['amount']).toBe(16.2);
       expect(landed['currency']).toBe('USD');
+    },
+    30000
+  );
+
+  it(
+    'names where a cloud row\'s category and its doubted amount came from on the card, and writes neither mark',
+    async () => {
+      // Two lines of one receipt and no printed total: consolidation sums
+      // them and grades the amount 0.5 so the flag fires. The merchant is one
+      // the account filed before, so the category is answered from memory at
+      // 0.95, with no model asked. The card used to read "only 50% sure" of
+      // the amount and "High confidence (95%)" of the category, figures no
+      // model reported (#535).
+      const extractedRows: MultiImageExtractedTransaction[] = [
+        {
+          date: '2026-07-02',
+          description: 'Flat white',
+          amount: 10,
+          type: 'expense',
+          currency: 'USD',
+          merchant: 'Smoke Sourced Cafe',
+          imageIndex: 0,
+          confidence: 0.9,
+          receiptId: 1
+        },
+        {
+          date: '2026-07-02',
+          description: 'Scone',
+          amount: 5,
+          type: 'expense',
+          currency: 'USD',
+          merchant: 'Smoke Sourced Cafe',
+          imageIndex: 0,
+          confidence: 0.9,
+          receiptId: 1
+        }
+      ];
+
+      // The file's own seams: the multi-photo reader answers these rows, and
+      // the categorizer would answer a row with its side's catch-all.
+      stubReceiptSeams(undefined, extractedRows);
+      const cloudLLMProvider = TestBed.inject(CloudLLMProviderService) as jasmine.SpyObj<CloudLLMProviderService>;
+      spyOn(TestBed.inject(Router), 'navigate').and.resolveTo(true);
+
+      // The memory, written the way a confirmed import writes it.
+      await TestBed.inject(CategoryMemoryService).remember('Smoke Sourced Cafe', 'food');
+
+      const importService = TestBed.inject(AIImportService);
+      const photo = new File([new Uint8Array([1])], 'sourced.jpg', { type: 'image/jpeg' });
+      const result = await importService.importFromMultipleImages([photo]);
+
+      expect(result.transactions.length).toBe(1);
+      const [read] = result.transactions;
+      expect([read.amount, read.fieldConfidence?.amount, read.fieldDoubt?.amount])
+        .withContext('the sum of the lines, graded for review, and why')
+        .toEqual([15, 0.5, 'itemSum']);
+      expect([read.suggestedCategoryId, read.categoryConfidence, read.categorySource])
+        .withContext('answered from memory')
+        .toEqual(['food', 0.95, 'memory']);
+      expect(cloudLLMProvider.categorizeTransactions)
+        .withContext('memory answered, so no model was asked about the category')
+        .not.toHaveBeenCalled();
+
+      history.replaceState({ importResult: result, fromCamera: true, door: 'camera', multiImage: true }, '');
+      const fixture = TestBed.createComponent(ImportWizardComponent);
+      fixture.detectChanges();
+      await new Promise(resolve => setTimeout(resolve, 100));
+      fixture.detectChanges();
+
+      const host = fixture.nativeElement as HTMLElement;
+      const t = TestBed.inject(TranslationService);
+      const dot = () => host.querySelector('.confidence-dot');
+      const flag = () => host.querySelector('.amount-section .verify-flag');
+
+      expect(flag()).withContext('the amount is still flagged').not.toBeNull();
+      expect(flag()?.getAttribute('aria-label')).toBe(t.t('import.verifyAmountItemSum'));
+      expect(flag()?.getAttribute('aria-label')).not.toMatch(/[0-9%]/);
+      expect(dot()?.classList.contains('high-confidence')).withContext('the band is the grade\'s, as before').toBeTrue();
+      expect(dot()?.getAttribute('aria-label')).toBe(t.t('import.categoryFromMemory'));
+      expect(dot()?.getAttribute('aria-label')).not.toMatch(/[0-9%]/);
+
+      // A pick on the card is the reviewer's own answer, and says so.
+      const card = fixture.debugElement.query(By.directive(TransactionPreviewTableComponent))
+        .componentInstance as TransactionPreviewTableComponent;
+      card.updateCategory(card.transactions[0], 'transport');
+      fixture.detectChanges();
+      await new Promise(resolve => setTimeout(resolve, 0));
+      fixture.detectChanges();
+
+      expect(dot()?.getAttribute('aria-label')).toBe(t.t('import.categoryByYou'));
+      expect(card.transactions[0].categorySource).toBe('reviewer');
+      // The precondition the pin below needs: without the marks on the row,
+      // "never written" would hold on any tree.
+      expect(card.transactions[0].fieldDoubt).toEqual({ amount: 'itemSum' });
+
+      const component = fixture.componentInstance;
+      const before = new Set(
+        (await getDocs(collection(firestore, `users/${uid}/transactions`))).docs.map(d => d.id)
+      );
+      await until(fixture, () => component.rechecksInFlight() === 0);
+      await component.confirmImport();
+
+      const after = await getDocs(collection(firestore, `users/${uid}/transactions`));
+      const landed = after.docs.filter(d => !before.has(d.id));
+      expect(landed.length).toBe(1);
+      const stored = landed[0].data();
+      expect([stored['amount'], stored['categoryId']]).toEqual([15, 'transport']);
+      // Pins. Mutation: add either mark to ImportRowFields, so that
+      // toCreateTransactionDTO forwards it.
+      expect('categorySource' in stored).withContext('the source of the grade is not written').toBeFalse();
+      expect('fieldDoubt' in stored).withContext('nor is the reason for the flag').toBeFalse();
+      expect('fieldConfidence' in stored).toBeFalse();
+
+      await leaveReview(fixture);
     },
     30000
   );
