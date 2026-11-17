@@ -50,6 +50,7 @@ import { AuthService } from '../../../core/services/auth.service';
 import { DateFormatService } from '../../../core/services/date-format.service';
 import { CategoryHelperService } from '../../../core/services/category-helper.service';
 import { TranslationService } from '../../../core/services/translation.service';
+import { LocaleFormatService } from '../../../core/services/locale-format.service';
 import { QuickAddService } from '../../../core/services/quick-add.service';
 import { EmptyStateComponent } from '../../../shared/components/empty-state/empty-state.component';
 import { TransactionRowComponent } from '../../../shared/components/transaction-row/transaction-row.component';
@@ -130,6 +131,7 @@ export class TransactionListComponent {
   private dateFormatService = inject(DateFormatService);
   private categoryHelperService = inject(CategoryHelperService);
   private translationService = inject(TranslationService);
+  private localeFormat = inject(LocaleFormatService);
   private dialog = inject(MatDialog);
   private quickAdd = inject(QuickAddService);
   private rowSharing = inject(RowSharingService);
@@ -283,7 +285,7 @@ export class TransactionListComponent {
         case 'amount':
           return (a.amount - b.amount) * dir;
         case 'description':
-          return a.description.localeCompare(b.description) * dir;
+          return this.localeFormat.compare(a.description, b.description) * dir;
         default:
           return 0;
       }

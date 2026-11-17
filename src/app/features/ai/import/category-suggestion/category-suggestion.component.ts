@@ -6,6 +6,7 @@ import { MatMenuModule } from '@angular/material/menu';
 import { MatButtonModule } from '@angular/material/button';
 import { CATEGORY_FALLBACK_COLOR, Category, CategorySource } from '../../../../models';
 import { TranslationService } from '../../../../core/services/translation.service';
+import { LocaleFormatService } from '../../../../core/services/locale-format.service';
 import { FitTextDirective } from '../../../../shared/directives/fit-text.directive';
 import { CategoryGlyphPipe } from '../../../../shared/pipes/category-glyph.pipe';
 import { CategoryRowType, categoryFitsType } from '../../../../core/utils/categorization.utils';
@@ -43,6 +44,7 @@ const SOURCE_SENTENCE_KEYS: Record<Exclude<CategorySource, 'reported'>, string> 
 })
 export class CategorySuggestionComponent {
   private translationService = inject(TranslationService);
+  private localeFormat = inject(LocaleFormatService);
 
   // Signal inputs, because every computed below reads them. A computed over a
   // plain @Input() has no producer, so it evaluates once and caches for the
@@ -70,7 +72,7 @@ export class CategorySuggestionComponent {
     const type = this.rowType();
     return [...this.categories()]
       .filter(c => c.isActive && !c.parentId && (!type || categoryFitsType(c, type)))
-      .sort((a, b) => this.translateName(a.name).localeCompare(this.translateName(b.name)));
+      .sort((a, b) => this.localeFormat.compare(this.translateName(a.name), this.translateName(b.name)));
   });
 
   categoryName = computed(() =>
