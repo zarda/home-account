@@ -1,4 +1,4 @@
-import { DestroyRef, Injectable, Injector, computed, effect, inject } from '@angular/core';
+import { DestroyRef, Injectable, Injector, computed, effect, inject, untracked } from '@angular/core';
 import { Router } from '@angular/router';
 import { Capacitor } from '@capacitor/core';
 import { LocalNotifications } from '@capacitor/local-notifications';
@@ -42,6 +42,16 @@ export function reminderSentStorageKey(userId: string): string {
 }
 
 /**
+ * Where this device records the language its pending reminders were booked
+ * in, per account. A reminder is booked with the words of the moment and its
+ * key does not name the language, so this is the only thing that can tell a
+ * booking in the wrong one.
+ */
+export function reminderLanguageStorageKey(userId: string): string {
+  return `home-account.reminders.language.${userId}`;
+}
+
+/**
  * Drop that record — what account deletion erases on this device.
  *
  * Pure and exported rather than a method, so the cascade can clear the log
@@ -53,6 +63,7 @@ export function reminderSentStorageKey(userId: string): string {
 export function clearReminderDeviceState(userId: string): void {
   try {
     localStorage.removeItem(reminderSentStorageKey(userId));
+    localStorage.removeItem(reminderLanguageStorageKey(userId));
   } catch {
     // A store that refuses removal refuses reads too, so nothing is left
     // behind that a later session could act on.
@@ -202,7 +213,69 @@ export class ReminderService {
       void this.deliverBudgetAlerts(userId, alerts);
     });
 
+    // A reminder booked ahead keeps the words it was booked with. When the
+    // catalog in use becomes the account's own and is not the language the
+    // pending reminders were booked in, sweep: the delivery re-books what is
+    // still ahead (deliverNative). Waiting for the account's own catalog is
+    // the point: every cold start loads the device's language first, and on
+    // a phone set to another language than the account's that is no change
+    // of language. Only where something is booked ahead, so never on the web.
+    effect(() => {
+      this.catalogVersion();
+      const userId = this.auth.userId();
+      const wanted = this.enabled() || this.recapEnabled();
+      const language = this.settledLanguage();
+      if (!language || !userId || !wanted || !Capacitor.isNativePlatform()) return;
+      if (untracked(() => this.readBookedLanguage(userId)) === language) return;
+      untracked(() => void this.sweepBills());
+    });
+
     this.watchVisibility();
+  }
+
+  /**
+   * Read so an effect re-runs when a catalog has loaded. Guarded the way
+   * LocaleFormatService guards its locale, and for the same reason: plenty of
+   * specs stub the translation service with `t` alone.
+   */
+  private catalogVersion(): number {
+    const version = this.translation.translationsVersion;
+    return typeof version === 'function' ? version() : 0;
+  }
+
+  /**
+   * The account's language, once the catalog in use is that language's; null
+   * while the device's own catalog is still the one loaded, and for a
+   * translation service that names no language.
+   */
+  private settledLanguage(): string | null {
+    const current = this.translation.currentLocale;
+    if (typeof current !== 'function') return null;
+    const language = current();
+    return language === this.auth.currentUser()?.preferences?.language ? language : null;
+  }
+
+  /** The language the catalog in use speaks, whoever's it is; null where the service names none. */
+  private catalogLanguage(): string | null {
+    const current = this.translation.currentLocale;
+    return typeof current === 'function' ? current() : null;
+  }
+
+  private readBookedLanguage(userId: string): string | null {
+    try {
+      return localStorage.getItem(reminderLanguageStorageKey(userId));
+    } catch {
+      return null;
+    }
+  }
+
+  private writeBookedLanguage(userId: string, language: string): void {
+    try {
+      localStorage.setItem(reminderLanguageStorageKey(userId), language);
+    } catch {
+      // A store that refuses the write costs a second booking at the next
+      // start, in the same words.
+    }
   }
 
   /**
@@ -639,10 +712,26 @@ export class ReminderService {
     const plugin = this.nativePlugin();
     const title = this.translation.t('app.title');
 
+    // A whole sweep whose words are the account's own, where the pending
+    // reminders were booked in another language (or by a build that kept no
+    // record): what is still ahead is booked again. The id is the key's, so
+    // the operating system replaces the pending one; nothing is cancelled and
+    // nothing forgotten. What has no moment ahead of it (a bill due today, a
+    // budget alert) was raised when it was due and is never raised again.
+    const language = untracked(() => this.catalogLanguage());
+    const rebook = pruneStale
+      && language !== null
+      && language === untracked(() => this.settledLanguage())
+      && this.readBookedLanguage(userId) !== language;
+    const ahead = this.now().getTime();
+
     // Deduped before the permission check, which is a round trip to the native
     // side: the budget effect re-evaluates on change detection, and its steady
     // state — every alert already raised — must cost nothing.
-    const queued = reminders.filter(reminder => !this.wasDelivered(userId, reminder.key));
+    const queued = reminders.filter(reminder =>
+      !this.wasDelivered(userId, reminder.key)
+      || (rebook && reminder.at !== undefined && reminder.at.getTime() > ahead)
+    );
     if (queued.length === 0 && !pruneStale) return;
 
     try {
@@ -669,6 +758,15 @@ export class ReminderService {
         // key as due and would otherwise raise an immediate copy beside the
         // one already pending.
         for (const reminder of queued) this.markDelivered(userId, reminder.key);
+      }
+
+      // Recorded once the operating system has taken the booking, so a
+      // refusal leaves the old language on record and the next sweep tries
+      // again. A booking ahead records the words it was made in, whoever's
+      // they are: one made in the device's language before the account's
+      // catalog loaded is then seen and re-booked when it does.
+      if (language !== null && (rebook || (granted && queued.some(reminder => reminder.at !== undefined)))) {
+        this.writeBookedLanguage(userId, language);
       }
 
       if (pruneStale) {
