@@ -747,6 +747,12 @@ used to have no name: its `aria-labelledby` named `image-kind-label`, which
 the question carried as a class and not as an id. The seventh
 `icon-labels:check` rule holds that class
 ([ADR 0186](ADR/0186-a-date-stops-at-a-currency-sign-and-a-line-break-a-total-read-past-an-aside-or-under-a-count-is-flagged-and-a-shared-file-lands-in-the-upload-area.md)).
+axe cannot score the chips' labels, so `import-wizard.component.spec.ts`
+measures them as painted, in the four palettes and with either chip picked:
+the picked chip's label and checkmark on its fill, the other's label on the
+page ("reads each receipt-or-statement chip's label at AA and the checkmark
+at 3:1 in the four palettes, in both states"). It reads them at rest, not
+focused (*Known gaps*).
 
 ### A file the import refuses
 
@@ -1644,9 +1650,15 @@ controls and six drag states.
   after CDK's sort, so the CSV snaps back to its row only on the drop. CDK's
   drop list offers no sort that skips rows, and a list of photos apart from
   the other files would give up the order the files were picked in.
-- **The receipt-or-statement chips stay unscored.** axe leaves them
-  `incomplete` for overlapping backgrounds, for a cause not found, and no
-  painted case reads their labels.
+- **axe leaves the receipt-or-statement chips unscored.** It reports both
+  labels `incomplete` for overlapping backgrounds, overlapped by the focus
+  indicator span Material puts inside each label; with that span hidden, it
+  scores both. A painted case reads them instead (*A photo on the upload
+  area is named by its number among the photos*), at rest only: a focused
+  chip paints a state layer over its fill, a sibling of the label that the
+  walk in `painted-contrast.ts` does not see. Worked by hand, it brings the
+  selected label from 7.2:1 to about 6.0:1 in light and 5.4:1 in dark,
+  still AA, and no case pins it.
 - **Heading order is held on the upload step alone.** axe's `heading-order`
   is best practice, outside the pass every sweep runs, and only the wizard's
   two upload-step cases run it, so the weekly recap's `h3` title and the

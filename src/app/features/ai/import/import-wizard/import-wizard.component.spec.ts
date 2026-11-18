@@ -31,6 +31,8 @@ import {
   type ContrastPart,
   expectOneRule,
   expectPainted,
+  inPalette,
+  PALETTES,
   paintedBackground,
   paintedColor,
   ratio,
@@ -4549,6 +4551,81 @@ describe('ImportWizardComponent', () => {
           .toBe('import.imageKindQuestion');
       });
 
+      // axe leaves the chips unscored (see the contrast case below), so they
+      // are measured here as painted. Each label is read in the token Material
+      // gives it and on what is painted behind it: the selected chip's on its
+      // own fill, --mat-sys-secondary-container, the other's on the page,
+      // through a body Material leaves clear; the selected chip's checkmark, a
+      // graphic, at 3:1. A click on the other chip flips the selection, and all
+      // of it is read again, at rest. The click also focuses that chip, and a
+      // focused chip paints a state layer over its fill: a sibling of the
+      // label, which the walk does not see. It brings the selected label to
+      // about 6.0:1 in light and 5.4:1 in dark, still AA, worked by hand and
+      // not pinned. So focus is let go before the second reading, and each
+      // reading first holds that layer clear. High contrast leaves
+      // --mat-sys-* alone (styles.scss's .high-contrast bumps only the app's
+      // own border tokens and its secondary, muted and disabled text), so its
+      // two palettes paint the chips as plain and dark do; they are measured
+      // all the same, in case that changes. A pin. Mutation: the selected chip's
+      // --mat-chip-selected-label-text-color set to
+      // var(--mat-sys-secondary-container), its own fill, which fails the
+      // selected label in every palette (1:1 on the fill).
+      it('reads each receipt-or-statement chip\'s label at AA and the checkmark at 3:1 in the four palettes, in both states', async () => {
+        // The listbox writes its value to the chips in a microtask once its
+        // content is in.
+        await Promise.resolve();
+        realFixture.detectChanges();
+        const listbox = uploadStep()?.querySelector('mat-chip-listbox');
+        const chips = [...(listbox?.querySelectorAll<HTMLElement>('mat-chip-option') ?? [])];
+        const label = (chip: HTMLElement) => chip.querySelector('.mdc-evolution-chip__text-label');
+        expect(chips.map(chip => label(chip)?.textContent?.trim()))
+          .withContext('the two chips, receipt first')
+          .toEqual(['import.imageKindReceipt', 'import.imageKindStatement']);
+        const [receipt, statement] = chips;
+        if (!listbox || !receipt || !statement) return;
+
+        const measure = (picked: HTMLElement, other: HTMLElement, state: string) => {
+          expect(picked.classList).withContext(`${state}: the picked chip is selected`).toContain('mdc-evolution-chip--selected');
+          expect(other.classList).withContext(`${state}: the other is not`).not.toContain('mdc-evolution-chip--selected');
+          const [pickedLabel, otherLabel] = [label(picked), label(other)];
+          const overlay = picked.querySelector('.mat-mdc-chip-focus-overlay');
+          if (!pickedLabel || !otherLabel || !overlay) return;
+          for (const { name, classes } of PALETTES) {
+            inPalette(classes, () => {
+              const where = `${name}, ${state}`;
+              expect(getComputedStyle(overlay).opacity)
+                .withContext(`${where}: nothing lies over the selected chip's fill`)
+                .toBe('0');
+              expect(paintedBackground(pickedLabel))
+                .withContext(`${where}: the selected chip's label stands on the chip's fill`)
+                .toEqual(channels(tokenValue('--mat-sys-secondary-container', 'background-color')).rgb);
+              expect(paintedBackground(otherLabel))
+                .withContext(`${where}: the other chip's label stands on the page`)
+                .toEqual(paintedBackground(listbox));
+              expectPainted(pickedLabel, '--mat-sys-on-secondary-container', `${where}: the selected chip's label`);
+              expectPainted(otherLabel, '--mat-sys-on-surface-variant', `${where}: the other chip's label`);
+              expectPainted(
+                picked.querySelector('.mdc-evolution-chip__checkmark'),
+                '--mat-sys-on-secondary-container',
+                `${where}: the selected chip's checkmark`,
+                3
+              );
+            });
+          }
+        };
+
+        measure(receipt, statement, 'receipt picked');
+
+        statement.querySelector<HTMLElement>('.mdc-evolution-chip__action--primary')?.click();
+        realFixture.detectChanges();
+        expect(realFixture.componentInstance.imageKind()).withContext('the click picked statement').toBe('statement');
+        // The click focused the chip; let focus go so it is read at rest.
+        (document.activeElement as HTMLElement | null)?.blur();
+        realFixture.detectChanges();
+        expect(statement.classList).withContext('focus has left the picked chip').not.toContain('cdk-focused');
+        measure(statement, receipt, 'statement picked');
+      });
+
       for (const scheme of AUDIT_SCHEMES) {
         it(`finds nothing on the step in the ${scheme} scheme`, async () => {
           const step = uploadStep();
@@ -4564,8 +4641,11 @@ describe('ImportWizardComponent', () => {
 
         // Each part's pass is read back to its words (expectEachContrastScored),
         // so it can only come from them, not from a glyph beside them.
-        // Left out: the chips, whose background axe reports as overlapped
-        // (bgOverlap) and leaves unscored, and the previews' captions, which
+        // Left out: the chips, whose labels axe finds overlapped (bgOverlap)
+        // by the focus indicator span Material puts inside each label, and
+        // leaves unscored (with that span hidden, it scores both); they are
+        // measured as painted instead, in the four palettes and both states,
+        // by the chips' own case above. And the previews' captions, which
         // sit on the photo and are held at AA over white paper under
         // *colours, as painted*. A pin. Mutations: .image-kind-hint given
         // visibility: hidden; the page's fill dropped (standOnThePage), which
