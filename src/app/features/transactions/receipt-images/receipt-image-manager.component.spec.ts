@@ -365,8 +365,8 @@ describe('ReceiptImageManagerComponent, through its own template', () => {
 
     const images = Array.from(tiles(groups()[0]).map(t => t.querySelector('img') as HTMLImageElement));
     expect(images.map(i => i.alt)).toEqual([
-      'receiptImages.imageNumber:{"index":1,"total":2}',
-      'receiptImages.imageNumber:{"index":2,"total":2}',
+      'receiptImages.imageNumberOf:{"index":1,"total":2,"description":"Cafe"}',
+      'receiptImages.imageNumberOf:{"index":2,"total":2,"description":"Cafe"}',
     ]);
     expect(images[0].getAttribute('loading')).toBe('lazy');
   });
@@ -433,7 +433,7 @@ describe('ReceiptImageManagerComponent, through its own template', () => {
         ]);
         const perTile = (description: string, images: number) =>
           Array.from({ length: images }, (_, i) => i + 1).map(index => [
-            t('receiptImages.imageNumber', { index, total: images }),
+            t('receiptImages.imageNumberOf', { index, total: images, description }),
             t('receiptImages.convertImageOf', { index, description }),
             t('receiptImages.removeImageOf', { index, description }),
           ]);

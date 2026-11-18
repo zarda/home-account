@@ -480,7 +480,7 @@
             } @else if (isEditing(row, 'place')) {
               <ng-container [ngTemplateOutlet]="placeEditor" />
             } @else {
-              <button type="button" class="extra-add location-add" (click)="startEdit(row, 'place')">
+              <button type="button" class="extra-add location-add" [attr.aria-label]="'import.addLocationTo' | translate: { description: announceDescription(row) }" (click)="startEdit(row, 'place')">
                 <mat-icon aria-hidden="true">place</mat-icon>
                 <span>{{ 'import.addLocation' | translate }}</span>
               </button>
@@ -522,7 +522,7 @@
                 (blur)="commitTag(row, $event)"
               >
             } @else {
-              <button type="button" class="extra-add tag-add" (click)="startEdit(row, 'tag')">
+              <button type="button" class="extra-add tag-add" [attr.aria-label]="'import.addTagTo' | translate: { description: announceDescription(row) }" (click)="startEdit(row, 'tag')">
                 <mat-icon aria-hidden="true">add</mat-icon>
                 <span>{{ 'import.addTag' | translate }}</span>
               </button>
@@ -547,7 +547,7 @@
             </div>
           } @else {
             <div class="notes-section notes-empty">
-              <button type="button" class="add-notes-btn" (click)="startEdit(row, 'notes')">
+              <button type="button" class="add-notes-btn" [attr.aria-label]="'import.notesLabel' | translate: { description: announceDescription(row) }" (click)="startEdit(row, 'notes')">
                 <mat-icon>add</mat-icon>
                 <span>{{ 'import.notes' | translate }}</span>
               </button>
