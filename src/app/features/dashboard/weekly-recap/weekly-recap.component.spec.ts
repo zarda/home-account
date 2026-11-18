@@ -21,7 +21,7 @@ import {
   paintedColor,
   provideNoMotion,
   ratio,
-  settleAnimations,
+  tokenValue,
   withTheme,
 } from '../../../core/services/testing';
 
@@ -438,19 +438,6 @@ describe('WeeklyRecapComponent', () => {
   // Not the up and down deltas: those were already the expense and income
   // tones on their own tints.
   describe('colours', () => {
-    /** What `color: var(token)` computes to under the palette on <html> now. */
-    function tokenColour(token: string): string {
-      const probe = document.createElement('span');
-      probe.style.color = `var(${token})`;
-      document.body.appendChild(probe);
-      try {
-        settleAnimations(document);
-        return getComputedStyle(probe).color;
-      } finally {
-        probe.remove();
-      }
-    }
-
     function expectLines(lines: readonly (readonly [string, string, string])[]): void {
       for (const theme of ['light', 'dark'] as const) {
         withTheme(theme, () => {
@@ -462,7 +449,7 @@ describe('WeeklyRecapComponent', () => {
               .toBeGreaterThanOrEqual(4.5);
             expect(getComputedStyle(el).color)
               .withContext(`${theme} ${label}`)
-              .toBe(tokenColour(token));
+              .toBe(tokenValue(token));
           }
         });
       }

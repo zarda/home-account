@@ -25,8 +25,8 @@ import {
   paintedColor,
   provideNoMotion,
   ratio,
-  settleAnimations,
   textLines,
+  tokenValue,
   withTheme,
 } from '../../../core/services/testing';
 import { parseDayKey } from '../../../core/utils/transaction-date.utils';
@@ -172,19 +172,6 @@ describe('RecentTransactionsComponent', () => {
   });
 
   describe('colours', () => {
-    /** What `color: var(token)` computes to under the palette on <html> now. */
-    function tokenColour(token: string): string {
-      const probe = document.createElement('span');
-      probe.style.color = `var(${token})`;
-      document.body.appendChild(probe);
-      try {
-        settleAnimations(document);
-        return getComputedStyle(probe).color;
-      } finally {
-        probe.remove();
-      }
-    }
-
     it('paints the title in the primary text token, at AA or better on the card, in both themes', () => {
       const title = fixture.nativeElement.querySelector('.card-title') as HTMLElement;
       for (const theme of ['light', 'dark'] as const) {
@@ -194,7 +181,7 @@ describe('RecentTransactionsComponent', () => {
             .toBeGreaterThanOrEqual(4.5);
           expect(getComputedStyle(title).color)
             .withContext(`${theme} title`)
-            .toBe(tokenColour('--text-primary'));
+            .toBe(tokenValue('--text-primary'));
         });
       }
     });
@@ -208,7 +195,7 @@ describe('RecentTransactionsComponent', () => {
               .withContext(`${theme} link at rest on the card`)
               .toBeGreaterThanOrEqual(4.5);
             const rest = getComputedStyle(link).color;
-            expect(rest).withContext(`${theme} link at rest`).toBe(tokenColour('--color-accent'));
+            expect(rest).withContext(`${theme} link at rest`).toBe(tokenValue('--color-accent'));
 
             link.style.color = hoverValue(link, '.view-all-link', 'color');
             expect(ratio(paintedColor(link), paintedBackground(link)))

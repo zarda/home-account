@@ -18,10 +18,7 @@ import {
   AUDIT_SCHEMES,
   createTranslationStub,
   createLocaleFormatStub,
-  paintedBackground,
-  paintedColor,
-  ratio,
-  settleAnimations,
+  expectPainted,
   withScheme,
   withTheme,
   provideNoMotion,
@@ -786,28 +783,6 @@ describe('MonthlyComparisonComponent, through its own template', () => {
 
   describe('colours, as painted', () => {
     const THEMES = ['light', 'dark'] as const;
-
-    /** What `<property>: var(token)` computes to under the theme on <html> now. */
-    function tokenValue(token: string, property = 'color'): string {
-      const probe = document.createElement('span');
-      probe.style.setProperty(property, `var(${token})`);
-      document.body.appendChild(probe);
-      try {
-        settleAnimations(document);
-        return getComputedStyle(probe).getPropertyValue(property);
-      } finally {
-        probe.remove();
-      }
-    }
-
-    /** `node` is `token`, and reads at 4.5:1 or better on what is painted behind it. */
-    function expectPainted(node: HTMLElement | null, token: string, label: string): void {
-      expect(node).withContext(label).toBeTruthy();
-      expect(getComputedStyle(node!).color).withContext(label).toBe(tokenValue(token));
-      expect(ratio(paintedColor(node!), paintedBackground(node!)))
-        .withContext(`${label} on what it sits on`)
-        .toBeGreaterThanOrEqual(4.5);
-    }
 
     it('paints the column headers and the dash of the first month in --text-muted at AA or better on the table, in both themes', () => {
       render(mockTransactionSet);

@@ -4,12 +4,14 @@ import {
   catalogTranslator,
   createTranslationStub,
   createLocaleFormatStub,
+  expectPainted,
   hoverValue,
   paintedBackground,
   paintedColor,
   ratio,
   settleAnimations,
   textLines,
+  tokenValue,
   withTheme,
   provideNoMotion,
   TranslationStub,
@@ -1523,19 +1525,6 @@ describe('DataManagementComponent, through its own template', () => {
       } finally {
         probe.remove();
       }
-    }
-
-    const tokenValue = (token: string, property = 'color') => computedAs(`var(${token})`, property);
-
-    /** `node` is `token`, and reads at `floor` or better on what is painted behind it. */
-    function expectPainted(node: Element | null, token: string, label: string, floor = 4.5): void {
-      expect(node).withContext(label).toBeTruthy();
-      if (!node) return;
-      settleAnimations(document);
-      expect(getComputedStyle(node).color).withContext(label).toBe(tokenValue(token));
-      expect(ratio(paintedColor(node), paintedBackground(node)))
-        .withContext(`${label} on what it sits on`)
-        .toBeGreaterThanOrEqual(floor);
     }
 
     /** Runs `fn` with `value` laid inline on `node` as `property`, then takes it off again. */

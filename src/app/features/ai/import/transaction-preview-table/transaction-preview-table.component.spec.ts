@@ -31,6 +31,7 @@ import {
   channels,
   contentWidthPx,
   echoTranslation,
+  expectPainted,
   holdsShownWords,
   hoverValue,
   paintedBackground,
@@ -6059,28 +6060,6 @@ describe('TransactionPreviewTableComponent, the offer chip through its own templ
       day.setDate(day.getDate() - 1);
       return day;
     };
-
-    /** What `color: var(token)` computes to under the theme on <html> now. */
-    function tokenValue(token: string): string {
-      const probe = document.createElement('span');
-      probe.style.color = `var(${token})`;
-      document.body.appendChild(probe);
-      try {
-        return getComputedStyle(probe).color;
-      } finally {
-        probe.remove();
-      }
-    }
-
-    /** `node` is painted in `token`, and reads at `floor` or better on what is painted behind it. */
-    function expectPainted(node: Element | null, token: string, label: string, floor = 4.5): void {
-      expect(node).withContext(label).toBeTruthy();
-      if (!node) return;
-      expect(getComputedStyle(node).color).withContext(label).toBe(tokenValue(token));
-      expect(ratio(paintedColor(node), paintedBackground(node)))
-        .withContext(`${label} on what it sits on`)
-        .toBeGreaterThanOrEqual(floor);
-    }
 
     function render(rows: CategorizedImportTransaction[], attention: string[] = []): void {
       component.transactions = rows;

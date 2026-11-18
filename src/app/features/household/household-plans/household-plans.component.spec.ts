@@ -33,6 +33,7 @@ import {
   runAxe,
   settleAnimations,
   summarizeViolations,
+  tokenValue,
   withTheme
 } from '../../../core/services/testing';
 import { defaultBudgetStart, startOfDay } from '../../../core/utils/transaction-date.utils';
@@ -336,19 +337,6 @@ describe('HouseholdPlansComponent', () => {
         expect(signals()).toEqual([[], [], '']);
       });
 
-      /** What `color: var(token)` computes to under the theme on <html> now. */
-      function tokenColour(token: string): string {
-        const probe = document.createElement('span');
-        probe.style.color = `var(${token})`;
-        document.body.appendChild(probe);
-        try {
-          settleAnimations(document);
-          return getComputedStyle(probe).color;
-        } finally {
-          probe.remove();
-        }
-      }
-
       // Each severity at a spend of the 400 limit that reaches it under the
       // default threshold. Material paints the indicator as the inner bar's
       // top border. It is a graphic, so its floor is 3:1 (WCAG 1.4.11),
@@ -373,7 +361,7 @@ describe('HouseholdPlansComponent', () => {
               const label = `${theme} ${severity.name} bar`;
               const indicator = getComputedStyle(part('.mdc-linear-progress__bar-inner')).borderTopColor;
               painted.set(severity.name, indicator);
-              expect(indicator).withContext(label).toBe(tokenColour(severity.token));
+              expect(indicator).withContext(label).toBe(tokenValue(severity.token));
               expect(ratio(channels(indicator).rgb, paintedBackground(part('.mdc-linear-progress__buffer-bar'))))
                 .withContext(`${label} on its track`)
                 .toBeGreaterThanOrEqual(3);

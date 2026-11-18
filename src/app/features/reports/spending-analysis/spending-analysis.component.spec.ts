@@ -13,11 +13,8 @@ import { ChartThemeService, hexToRgba } from '../../../core/services/chart-theme
 import { ThemeService } from '../../../core/services/theme.service';
 import {
   AUDIT_SCHEMES,
-  paintedBackground,
-  paintedColor,
+  expectPainted,
   provideNoMotion,
-  ratio,
-  settleAnimations,
   withScheme,
   withTheme,
 } from '../../../core/services/testing';
@@ -728,28 +725,6 @@ describe('SpendingAnalysisComponent', () => {
     let renderFixture: ComponentFixture<SpendingAnalysisComponent>;
     const part = (selector: string) =>
       (renderFixture.nativeElement as HTMLElement).querySelector(selector) as HTMLElement;
-
-    /** What `<property>: var(token)` computes to under the theme on <html> now. */
-    function tokenValue(token: string, property = 'color'): string {
-      const probe = document.createElement('span');
-      probe.style.setProperty(property, `var(${token})`);
-      document.body.appendChild(probe);
-      try {
-        settleAnimations(document);
-        return getComputedStyle(probe).getPropertyValue(property);
-      } finally {
-        probe.remove();
-      }
-    }
-
-    /** `node` is `token`, and reads at 4.5:1 or better on what is painted behind it. */
-    function expectPainted(node: HTMLElement, token: string, label: string): void {
-      expect(node).withContext(label).toBeTruthy();
-      expect(getComputedStyle(node).color).withContext(label).toBe(tokenValue(token));
-      expect(ratio(paintedColor(node), paintedBackground(node)))
-        .withContext(`${label} on what it sits on`)
-        .toBeGreaterThanOrEqual(4.5);
-    }
 
     beforeEach(async () => {
       TestBed.resetTestingModule();

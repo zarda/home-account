@@ -18,14 +18,13 @@ import {
   accessibleName,
   catalogTranslator,
   echoTranslation,
-  paintedBackground,
-  paintedColor,
+  expectPainted,
   provideNoMotion,
-  ratio,
   runAxe,
   settleAnimations,
   summarizeViolations,
   textLines,
+  tokenValue,
   withTheme,
 } from '../../core/services/testing';
 import packageJson from '../../../../package.json';
@@ -458,19 +457,6 @@ describe('AboutComponent', () => {
       } finally {
         probe.remove();
       }
-    }
-
-    const tokenValue = (token: string, property = 'color') => computedAs(`var(${token})`, property);
-
-    /** `node` is `token`, and reads at `floor` or better on what is painted behind it. */
-    function expectPainted(node: Element | null, token: string, label: string, floor = 4.5): void {
-      expect(node).withContext(label).toBeTruthy();
-      if (!node) return;
-      settleAnimations(document);
-      expect(getComputedStyle(node).color).withContext(label).toBe(tokenValue(token));
-      expect(ratio(paintedColor(node), paintedBackground(node)))
-        .withContext(`${label} on what it sits on`)
-        .toBeGreaterThanOrEqual(floor);
     }
 
     function renderDonateCard(): HTMLElement {

@@ -22,8 +22,8 @@ import {
   paintedColor,
   provideNoMotion,
   ratio,
-  settleAnimations,
   textLines,
+  tokenValue,
   withScheme,
   withTheme,
 } from '../../../core/services/testing';
@@ -505,19 +505,6 @@ describe('SpendingChartComponent', () => {
     // The progress bar is not measured: it is a graphic filled with the
     // category's own colour, beside the share printed as text.
     describe('colours', () => {
-      /** What `color: var(token)` computes to under the palette on <html> now. */
-      function tokenColour(token: string): string {
-        const probe = document.createElement('span');
-        probe.style.color = `var(${token})`;
-        document.body.appendChild(probe);
-        try {
-          settleAnimations(document);
-          return getComputedStyle(probe).color;
-        } finally {
-          probe.remove();
-        }
-      }
-
       /** `value` as the browser computes a background colour. */
       function computedBackground(value: string): string {
         const probe = document.createElement('span');
@@ -608,7 +595,7 @@ describe('SpendingChartComponent', () => {
               .toBeGreaterThanOrEqual(4.5);
             expect(getComputedStyle(title).color)
               .withContext(`${theme} title`)
-              .toBe(tokenColour('--text-primary'));
+              .toBe(tokenValue('--text-primary'));
           });
         }
       });
@@ -632,7 +619,7 @@ describe('SpendingChartComponent', () => {
                     .toBeGreaterThanOrEqual(4.5);
                   expect(getComputedStyle(el).color)
                     .withContext(`${theme} ${label}`)
-                    .toBe(tokenColour(token));
+                    .toBe(tokenValue(token));
                 }
               }
             } finally {

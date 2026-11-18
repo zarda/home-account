@@ -7,11 +7,8 @@ import { Transaction } from '../../../models';
 import { CurrencyService } from '../../../core/services/currency.service';
 import { TranslationService } from '../../../core/services/translation.service';
 import {
-  paintedBackground,
-  paintedColor,
+  expectPainted,
   provideNoMotion,
-  ratio,
-  settleAnimations,
   withTheme,
 } from '../../../core/services/testing';
 
@@ -229,28 +226,6 @@ describe('CountryBreakdownComponent, through its own template', () => {
     const THEMES = ['light', 'dark'] as const;
     const part = (selector: string) =>
       (fixture.nativeElement as HTMLElement).querySelector(selector) as HTMLElement;
-
-    /** What `<property>: var(token)` computes to under the theme on <html> now. */
-    function tokenValue(token: string, property = 'color'): string {
-      const probe = document.createElement('span');
-      probe.style.setProperty(property, `var(${token})`);
-      document.body.appendChild(probe);
-      try {
-        settleAnimations(document);
-        return getComputedStyle(probe).getPropertyValue(property);
-      } finally {
-        probe.remove();
-      }
-    }
-
-    /** `node` is `token`, and reads at 4.5:1 or better on what is painted behind it. */
-    function expectPainted(node: HTMLElement, token: string, label: string): void {
-      expect(node).withContext(label).toBeTruthy();
-      expect(getComputedStyle(node).color).withContext(label).toBe(tokenValue(token));
-      expect(ratio(paintedColor(node), paintedBackground(node)))
-        .withContext(`${label} on what it sits on`)
-        .toBeGreaterThanOrEqual(4.5);
-    }
 
     beforeEach(() => {
       component.transactions = [inCountry(30, 'KR'), inCountry(10, 'JP'), inCountry(5)];

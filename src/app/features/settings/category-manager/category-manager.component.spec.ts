@@ -12,12 +12,11 @@ import { Category } from '../../../models';
 import { NotificationService } from '../../../core/services/notification.service';
 import {
   createTranslationStub,
+  expectPainted,
   hoverValue,
-  paintedBackground,
-  paintedColor,
   provideNoMotion,
-  ratio,
   settleAnimations,
+  tokenValue,
   withTheme,
 } from '../../../core/services/testing';
 
@@ -576,28 +575,6 @@ describe('CategoryManagerComponent, through its own template', () => {
 
   describe('colours, as painted', () => {
     const THEMES = ['light', 'dark'] as const;
-
-    /** What `<property>: var(token)` computes to under the theme on <html> now. */
-    function tokenValue(token: string, property = 'color'): string {
-      const probe = document.createElement('span');
-      probe.style.setProperty(property, `var(${token})`);
-      document.body.appendChild(probe);
-      try {
-        settleAnimations(document);
-        return getComputedStyle(probe).getPropertyValue(property);
-      } finally {
-        probe.remove();
-      }
-    }
-
-    /** `node` is `token`, and reads at `floor` or better on what is painted behind it. */
-    function expectPainted(node: HTMLElement, token: string, label: string, floor = 4.5): void {
-      expect(node).withContext(label).toBeTruthy();
-      expect(getComputedStyle(node).color).withContext(label).toBe(tokenValue(token));
-      expect(ratio(paintedColor(node), paintedBackground(node)))
-        .withContext(`${label} on what it sits on`)
-        .toBeGreaterThanOrEqual(floor);
-    }
 
     // A glyph is a graphic, so the drag handle's floor is 3:1 (WCAG 1.4.11).
     it('paints a row\'s name, its Default badge and its drag handle in the text tokens, at rest and hovered, in both themes', () => {

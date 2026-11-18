@@ -14,12 +14,12 @@ import {
   createCategory,
   createUser,
   createTranslationStub,
+  expectPainted,
   holdsShownWords,
   hoverValue,
   paintedBackground,
   paintedColor,
   ratio,
-  settleAnimations,
   withTheme,
 } from '../../../core/services/testing';
 
@@ -406,29 +406,6 @@ describe('TransactionRowComponent', () => {
   // A row sits on a list card and lifts to --surface-hover under the
   // pointer, so whatever is hovered inside it is read on that lift.
   describe('colours, as painted', () => {
-    /** What `color: var(token)` computes to under the theme on <html> now. */
-    function tokenValue(token: string): string {
-      const probe = document.createElement('span');
-      probe.style.color = `var(${token})`;
-      document.body.appendChild(probe);
-      try {
-        return getComputedStyle(probe).color;
-      } finally {
-        probe.remove();
-      }
-    }
-
-    /** `node` is painted in `token`, and reads at `floor` or better on what is painted behind it. */
-    function expectPainted(node: Element | null, token: string, label: string, floor = 4.5): void {
-      expect(node).withContext(label).toBeTruthy();
-      if (!node) return;
-      settleAnimations(document);
-      expect(getComputedStyle(node).color).withContext(label).toBe(tokenValue(token));
-      expect(ratio(paintedColor(node), paintedBackground(node)))
-        .withContext(`${label} on what it sits on`)
-        .toBeGreaterThanOrEqual(floor);
-    }
-
     beforeEach(() => {
       (fixture.nativeElement as HTMLElement).style.backgroundColor = 'var(--surface-card)';
     });

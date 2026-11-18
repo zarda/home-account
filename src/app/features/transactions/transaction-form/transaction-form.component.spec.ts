@@ -76,6 +76,7 @@ import {
   placeholderWidthPx,
   ratio,
   settleAnimations,
+  tokenValue,
   withScheme,
   withTheme,
   provideNoMotion,
@@ -4303,18 +4304,6 @@ describe('TransactionFormComponent, through its own template', () => {
       render(data);
       el().style.display = 'block';
       el().style.background = 'var(--mat-sys-surface)';
-    }
-
-    /** What `<property>: var(token)` computes to under the theme on <html> now. */
-    function tokenValue(token: string, property = 'color'): string {
-      const probe = document.createElement('span');
-      probe.style.setProperty(property, `var(${token})`);
-      document.body.appendChild(probe);
-      try {
-        return getComputedStyle(probe).getPropertyValue(property);
-      } finally {
-        probe.remove();
-      }
     }
 
     /** The element whose own text node holds `text`: the one that paints it. */

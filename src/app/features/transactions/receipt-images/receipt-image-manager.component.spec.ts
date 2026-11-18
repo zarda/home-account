@@ -27,6 +27,7 @@ import {
   paintedColor,
   ratio,
   settleAnimations,
+  tokenValue,
   withTheme,
   provideNoMotion,
 } from '../../../core/services/testing';
@@ -610,18 +611,6 @@ describe('ReceiptImageManagerComponent, through its own template', () => {
       await render();
       el().style.display = 'block';
       el().style.background = 'var(--mat-sys-surface)';
-    }
-
-    /** What `<property>: var(token)` computes to under the theme on <html> now. */
-    function tokenValue(token: string, property = 'color'): string {
-      const probe = document.createElement('span');
-      probe.style.setProperty(property, `var(${token})`);
-      document.body.appendChild(probe);
-      try {
-        return getComputedStyle(probe).getPropertyValue(property);
-      } finally {
-        probe.remove();
-      }
     }
 
     it('paints the at-limit line in --color-error-text at AA on a tint of its own, in both themes', async () => {

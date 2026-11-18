@@ -29,6 +29,7 @@ import {
   paintedBackground,
   paintedColor,
   ratio,
+  tokenValue,
   withTheme,
 } from '../../../core/services/testing/painted-contrast';
 
@@ -605,18 +606,6 @@ describe('AiSearchDialogComponent', () => {
       host.style.background = 'var(--mat-sys-surface)';
     });
 
-    /** What `color: var(token)` computes to under the palette on <html> now. */
-    function tokenColour(token: string): string {
-      const probe = document.createElement('span');
-      probe.style.color = `var(${token})`;
-      document.body.appendChild(probe);
-      try {
-        return getComputedStyle(probe).color;
-      } finally {
-        probe.remove();
-      }
-    }
-
     function expectReadable(el: Element, context: string): void {
       expect(ratio(paintedColor(el), paintedBackground(el)))
         .withContext(context)
@@ -650,7 +639,7 @@ describe('AiSearchDialogComponent', () => {
         withTheme(theme, () => {
           expect(getComputedStyle(chip).borderTopColor)
             .withContext(`${theme} chip edge`)
-            .toBe(tokenColour('--border-primary'));
+            .toBe(tokenValue('--border-primary'));
         });
       }
     });

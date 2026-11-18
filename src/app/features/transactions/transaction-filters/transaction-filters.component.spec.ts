@@ -34,6 +34,7 @@ import {
   ratio,
   settleAnimations,
   styleRules,
+  tokenValue,
   withTheme,
 } from '../../../core/services/testing';
 
@@ -2909,19 +2910,6 @@ describe('TransactionFiltersComponent', () => {
 
   // Not the calendar's income and expense marks, which are the type colours.
   describe('colours', () => {
-    /** What `color: var(token)` computes to under the theme on <html> now. */
-    function tokenColour(token: string): string {
-      const probe = document.createElement('span');
-      probe.style.color = `var(${token})`;
-      document.body.appendChild(probe);
-      try {
-        settleAnimations(document);
-        return getComputedStyle(probe).color;
-      } finally {
-        probe.remove();
-      }
-    }
-
     function expectAA(el: Element, label: string): void {
       expect(ratio(paintedColor(el), paintedBackground(el)))
         .withContext(`${label} at AA on what is under it`)
@@ -2943,21 +2931,21 @@ describe('TransactionFiltersComponent', () => {
           // The quick filters carry `transition: all`, which would hold the
           // other theme's colours for as long as the spec runs.
           settleAnimations(document);
-          const border = tokenColour('--border-primary');
-          expect(getComputedStyle(quick).color).withContext(`${theme} quick filter`).toBe(tokenColour('--text-muted'));
+          const border = tokenValue('--border-primary');
+          expect(getComputedStyle(quick).color).withContext(`${theme} quick filter`).toBe(tokenValue('--text-muted'));
           expectAA(quick, `${theme} quick filter`);
           expect(getComputedStyle(quick).borderBlockStartColor).withContext(`${theme} quick filter border`).toBe(border);
           expect(getComputedStyle(toggle).borderBlockStartColor).withContext(`${theme} toggle border`).toBe(border);
           expect(getComputedStyle(panel).borderBlockStartColor).withContext(`${theme} panel rule`).toBe(border);
 
-          expect(getComputedStyle(input).color).withContext(`${theme} query`).toBe(tokenColour('--text-primary'));
+          expect(getComputedStyle(input).color).withContext(`${theme} query`).toBe(tokenValue('--text-primary'));
           expectAA(input, `${theme} query`);
           const placeholder = getComputedStyle(input, '::placeholder').color;
-          expect(placeholder).withContext(`${theme} placeholder`).toBe(tokenColour('--text-muted'));
+          expect(placeholder).withContext(`${theme} placeholder`).toBe(tokenValue('--text-muted'));
           expect(ratio(channels(placeholder).rgb, paintedBackground(input)))
             .withContext(`${theme} placeholder at AA on the search box`)
             .toBeGreaterThanOrEqual(4.5);
-          expect(getComputedStyle(icon).color).withContext(`${theme} search icon`).toBe(tokenColour('--text-muted'));
+          expect(getComputedStyle(icon).color).withContext(`${theme} search icon`).toBe(tokenValue('--text-muted'));
           expectAA(icon, `${theme} search icon`);
         });
       }
@@ -2973,7 +2961,7 @@ describe('TransactionFiltersComponent', () => {
             settleAnimations(document);
             expect(getComputedStyle(quick).borderBlockStartColor)
               .withContext(`${theme} hovered border`)
-              .toBe(tokenColour('--border-strong'));
+              .toBe(tokenValue('--border-strong'));
           } finally {
             quick.style.removeProperty('border-color');
           }
@@ -2997,7 +2985,7 @@ describe('TransactionFiltersComponent', () => {
         withTheme(theme, () => {
           settleAnimations(document);
           for (const [label, el] of [['heading', heading], ['icon', icon]] as const) {
-            expect(getComputedStyle(el).color).withContext(`${theme} ${label}`).toBe(tokenColour('--text-muted'));
+            expect(getComputedStyle(el).color).withContext(`${theme} ${label}`).toBe(tokenValue('--text-muted'));
             expectAA(el, `${theme} ${label}`);
           }
         });

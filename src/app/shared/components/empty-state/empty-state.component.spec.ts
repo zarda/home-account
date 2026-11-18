@@ -7,6 +7,7 @@ import {
   paintedColor,
   provideNoMotion,
   ratio,
+  tokenValue,
   withTheme,
 } from '../../../core/services/testing';
 
@@ -103,18 +104,6 @@ describe('EmptyStateComponent', () => {
 
     afterEach(() => host.remove());
 
-    /** What `color: var(token)` computes to under the palette on <html> now. */
-    function tokenColour(token: string): string {
-      const probe = document.createElement('span');
-      probe.style.color = `var(${token})`;
-      document.body.appendChild(probe);
-      try {
-        return getComputedStyle(probe).color;
-      } finally {
-        probe.remove();
-      }
-    }
-
     it('paints the icon at AA or better on its circle, at both sizes, in both themes', () => {
       for (const size of ['md', 'sm'] as const) {
         fixture.componentRef.setInput('size', size);
@@ -140,10 +129,10 @@ describe('EmptyStateComponent', () => {
         withTheme(theme, () => {
           expect(getComputedStyle(title).color)
             .withContext(`${theme} title`)
-            .toBe(tokenColour('--text-primary'));
+            .toBe(tokenValue('--text-primary'));
           expect(getComputedStyle(description).color)
             .withContext(`${theme} description`)
-            .toBe(tokenColour('--text-muted'));
+            .toBe(tokenValue('--text-muted'));
         });
       }
     });

@@ -32,8 +32,8 @@ import {
   paintedColor,
   provideNoMotion,
   ratio,
-  settleAnimations,
   textLines,
+  tokenValue,
   withScheme,
   withTheme,
 } from '../../../core/services/testing';
@@ -526,19 +526,6 @@ describe('UpcomingBillsComponent', () => {
   // Not the category tile or its glyph: those paint the category's own colour,
   // and 'category tiles' below measures them.
   describe('colours', () => {
-    /** What `color: var(token)` computes to under the palette on <html> now. */
-    function tokenColour(token: string): string {
-      const probe = document.createElement('span');
-      probe.style.color = `var(${token})`;
-      document.body.appendChild(probe);
-      try {
-        settleAnimations(document);
-        return getComputedStyle(probe).color;
-      } finally {
-        probe.remove();
-      }
-    }
-
     it('paints every line in its text token, at AA or better on the card, in both themes', () => {
       render([occurrence()], -1200, 2);
       const lines = [
@@ -560,7 +547,7 @@ describe('UpcomingBillsComponent', () => {
               .toBeGreaterThanOrEqual(4.5);
             expect(getComputedStyle(el).color)
               .withContext(`${theme} ${label}`)
-              .toBe(tokenColour(token));
+              .toBe(tokenValue(token));
           }
         });
       }
@@ -576,7 +563,7 @@ describe('UpcomingBillsComponent', () => {
               .withContext(`${theme} link at rest on the card`)
               .toBeGreaterThanOrEqual(4.5);
             const rest = getComputedStyle(link).color;
-            expect(rest).withContext(`${theme} link at rest`).toBe(tokenColour('--color-accent'));
+            expect(rest).withContext(`${theme} link at rest`).toBe(tokenValue('--color-accent'));
 
             link.style.color = hoverValue(link, '.view-all-link', 'color');
             expect(ratio(paintedColor(link), paintedBackground(link)))

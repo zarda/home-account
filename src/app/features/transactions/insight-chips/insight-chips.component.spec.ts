@@ -21,6 +21,7 @@ import {
   paintedColor,
   ratio,
   settleAnimations,
+  tokenValue,
   withTheme,
 } from '../../../core/services/testing';
 
@@ -126,19 +127,6 @@ describe('InsightChipsComponent', () => {
   });
 
   describe('colours', () => {
-    /** What `color: var(token)` computes to under the theme on <html> now. */
-    function tokenColour(token: string): string {
-      const probe = document.createElement('span');
-      probe.style.color = `var(${token})`;
-      document.body.appendChild(probe);
-      try {
-        settleAnimations(document);
-        return getComputedStyle(probe).color;
-      } finally {
-        probe.remove();
-      }
-    }
-
     function renderChip(): HTMLElement {
       chipsSignal.set([chip()]);
       fixture.detectChanges();
@@ -154,13 +142,13 @@ describe('InsightChipsComponent', () => {
           // The chip carries `transition: all`, which would hold the other
           // theme's colours for as long as the spec runs.
           settleAnimations(document);
-          expect(getComputedStyle(label).color).withContext(`${theme} label`).toBe(tokenColour('--text-muted'));
+          expect(getComputedStyle(label).color).withContext(`${theme} label`).toBe(tokenValue('--text-muted'));
           expect(ratio(paintedColor(label), paintedBackground(label)))
             .withContext(`${theme} label on the chip`)
             .toBeGreaterThanOrEqual(4.5);
           expect(getComputedStyle(button).borderBlockStartColor)
             .withContext(`${theme} border`)
-            .toBe(tokenColour('--border-primary'));
+            .toBe(tokenValue('--border-primary'));
         });
       }
     });
@@ -175,7 +163,7 @@ describe('InsightChipsComponent', () => {
             settleAnimations(document);
             expect(getComputedStyle(button).borderBlockStartColor)
               .withContext(`${theme} hovered border`)
-              .toBe(tokenColour('--border-strong'));
+              .toBe(tokenValue('--border-strong'));
           } finally {
             button.style.removeProperty('border-color');
           }

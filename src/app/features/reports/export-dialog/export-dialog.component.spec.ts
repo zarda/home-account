@@ -10,11 +10,9 @@ import { CurrencyService } from '../../../core/services/currency.service';
 import { Transaction, Category } from '../../../models';
 import { dayKey } from '../../../core/utils/transaction-date.utils';
 import {
+  expectPainted,
   hoverValue,
-  paintedBackground,
-  paintedColor,
   provideNoMotion,
-  ratio,
   settleAnimations,
   withTheme,
 } from '../../../core/services/testing';
@@ -265,29 +263,6 @@ describe('ExportDialogComponent', () => {
 
   describe('colours', () => {
     const THEMES = ['light', 'dark'] as const;
-
-    /** What `color: var(token)` computes to under the theme on <html> now. */
-    function tokenValue(token: string): string {
-      const probe = document.createElement('span');
-      probe.style.color = `var(${token})`;
-      document.body.appendChild(probe);
-      try {
-        return getComputedStyle(probe).color;
-      } finally {
-        probe.remove();
-      }
-    }
-
-    /** `node` is painted in `token`, and reads at `floor` or better on what is painted behind it. */
-    function expectPainted(node: Element | null, token: string, label: string, floor = 4.5): void {
-      expect(node).withContext(label).toBeTruthy();
-      if (!node) return;
-      settleAnimations(document);
-      expect(getComputedStyle(node).color).withContext(label).toBe(tokenValue(token));
-      expect(ratio(paintedColor(node), paintedBackground(node)))
-        .withContext(`${label} on what it sits on`)
-        .toBeGreaterThanOrEqual(floor);
-    }
 
     /** The format options once the group has taken its default, the chosen one first. */
     async function formats(): Promise<{ chosen: HTMLElement; other: HTMLElement }> {

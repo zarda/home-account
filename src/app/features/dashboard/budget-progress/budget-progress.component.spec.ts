@@ -19,26 +19,11 @@ import {
   ratio,
   settleAnimations,
   textLines,
+  tokenValue,
   withScheme,
   withTheme,
   provideNoMotion,
 } from '../../../core/services/testing';
-
-/**
- * What `color: var(token)` computes to under the palette on <html> now,
- * once any transition the theme swap started has run to its end.
- */
-function tokenColour(token: string): string {
-  const probe = document.createElement('span');
-  probe.style.color = `var(${token})`;
-  document.body.appendChild(probe);
-  try {
-    settleAnimations(document);
-    return getComputedStyle(probe).color;
-  } finally {
-    probe.remove();
-  }
-}
 
 // The card as the dashboard renders it: what carries `card-actions` is the
 // card's own menu.
@@ -275,13 +260,13 @@ describe('BudgetProgressComponent', () => {
           withTheme(theme, () => {
             expect(paintedBackground(row))
               .withContext(`${theme} row`)
-              .toEqual(channels(tokenColour('--surface-subtle')).rgb);
+              .toEqual(channels(tokenValue('--surface-subtle')).rgb);
             expect(ratio(paintedColor(percentage), paintedBackground(percentage)))
               .withContext(`${theme} ${severity.name} on the row`)
               .toBeGreaterThanOrEqual(4.5);
             expect(getComputedStyle(percentage).color)
               .withContext(`${theme} ${severity.name}`)
-              .toBe(tokenColour(severity.token));
+              .toBe(tokenValue(severity.token));
           });
         }
       }
@@ -303,7 +288,7 @@ describe('BudgetProgressComponent', () => {
             .toBeGreaterThanOrEqual(4.5);
           expect(getComputedStyle(link).color)
             .withContext(`${theme} Manage link`)
-            .toBe(tokenColour('--mat-sys-primary'));
+            .toBe(tokenValue('--mat-sys-primary'));
         });
       }
     });
@@ -322,7 +307,7 @@ describe('BudgetProgressComponent', () => {
               .toBeGreaterThanOrEqual(4.5);
             expect(getComputedStyle(el).color)
               .withContext(`${theme} ${label}`)
-              .toBe(tokenColour(token));
+              .toBe(tokenValue(token));
           }
         });
       }
@@ -345,7 +330,7 @@ describe('BudgetProgressComponent', () => {
             const label = `${scheme} ${Object.values(colours)[i]}`;
             expect(paintedBackground(glyph))
               .withContext(`${label} on the row`)
-              .toEqual(channels(tokenColour('--surface-subtle')).rgb);
+              .toEqual(channels(tokenValue('--surface-subtle')).rgb);
             expect(ratio(paintedColor(glyph), paintedBackground(glyph)))
               .withContext(`${label} glyph`)
               .toBeGreaterThanOrEqual(4.5);
@@ -364,7 +349,7 @@ describe('BudgetProgressComponent', () => {
           settleAnimations(document);
           expect(getComputedStyle(track).backgroundColor)
             .withContext(`${theme} track`)
-            .toBe(tokenColour('--mat-sys-surface-variant'));
+            .toBe(tokenValue('--mat-sys-surface-variant'));
         });
       }
     });
@@ -384,7 +369,7 @@ describe('BudgetProgressComponent', () => {
             const label = `${theme} ${severity.name} bar`;
             const indicator = getComputedStyle(part('.mdc-linear-progress__bar-inner')).borderTopColor;
             painted.set(severity.name, indicator);
-            expect(indicator).withContext(label).toBe(tokenColour(severity.token));
+            expect(indicator).withContext(label).toBe(tokenValue(severity.token));
             expect(ratio(channels(indicator).rgb, paintedBackground(part('.mdc-linear-progress__buffer-bar'))))
               .withContext(`${label} on its track`)
               .toBeGreaterThanOrEqual(3);
@@ -625,16 +610,7 @@ describe('BudgetProgressComponent', () => {
       // .budget-period wears the token means resolving the token itself
       // here, not asserting whichever theme happened to be active when the
       // suite reached this test.
-      const tokenValue = getComputedStyle(document.documentElement)
-        .getPropertyValue('--text-muted')
-        .trim();
-      const probe = document.createElement('span');
-      probe.style.color = tokenValue;
-      document.body.appendChild(probe);
-      const expectedColor = getComputedStyle(probe).color;
-      probe.remove();
-
-      expect(getComputedStyle(period).color).toBe(expectedColor);
+      expect(getComputedStyle(period).color).toBe(tokenValue('--text-muted'));
     });
 
     it('should display progress bar', () => {

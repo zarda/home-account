@@ -344,6 +344,24 @@ describe('painted-contrast', () => {
         expect(dim.ratio).withContext('below the floor, on gray-800').toBeLessThan(4.5);
       });
     });
+
+    it('reads the colour a running transition will rest on before it compares it with the token', () => {
+      const card = box('background-color: #ffffff');
+      const text = box('color: #ffffff; transition: color 60s linear', card);
+
+      inPalette(['light-theme'], () => {
+        expect(getComputedStyle(text).color)
+          .withContext('the colour the transition starts from')
+          .toBe('rgb(255, 255, 255)');
+        text.style.color = 'var(--text-primary)';
+
+        expect(text.getAnimations().length).withContext('the transition is running').toBe(1);
+        const verdict = paintedVerdict(text, '--text-primary');
+        expect(verdict.colour).withContext('the colour it reads').toBe(tokenValue('--text-primary'));
+        expect(verdict.colourMatches).withContext('the colour it reads').toBeTrue();
+        expect(verdict.ratio).withContext('the token on white').toBeGreaterThanOrEqual(4.5);
+      });
+    });
   });
 
   describe('selectorsOf', () => {

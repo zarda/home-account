@@ -460,16 +460,6 @@ describe('GoalProgressCardComponent, through its own template', () => {
   // around it.
   it("draws a reached goal's bar apart from one in progress, at 3:1 or better on its track and the card, in both themes", () => {
     const part = (selector: string) => el().querySelector<HTMLElement>(selector)!;
-    const tokenValue = (name: string) => {
-      const probe = document.createElement('span');
-      probe.style.color = `var(${name})`;
-      document.body.appendChild(probe);
-      try {
-        return getComputedStyle(probe).color;
-      } finally {
-        probe.remove();
-      }
-    };
     const states = [
       { name: 'in progress', contributedAmount: 750, token: '--mat-sys-primary' },
       { name: 'reached', contributedAmount: 3000, token: '--color-success-text' },

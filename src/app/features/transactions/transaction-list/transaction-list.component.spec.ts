@@ -49,6 +49,7 @@ import {
   settleAnimations,
   summarizeViolations,
   textLines,
+  tokenValue,
   withTheme,
 } from '../../../core/services/testing';
 
@@ -3086,19 +3087,6 @@ describe('TransactionListComponent colours', () => {
     return Array.from(document.querySelectorAll<HTMLElement>('.mat-mdc-menu-panel button[mat-menu-item]'));
   }
 
-  /** What `color: var(token)` computes to under the theme on <html> now. */
-  function tokenColour(token: string): string {
-    const probe = document.createElement('span');
-    probe.style.color = `var(${token})`;
-    document.body.appendChild(probe);
-    try {
-      settleAnimations(document);
-      return getComputedStyle(probe).color;
-    } finally {
-      probe.remove();
-    }
-  }
-
   /** The element whose own text node holds `text`: the one that paints it. */
   function paintedTextOf(root: Element, text: string): HTMLElement {
     const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
@@ -3166,7 +3154,7 @@ describe('TransactionListComponent colours', () => {
 
       for (const theme of ['light', 'dark'] as const) {
         withTheme(theme, () => {
-          const expected = tokenColour('--color-error-text');
+          const expected = tokenValue('--color-error-text');
           expect(getComputedStyle(label).color).withContext(`${theme} label`).toBe(expected);
           expect(getComputedStyle(icon).color).withContext(`${theme} icon`).toBe(expected);
           expect(ratio(paintedColor(label), paintedBackground(label)))
@@ -3231,12 +3219,12 @@ describe('TransactionListComponent colours', () => {
         for (const [label, selector, token] of lines) {
           const el = host.querySelector(selector) as HTMLElement;
           expect(el).withContext(label).toBeTruthy();
-          expect(getComputedStyle(el).color).withContext(`${theme} ${label}`).toBe(tokenColour(token));
+          expect(getComputedStyle(el).color).withContext(`${theme} ${label}`).toBe(tokenValue(token));
           expect(ratio(paintedColor(el), paintedBackground(el)))
             .withContext(`${theme} ${label} on the table`)
             .toBeGreaterThanOrEqual(4.5);
         }
-        const border = tokenColour('--border-primary');
+        const border = tokenValue('--border-primary');
         for (const [label, selector] of rules) {
           const cell = getComputedStyle(host.querySelector(selector) as HTMLElement);
           expect(cell.borderBlockEndStyle).withContext(`${theme} ${label} rule is drawn`).toBe('solid');
@@ -3255,7 +3243,7 @@ describe('TransactionListComponent colours', () => {
     for (const theme of ['light', 'dark'] as const) {
       withTheme(theme, () => {
         settleAnimations(document);
-        expect(getComputedStyle(line).color).withContext(theme).toBe(tokenColour('--text-muted'));
+        expect(getComputedStyle(line).color).withContext(theme).toBe(tokenValue('--text-muted'));
         expect(ratio(paintedColor(line), paintedBackground(line)))
           .withContext(`${theme} on the page`)
           .toBeGreaterThanOrEqual(4.5);

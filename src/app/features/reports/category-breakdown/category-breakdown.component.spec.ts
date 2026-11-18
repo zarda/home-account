@@ -12,11 +12,9 @@ import { AmountDisplayComponent } from '../../../shared/components/amount-displa
 import { CategoryChipComponent } from '../../../shared/components/category-chip/category-chip.component';
 import { EmptyStateComponent } from '../../../shared/components/empty-state/empty-state.component';
 import {
-  paintedBackground,
-  paintedColor,
+  expectPainted,
   provideNoMotion,
-  ratio,
-  settleAnimations,
+  tokenValue,
   withTheme,
 } from '../../../core/services/testing';
 
@@ -520,28 +518,6 @@ describe('CategoryBreakdownComponent', () => {
     let realFixture: ComponentFixture<CategoryBreakdownComponent>;
     const part = (selector: string) =>
       (realFixture.nativeElement as HTMLElement).querySelector(selector) as HTMLElement;
-
-    /** What `<property>: var(token)` computes to under the theme on <html> now. */
-    function tokenValue(token: string, property = 'color'): string {
-      const probe = document.createElement('span');
-      probe.style.setProperty(property, `var(${token})`);
-      document.body.appendChild(probe);
-      try {
-        settleAnimations(document);
-        return getComputedStyle(probe).getPropertyValue(property);
-      } finally {
-        probe.remove();
-      }
-    }
-
-    /** `node` is `token`, and reads at 4.5:1 or better on what is painted behind it. */
-    function expectPainted(node: HTMLElement, token: string, label: string): void {
-      expect(node).withContext(label).toBeTruthy();
-      expect(getComputedStyle(node).color).withContext(label).toBe(tokenValue(token));
-      expect(ratio(paintedColor(node), paintedBackground(node)))
-        .withContext(`${label} on what it sits on`)
-        .toBeGreaterThanOrEqual(4.5);
-    }
 
     beforeEach(async () => {
       realFixture = await renderRealTemplate();

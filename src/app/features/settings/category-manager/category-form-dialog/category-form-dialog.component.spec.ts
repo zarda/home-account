@@ -7,6 +7,7 @@ import {
   AUDIT_SCHEMES,
   GLYPH_PROBE_COLOURS,
   channels,
+  expectPainted,
   hoverValue,
   paintedBackground,
   paintedColor,
@@ -14,6 +15,7 @@ import {
   runAxe,
   settleAnimations,
   summarizeViolations,
+  tokenValue,
   withScheme,
   withTheme,
   provideNoMotion,
@@ -226,28 +228,6 @@ describe('CategoryFormDialogComponent', () => {
       el().style.display = 'block';
       el().style.background = 'var(--mat-sys-surface)';
     });
-
-    /** What `<property>: var(token)` computes to under the theme on <html> now. */
-    function tokenValue(token: string, property = 'color'): string {
-      const probe = document.createElement('span');
-      probe.style.setProperty(property, `var(${token})`);
-      document.body.appendChild(probe);
-      try {
-        settleAnimations(document);
-        return getComputedStyle(probe).getPropertyValue(property);
-      } finally {
-        probe.remove();
-      }
-    }
-
-    /** `node` is `token`, and reads at `floor` or better on what is painted behind it. */
-    function expectPainted(node: HTMLElement, token: string, label: string, floor = 4.5): void {
-      expect(node).withContext(label).toBeTruthy();
-      expect(getComputedStyle(node).color).withContext(label).toBe(tokenValue(token));
-      expect(ratio(paintedColor(node), paintedBackground(node)))
-        .withContext(`${label} on what it sits on`)
-        .toBeGreaterThanOrEqual(floor);
-    }
 
     /** A computed colour as the whole channels it is painted in. */
     function rounded(computed: string): Rgb {

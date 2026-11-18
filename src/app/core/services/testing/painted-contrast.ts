@@ -225,11 +225,12 @@ export interface PaintedVerdict {
 
 /**
  * Whether `node`'s text is painted in `token`, and how it reads on what is
- * painted behind it. Throws, as `paintedColor` does, when `node` is detached
- * or nothing under it is opaque.
+ * painted behind it, once its motion has settled: a colour read mid-transition
+ * is one the text only passes through. Throws, as `paintedColor` does, when
+ * `node` is detached or nothing under it is opaque.
  */
 export function paintedVerdict(node: Element, token: string): PaintedVerdict {
-  const colour = getComputedStyle(node).color;
+  const colour = getComputedStyle(settled(node)).color;
   const tokenColour = tokenValue(token);
   return {
     colour,
