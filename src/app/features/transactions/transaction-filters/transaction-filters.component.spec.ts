@@ -937,6 +937,31 @@ describe('TransactionFiltersComponent', () => {
     }
 
     /**
+     * A placeholder is a hint, not a name: it goes once the box holds a query,
+     * and a browser need not read it as one. The search box carries a name of
+     * its own, in its placeholder's words without the ellipsis, so it keeps
+     * one with the placeholder taken away.
+     */
+    for (const l of ['en', 'ja', 'tc'] as const) {
+      it(`names the search box with its placeholder taken away, in ${l}`, () => {
+        const t = catalogTranslator(l, { strict: true });
+        mockTranslationService.t.and.callFake(catalogTranslator(l));
+        locale.set(l);
+        TestBed.inject(TranslationService).translationsVersion.update(version => version + 1);
+        const { input } = renderExpanded();
+        expect(input.placeholder).withContext('the hint it shows').toBe(t('transactions.searchPlaceholder'));
+
+        input.removeAttribute('placeholder');
+
+        const name = accessibleName(input);
+        expect(name).withContext('the name, with no placeholder').toBe(t('transactions.searchBoxLabel'));
+        expect(name)
+          .withContext("the placeholder's own words, its ellipsis left out")
+          .toBe(t('transactions.searchPlaceholder').replace(/(?:…|\.\.\.)$/, ''));
+      });
+    }
+
+    /**
      * The panel scrolls down once its rows outgrow it, never sideways. A
      * row's remove is its last item, flush with the panel's end, and
      * Material centres a 48 px touch target on the 40 px button, 4 px past

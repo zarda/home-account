@@ -3406,6 +3406,76 @@ describe('TransactionPreviewTableComponent, the offer chip through its own templ
   });
 
   /**
+   * Split, Merge and Remove each show a word beside their icon and are
+   * named by the row they act on. A speech-input user says the word shown
+   * (WCAG 2.5.3), so each name holds it whole, read without regard to case
+   * in the reader's own locale; where in the name it stands is the
+   * language's own order, since a Japanese verb ends its sentence. The
+   * icon's ligature is a glyph, not a word, and Merge's ellipsis says only
+   * that a menu follows, so neither is held. A row with no description is
+   * named by the words its controls show, and is offered no Merge.
+   */
+  describe("a row action's name holds the words it shows", () => {
+    const actions = ['.split-trigger', '.merge-trigger', '.remove-trigger'] as const;
+    // On the Coffee Shop row: the words each shows, then its name.
+    const pinned = {
+      en: [['Split', 'Merge…', 'Remove'], ['Split Coffee Shop into two rows', 'Merge Coffee Shop into another row', 'Remove Coffee Shop']],
+      ja: [['分割', '結合…', '削除'], ['Coffee Shopを2つの行に分割', 'Coffee Shopを別の行に結合', 'Coffee Shopを削除']],
+      tc: [['分割', '合併…', '移除'], ['分割「Coffee Shop」成兩列', '將「Coffee Shop」合併到其他列', '移除「Coffee Shop」']],
+    } as const;
+
+    /** What a control shows: its text, its icons' ligatures left out. */
+    function shownText(control: Element): string {
+      const copy = control.cloneNode(true) as Element;
+      copy.querySelectorAll('mat-icon').forEach(icon => icon.remove());
+      return (copy.textContent ?? '').replace(/\s+/g, ' ').trim();
+    }
+
+    /** The words a speech-input user says: the shown text, a trailing ellipsis folded away. */
+    function spokenWords(shown: string): string {
+      return shown.replace(/(?:…|\.\.\.)$/, '').trim();
+    }
+
+    for (const l of ['en', 'ja', 'tc'] as const) {
+      it(`holds Split's, Merge's and Remove's shown words in their names, on a titled row and a blank one, in ${l}`, () => {
+        spyOn(TestBed.inject(TranslationService), 't').and.callFake(catalogTranslator(l));
+        component.transactions = [
+          makeRow({ id: 'coffee', description: 'Coffee Shop', amount: 5.5 }),
+          makeRow({ id: 'lunch', description: 'Lunch', amount: 12 }),
+          makeRow({ id: 'blank', description: '', amount: 8 }),
+        ];
+        component.categories = [];
+        fixture.detectChanges();
+
+        const read = (id: string) => actions.flatMap(selector => {
+          const control = fixture.nativeElement.querySelector(`[data-row-id="${id}"] ${selector}`) as HTMLElement | null;
+          if (id === 'blank' && selector === '.merge-trigger') {
+            expect(control).withContext('Merge on the blank row').toBeNull();
+            return [];
+          }
+          expect(control).withContext(`${selector} on the ${id} row`).not.toBeNull();
+          if (!control) return [];
+          const shown = shownText(control);
+          const name = accessibleName(control);
+          expect(holdsShownWords(name, spokenWords(shown), l))
+            .withContext(`${selector} on the ${id} row: "${name}" holds "${spokenWords(shown)}" whole`)
+            .toBeTrue();
+          return [{ shown, name }];
+        });
+
+        const coffee = read('coffee');
+        const lunch = read('lunch');
+        read('blank');
+        coffee.forEach(({ name }, i) =>
+          expect(name).withContext(`${actions[i]} reads the two titled rows apart`).not.toBe(lunch[i]?.name));
+        expect([coffee.map(({ shown }) => shown), coffee.map(({ name }) => name)])
+          .withContext('pinned: the words shown, then the names')
+          .toEqual([[...pinned[l][0]], [...pinned[l][1]]]);
+      });
+    }
+  });
+
+  /**
    * Every one of these is stamped once per card, so a name that is only what
    * the control does — "Notes", "Remove suggested location" — reads the same
    * on every card, and a list of them says nothing about which row each one
