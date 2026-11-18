@@ -9,6 +9,7 @@ export * from './axe';
 export * from './key-press';
 export * from './emulator-custom-token';
 export * from './painted-contrast';
+export * from './focus-indicator';
 export * from './option-states';
 export * from './icon-box';
 export * from './text-lines';

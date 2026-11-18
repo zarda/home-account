@@ -20,6 +20,7 @@ import { createCategory } from '../../../core/services/testing/test-data';
 import {
   accessibleName,
   catalogTranslator,
+  expectIndicatorInEveryPalette,
   holdsShownWords,
   paintedBackground,
   paintedColor,
@@ -499,5 +500,23 @@ describe('SearchAnswerHistoryComponent', () => {
         }
       });
     }
+  });
+
+  // The focus indicator styles.scss has every Material button draw inside
+  // itself, in its own text colour: on an open row the pin stands on
+  // --surface-muted, and a pinned one is drawn in --color-primary, which in
+  // dark is the pair closest to 3:1 of any the indicator is drawn over.
+  it("shows the focus indicator of an open row's pinned pin inside it, 3:1 or better on the row, in the four palettes", () => {
+    storedAnswers.set([rec('a-1', 2_000, { pinned: true })]);
+    fixture.detectChanges();
+    const host = fixture.nativeElement as HTMLElement;
+    (host.querySelector('.history-open') as HTMLButtonElement).click();
+    fixture.detectChanges();
+
+    const row = host.querySelector('.history-row');
+    expect(row?.classList).withContext('the row is open').toContain('expanded');
+    const pin = row?.querySelector<HTMLElement>('.history-pin') ?? null;
+    expect(pin?.classList).withContext('the pin is pinned').toContain('is-pinned');
+    expectIndicatorInEveryPalette(pin, 'the pinned pin of an open history row');
   });
 });

@@ -20,6 +20,7 @@ import {
   channels,
   chooseOption,
   contentWidthPx,
+  expectIndicatorInEveryPalette,
   expectOneRule,
   expectPainted,
   hoverValue,
@@ -1966,6 +1967,52 @@ describe('TransactionFiltersComponent', () => {
       for (const { name, classes } of PALETTES) {
         inPalette(classes, () => expectPainted(caption, '--text-muted', `${name}: the caption`));
       }
+    }));
+  });
+
+  /**
+   * The focus indicator styles.scss has every Material button draw inside
+   * itself, in its own text colour, read on this template's own surfaces, as
+   * focus-indicator.spec.ts reads it on the rest: Save and Cancel on the
+   * save-search pill's --surface-muted, and each suggestion's remove at the
+   * end of its row, flush with the end of a panel that scrolls and so clips
+   * what reaches past it.
+   */
+  describe('the focus indicator of the search pills\' icon buttons (real template)', () => {
+    const root = () => fixture.nativeElement as HTMLElement;
+
+    it('Save and Cancel in the save-search pill: inside, in their own text colour, 3:1 or better on the pill', fakeAsync(() => {
+      // filters is a plain object, so it is set before the signal that renders it.
+      component.filters.searchQuery = 'utilities';
+      component.expanded.set(true);
+      fixture.detectChanges();
+      root().querySelector<HTMLButtonElement>('.save-search-button')?.click();
+      fixture.detectChanges();
+      TestBed.tick();
+      flush();
+      fixture.detectChanges();
+
+      const buttons = Array.from(root().querySelectorAll<HTMLElement>('.save-search-row button'));
+      expect(buttons.length).withContext("the pill's Save and Cancel").toBe(2);
+      expectIndicatorInEveryPalette(buttons[0] ?? null, 'Save in the save-search pill');
+      expectIndicatorInEveryPalette(buttons[1] ?? null, 'Cancel in the save-search pill');
+    }));
+
+    it("each suggestion's remove: inside, in its own text colour, 3:1 or better on the panel, cut off by nothing", fakeAsync(() => {
+      mockSearchHistory.savedSearches.set([savedSearch('s1', 'utilities', { label: 'Bills' })]);
+      mockSearchHistory.recentSearches.set([savedSearch('r1', 'starbucks')]);
+      component.expanded.set(true);
+      fixture.detectChanges();
+      tick();
+      root().querySelector<HTMLInputElement>('.search-input')?.dispatchEvent(new Event('focus'));
+      fixture.detectChanges();
+
+      const removes = Array.from(root().querySelectorAll<HTMLElement>('.search-suggestions .suggestion-remove'));
+      expect(removes.length).withContext('a saved and a recent suggestion, each with its remove').toBe(2);
+      for (const [i, remove] of removes.entries()) {
+        expectIndicatorInEveryPalette(remove, `the remove of suggestion ${i + 1}`);
+      }
+      flush();
     }));
   });
 

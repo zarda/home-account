@@ -853,7 +853,8 @@ describe('FileDropzoneComponent, through its own template', () => {
   // keyboard focus, at the 2px outline and 2px offset of every other ring (3px
   // under high contrast, which styles.scss widens by :focus-visible alone):
   // the room the wizard leaves round its step, 5px, is cut to that ring.
-  // Browse's own ring is cleared, so one ring shows.
+  // Browse's own ring is cleared, and so is the focus indicator styles.scss
+  // has every Material button draw inside itself, so one ring shows.
   it('rings the zone while Browse has keyboard focus, 3px under high contrast, and clears Browse\'s own', () => {
     fixture.detectChanges();
     const rules = styleRules()
@@ -880,6 +881,9 @@ describe('FileDropzoneComponent, through its own template', () => {
     expect(wide[0]?.style.outlineWidth).withContext('the zone\'s ring under high contrast').toBe('3px');
     expectOneRule(browseRing);
     expect(browseRing[0]?.style.outlineStyle).withContext('Browse\'s own ring').toBe('none');
+    expect(browseRing[0]?.style.getPropertyValue('--mat-focus-indicator-display').trim())
+      .withContext('Browse\'s own focus indicator')
+      .toBe('none');
   });
 
   it('renders a dropped file as a row carrying its name, size and type', () => {
