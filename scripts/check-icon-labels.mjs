@@ -371,11 +371,57 @@
  * element hidden by a bound `[attr.aria-hidden]`, read as rendering; an
  * `aria-label` bound to an expression that is null in some states, read as
  * naming the control in every state, so what the control holds is not read
- * at all (the API-key test buttons, the camera's process button and the
- * form's submit button take that shape, and rely on their `@else` words
- * while the label is null); an element the rule does not count as a control,
- * such as a chip or a button toggle; and whether the text or the name says
- * anything.
+ * at all (the camera's process button and the form's submit button take that
+ * shape, and rely on their `@else` words while the label is null); an element
+ * the rule does not count as a control, such as a chip or a button toggle;
+ * and whether the text or the name says anything.
+ *
+ * A ninth rule keeps two controls that can show together from sharing a
+ * name. The sixth reads controls stamped once per item, but a control
+ * rendered once can share its whole name too, with another of its own
+ * template. The transaction form had that shape: a scan can offer a currency
+ * and a position at once, each offer with a dismiss beside it, and both read
+ * "Close"; and each of the AI page's three provider cards held a remove for
+ * its key, all three "Remove". A screen reader moving between them heard one
+ * name again and nothing that said which offer it closed or which key it
+ * removed. The rule: two controls of one template, each named by an
+ * `aria-label` that is a bare key (bareKeyLabel, a ternary's either branch
+ * being its key), do not share a key when both can render at once.
+ *
+ *   - **Two controls render at once unless their blocks keep them apart.**
+ *     Each `@if`, `@else if` and `@else` is an arm of one chain, and each
+ *     `@case` and `@default` an arm of its switch (readBlocks, armOf); an
+ *     `@else` takes its chain from the arm the same run of text closed last,
+ *     which Angular puts just before it. Two controls never render at once
+ *     when, at the deepest chain both sit in, they sit in different arms
+ *     (exclusiveArms), so the two arms of an `@if…@else` may share a name and
+ *     two independent `@if`s may not. The cases of a switch on the nearest
+ *     `@for`'s own item are no arms: each item renders its own case, so two
+ *     cards show two of them at once. An `@defer` and the blocks after it,
+ *     and an `@for` and its `@empty`, are read as rendering together.
+ *   - **Only what the sixth rule leaves.** A control stamped once per item,
+ *     in its template or by another, or reached by two cases of one
+ *     held-apart switch, is the sixth rule's and is reported there, once;
+ *     so is every control of a repeated component (readPerItem). A control
+ *     rendered once beside a repeated one under its key is not a hit here:
+ *     the repeated one's fix, a slot for its item, sets the two apart.
+ *   - **Only a control named by its `aria-label`.** Two controls named by
+ *     their own text read the words a sighted user sees too, and no rule
+ *     reads them: the AI page's Get API Key links and Test Key buttons had
+ *     that shape, and carry their provider in an `aria-label` now.
+ *   - **One template.** Which templates share a page is decided at run time,
+ *     as the seventh rule says, so the shared dialog header's own *Close*,
+ *     beside a dismiss in the form it heads, is not read.
+ *
+ * What it cannot see: a name built in TypeScript; a control named by its own
+ * text, beside another or beside a label-named one; a field named by its
+ * `<mat-label>`, as the AI page's key fields and model selects are, each
+ * card's by its provider now; a ternary nested in another, and the other
+ * spellings bareKeyLabel does not read; a menu trigger named by
+ * `common.moreActions`, which the fourth rule reads and this one leaves out;
+ * controls in two templates shown on one page; and two blocks that their
+ * conditions keep apart without an `@else`, such as two `@if`s on one signal
+ * and on its negation, read as rendering together.
  *
  * Reference documentation lives in docs/accessibility.md.
  */
@@ -600,10 +646,11 @@ const FOR_ITEM = /^\s*\(\s*([A-Za-z_$][\w$]*)\s+of\b/;
 const SWITCH_SUBJECT = /^\s*\(([\s\S]*)\)\s*$/;
 
 /**
- * The frame a block opens, from its keyword, its header and the frames open
- * around it, as readBlocks describes.
+ * The frame a block opens, from its keyword, its header, the frames open
+ * around it and the block frame the same run of text closed last, as
+ * readBlocks describes.
  */
-function openBlock(keyword, header, frames, { casesApart, at }) {
+function openBlock(keyword, header, frames, { casesApart, at, closed }) {
   if (keyword === 'for') {
     return { element: null, repeat: true, at, item: FOR_ITEM.exec(header)?.[1] ?? null };
   }
@@ -613,11 +660,37 @@ function openBlock(keyword, header, frames, { casesApart, at }) {
     const onItem = nearest?.element === null && nearest.item !== null && nearest.item === subject;
     return { element: null, repeat: false, at, subject, on: onItem ? nearest : null };
   }
-  if (keyword === 'case' && casesApart) {
+  if (keyword === 'if') return { element: null, repeat: false, at, chainAt: at };
+  if (keyword === 'else') {
+    // `} @else {` and `} @else if (…) {` sit in the one run of text that
+    // closed the arm before them, since Angular allows nothing but blanks and
+    // comments between the two, so that arm's frame carries the chain on.
+    return { element: null, repeat: false, at, chainAt: closed?.chainAt ?? at };
+  }
+  if (keyword === 'case' || keyword === 'default') {
     const parent = frames.at(-1);
-    if (parent?.on) return { element: null, repeat: false, at, lifts: parent.on, switchAt: parent.at };
+    const switchAt = parent?.subject === undefined ? at : parent.at;
+    const onItem = Boolean(parent?.on);
+    if (keyword === 'case' && casesApart && onItem) {
+      return { element: null, repeat: false, at, switchAt, onItem, lifts: parent.on };
+    }
+    return { element: null, repeat: false, at, switchAt, onItem };
   }
   return { element: null, repeat: false, at };
+}
+
+/**
+ * The arms a block frame puts an element in: `{ chainAt, armAt }`, `chainAt`
+ * naming the `@if` or `@switch` by where its `@` sits and `armAt` the branch
+ * by its own, for an `@if`, `@else if` or `@else` and for an `@case` or
+ * `@default`. The cases of a switch on the nearest `@for`'s own item are no
+ * arms: every item renders its own case, so two of them show at once on two
+ * cards. Null for any other frame.
+ */
+function armOf(frame) {
+  if (frame.chainAt !== undefined) return { chainAt: frame.chainAt, armAt: frame.at };
+  if (frame.switchAt !== undefined && !frame.onItem) return { chainAt: frame.switchAt, armAt: frame.at };
+  return null;
 }
 
 /**
@@ -674,22 +747,29 @@ function readBlockHead(plain, i) {
  * item that matches, so its contents are stamped once. `@default` lifts
  * nothing, since every other item lands in it. `base` is the run's offset in
  * the template, so `at` names each block by where its `@` sits.
+ *
+ * Each arm of a conditional records its chain, `chainAt`: an `@if` its own
+ * `at`, and an `@else` or `@else if` the chain of the arm this run of text
+ * closed last, which is the arm before it. Each `@case` and `@default`
+ * records its switch's `at` as `switchAt`, and `onItem` when that switch is
+ * on the nearest `@for`'s own item. armOf reads them.
  */
 function readBlocks(text, frames, { casesApart = false, base = 0 } = {}) {
   const plain = text.replace(/\{\{[\s\S]*?\}\}/g, (body) => ' '.repeat(body.length));
+  let closed = null;
   let i = 0;
   while (i < plain.length) {
     if (plain[i] === '@') {
       const head = readBlockHead(plain, i);
       if (!head) { i += 1; continue; }
-      if (head.opens) frames.push(openBlock(head.keyword, head.header, frames, { casesApart, at: base + i }));
+      if (head.opens) frames.push(openBlock(head.keyword, head.header, frames, { casesApart, at: base + i, closed }));
       i = head.next;
       continue;
     }
     if (plain[i] === '}') {
       for (let k = frames.length - 1; k >= 0; k--) {
         if (frames[k].element === null) {
-          frames.splice(k, 1);
+          [closed] = frames.splice(k, 1);
           break;
         }
       }
@@ -700,11 +780,11 @@ function readBlocks(text, frames, { casesApart = false, base = 0 } = {}) {
 
 /**
  * Walks a template's opening tags in order, calling
- * `visit({ name, attrs, line, at, repeated, inTemplate, cases })` for each,
- * `at` being the tag's offset in the template (readOwnTexts keys on it).
- * `repeated` is true when the element is stamped once per item within this
- * template: inside an `@for` block, or on or under an element carrying a
- * repeating structural directive. `inTemplate` is true when an
+ * `visit({ name, attrs, line, at, repeated, inTemplate, cases, arms })` for
+ * each, `at` being the tag's offset in the template (readOwnTexts keys on
+ * it). `repeated` is true when the element is stamped once per item within
+ * this template: inside an `@for` block, or on or under an element carrying
+ * a repeating structural directive. `inTemplate` is true when an
  * `<ng-template>` is open around it.
  *
  * With `casesApart`, an `@case` on the nearest `@for`'s own item holds that
@@ -712,6 +792,11 @@ function readBlocks(text, frames, { casesApart = false, base = 0 } = {}) {
  * and `cases` lists each such `@case` around the element as
  * `{ switchAt, caseAt }`. Without it, `cases` is empty and every `@for`
  * repeats.
+ *
+ * `arms` is the element's arm ancestry, outermost first: each branch of a
+ * conditional or a switch around it, as `{ chainAt, armAt }` (armOf). Two
+ * elements show at once only if, at the deepest chain both sit in, they sit
+ * in the same arm (exclusiveArms).
  */
 export function walkTemplate(source, visit, { casesApart = false } = {}) {
   const masked = maskComments(source);
@@ -742,6 +827,7 @@ export function walkTemplate(source, visit, { casesApart = false } = {}) {
       repeated: repeat || frames.some((frame) => frame.repeat && !lifted.has(frame)),
       inTemplate: frames.some((frame) => frame.element === 'ng-template'),
       cases: cases.map((frame) => ({ switchAt: frame.switchAt, caseAt: frame.at })),
+      arms: frames.map(armOf).filter((arm) => arm !== null),
     });
     const selfClosing = /\/\s*$/.test(attrs) || VOID_ELEMENTS.has(name);
     if (!selfClosing) frames.push({ element: name, repeat });
@@ -986,12 +1072,13 @@ function readOwnTexts(source) {
 /**
  * One template read for the sixth rule, an `@case` on the `@for`'s own item
  * held apart: each control named by a bare key (`{ line, tag, key, via,
- * repeated, cases }`), and, when `selectors` is given, each use of one of them
- * (`{ name, repeated, cases }`). `via` says where the name comes from:
- * `'label'`, its `aria-label`, `line` being the label's own; or `'text'`, its
- * own text (readOwnTexts), `line` being the opening tag's. Both kinds feed the
- * same tally across templates (heldApartAcross): a key is one name, however a
- * control comes by it.
+ * repeated, cases, arms }`), and, when `selectors` is given, each use of one
+ * of them (`{ name, repeated, cases }`). `via` says where the name comes
+ * from: `'label'`, its `aria-label`, `line` being the label's own; or
+ * `'text'`, its own text (readOwnTexts), `line` being the opening tag's. Both
+ * kinds feed the same tally across templates (heldApartAcross): a key is one
+ * name, however a control comes by it. `arms` is walkTemplate's, which the
+ * ninth rule reads.
  */
 function readHeldApart(source, selectors = null) {
   const controls = [];
@@ -999,7 +1086,7 @@ function readHeldApart(source, selectors = null) {
   const texts = readOwnTexts(source);
   walkTemplate(
     source,
-    ({ name, attrs, line, at, repeated, cases }) => {
+    ({ name, attrs, line, at, repeated, cases, arms }) => {
       if (selectors?.has(name)) stamps.push({ name, repeated, cases });
       if (!CONTROL_TAGS.has(name) && !CONTROL_ROLE.test(attrs)) return;
       if (MENU_TRIGGER.test(attrs) && itemlessName(attrs)) return;
@@ -1013,11 +1100,12 @@ function readHeldApart(source, selectors = null) {
           via: 'label',
           repeated,
           cases,
+          arms,
         });
         return;
       }
       const key = texts.get(at);
-      if (key) controls.push({ line, tag: name, key, via: 'text', repeated, cases });
+      if (key) controls.push({ line, tag: name, key, via: 'text', repeated, cases, arms });
     },
     { casesApart: true }
   );
@@ -1148,6 +1236,17 @@ export function heldApartAcross(templates) {
  * being `'label'` or `'text'`.
  */
 export function scanItemlessLabels(source, componentRepeated = false, across = null) {
+  return readPerItem(source, componentRepeated, across)
+    .filter((control) => control.perItem)
+    .map(({ line, tag, key, via }) => ({ line, tag, key, via }));
+}
+
+/**
+ * A template's controls named by a bare key (readHeldApart), each with
+ * `perItem` set when the sixth rule reads it as stamped once per item, as
+ * scanItemlessLabels describes `componentRepeated` and `across`.
+ */
+function readPerItem(source, componentRepeated, across) {
   const { controls } = readHeldApart(source);
   const apart = across ?? {
     keys: new Set(),
@@ -1155,9 +1254,58 @@ export function scanItemlessLabels(source, componentRepeated = false, across = n
   };
   const reachedApart = (control) =>
     apart.keys.has(control.key) || control.cases.some(({ switchAt }) => apart.slots.has(`${switchAt} ${control.key}`));
-  return controls
-    .filter((control) => control.repeated || componentRepeated || reachedApart(control))
-    .map(({ line, tag, key, via }) => ({ line, tag, key, via }));
+  return controls.map((control) => ({
+    ...control,
+    perItem: control.repeated || componentRepeated || reachedApart(control),
+  }));
+}
+
+/**
+ * Whether two arm ancestries (walkTemplate's `arms`) never render at once:
+ * at the deepest chain both sit in, they sit in different arms. Below a
+ * chain where they part, nothing is shared, so that chain is the deepest.
+ */
+function exclusiveArms(a, b) {
+  const armIn = new Map(b.map(({ chainAt, armAt }) => [chainAt, armAt]));
+  for (let i = a.length - 1; i >= 0; i--) {
+    const { chainAt, armAt } = a[i];
+    if (armIn.has(chainAt)) return armIn.get(chainAt) !== armAt;
+  }
+  return false;
+}
+
+/** The keys a bare key names its control by: one, or a ternary's two (bareKeyOf). */
+const keysOf = (key) => key.split(' : ');
+
+/**
+ * The ninth rule over one template: each control named by its `aria-label`
+ * with a bare key (bareKeyLabel) that shares one of its keys, a ternary's
+ * either branch, with another such control of the template that can render
+ * beside it, so the two read one name side by side. Two controls render
+ * beside each other unless they sit in different arms of one `@if` chain or
+ * one switch (exclusiveArms). A control the sixth rule reads as stamped once
+ * per item is its, not this rule's (readPerItem, with `componentRepeated`
+ * and `across` as scanItemlessLabels takes them), and a control named by its
+ * own text is not read. Returns `{ line, tag, key, beside }` for each, `line`
+ * the label's own and `beside` the lines of the controls it shares a key
+ * with.
+ */
+export function scanSiblingLabels(source, componentRepeated = false, across = null) {
+  const once = readPerItem(source, componentRepeated, across).filter(
+    (control) => !control.perItem && control.via === 'label'
+  );
+  const hits = [];
+  for (const control of once) {
+    const keys = new Set(keysOf(control.key));
+    const beside = once.filter(
+      (other) =>
+        other !== control && keysOf(other.key).some((key) => keys.has(key)) && !exclusiveArms(control.arms, other.arms)
+    );
+    if (beside.length > 0) {
+      hits.push({ line: control.line, tag: control.tag, key: control.key, beside: beside.map((other) => other.line) });
+    }
+  }
+  return hits;
 }
 
 /**
@@ -1191,6 +1339,19 @@ export function itemlessTextHint() {
     'keep the visible words, add the item: bind [attr.aria-label] to a key whose sentence holds ' +
     `the control's own text and a slot for the item, as ${ITEMLESS_TEXT_MODEL}`
   );
+}
+
+/**
+ * The binding the ninth rule's fix hint gives as its model: the AI page's
+ * remove, which names the key it removes by its provider. The self-test holds
+ * it to ai-settings-page's template, as it holds ITEMLESS_MODEL to the upload
+ * area's.
+ */
+export const SIBLING_MODEL = "'settings.removeApiKey' | translate: { provider: providerName('gemini') }";
+
+/** The fix the ninth rule prints under each hit, SIBLING_MODEL its example. */
+export function siblingHint() {
+  return `name each by what it acts on, with a key of its own or a slot for it filled, as ${SIBLING_MODEL}`;
 }
 
 /**
@@ -1636,22 +1797,57 @@ export function repeatedTemplates(templates, { casesApart = false, apart = null 
  * each template's controls scanned with its component's verdict and the keys
  * two cases of a held-apart switch reach in it (heldApartAcross,
  * scanItemlessLabels). `templates` is a list of
- * `{ key, selector, source, offset }`. Returns `{ hits, keys }`: each hit as
- * `{ site, tag, key, via }`, `site` the template's key and the hit's line in
- * its file (the label's, or the opening tag's for a control named by its
- * text), and `keys` the set of repeated templates.
+ * `{ key, selector, source, offset }`. Returns `{ hits, keys, apart }`: each
+ * hit as `{ site, tag, key, via }`, `site` the template's key and the hit's
+ * line in its file (the label's, or the opening tag's for a control named by
+ * its text), `keys` the set of repeated templates, and `apart`
+ * heldApartAcross's verdict, which scanSiblingsAcross reads too.
  */
 export function scanItemlessAcross(templates) {
   const apart = heldApartAcross(templates);
   const keys = repeatedTemplates(templates, { casesApart: true, apart });
   const hits = [];
   for (const template of templates) {
-    const across = { keys: apart.keys.get(template.key) ?? new Set(), slots: apart.slots.get(template.key) ?? new Set() };
-    for (const hit of scanItemlessLabels(template.source, keys.has(template.key), across)) {
+    for (const hit of scanItemlessLabels(template.source, keys.has(template.key), acrossOf(apart, template.key))) {
       hits.push({ site: `${template.key}:${hit.line + template.offset}`, tag: hit.tag, key: hit.key, via: hit.via });
     }
   }
-  return { hits, keys };
+  return { hits, keys, apart };
+}
+
+/** heldApartAcross's verdict for one template, as scanItemlessLabels takes it. */
+function acrossOf(apart, key) {
+  return { keys: apart.keys.get(key) ?? new Set(), slots: apart.slots.get(key) ?? new Set() };
+}
+
+/**
+ * The ninth rule over every template, each read with what the sixth rule
+ * decided of it (`keys`, the repeated templates, and `apart`, as
+ * scanItemlessAcross returns them), so a control the sixth rule reports is
+ * not reported twice. Returns `{ hits, read }`: each hit as
+ * `{ site, tag, key, beside }`, `beside` the lines in its file of the
+ * controls it shares a key with, and `read` how many controls rendered once
+ * and named by a bare `aria-label` were read.
+ */
+export function scanSiblingsAcross(templates, { keys, apart }) {
+  const hits = [];
+  let read = 0;
+  for (const template of templates) {
+    const componentRepeated = keys.has(template.key);
+    const across = acrossOf(apart, template.key);
+    read += readPerItem(template.source, componentRepeated, across).filter(
+      (control) => !control.perItem && control.via === 'label'
+    ).length;
+    for (const hit of scanSiblingLabels(template.source, componentRepeated, across)) {
+      hits.push({
+        site: `${template.key}:${hit.line + template.offset}`,
+        tag: hit.tag,
+        key: hit.key,
+        beside: hit.beside.map((line) => line + template.offset),
+      });
+    }
+  }
+  return { hits, read };
 }
 
 /**
@@ -1801,10 +1997,17 @@ function run() {
   // The per-item rule reads each template's own repeats and the components
   // other templates stamp per item, holding apart an @case on the @for's own
   // item, and sets what it finds against the rows frozen when it landed.
-  const { hits: itemless, keys: itemlessKeys } = scanItemlessAcross(sources);
+  const { hits: itemless, keys: itemlessKeys, apart } = scanItemlessAcross(sources);
   const { fresh, drift } = againstFrozen(itemless, ITEMLESS_FROZEN);
   for (const hit of fresh) findings.push({ rule: 'itemless', site: hit.site, tag: hit.tag, key: hit.key, via: hit.via });
   for (const row of drift) findings.push({ rule: 'itemless-drift', site: row.file, ...row });
+
+  // The sibling rule reads the controls rendered once, with what the per-item
+  // rule decided, so no control is reported by both.
+  const siblings = scanSiblingsAcross(sources, { keys: itemlessKeys, apart });
+  for (const hit of siblings.hits) {
+    findings.push({ rule: 'sibling', site: hit.site, tag: hit.tag, key: hit.key, beside: hit.beside });
+  }
 
   // The id rule reads each template whole, since a reference may come before
   // the element it names.
@@ -1869,6 +2072,11 @@ function run() {
       `${itemlessKeys.size} template(s) belong to a component another template stamps once per item.`
   );
   console.log(
+    `Checked ${siblings.read} control(s) rendered once and named by an aria-label with a key with no ` +
+      `parameters across ${sources.length} template(s): ${siblings.hits.length} share a key with a ` +
+      `control of their template that can show beside them.`
+  );
+  console.log(
     `Checked ${idReferences} id(s) named by a literal aria-labelledby, aria-describedby, ` +
       `aria-controls, aria-owns or for across ${sources.length} template(s).`
   );
@@ -1890,6 +2098,7 @@ function run() {
     const tooltipFindings = findings.filter((f) => f.rule === 'tooltip');
     const itemlessFindings = findings.filter((f) => f.rule === 'itemless');
     const driftFindings = findings.filter((f) => f.rule === 'itemless-drift');
+    const siblingFindings = findings.filter((f) => f.rule === 'sibling');
     const idrefFindings = findings.filter((f) => f.rule === 'idref');
     const unnamedFindings = findings.filter((f) => f.rule === 'unnamed');
     const unnamedDriftFindings = findings.filter((f) => f.rule === 'unnamed-drift');
@@ -2030,6 +2239,26 @@ function run() {
       );
     }
 
+    if (siblingFindings.length > 0) {
+      console.error(`\n${siblingFindings.length} control(s) share a name with a control that can show beside them:\n`);
+      for (const finding of siblingFindings) {
+        const beside = finding.beside.map((line) => `:${line}`).join(', ');
+        console.error(`  ${finding.site}  <${finding.tag}> '${finding.key}' | translate, beside ${beside}`);
+        console.error(`    → ${siblingHint()}\n`);
+      }
+      console.error(
+        `Two controls of one template named by one key with no parameters read one\n` +
+          `name, and when both can render at once a screen reader moving between\n` +
+          `them hears the same button twice and nothing that says which offer it\n` +
+          `closes or which key it removes. Name each by what it acts on: the\n` +
+          `transaction form's two dismissals have a key each, and the AI page's three\n` +
+          `removes name their provider. Two controls in different arms of one\n` +
+          `@if…@else, or in different cases of one @switch, never show together and\n` +
+          `may share a name.\n` +
+          `Reference: ${DOC}.\n`
+      );
+    }
+
     if (idrefFindings.length > 0) {
       console.error(`\n${idrefFindings.length} id reference(s) name an id their template never declares:\n`);
       for (const finding of idrefFindings) {
@@ -2120,7 +2349,8 @@ function run() {
       `every option icon sits beside its option's name, every repeated menu ` +
       `button names its item, every tooltip icon takes focus, every control ` +
       `stamped once per item names its item, by its aria-label or by its own ` +
-      `text, or is frozen by name, every id ` +
+      `text, or is frozen by name, no two controls of one template that can ` +
+      `show together share a bare key as their aria-label, every id ` +
       `a literal reference names is declared in its own template, and every ` +
       `button, link, control by role, checkbox, slide toggle and radio button ` +
       `is named in every state of its blocks, and every slider on each of its ` +
@@ -3510,11 +3740,11 @@ function selfTest() {
     []
   );
   check(
-    'an aria-label bound to an expression that is null in some states names the control in all, the API-key ' +
-      'test button with its @else words gone: the header lists it as unseen',
+    'an aria-label bound to an expression that is null in some states names the control in all, the camera\'s ' +
+      'process button with its @else words gone: the header lists it as unseen',
     unnamedTags(
-      '<button mat-flat-button\n  [attr.aria-label]="testing() ? (\'settings.testApiKey\' | translate) : null"\n>\n' +
-        '  @if (testing()) {\n    <mat-spinner diameter="18" aria-hidden="true"></mat-spinner>\n  }\n</button>'
+      '<button mat-flat-button\n  [attr.aria-label]="processing() ? (\'import.processWithAI\' | translate) : null"\n>\n' +
+        '  @if (processing()) {\n    <mat-spinner diameter="18" aria-hidden="true"></mat-spinner>\n  }\n</button>'
     ),
     []
   );
@@ -3982,6 +4212,338 @@ function selfTest() {
   check(
     'the text hint keeps the visible words, adds the item and quotes its model',
     [itemlessTextHint().startsWith('keep the visible words, add the item'), itemlessTextHint().includes(ITEMLESS_TEXT_MODEL)],
+    [true, true]
+  );
+
+  // --- the sibling rule: the arm ancestry walkTemplate hands its visit ---
+  const armsBy = (source, options = {}) => {
+    const seen = {};
+    walkTemplate(source, ({ name, arms }) => (seen[name] = arms), options);
+    return seen;
+  };
+  const CHAIN = '@if (a) {\n  <i></i>\n} @else if (b) {\n  <b></b>\n} @else {\n  <u></u>\n}';
+  check(
+    'the arms of one @if, @else if and @else share their chain, the @if\'s, and differ from each other',
+    (() => {
+      const { i, b, u } = armsBy(CHAIN);
+      const ifAt = CHAIN.indexOf('@if');
+      return [
+        [i, b, u].map((arms) => arms.length),
+        [i, b, u].every((arms) => arms[0]?.chainAt === ifAt),
+        new Set([i, b, u].map((arms) => arms[0]?.armAt)).size,
+        i[0]?.armAt === ifAt,
+      ];
+    })(),
+    [[1, 1, 1], true, 3, true]
+  );
+  const SWITCH = "@switch (mode()) {\n  @case ('a') {\n    <i></i>\n  }\n  @default {\n    <b></b>\n  }\n}";
+  check(
+    'the @case and @default of a switch share their chain, the @switch\'s, and differ from each other',
+    (() => {
+      const { i, b } = armsBy(SWITCH);
+      const switchAt = SWITCH.indexOf('@switch');
+      return [i.length, b.length, i[0]?.chainAt === switchAt, b[0]?.chainAt === switchAt, i[0]?.armAt !== b[0]?.armAt];
+    })(),
+    [1, 1, true, true, true]
+  );
+  check(
+    'an element outside every block, and one under a @for, has no arms',
+    (() => {
+      const { i, b } = armsBy('<i></i>\n@for (r of rows; track r) {\n  <b></b>\n}');
+      return [i, b];
+    })(),
+    [[], []]
+  );
+  check(
+    'the cases of a switch on the @for\'s own item are no arms, held apart or not: each item renders its own',
+    [true, false].map((casesApart) =>
+      armsBy("@for (c of cards; track c) {\n  @switch (c) {\n    @case ('a') {\n      <i></i>\n    }\n  }\n}", { casesApart }).i
+    ),
+    [[], []]
+  );
+  check(
+    'nested blocks give the arms outermost first',
+    (() => {
+      const source = '@if (a) {\n  @if (b) {\n    <i></i>\n  }\n}';
+      const { i } = armsBy(source);
+      return i.map(({ chainAt }) => chainAt);
+    })(),
+    [0, '@if (a) {\n  '.length]
+  );
+
+  // --- the sibling rule: must hit ---
+  const siblingLines = (source, componentRepeated = false) =>
+    scanSiblingLabels(source, componentRepeated).map((hit) => hit.line);
+  const SIBLING = (key) => `<button mat-icon-button [attr.aria-label]="'${key}' | translate">x</button>`;
+  check(
+    'two controls of one template under one bare key, each in an @if of its own: the form\'s two dismissals',
+    scanSiblingLabels(
+      "@if (suggestedCurrency()) {\n  <button mat-icon-button [attr.aria-label]=\"'common.close' | translate\">\n" +
+        '    <mat-icon>close</mat-icon>\n  </button>\n}\n<p>between</p>\n' +
+        "@if (suggestedCoordinates()) {\n  <button mat-icon-button [attr.aria-label]=\"'common.close' | translate\">\n" +
+        '    <mat-icon>close</mat-icon>\n  </button>\n}'
+    ),
+    [
+      { line: 2, tag: 'button', key: 'common.close', beside: [8] },
+      { line: 8, tag: 'button', key: 'common.close', beside: [2] },
+    ]
+  );
+  check(
+    'three in three @ifs of their own: the AI page\'s three removes',
+    siblingLines(
+      ['geminiApiKey', 'openaiApiKey', 'claudeApiKey']
+        .map((field) => `@if (${field}()) {\n  ${SIBLING('common.remove')}\n}`)
+        .join('\n')
+    ),
+    [2, 5, 8]
+  );
+  check(
+    'a ternary key shares a key with a plain one when either branch is it',
+    scanSiblingLabels(
+      "<button [attr.aria-label]=\"(open() ? 'common.close' : 'common.open') | translate\">x</button>\n" + SIBLING('common.close')
+    ),
+    [
+      { line: 1, tag: 'button', key: 'common.close : common.open', beside: [2] },
+      { line: 2, tag: 'button', key: 'common.close', beside: [1] },
+    ]
+  );
+  check(
+    'two ternaries that share one branch',
+    siblingLines(
+      "<button [attr.aria-label]=\"(a ? 'x.on' : 'x.off') | translate\">x</button>\n" +
+        "<button [attr.aria-label]=\"b ? ('y.on' | translate) : ('x.off' | translate)\">x</button>"
+    ),
+    [1, 2]
+  );
+  check('two outside every block', siblingLines(`${SIBLING('common.close')}\n${SIBLING('common.close')}`), [1, 2]);
+  check(
+    'one outside every block and one in an @if',
+    siblingLines(`${SIBLING('common.close')}\n@if (open()) {\n  ${SIBLING('common.close')}\n}`),
+    [1, 3]
+  );
+  check(
+    'two in one arm of an @if',
+    siblingLines(`@if (open()) {\n  ${SIBLING('common.close')}\n  ${SIBLING('common.close')}\n} @else {\n  <p>none</p>\n}`),
+    [2, 3]
+  );
+  check(
+    'an arm and an @if nested in that same arm',
+    siblingLines(`@if (a) {\n  ${SIBLING('common.close')}\n  @if (b) {\n    ${SIBLING('common.close')}\n  }\n}`),
+    [2, 4]
+  );
+  check(
+    'an @if…@else pair beside a third control in an @if of its own: the pair is apart, each is beside the third',
+    scanSiblingLabels(
+      `@if (a) {\n  ${SIBLING('common.close')}\n} @else {\n  ${SIBLING('common.close')}\n}\n@if (b) {\n  ${SIBLING('common.close')}\n}`
+    ).map(({ line, beside }) => [line, beside]),
+    [
+      [2, [7]],
+      [4, [7]],
+      [7, [2, 4]],
+    ]
+  );
+  check(
+    'a chain does not reach the next @if: two @if…@else chains, one control each in their first arms',
+    siblingLines(
+      `@if (a) {\n  ${SIBLING('common.close')}\n} @else {\n  <p>a</p>\n}\n@if (b) {\n  ${SIBLING('common.close')}\n} @else {\n  <p>b</p>\n}`
+    ),
+    [2, 7]
+  );
+  check(
+    'the interpolated literal form beside the bound form',
+    siblingLines(`<button aria-label="{{ 'common.close' | translate }}">x</button>\n${SIBLING('common.close')}`),
+    [1, 2]
+  );
+  check(
+    'two cases of a switch on the @for\'s own item, whose keys the per-item tally keeps apart, render on two cards at once',
+    (() => {
+      const source =
+        "@for (card of cards(); track card) {\n  @switch (card) {\n    @case ('a') {\n      " + SIBLING('common.close') +
+        "\n    }\n    @case ('b') {\n      <button [attr.aria-label]=\"(x ? 'common.close' : 'common.open') | translate\">x</button>\n" +
+        '    }\n  }\n}';
+      return [siblingLines(source), itemlessLines(source)];
+    })(),
+    [[4, 7], []]
+  );
+
+  // --- the sibling rule: must not hit ---
+  check(
+    'the two arms of one @if…@else',
+    siblingLines(`@if (open()) {\n  ${SIBLING('common.close')}\n} @else {\n  ${SIBLING('common.close')}\n}`),
+    []
+  );
+  check(
+    'the three arms of an @if…@else if…@else',
+    siblingLines(
+      `@if (a) {\n  ${SIBLING('common.close')}\n} @else if (b) {\n  ${SIBLING('common.close')}\n} @else {\n  ${SIBLING('common.close')}\n}`
+    ),
+    []
+  );
+  check(
+    'two @cases and the @default of a switch that is not on a @for item',
+    siblingLines(
+      `@switch (mode()) {\n  @case ('a') {\n    ${SIBLING('common.close')}\n  }\n  @case ('b') {\n    ${SIBLING('common.close')}\n  }\n` +
+        `  @default {\n    ${SIBLING('common.close')}\n  }\n}`
+    ),
+    []
+  );
+  check(
+    'a chain nested in one arm: its own two arms are apart',
+    siblingLines(`@if (a) {\n  @if (b) {\n    ${SIBLING('common.close')}\n  } @else {\n    ${SIBLING('common.close')}\n  }\n}`),
+    []
+  );
+  check(
+    'an arm and an @if nested in the other arm are apart',
+    siblingLines(`@if (a) {\n  ${SIBLING('common.close')}\n} @else {\n  @if (b) {\n    ${SIBLING('common.close')}\n  }\n}`),
+    []
+  );
+  check(
+    'an arm that closes after an element still hands its chain to the @else',
+    siblingLines(
+      `@if (a) {\n  <div class="row">\n    ${SIBLING('common.close')}\n  </div>\n} <!-- the other arm --> @else {\n  ${SIBLING('common.close')}\n}`
+    ),
+    []
+  );
+  check(
+    'one repeated control is the per-item rule\'s, not this one\'s',
+    [
+      siblingLines(`@for (r of rows; track r.id) {\n  ${SIBLING('common.remove')}\n}`),
+      itemlessLines(`@for (r of rows; track r.id) {\n  ${SIBLING('common.remove')}\n}`),
+    ],
+    [[], [2]]
+  );
+  check(
+    'a repeated control beside one rendered once under its key: the per-item rule reports the repeated one',
+    [
+      siblingLines(`@for (r of rows; track r.id) {\n  ${SIBLING('common.remove')}\n}\n${SIBLING('common.remove')}`),
+      itemlessLines(`@for (r of rows; track r.id) {\n  ${SIBLING('common.remove')}\n}\n${SIBLING('common.remove')}`),
+    ],
+    [[], [2]]
+  );
+  check(
+    'two cases of a switch on the @for\'s own item under one key are the per-item rule\'s',
+    (() => {
+      const source =
+        "@for (card of cards(); track card) {\n  @switch (card) {\n    @case ('a') {\n      " + SIBLING('common.viewAll') +
+        "\n    }\n    @case ('b') {\n      " + SIBLING('common.viewAll') + '\n    }\n  }\n}';
+      return [siblingLines(source), itemlessLines(source)];
+    })(),
+    [[], [4, 7]]
+  );
+  check(
+    'controls of a component another template stamps per item are the per-item rule\'s',
+    siblingLines(`${SIBLING('common.close')}\n${SIBLING('common.close')}`, true),
+    []
+  );
+  check(
+    'two text-named siblings: no rule reads them',
+    siblingLines(
+      "@if (a) {\n  <button mat-button>{{ 'common.close' | translate }}</button>\n}\n" +
+        "@if (b) {\n  <button mat-button>{{ 'common.close' | translate }}</button>\n}"
+    ),
+    []
+  );
+  check(
+    'a label-named control and a text-named one under one key: only label-named controls are read',
+    siblingLines(`${SIBLING('common.close')}\n<button mat-button>{{ 'common.close' | translate }}</button>`),
+    []
+  );
+  check(
+    'a key with parameters on each: the AI page\'s removes, fixed',
+    siblingLines(
+      ['Gemini', 'OpenAI', 'Claude']
+        .map(
+          (provider) =>
+            `@if (key${provider}()) {\n  <button [attr.aria-label]="'settings.removeApiKey' | translate: { provider: '${provider}' }">x</button>\n}`
+        )
+        .join('\n')
+    ),
+    []
+  );
+  check(
+    'a key of its own on each: the form\'s two dismissals, fixed',
+    siblingLines(
+      `@if (a) {\n  ${SIBLING('transactions.dismissCurrencySuggestion')}\n}\n@if (b) {\n  ${SIBLING('transactions.dismissPositionSuggestion')}\n}`
+    ),
+    []
+  );
+  check(
+    'a commented-out sibling is no sibling',
+    siblingLines(`${SIBLING('common.close')}\n<!-- ${SIBLING('common.close')} -->`),
+    []
+  );
+
+  // --- the sibling rule: the run's path ---
+  // The run reads every template with the sixth rule's verdict first and hands
+  // each template its share of it (scanItemlessAcross, scanSiblingsAcross).
+  const siblingsAcross = (templates) => {
+    const { hits, keys, apart } = scanItemlessAcross(templates);
+    return {
+      sibling: scanSiblingsAcross(templates, { keys, apart }).hits.map((hit) => hit.site),
+      itemless: hits.map((hit) => hit.site),
+    };
+  };
+  // Two controls under one key, each in an @if of its own: lines 2 and 5.
+  const TWO_APART = `@if (a()) {\n  ${SIBLING('common.close')}\n}\n@if (b()) {\n  ${SIBLING('common.close')}\n}`;
+  check(
+    'a component another template stamps per item leaves its controls to the per-item rule, and one stamped once does not, through the run\'s path',
+    [
+      siblingsAcross([
+        { key: 'list', selector: 'app-list', source: '@for (row of rows(); track row.id) {\n  <app-row />\n}', offset: 0 },
+        { key: 'row', selector: 'app-row', source: TWO_APART, offset: 0 },
+      ]),
+      siblingsAcross([
+        { key: 'page', selector: 'app-page', source: '<app-row />', offset: 0 },
+        { key: 'row', selector: 'app-row', source: TWO_APART, offset: 0 },
+      ]),
+    ],
+    [
+      { sibling: [], itemless: ['row:2', 'row:5'] },
+      { sibling: ['row:2', 'row:5'], itemless: [] },
+    ]
+  );
+  check(
+    'a key two cases of one held-apart switch reach through what they stamp is the per-item rule\'s, through the run\'s path',
+    siblingsAcross([
+      {
+        key: 'dashboard',
+        selector: 'app-dashboard',
+        source:
+          "@for (card of cards(); track card) {\n  @switch (card) {\n    @case ('a') {\n      <app-a />\n    }\n" +
+          "    @case ('b') {\n      <app-b />\n    }\n  }\n}",
+        offset: 0,
+      },
+      { key: 'a', selector: 'app-a', source: TWO_APART, offset: 0 },
+      { key: 'b', selector: 'app-b', source: SIBLING('common.close'), offset: 0 },
+    ]),
+    { sibling: [], itemless: ['a:2', 'a:5', 'b:1'] }
+  );
+  {
+    const templates = [{ key: 'inline', selector: 'app-inline', source: TWO_APART, offset: 10 }];
+    const { keys, apart } = scanItemlessAcross(templates);
+    check(
+      'an inline template\'s hits, and the lines beside them, count from its file, through the run\'s path',
+      scanSiblingsAcross(templates, { keys, apart }),
+      {
+        hits: [
+          { site: 'inline:12', tag: 'button', key: 'common.close', beside: [15] },
+          { site: 'inline:15', tag: 'button', key: 'common.close', beside: [12] },
+        ],
+        read: 2,
+      }
+    );
+  }
+
+  // --- the sibling rule: its hint ---
+  const AI_PAGE_TEMPLATE = join(SOURCE_DIR, 'features/settings/ai-settings-page/ai-settings-page.component.html');
+  check(
+    'the sibling hint\'s model is a binding the AI page carries; if it left the AI page, update SIBLING_MODEL',
+    existsSync(AI_PAGE_TEMPLATE) && readFileSync(AI_PAGE_TEMPLATE, 'utf8').includes(`[attr.aria-label]="${SIBLING_MODEL}"`),
+    true
+  );
+  check(
+    'the sibling hint names each control by what it acts on and quotes its model',
+    [siblingHint().startsWith('name each by what it acts on'), siblingHint().includes(SIBLING_MODEL)],
     [true, true]
   );
 
