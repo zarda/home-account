@@ -85,7 +85,7 @@
                      (blur)="onGeminiApiKeyChange()"
                      placeholder="AIza...">
               @if (geminiApiKey()) {
-                <button mat-icon-button matSuffix (click)="clearGeminiApiKey()" type="button" [attr.aria-label]="'common.remove' | translate">
+                <button mat-icon-button matSuffix (click)="clearGeminiApiKey()" type="button" [attr.aria-label]="'settings.removeApiKey' | translate: { provider: providerName('gemini') }">
                   <mat-icon>close</mat-icon>
                 </button>
               }
@@ -176,7 +176,7 @@
                      (blur)="onOpenaiApiKeyChange()"
                      placeholder="sk-...">
               @if (openaiApiKey()) {
-                <button mat-icon-button matSuffix (click)="clearOpenaiApiKey()" type="button" [attr.aria-label]="'common.remove' | translate">
+                <button mat-icon-button matSuffix (click)="clearOpenaiApiKey()" type="button" [attr.aria-label]="'settings.removeApiKey' | translate: { provider: providerName('openai') }">
                   <mat-icon>close</mat-icon>
                 </button>
               }
@@ -256,7 +256,7 @@
                      (blur)="onClaudeApiKeyChange()"
                      placeholder="sk-ant-...">
               @if (claudeApiKey()) {
-                <button mat-icon-button matSuffix (click)="clearClaudeApiKey()" type="button" [attr.aria-label]="'common.remove' | translate">
+                <button mat-icon-button matSuffix (click)="clearClaudeApiKey()" type="button" [attr.aria-label]="'settings.removeApiKey' | translate: { provider: providerName('claude') }">
                   <mat-icon>close</mat-icon>
                 </button>
               }

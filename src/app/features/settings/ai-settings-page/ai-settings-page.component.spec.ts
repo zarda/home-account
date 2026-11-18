@@ -508,6 +508,56 @@ describe('AiSettingsPageComponent', () => {
       }
     });
 
+    /**
+     * The three provider cards stand side by side, each with a remove for its
+     * key, so each remove names its provider and none reads as another
+     * card's. Every key is set, so every card shows its remove.
+     */
+    describe('each card names its provider (real template)', () => {
+      const PROVIDERS = ['Gemini', 'OpenAI', 'Claude'];
+      const pinned = {
+        en: {
+          remove: ['Remove the Gemini API key', 'Remove the OpenAI API key', 'Remove the Claude API key'],
+        },
+        ja: {
+          remove: ['GeminiのAPIキーを削除', 'OpenAIのAPIキーを削除', 'ClaudeのAPIキーを削除'],
+        },
+        tc: {
+          remove: ['移除 Gemini API 金鑰', '移除 OpenAI API 金鑰', '移除 Claude API 金鑰'],
+        },
+      } as const;
+
+      /** Renders `locale`'s words, with a key set for every provider. */
+      function speak(locale: 'en' | 'ja' | 'tc'): HTMLElement[] {
+        const translation = TestBed.inject(TranslationService);
+        spyOn(translation, 't').and.callFake(catalogTranslator(locale));
+        // The translate pipe memoises on the locale and the catalog version.
+        translation.currentLocale.set(locale);
+        translation.translationsVersion.update(version => version + 1);
+        component.geminiApiKey.set('g-key');
+        component.openaiApiKey.set('o-key');
+        component.claudeApiKey.set('c-key');
+        fixture.detectChanges();
+        const cards = Array.from((fixture.nativeElement as HTMLElement).querySelectorAll<HTMLElement>('.provider-card'));
+        expect(cards.length).withContext('the provider cards').toBe(3);
+        return cards;
+      }
+
+      for (const locale of ['en', 'ja', 'tc'] as const) {
+        it(`names each key's remove by its provider, in ${locale}`, () => {
+          const cards = speak(locale);
+          const removes = cards.map(card => card.querySelector('.api-key-field button'));
+          expect(removes.every(remove => remove !== null)).withContext('a remove on every card').toBeTrue();
+          const names = removes.map(remove => accessibleName(remove!));
+          names.forEach((name, i) => expect(name).withContext(`remove ${i} names ${PROVIDERS[i]}`).toContain(PROVIDERS[i]));
+          expect(new Set(names).size).withContext(`three names: ${names.join(' / ')}`).toBe(3);
+          expect(names).withContext('pinned').toEqual([...pinned[locale].remove]);
+          const t = catalogTranslator(locale, { strict: true });
+          expect(names).toEqual(PROVIDERS.map(provider => t('settings.removeApiKey', { provider })));
+        });
+      }
+    });
+
     it('loads the stored keys into the form', async () => {
       providerKeysMock.resolve.and.resolveTo({ gemini: 'g-key', claude: 'c-key' });
 
