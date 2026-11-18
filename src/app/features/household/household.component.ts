@@ -34,11 +34,12 @@ import { EmptyStateComponent } from '../../shared/components/empty-state/empty-s
 import { LoadingSpinnerComponent } from '../../shared/components/loading-spinner/loading-spinner.component';
 import { PageHeaderComponent } from '../../shared/components/page-header/page-header.component';
 import { TranslatePipe } from '../../shared/pipes/translate.pipe';
+import { FocusContext, focusWhenRendered } from '../../shared/utils/focus-when-rendered';
 import { HouseholdMembersComponent } from './household-members/household-members.component';
 import { HouseholdOverviewComponent } from './household-overview/household-overview.component';
 import { HouseholdPlansComponent } from './household-plans/household-plans.component';
 import { HouseholdSetupComponent } from './household-setup/household-setup.component';
-import { FocusContext, HouseholdPageFocus, HouseholdSwap, focusWhenRendered } from './household-focus';
+import { HouseholdPageFocus, HouseholdSwap } from './household-focus';
 import { routedHouseholdId } from './household-route';
 import { SwitchOnChoiceDirective } from './switch-on-choice.directive';
 
@@ -458,17 +459,17 @@ export class HouseholdComponent implements OnInit {
       const arrived = swap.switchTo === null ? view === 'setup' : view !== 'setup' && selected === swap.switchTo;
       if (!arrived) return;
       this.pageFocus.clear();
-      focusWhenRendered(this.focus, [landing], { from: swap.origin });
+      focusWhenRendered(this.focus, landing, { onlyIfDropped: true, from: swap.origin });
       return;
     }
     if (swap.statuses.includes(VIEW_STATUS[view])) {
       this.pageFocus.clear();
-      focusWhenRendered(this.focus, [landing]);
+      focusWhenRendered(this.focus, landing, { onlyIfDropped: true });
       return;
     }
     if (view === 'member' && swap.statuses.includes('none') && focusDropped()) {
       this.pageFocus.clear();
-      focusWhenRendered(this.focus, [landing]);
+      focusWhenRendered(this.focus, landing, { onlyIfDropped: true });
     }
   }
 

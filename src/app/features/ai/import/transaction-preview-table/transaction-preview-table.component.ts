@@ -66,7 +66,7 @@ import { nextImportRowId } from '../../../../core/utils/import-row-id.utils';
 import { isImeComposition } from '../../../../core/utils/keyboard.utils';
 import { normalizeTag, normalizeTags } from '../../../../core/utils/tag.utils';
 import { CategorySuggestionComponent } from '../category-suggestion/category-suggestion.component';
-import { ImportFocusContext, focusWhenRendered } from '../import-focus';
+import { FocusContext, focusWhenRendered } from '../../../../shared/utils/focus-when-rendered';
 import { LocaleDatePipe } from '../../../../shared/pipes/locale-date.pipe';
 import { TranslatePipe } from '../../../../shared/pipes/translate.pipe';
 import { LocationLabelPipe } from '../../../../shared/pipes/location-label.pipe';
@@ -166,7 +166,7 @@ export class TransactionPreviewTableComponent implements AfterViewInit {
   // is not always on the card: the overrule's is absent while that row's
   // description is being edited, and the header's bulk Keep may have no card
   // left beneath it at all.
-  private readonly focus: ImportFocusContext = {
+  private readonly focus: FocusContext = {
     host: this.host.nativeElement,
     injector: inject(Injector),
     destroyRef: inject(DestroyRef)
@@ -738,11 +738,10 @@ export class TransactionPreviewTableComponent implements AfterViewInit {
     // Unless that row's description is being edited, in which case the
     // trigger is not on the card at all and the date button below it is the
     // next control down.
-    focusWhenRendered(
-      this.focus,
+    focusWhenRendered(this.focus, [
       this.inRow(transaction, '.description-text'),
       this.inRow(transaction, '.date-chip')
-    );
+    ]);
   }
 
   // `tags` is spread only when non-empty, so an emptied list is exactly "not
@@ -759,7 +758,7 @@ export class TransactionPreviewTableComponent implements AfterViewInit {
     this.announcer.announce(
       this.translationService.t('import.announceLocationRemoved', { description: this.announceDescription(transaction) })
     );
-    focusWhenRendered(this.focus, this.inRow(transaction, '.location-add'), this.inRow(transaction, '.place-input'));
+    focusWhenRendered(this.focus, [this.inRow(transaction, '.location-add'), this.inRow(transaction, '.place-input')]);
   }
 
   /**
@@ -856,7 +855,7 @@ export class TransactionPreviewTableComponent implements AfterViewInit {
         this.translationService.t('import.announceCountryRemoved', { description: this.announceDescription(row) })
       );
     }
-    focusWhenRendered(this.focus, this.inRow(row, '.extra-country'), this.inRow(row, '.location-add'));
+    focusWhenRendered(this.focus, [this.inRow(row, '.extra-country'), this.inRow(row, '.location-add')]);
   }
 
   // The chip goes with the tag; the add trigger is the strip's unconditional
@@ -866,7 +865,7 @@ export class TransactionPreviewTableComponent implements AfterViewInit {
     this.announcer.announce(
       this.translationService.t('import.announceTagRemoved', { description: this.announceDescription(transaction), tag })
     );
-    focusWhenRendered(this.focus, this.inRow(transaction, '.tag-add'), this.inRow(transaction, '.tag-input'));
+    focusWhenRendered(this.focus, [this.inRow(transaction, '.tag-add'), this.inRow(transaction, '.tag-input')]);
   }
 
   /** Accept = the ordinary currency edit, so one path clears the marks and records the choice. */
@@ -1162,11 +1161,10 @@ export class TransactionPreviewTableComponent implements AfterViewInit {
     // The first row's date button is the top of what was just answered; an
     // empty list has none, and the header's own checkbox outlives it.
     const first = this.transactions[0];
-    focusWhenRendered(
-      this.focus,
+    focusWhenRendered(this.focus, [
       ...(first ? [this.inRow(first, '.date-chip')] : []),
       '.header-left input[type="checkbox"]'
-    );
+    ]);
   }
 
   /**
@@ -1268,7 +1266,7 @@ export class TransactionPreviewTableComponent implements AfterViewInit {
     this.amountRejected.delete(row.id);
     this.cdr.markForCheck();
     if (restoreFocus && field) {
-      focusWhenRendered(this.focus, ...EDITORS[field].triggers.map(selector => this.inRow(row, selector)));
+      focusWhenRendered(this.focus, EDITORS[field].triggers.map(selector => this.inRow(row, selector)));
     }
   }
 
@@ -1644,7 +1642,7 @@ export class TransactionPreviewTableComponent implements AfterViewInit {
     if (filed.suggestedCategoryId !== folded.suggestedCategoryId) {
       this.announceCategoryRefiled(merged, filed.suggestedCategoryId);
     }
-    focusWhenRendered(this.focus, this.inRow(merged, '.merge-trigger'), this.inRow(merged, '.description-section .inline-edit'));
+    focusWhenRendered(this.focus, [this.inRow(merged, '.merge-trigger'), this.inRow(merged, '.description-section .inline-edit')]);
   }
 
   /**
@@ -1722,11 +1720,10 @@ export class TransactionPreviewTableComponent implements AfterViewInit {
     this.announcer.announce(
       this.translationService.t('import.announceRowRemoved', { description: this.announceDescription(row) })
     );
-    focusWhenRendered(
-      this.focus,
+    focusWhenRendered(this.focus, [
       ...(neighbour ? [this.inRow(neighbour, '.remove-trigger')] : []),
       '.add-row'
-    );
+    ]);
   }
 
   /**

@@ -4,7 +4,6 @@ import {
   DestroyRef,
   ElementRef,
   Injector,
-  afterNextRender,
   computed,
   inject,
   input,
@@ -21,6 +20,7 @@ import { splitRemainder } from '../../../../core/utils/split-purchase.utils';
 import { Category, SplitPart, roundToMinorUnit } from '../../../../models';
 import { TranslatePipe } from '../../../../shared/pipes/translate.pipe';
 import { CategoryGlyphPipe } from '../../../../shared/pipes/category-glyph.pipe';
+import { FocusContext, focusWhenRendered } from '../../../../shared/utils/focus-when-rendered';
 
 /**
  * The parts a purchase is taken apart into (#70).
@@ -53,9 +53,13 @@ import { CategoryGlyphPipe } from '../../../../shared/pipes/category-glyph.pipe'
 })
 export class SplitPartsComponent {
   private currencyService = inject(CurrencyService);
-  private host = inject<ElementRef<HTMLElement>>(ElementRef);
-  private injector = inject(Injector);
-  private destroyRef = inject(DestroyRef);
+  // The rows re-render after an add, and the new row's select exists only
+  // then (focusWhenRendered).
+  private readonly focus: FocusContext = {
+    host: inject<ElementRef<HTMLElement>>(ElementRef).nativeElement,
+    injector: inject(Injector),
+    destroyRef: inject(DestroyRef),
+  };
 
   readonly categories = input<Category[]>([]);
   readonly currency = input<string>('');
@@ -85,7 +89,7 @@ export class SplitPartsComponent {
 
   addPart(): void {
     this.parts.update(parts => [...parts, { categoryId: '', amount: 0 }]);
-    this.focusWhenRendered(`[data-split-row="${this.parts().length - 1}"] mat-select`);
+    focusWhenRendered(this.focus, `[data-split-row="${this.parts().length - 1}"] mat-select`);
   }
 
   removePart(index: number): void {
@@ -109,18 +113,6 @@ export class SplitPartsComponent {
     const amount = Number.isFinite(parsed) ? roundToMinorUnit(parsed, this.currency()) : 0;
     this.parts.update(parts =>
       parts.map((part, at) => (at === index ? { ...part, amount } : part))
-    );
-  }
-
-  /**
-   * The rows re-render after the add, which is what afterNextRender waits
-   * for; registering on a destroyed injector throws NG0911, hence the guard.
-   */
-  private focusWhenRendered(selector: string): void {
-    if (this.destroyRef.destroyed) return;
-    afterNextRender(
-      () => this.host.nativeElement.querySelector<HTMLElement>(selector)?.focus(),
-      { injector: this.injector }
     );
   }
 }

@@ -33,7 +33,7 @@ import {
   yearWindow,
 } from '../../../core/utils/transaction-date.utils';
 import { TranslatePipe } from '../../../shared/pipes/translate.pipe';
-import { ImportFocusContext, focusWhenRendered } from '../../ai/import/import-focus';
+import { FocusContext, focusWhenRendered } from '../../../shared/utils/focus-when-rendered';
 
 /** Numbers each filter panel's date descriptions, so two panels on one page never share an id. */
 let nextDateErrorId = 0;
@@ -82,7 +82,7 @@ export class TransactionFiltersComponent implements OnInit, OnChanges, OnDestroy
 
   // Where focus goes once Clear all, a suggestion or the save-search box
   // takes the control holding it off the page (focusWhenRendered).
-  private readonly focus: ImportFocusContext = {
+  private readonly focus: FocusContext = {
     host: this.elementRef.nativeElement,
     injector: inject(Injector),
     destroyRef: inject(DestroyRef),
@@ -454,7 +454,7 @@ export class TransactionFiltersComponent implements OnInit, OnChanges, OnDestroy
    */
   closeSaveMode(): void {
     this.saveMode.set(false);
-    focusWhenRendered(this.focus, '.save-search-button', '.search-input');
+    focusWhenRendered(this.focus, ['.save-search-button', '.search-input']);
   }
 
   private setupDatepickerListeners(picker: MatDatepicker<Date>): void {

@@ -45,9 +45,9 @@ import {
 import { TransactionRowComponent } from '../../../shared/components/transaction-row/transaction-row.component';
 import { FitTextDirective } from '../../../shared/directives/fit-text.directive';
 import { TranslatePipe } from '../../../shared/pipes/translate.pipe';
+import { FocusContext, focusWhenRendered } from '../../../shared/utils/focus-when-rendered';
 import { FinancialSummaryComponent } from '../../dashboard/financial-summary/financial-summary.component';
 import { writeFailureMessage } from '../household-failure';
-import { FocusContext, focusWhenRendered } from '../household-focus';
 
 /**
  * Why a member's line shows no figures: only this device's cache is known,
@@ -428,10 +428,10 @@ export class HouseholdOverviewComponent {
   private handFocusOn(key: string | undefined): void {
     this.moreHasFocus = false;
     if (key === undefined) {
-      focusWhenRendered(this.focus, ['#household-rows-title']);
+      focusWhenRendered(this.focus, '#household-rows-title', { onlyIfDropped: true });
       return;
     }
     this.focusRowKey.set(key);
-    focusWhenRendered(this.focus, ['.overview-row[tabindex]']);
+    focusWhenRendered(this.focus, '.overview-row[tabindex]', { onlyIfDropped: true });
   }
 }

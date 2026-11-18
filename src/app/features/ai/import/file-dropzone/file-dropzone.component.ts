@@ -30,7 +30,7 @@ import { TranslationService } from '../../../../core/services/translation.servic
 import { LocaleFormatService } from '../../../../core/services/locale-format.service';
 import { looksLikeImageFile } from '../../../../core/utils/file.utils';
 import { joinSentences } from '../../../../core/utils/import-review.utils';
-import { ImportFocusContext, focusWhenRendered } from '../import-focus';
+import { FocusContext, focusWhenRendered } from '../../../../shared/utils/focus-when-rendered';
 
 /**
  * A file the zone, or a gate upstream, refused: its name as the disk spells
@@ -76,7 +76,7 @@ export class FileDropzoneComponent implements OnDestroy {
   private host = inject<ElementRef<HTMLElement>>(ElementRef);
   private injector = inject(Injector);
   private destroyRef = inject(DestroyRef);
-  private readonly focus: ImportFocusContext = {
+  private readonly focus: FocusContext = {
     host: this.host.nativeElement,
     injector: this.injector,
     destroyRef: this.destroyRef,
@@ -405,11 +405,10 @@ export class FileDropzoneComponent implements OnDestroy {
     this.selectedFiles.update(files => files.filter(f => f !== file));
     this.filesSelected.emit(this.selectedFiles());
 
-    focusWhenRendered(
-      this.focus,
+    focusWhenRendered(this.focus, [
       ...(neighbour ? [`[data-row="${this.selectedFiles().indexOf(neighbour)}"] .remove-btn`] : []),
       '.browse-btn',
-    );
+    ]);
   }
 
   // The arrows move a photo among the photos: it swaps rows with the photo
@@ -446,12 +445,11 @@ export class FileDropzoneComponent implements OnDestroy {
     // way, on its other arrow once it cannot.
     const [pressed, other] = step === -1 ? ['up', 'down'] : ['down', 'up'];
     const row = `[data-row="${to}"]`;
-    focusWhenRendered(
-      this.focus,
+    focusWhenRendered(this.focus, [
       `${row} [data-move="${pressed}"]:enabled`,
       `${row} [data-move="${other}"]:enabled`,
       `${row} .remove-btn`,
-    );
+    ]);
   }
 
   // Only a photo's row is a drag item, so the indices a drop reports count

@@ -9,7 +9,6 @@
         </p>
         <p class="translated-text">{{ result.text }}</p>
         <button
-          #showOriginalButton
           mat-button
           type="button"
           class="show-original-button"
@@ -24,7 +23,6 @@
            a natively disabled button leaves the tab order, and the keyboard
            never reaches it or the hint saying why it does nothing. -->
       <button
-        #retryButton
         mat-button
         type="button"
         class="retry-button"
@@ -40,7 +38,6 @@
       }
     } @else {
       <button
-        #translateButton
         mat-button
         type="button"
         class="translate-button"

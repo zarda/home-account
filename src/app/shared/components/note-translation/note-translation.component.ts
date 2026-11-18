@@ -4,15 +4,12 @@ import {
   DestroyRef,
   ElementRef,
   Injector,
-  Signal,
-  afterNextRender,
   computed,
   effect,
   inject,
   input,
   model,
   signal,
-  viewChild,
 } from '@angular/core';
 import { MatButtonModule } from '@angular/material/button';
 import { MatIconModule } from '@angular/material/icon';
@@ -21,6 +18,7 @@ import { NoteTranslation } from '../../../core/services/llm-provider.interface';
 import { NoteTranslationService } from '../../../core/services/note-translation.service';
 import { LoadingSpinnerComponent } from '../loading-spinner/loading-spinner.component';
 import { TranslatePipe } from '../../pipes/translate.pipe';
+import { FocusContext, FocusOptions, focusWhenRendered } from '../../utils/focus-when-rendered';
 
 /** Marks the reset effect's first pass, before any note has been observed. */
 const NOTE_UNSEEN = Symbol('note not yet observed');
@@ -51,17 +49,31 @@ let hintSeq = 0;
 })
 export class NoteTranslationComponent {
   private noteTranslation = inject(NoteTranslationService);
-  private injector = inject(Injector);
-  private destroyRef = inject(DestroyRef);
-  private host = inject(ElementRef<HTMLElement>);
 
-  // Read as elements, not as the MatButton components the refs would
-  // otherwise resolve to — focus() lives on the DOM node.
-  private translateButton = viewChild('translateButton', { read: ElementRef<HTMLElement> });
-  private showOriginalButton = viewChild('showOriginalButton', {
-    read: ElementRef<HTMLElement>,
-  });
-  private retryButton = viewChild('retryButton', { read: ElementRef<HTMLElement> });
+  /**
+   * Focus goes to the control that takes the place of the one just pressed.
+   * Each direction removes its own button in the same tick as the click:
+   * Translate goes as soon as the request starts, and Show original goes
+   * with the panel holding it. Focus would land on `<body>`, so a keyboard
+   * reader would have to walk the whole surface again to get back to the
+   * note they were reading. An answer can land after the view is gone (the
+   * form's lens is inside a dialog the user can close mid-request), and then
+   * nothing moves.
+   */
+  private readonly focus: FocusContext = {
+    host: inject<ElementRef<HTMLElement>>(ElementRef).nativeElement,
+    injector: inject(Injector),
+    destroyRef: inject(DestroyRef),
+  };
+
+  /**
+   * A model can take seconds to answer, and the lens sits beside an editable
+   * note: whoever is typing in that textarea when the answer lands keeps the
+   * caret. Only focus this lens abandoned, on `<body>` because the pressed
+   * button was just removed or still somewhere inside this host, is focus
+   * this lens may move.
+   */
+  private readonly abandoned: FocusOptions = { onlyIfDropped: true, from: this.focus.host };
 
   readonly note = input.required<string>();
 
@@ -130,7 +142,7 @@ export class NoteTranslationComponent {
     }
     if (this.translation()) {
       this.showingTranslation.set(true);
-      this.focusWhenRendered(this.showOriginalButton);
+      focusWhenRendered(this.focus, '.show-original-button', this.abandoned);
       return;
     }
 
@@ -148,13 +160,13 @@ export class NoteTranslationComponent {
       }
       this.translation.set(translated);
       this.showingTranslation.set(true);
-      this.focusWhenRendered(this.showOriginalButton);
+      focusWhenRendered(this.focus, '.show-original-button', this.abandoned);
     } catch (error) {
       if (token !== this.requestToken) {
         return;
       }
       this.errorKey.set(this.noteTranslation.failureKey(error));
-      this.focusWhenRendered(this.retryButton);
+      focusWhenRendered(this.focus, '.retry-button', this.abandoned);
     } finally {
       // Guarded like the two branches above: the edit already cleared this
       // flag, and a request started for the new note may well be running by
@@ -168,36 +180,7 @@ export class NoteTranslationComponent {
   /** Back to the note as written; the translation is kept for an instant re-show. */
   showOriginal(): void {
     this.showingTranslation.set(false);
-    this.focusWhenRendered(this.translateButton);
-  }
-
-  /**
-   * Put focus on the control that takes the place of the one just pressed.
-   *
-   * Each direction removes its own button in the same tick as the click:
-   * Translate goes as soon as the request starts, and Show original goes with
-   * the panel holding it. Focus would land on `<body>`, so a keyboard reader
-   * would have to walk the whole surface again to get back to the note they
-   * were reading. afterNextRender is the first moment the replacement exists
-   * to receive it.
-   */
-  private focusWhenRendered(target: Signal<ElementRef<HTMLElement> | undefined>): void {
-    // An answer can land after the view is gone — the form's lens is inside a
-    // dialog the user can close mid-request. Registering on the destroyed
-    // injector throws NG0911, and there is nothing left to focus anyway.
-    if (this.destroyRef.destroyed) return;
-    afterNextRender(() => {
-      // A model can take seconds to answer, and the lens sits beside an
-      // editable note: whoever is typing in that textarea when the answer
-      // lands keeps the caret. Only focus this lens abandoned — on <body>
-      // because the pressed button was just removed, or still somewhere
-      // inside this host — is focus this lens may move.
-      const active = document.activeElement;
-      const abandoned =
-        active === null || active === document.body || this.host.nativeElement.contains(active);
-      if (!abandoned) return;
-      target()?.nativeElement.focus();
-    }, { injector: this.injector });
+    focusWhenRendered(this.focus, '.translate-button', this.abandoned);
   }
 
   private reset(): void {
