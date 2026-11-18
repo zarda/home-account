@@ -8,7 +8,15 @@ import { PendingFiltersService } from '../../../../core/services/pending-filters
 import { TranslationService } from '../../../../core/services/translation.service';
 import { InsightCard, Transaction } from '../../../../models';
 import { createCategory, createTransaction } from '../../../../core/services/testing/test-data';
-import { createTranslationStub, provideNoMotion } from '../../../../core/services/testing';
+import {
+  TranslationStub,
+  accessibleName,
+  catalogTranslationStub,
+  catalogTranslator,
+  createTranslationStub,
+  holdsShownWords,
+  provideNoMotion,
+} from '../../../../core/services/testing';
 
 describe('InsightCardComponent', () => {
   let component: InsightCardComponent;
@@ -246,6 +254,7 @@ describe('InsightCardComponent, through its own template', () => {
   let fixture: ComponentFixture<InsightCardComponent>;
   let pendingFilters: jasmine.SpyObj<PendingFiltersService>;
   let router: jasmine.SpyObj<Router>;
+  let translation: TranslationStub;
 
   function render(
     input: InsightCard,
@@ -288,6 +297,7 @@ describe('InsightCardComponent, through its own template', () => {
   beforeEach(async () => {
     pendingFilters = jasmine.createSpyObj<PendingFiltersService>('PendingFiltersService', ['apply']);
     router = jasmine.createSpyObj<Router>('Router', ['navigate']);
+    translation = createTranslationStub();
 
     await TestBed.configureTestingModule({
       imports: [InsightCardComponent],
@@ -297,14 +307,18 @@ describe('InsightCardComponent, through its own template', () => {
         {
           provide: CategoryService,
           useValue: {
-            categories: signal([createCategory({ id: 'food_groceries', name: 'categoryNames.groceries' })]),
+            categories: signal([
+              createCategory({ id: 'food_groceries', name: 'categoryNames.groceries' }),
+              createCategory({ id: 'restaurants', name: 'categoryNames.restaurants' }),
+              createCategory({ id: 'subscriptions', name: 'categoryNames.subscriptions' }),
+            ]),
           },
         },
         {
           provide: CurrencyService,
           useValue: { formatCurrency: (a: number, c: string) => `${c} ${a.toFixed(2)}` },
         },
-        { provide: TranslationService, useValue: createTranslationStub() },
+        { provide: TranslationService, useValue: translation },
         provideNoMotion(),
       ],
     }).compileComponents();
@@ -396,4 +410,178 @@ describe('InsightCardComponent, through its own template', () => {
 
     expect(el().querySelector('.card-actions')).toBeNull();
   });
+
+  /**
+   * The insights tab stamps one card per insight, and the cards of one kind
+   * share a few titles: up to three category trends read Rising, Falling or
+   * Newly active, and up to three recurring payments read A new recurring
+   * payment or A recurring payment went up. So a card's View transactions and
+   * its show and hide toggle name the insight by its title and by what tells
+   * it from the others of its kind: the category it is about, and for a
+   * recurring payment its figure per month as well, since two can share a
+   * category. A card the tab shows once, a habit's, is named by its title.
+   * Each name holds the words its button shows at that moment (WCAG 2.5.3),
+   * read without regard to case in the reader's own locale: the toggle's name
+   * follows its words from Show to Hide, and aria-expanded says which. The
+   * catalog stub goes in before the first render, so the pipe never caches an
+   * echoed key.
+   */
+  const actionNames = {
+    en: ['View transactions: Rising (Groceries)', 'Show transactions: Month-end spike', 'Hide transactions: Month-end spike'],
+    ja: ['「増加傾向」（食料品）の取引を表示', '「月末に増える傾向」の取引を表示', '「月末に増える傾向」の取引を隠す'],
+    tc: ['查看交易：「上升中」（雜貨）', '顯示交易：「月底出現高峰」', '隱藏交易：「月底出現高峰」'],
+  } as const;
+  for (const locale of ['en', 'ja', 'tc'] as const) {
+    it(`names its View transactions and its toggle by the insight's title and category in ${locale}`, () => {
+      const t = catalogTranslator(locale, { strict: true });
+      Object.assign(translation, catalogTranslationStub(locale));
+      const actions = () => Array.from(el().querySelectorAll<HTMLButtonElement>('.card-actions button'));
+      const read: string[] = [];
+      const expectNamed = (shownKey: string, titleKey: string) => {
+        const buttons = actions();
+        expect(buttons.length).withContext(`one action for ${shownKey}`).toBe(1);
+        const shown = t(shownKey);
+        const name = accessibleName(buttons[0]);
+        expect(buttons[0].textContent).withContext(`${shownKey} shows its words`).toContain(shown);
+        expect(name).withContext(`"${name}" names the insight`).toContain(t(titleKey));
+        expect(holdsShownWords(name, shown, locale)).withContext(`"${name}" holds "${shown}" whole`).toBeTrue();
+        read.push(name);
+      };
+
+      render(insight());
+      expectNamed('insights.viewTransactions', 'insights.trendRisingTitle');
+
+      render(insight({
+        id: 'habitMonthEnd',
+        kind: 'habitMonthEnd',
+        titleKey: 'insights.monthEndTitle',
+        bodyKey: 'insights.monthEndBody',
+        categoryIds: [],
+        drillDown: { mode: 'inline', transactionIds: ['t1'], truncated: false },
+      }));
+      expectNamed('insights.showTransactions', 'insights.monthEndTitle');
+      actions()[0].click();
+      fixture.detectChanges();
+      expect(actions()[0].getAttribute('aria-expanded')).toBe('true');
+      expectNamed('insights.hideTransactions', 'insights.monthEndTitle');
+
+      expect(read).withContext('pinned').toEqual([...actionNames[locale]]);
+      expect(read).toEqual([
+        t('insights.viewTransactionsNamedWith', {
+          name: t('insights.trendRisingTitle'),
+          detail: t('categoryNames.groceries'),
+        }),
+        t('insights.showTransactionsNamed', { name: t('insights.monthEndTitle') }),
+        t('insights.hideTransactionsNamed', { name: t('insights.monthEndTitle') }),
+      ]);
+    });
+  }
+
+  /**
+   * The tab's own repeats, one card after another: two Rising trends, one per
+   * category, and two new recurring payments in one category at different
+   * figures. No two of them may share a name.
+   */
+  const twinNames = {
+    en: [
+      'View transactions: Rising (Groceries)',
+      'View transactions: Rising (Restaurants)',
+      'Show transactions: A new recurring payment (Subscriptions, USD 15.99 per month)',
+      'Show transactions: A new recurring payment (Subscriptions, USD 9.99 per month)',
+      'Hide transactions: A new recurring payment (Subscriptions, USD 9.99 per month)',
+    ],
+    ja: [
+      '「増加傾向」（食料品）の取引を表示',
+      '「増加傾向」（レストラン）の取引を表示',
+      '「新しい定期的な支払い」（サブスクリプション、1か月あたりUSD 15.99）の取引を表示',
+      '「新しい定期的な支払い」（サブスクリプション、1か月あたりUSD 9.99）の取引を表示',
+      '「新しい定期的な支払い」（サブスクリプション、1か月あたりUSD 9.99）の取引を隠す',
+    ],
+    tc: [
+      '查看交易：「上升中」（雜貨）',
+      '查看交易：「上升中」（餐廳）',
+      '顯示交易：「新的定期支出」（訂閱服務，每月 USD 15.99）',
+      '顯示交易：「新的定期支出」（訂閱服務，每月 USD 9.99）',
+      '隱藏交易：「新的定期支出」（訂閱服務，每月 USD 9.99）',
+    ],
+  } as const;
+  for (const locale of ['en', 'ja', 'tc'] as const) {
+    it(`tells two cards of one kind and title apart in ${locale}`, () => {
+      const t = catalogTranslator(locale, { strict: true });
+      Object.assign(translation, catalogTranslationStub(locale));
+      const stamp = (input: InsightCard): ComponentFixture<InsightCardComponent> => {
+        const copy = TestBed.createComponent(InsightCardComponent);
+        copy.componentRef.setInput('card', input);
+        copy.componentRef.setInput('currency', 'USD');
+        copy.detectChanges();
+        return copy;
+      };
+      const trend = (categoryId: string) =>
+        insight({
+          id: `categoryTrend:${categoryId}`,
+          categoryIds: [categoryId],
+          drillDown: {
+            mode: 'filters',
+            filters: { type: 'expense', categoryId, startDate: '2026-01-01', endDate: '2026-06-30' },
+          },
+        });
+      const recurring = (key: string, monthlyEquivalent: number) =>
+        insight({
+          id: `recurringItem:${key}`,
+          kind: 'recurringItem',
+          titleKey: 'insights.recurringNewTitle',
+          bodyKey: 'insights.recurringNewBody',
+          params: { cadence: 'monthly', occurrences: 3 },
+          metrics: { medianAmount: monthlyEquivalent, monthlyEquivalent },
+          categoryIds: ['subscriptions'],
+          transactionCount: 3,
+          drillDown: { mode: 'inline', transactionIds: [`${key}-1`], truncated: false },
+        });
+      const actionOf = (card: ComponentFixture<InsightCardComponent>) => {
+        const buttons = (card.nativeElement as HTMLElement).querySelectorAll<HTMLButtonElement>('.card-actions button');
+        expect(buttons.length).withContext('one action per card').toBe(1);
+        return buttons[0];
+      };
+      const expectHolds = (button: HTMLButtonElement, shownKey: string): string => {
+        const shown = t(shownKey);
+        const name = accessibleName(button);
+        expect(button.textContent).withContext(`${shownKey} shows its words`).toContain(shown);
+        expect(holdsShownWords(name, shown, locale)).withContext(`"${name}" holds "${shown}" whole`).toBeTrue();
+        return name;
+      };
+      // A new fixture takes the previous one out of the document, so each
+      // card is read while it is the one on the page.
+      const read: string[] = [];
+      const readCard = (input: InsightCard, shownKey: string) => {
+        const card = stamp(input);
+        read.push(expectHolds(actionOf(card), shownKey));
+        return card;
+      };
+      readCard(trend('food_groceries'), 'insights.viewTransactions');
+      readCard(trend('restaurants'), 'insights.viewTransactions');
+      readCard(recurring('music', 15.99), 'insights.showTransactions');
+      const video = readCard(recurring('video', 9.99), 'insights.showTransactions');
+
+      expect(new Set(read).size).withContext(`no two of ${JSON.stringify(read)} alike`).toBe(4);
+      expect(read[0]).withContext('the first trend names its category').toContain(t('categoryNames.groceries'));
+      expect(read[1]).withContext('the second trend names its category').toContain(t('categoryNames.restaurants'));
+      expect(read[2]).withContext('the first payment names its figure').toContain('USD 15.99');
+      expect(read[3]).withContext('the second payment names its figure').toContain('USD 9.99');
+
+      actionOf(video).click();
+      video.detectChanges();
+      read.push(expectHolds(actionOf(video), 'insights.hideTransactions'));
+
+      expect(read).withContext('pinned').toEqual([...twinNames[locale]]);
+      const payment = (amount: string) =>
+        t('insights.recurringItemDetail', { category: t('categoryNames.subscriptions'), amount });
+      expect(read).toEqual([
+        t('insights.viewTransactionsNamedWith', { name: t('insights.trendRisingTitle'), detail: t('categoryNames.groceries') }),
+        t('insights.viewTransactionsNamedWith', { name: t('insights.trendRisingTitle'), detail: t('categoryNames.restaurants') }),
+        t('insights.showTransactionsNamedWith', { name: t('insights.recurringNewTitle'), detail: payment('USD 15.99') }),
+        t('insights.showTransactionsNamedWith', { name: t('insights.recurringNewTitle'), detail: payment('USD 9.99') }),
+        t('insights.hideTransactionsNamedWith', { name: t('insights.recurringNewTitle'), detail: payment('USD 9.99') }),
+      ]);
+    });
+  }
 });

@@ -20,6 +20,7 @@ import { createCategory } from '../../../core/services/testing/test-data';
 import {
   accessibleName,
   catalogTranslator,
+  holdsShownWords,
   paintedBackground,
   paintedColor,
   ratio,
@@ -280,6 +281,50 @@ describe('SearchAnswerHistoryComponent', () => {
         t('aiSearch.historyDeleteLabel', params(pinned)),
         t('aiSearch.historyDeleteLabel', params(loose)),
       ]);
+    });
+  }
+
+  /**
+   * Refresh sits under the answer a row expands, one per saved answer, so it
+   * names the question and the day as that row's pin and delete do, around
+   * the word it shows (WCAG 2.5.3), read without regard to case in the
+   * reader's own locale. Two rows are expanded in turn and read apart.
+   */
+  const refreshNames = {
+    en: ['Refresh coffee in August (2026-08-14)', 'Refresh rent this year (2026-07-02)'],
+    ja: ['「coffee in August」（2026-08-14）を更新', '「rent this year」（2026-07-02）を更新'],
+    tc: ['重新整理「coffee in August」（2026-08-14）', '重新整理「rent this year」（2026-07-02）'],
+  } as const;
+  for (const locale of ['en', 'ja', 'tc'] as const) {
+    it(`names each expanded answer's Refresh by its question and day in ${locale}`, () => {
+      const t = catalogTranslator(locale, { strict: true });
+      const translation = TestBed.inject(TranslationService) as jasmine.SpyObj<TranslationService>;
+      translation.t.and.callFake(catalogTranslator(locale));
+      const records = [
+        rec('a-1', Date.UTC(2026, 7, 14, 12), { query: 'coffee in August' }),
+        rec('a-2', Date.UTC(2026, 6, 2, 12), { query: 'rent this year' }),
+      ];
+      storedAnswers.set(records);
+      fixture.detectChanges();
+      const shown = t('common.refresh');
+
+      const names = records.map((record, r) => {
+        const row = fixture.nativeElement.querySelectorAll('.history-row')[r] as HTMLElement;
+        (row.querySelector('.history-open') as HTMLButtonElement).click();
+        fixture.detectChanges();
+        const refreshes = fixture.nativeElement.querySelectorAll('.history-refresh') as NodeListOf<HTMLButtonElement>;
+        expect(refreshes.length).withContext('one Refresh, under the expanded answer').toBe(1);
+        expect(row.contains(refreshes[0])).withContext(`row ${r} holds it`).toBeTrue();
+        const name = accessibleName(refreshes[0]);
+        expect(refreshes[0].textContent).withContext('Refresh shows its word').toContain(shown);
+        expect(name).withContext(`"${name}" names the question`).toContain(record.query);
+        expect(holdsShownWords(name, shown, locale)).withContext(`"${name}" holds "${shown}" whole`).toBeTrue();
+        return name;
+      });
+
+      expect(names).withContext('pinned').toEqual([...refreshNames[locale]]);
+      expect(names).toEqual(records.map(record =>
+        t('aiSearch.historyRefreshLabel', { query: record.query, date: dayKey(record.computedAt.toDate()) })));
     });
   }
 

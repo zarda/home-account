@@ -16,7 +16,10 @@ import { DashboardLayoutService } from '../dashboard-layout.service';
 import { DashboardCardMenuComponent } from '../dashboard-card-menu/dashboard-card-menu.component';
 import { Transaction } from '../../../models';
 import {
+  accessibleName,
+  catalogTranslator,
   createUser,
+  holdsShownWords,
   hoverValue,
   paintedBackground,
   paintedColor,
@@ -219,6 +222,36 @@ describe('RecentTransactionsComponent', () => {
       }
     });
   });
+
+  /**
+   * The dashboard renders this card and Upcoming Bills side by side, each
+   * with a View All of its own, so each names the card it belongs to by the
+   * card's title, around the words it shows (WCAG 2.5.3), read without
+   * regard to case in the reader's own locale. A fresh render: the pipe in
+   * the card above already holds an echoed key.
+   */
+  const viewAllNames = { en: 'View All Recent Transactions', ja: '最近の取引をすべて表示', tc: '查看全部最近交易' } as const;
+  for (const locale of ['en', 'ja', 'tc'] as const) {
+    it(`names View All by the card's title in ${locale}`, () => {
+      const t = catalogTranslator(locale, { strict: true });
+      const translation = TestBed.inject(TranslationService) as unknown as jasmine.SpyObj<TranslationService>;
+      translation.t.and.callFake(catalogTranslator(locale));
+      const card = TestBed.createComponent(RecentTransactionsComponent);
+      card.detectChanges();
+      const el = card.nativeElement as HTMLElement;
+
+      const link = el.querySelector('.view-all-link') as HTMLAnchorElement;
+      const shown = t('dashboard.viewAll');
+      const title = t('dashboard.recentTransactions');
+      const name = accessibleName(link);
+      expect(el.querySelector('.card-title')?.textContent?.trim()).withContext("the card's title").toBe(title);
+      expect(link.textContent).withContext('View All shows its words').toContain(shown);
+      expect(name).withContext(`"${name}" names the card`).toContain(title);
+      expect(holdsShownWords(name, shown, locale)).withContext(`"${name}" holds "${shown}" whole`).toBeTrue();
+      expect(name).withContext('pinned').toBe(viewAllNames[locale]);
+      expect(name).toBe(t('dashboard.viewAllNamed', { name: title }));
+    });
+  }
 
   // At 1024 px the dashboard's rail is about 229 px wide, too narrow for the
   // title, View all and the menu on one line. The title may wrap; the link
