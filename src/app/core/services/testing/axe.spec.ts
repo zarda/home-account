@@ -14,6 +14,7 @@ import {
   contrastUnscored,
   expectContrastScored,
   expectEachContrastScored,
+  holdsShownWords,
   runAxe,
   standOnThePage,
   summarizeViolations,
@@ -640,6 +641,20 @@ describe('the axe harness', () => {
       expect(accessibleName(node('browse'))).withContext('the name stays the button\'s own').toBe('Browse');
       expect(accessibleDescription(node('plain'))).withContext('nothing describes it').toBe('');
       expect(accessibleDescription(node('inline'))).withContext('aria-description').toBe('Opens the picker.');
+    });
+
+    it('holds the words a control shows when its name has them whole, read without regard to case', () => {
+      expect(holdsShownWords('Add location to Coffee Shop', 'Add location', 'en')).withContext('at the start').toBeTrue();
+      expect(holdsShownWords('View Transactions for Japan trip', 'view transactions', 'en'))
+        .withContext('in another case').toBeTrue();
+      expect(holdsShownWords('Add\n    location to Cafe', ' Add location ', 'en'))
+        .withContext('a run of white space reads as one space').toBeTrue();
+      expect(holdsShownWords('檢視交易：「Japan trip」', '檢視交易', 'tc')).withContext('tc, kept whole').toBeTrue();
+      expect(holdsShownWords('檢視「Japan trip」的交易', '檢視交易', 'tc'))
+        .withContext('tc, split round the name').toBeFalse();
+      expect(holdsShownWords('Add tag to Coffee Shop', 'Add location', 'en')).withContext('other words').toBeFalse();
+      expect(() => holdsShownWords('Receipt image 1 of 2 for Cafe', ' ', 'en'))
+        .withContext('a control that shows no words').toThrowError(/shows no words/);
     });
 
     it('refuses to read a name while a pass is still running, and leaves the pass whole', async () => {

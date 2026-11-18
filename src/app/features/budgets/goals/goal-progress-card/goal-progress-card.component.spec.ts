@@ -15,6 +15,7 @@ import {
   createLocaleFormatStub,
   createTranslationStub,
   expectPainted,
+  holdsShownWords,
   inPalette,
   paintedBackground,
   paintedColor,
@@ -318,21 +319,46 @@ describe('GoalProgressCardComponent, through its own template', () => {
   });
 
   /**
-   * The goals page stamps one card per goal, so each card's Edit and Delete
-   * name the goal they act on, in the words the card's header shows. The
-   * catalog stub goes in before the first render, so the pipe never caches
-   * an echoed key.
+   * The goals page stamps one card per goal, so each card's Edit and Delete,
+   * and the View Transactions and Contribute at its foot, name the goal they
+   * act on, in the words the card's header shows. The two at the foot show
+   * words of their own, and a name that a voice user speaks has to hold
+   * those words whole (WCAG 2.5.3), read without regard to case in the
+   * reader's own locale; so tc reads 檢視交易：「…」 rather than wrapping the
+   * name inside 檢視…的交易. The card carries linked money, so View
+   * Transactions renders. The catalog stub goes in before the first render,
+   * so the pipe never caches an echoed key.
    */
+  const footNames = {
+    en: ['View Transactions for Japan trip', 'Contribute to Japan trip'],
+    ja: ['「Japan trip」の取引を表示', '「Japan trip」に積み立てる'],
+    tc: ['檢視交易：「Japan trip」', '存入「Japan trip」'],
+  } as const;
   for (const locale of ['en', 'ja', 'tc'] as const) {
-    it(`names its Edit and Delete by the goal in ${locale}`, () => {
+    it(`names its Edit, Delete, View Transactions and Contribute by the goal in ${locale}`, () => {
       const t = catalogTranslator(locale, { strict: true });
       Object.assign(translation, catalogTranslationStub(locale));
-      card({ name: 'Japan trip' });
+      card({ name: 'Japan trip', linkedAmount: 120 });
 
       expect(text('.goal-name')).toBe('Japan trip');
       expect(Array.from(el().querySelectorAll('.goal-actions button')).map(accessibleName)).toEqual([
         t('goal.editNamed', { name: 'Japan trip' }),
         t('goal.deleteNamed', { name: 'Japan trip' }),
+      ]);
+
+      const foot = Array.from(el().querySelectorAll<HTMLButtonElement>('mat-card-actions button'));
+      expect(foot.length).withContext('View Transactions and Contribute').toBe(2);
+      const shown = [t('goal.viewTransactions'), t('goal.contribute')];
+      const names = foot.map(accessibleName);
+      foot.forEach((button, i) => {
+        expect(button.textContent).withContext(`the foot's button ${i} shows its words`).toContain(shown[i]);
+        expect(names[i]).withContext(`"${names[i]}" names the goal`).toContain('Japan trip');
+        expect(holdsShownWords(names[i], shown[i], locale)).withContext(`"${names[i]}" holds "${shown[i]}" whole`).toBeTrue();
+      });
+      expect(names).withContext('pinned').toEqual([...footNames[locale]]);
+      expect(names).toEqual([
+        t('goal.viewTransactionsNamed', { name: 'Japan trip' }),
+        t('goal.contributeNamed', { name: 'Japan trip' }),
       ]);
     });
   }

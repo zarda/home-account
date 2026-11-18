@@ -31,6 +31,7 @@ import {
   channels,
   contentWidthPx,
   echoTranslation,
+  holdsShownWords,
   hoverValue,
   paintedBackground,
   paintedColor,
@@ -3516,6 +3517,56 @@ describe('TransactionPreviewTableComponent, the offer chip through its own templ
             .toEqual([]);
           expect(tooltip('blank')).withContext("the overrule's tooltip, which a sighted reader sees, is its name")
             .toBe(names[0]);
+        });
+      }
+    });
+
+    /**
+     * Add location, Add tag and Notes show words of their own, so each name
+     * names its row beside those words and holds them whole: a voice user
+     * says what the button shows (WCAG 2.5.3), and the name is read without
+     * regard to case in the reader's own locale. They render on a row with no
+     * location, no tag being typed and no notes, and two such rows read apart.
+     */
+    describe('the add buttons keep the words they show', () => {
+      const adds = [
+        ['.location-add', 'import.addLocation', 'import.addLocationTo'],
+        ['.tag-add', 'import.addTag', 'import.addTagTo'],
+        ['.add-notes-btn', 'import.notes', 'import.notesLabel'],
+      ] as const;
+      const pinned = {
+        en: ['Add location to Coffee Shop', 'Add tag to Coffee Shop', 'Notes for Coffee Shop'],
+        ja: ['Coffee Shopに場所を追加', 'Coffee Shopにタグを追加', 'Coffee Shopのメモ'],
+        tc: ['為「Coffee Shop」新增地點', '為「Coffee Shop」新增標籤', '「Coffee Shop」的備註'],
+      } as const;
+
+      for (const l of ['en', 'ja', 'tc'] as const) {
+        it(`name their row and hold their shown words, on two rows, in ${l}`, () => {
+          const words = catalogTranslator(l, { strict: true });
+          spyOn(TestBed.inject(TranslationService), 't').and.callFake(catalogTranslator(l));
+          component.transactions = rows.map(([id, description]) => makeRow({ id, description }));
+          component.categories = [];
+          fixture.detectChanges();
+
+          const item = { titled: words('common.quotedName', { name: 'Coffee Shop' }), blank: words('import.untitledRow') };
+          const read = (id: 'titled' | 'blank') => adds.map(([selector, shownKey]) => {
+            const name = nameOf(id, selector);
+            const shown = card(id)?.querySelector(`${selector} span`)?.textContent?.trim() ?? '';
+            expect(shown).withContext(`${selector} on the ${id} row shows its words`).toBe(words(shownKey));
+            expect(name).withContext(`${selector} on the ${id} row names it`).toContain(item[id]);
+            expect(holdsShownWords(name, shown, l)).withContext(`"${name}" holds "${shown}" whole`).toBeTrue();
+            return name;
+          });
+          const titled = read('titled');
+          const blank = read('blank');
+
+          adds.forEach(([selector], i) =>
+            expect(titled[i]).withContext(`${selector} reads the two rows apart`).not.toBe(blank[i]));
+          expect(blank.filter(name => QUOTATION_MARKS.test(name))).withContext('a quotation mark round the stand-in')
+            .toEqual([]);
+          expect(titled).withContext('pinned').toEqual([...pinned[l]]);
+          expect(titled).toEqual(adds.map(([, , key]) => words(key, { description: item.titled })));
+          expect(blank).toEqual(adds.map(([, , key]) => words(key, { description: item.blank })));
         });
       }
     });

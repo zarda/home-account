@@ -2,6 +2,7 @@ import { NgZone } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import axe, { type AxeResults, type RunOptions, type Result } from 'axe-core';
 import type { EffectiveTheme, ThemeService } from '../theme.service';
+import { INTL_LOCALES, type SupportedLocale } from '../translation.service';
 
 /**
  * An axe-core pass a Karma spec can run over one rendered route.
@@ -302,6 +303,23 @@ export function accessibleDescription(el: Element): string {
       : (el.getAttribute('aria-description') ?? '');
     return text.replace(/\s+/g, ' ').trim();
   });
+}
+
+/**
+ * Whether a control's accessible `name` holds the words it `shows` whole, so
+ * a voice user can say what they see (WCAG 2.5.3, Label in Name). Both are
+ * read without regard to case in the reader's own locale, and a run of white
+ * space reads as one space, as it does in a computed name. A control that
+ * shows no words has nothing to hold, and every name would pass, so that
+ * throws.
+ */
+export function holdsShownWords(name: string, shown: string, locale: SupportedLocale): boolean {
+  const intl = INTL_LOCALES[locale];
+  const read = (text: string) => text.replace(/\s+/g, ' ').trim().toLocaleLowerCase(intl);
+  if (!read(shown)) {
+    throw new Error(`holdsShownWords: the control shows no words, so "${name}" has nothing to hold`);
+  }
+  return read(name).includes(read(shown));
 }
 
 /** header.component.scss's toolbar height; the header is fixed over the viewport's top. */
