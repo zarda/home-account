@@ -32,6 +32,7 @@ import {
   ratio,
   runAxe,
   settleAnimations,
+  standOnThePage,
   summarizeViolations,
   tokenValue,
   withTheme
@@ -1267,6 +1268,11 @@ describe('HouseholdPlansComponent', () => {
       expect(all('.plan-counting').length).toBe(1);
       expect(all('.plan-edit, .plan-delete, .plan-contribute, .contribution-delete').length).toBeGreaterThan(0);
       const host = fixture.nativeElement as HTMLElement;
+      // The section runs on far below body's box, and its two subtitles and
+      // its New budget and New goal labels sit on the page with no fill of
+      // their own: unpainted, axe left all four undecided and the pass read
+      // clean.
+      standOnThePage(host);
       document.documentElement.classList.add(theme);
       document.body.appendChild(host);
 

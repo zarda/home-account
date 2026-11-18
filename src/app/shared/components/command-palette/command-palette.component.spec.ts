@@ -600,6 +600,12 @@ describe('CommandPaletteComponent, Shortcuts section (#446)', () => {
 
   it('passes the axe sweep in both schemes', async () => {
     await create({ section: 'shortcuts' });
+    // The palette has no fill of its own: it opens in a dialog. Rendered bare
+    // it runs on far below body's box, and axe left every row and title down
+    // there undecided while the pass read clean. It stands on its dialog's
+    // surface, as Material paints it, rather than on the page it never sits on.
+    el().style.display = 'block';
+    el().style.backgroundColor = 'var(--mat-dialog-container-color, var(--mat-sys-surface))';
 
     for (const scheme of AUDIT_SCHEMES) {
       await withTheme(scheme, async () => {

@@ -715,6 +715,7 @@ describe('HouseholdBudgetDialogComponent', () => {
         dialog.form.controls.name.markAsTouched();
       });
       expect(audit.labelledByTitle).toBeTrue();
+      expect(audit.stops).withContext('its dates and alert threshold lie below the first screenful').toBeGreaterThan(1);
       expect(audit.violations).toEqual([]);
     });
   }

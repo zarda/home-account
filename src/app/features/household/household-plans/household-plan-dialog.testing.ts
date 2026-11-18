@@ -285,12 +285,59 @@ export interface PlanDialogAudit {
   violations: string[];
   /** The dialog is named by its title, as a screen reader announces it on opening. */
   labelledByTitle: boolean;
+  /** How many scroll positions of the content axe ran at: 1 when it fits the frame. */
+  stops: number;
+}
+
+/**
+ * What axe finds in `container`, run at every half-screenful of the dialog's
+ * scrolling content, each line kept once, and how many stops that took.
+ *
+ * The app caps a dialog's panel to the viewport (styles.scss) and its content
+ * scrolls inside it, and Karma's frame is 413px tall, so the budget dialog's
+ * dates and alert threshold start below the content's visible box. axe skips
+ * text a scroller clips, without even leaving it undecided, so one pass read
+ * the dialog clean with its lower half never scored. Half a screenful at a
+ * time, so a line cut by the box's edge at one stop is whole at the next.
+ *
+ * It refuses a dialog with no content area, and one whose last stop does not
+ * show the content's end, rather than read either clean unscrolled.
+ */
+async function sweepScrolledThrough(container: HTMLElement): Promise<{ violations: string[]; stops: number }> {
+  const content = container.querySelector<HTMLElement>('.mat-mdc-dialog-content');
+  if (!content) throw new Error('auditPlanDialog: no .mat-mdc-dialog-content to scroll through');
+  const step = Math.max(1, Math.floor(content.clientHeight / 2));
+  const found = new Set<string>();
+  let stops = 0;
+  try {
+    for (let top = 0; ; top += step) {
+      // `instant`: a stylesheet's `scroll-behavior: smooth` would otherwise
+      // leave the content still travelling when axe reads it.
+      content.scrollTo({ top, behavior: 'instant' });
+      stops++;
+      for (const line of summarizeViolations(await runAxe(container))) found.add(line);
+      if (top + content.clientHeight >= content.scrollHeight) break;
+    }
+    // The stops above count what was asked for; this reads where the content
+    // went. A content area that does not scroll stays at its top, its end
+    // clipped at every stop and never scored.
+    const shownTo = content.scrollTop + content.clientHeight;
+    if (shownTo < content.scrollHeight - 1) {
+      throw new Error(
+        `auditPlanDialog: the last stop never showed the end of its content (shown to ${Math.round(shownTo)}px of ` +
+          `${content.scrollHeight}px)`
+      );
+    }
+  } finally {
+    content.scrollTo({ top: 0, behavior: 'instant' });
+  }
+  return { violations: [...found].sort(), stops };
 }
 
 /**
  * Opens `component` in a real dialog, as the plans section opens it, painted
- * on the dialog's own surface in `theme`, and reports what axe finds in it.
- * `prepare` sets the dialog's state before the audit.
+ * on the dialog's own surface in `theme`, and reports what axe finds in it,
+ * scrolled through. `prepare` sets the dialog's state before the audit.
  */
 export async function auditPlanDialog<T>(
   component: ComponentType<T>,
@@ -310,7 +357,7 @@ export async function auditPlanDialog<T>(
     if (!container) throw new Error('The dialog did not open');
     const title = container.querySelector<HTMLElement>('.mat-mdc-dialog-title');
     return {
-      violations: summarizeViolations(await runAxe(container)),
+      ...(await sweepScrolledThrough(container)),
       labelledByTitle: !!title?.id && container.getAttribute('aria-labelledby') === title.id
     };
   } finally {
