@@ -4,9 +4,11 @@ import { By } from '@angular/platform-browser';
 import { MatMenuItem, MatMenuTrigger } from '@angular/material/menu';
 
 import { CategorySuggestionComponent } from './category-suggestion.component';
-import { CATEGORY_FALLBACK_COLOR, Category } from '../../../../models';
+import { CATEGORY_FALLBACK_COLOR, Category, CategorySource } from '../../../../models';
+import { catalogTranslator } from '../../../../core/services/testing';
 import { EffectiveTheme, ThemeService } from '../../../../core/services/theme.service';
 import { TranslationService } from '../../../../core/services/translation.service';
+import { LocaleFormatService } from '../../../../core/services/locale-format.service';
 import {
   AUDIT_SCHEMES,
   GLYPH_PROBE_COLOURS,
@@ -130,6 +132,16 @@ describe('CategorySuggestionComponent', () => {
       expect(sorted[0].name).toBe('Food & Dining');
       expect(sorted[1].name).toBe('Salary');
       expect(sorted[2].name).toBe('Transportation');
+    });
+
+    it('orders the names with the account\'s collator, not the device\'s', () => {
+      // Pin. Mutation: go back to a bare localeCompare. The stand-in orders
+      // backwards, which no device locale does.
+      spyOn(TestBed.inject(LocaleFormatService), 'compare').and.callFake((a, b) => (a < b ? 1 : a > b ? -1 : 0));
+      fixture.componentRef.setInput('categories', mockCategories);
+      fixture.detectChanges();
+
+      expect(component.sortedCategories().map(c => c.name)).toEqual(['Transportation', 'Salary', 'Food & Dining']);
     });
   });
 
@@ -356,6 +368,8 @@ describe('CategorySuggestionComponent', () => {
     // The tooltip is now translated; the real TranslationService returns the
     // key when the locale bundle isn't loaded in unit tests, so assert on the
     // per-level key the component picks.
+    beforeEach(() => fixture.componentRef.setInput('source', 'reported'));
+
     it('should return the high confidence key', () => {
       fixture.componentRef.setInput('confidence', 0.9);
       fixture.detectChanges();
@@ -376,6 +390,74 @@ describe('CategorySuggestionComponent', () => {
 
       expect(component.confidenceTooltip()).toContain('confidenceLow');
     });
+  });
+
+  // A percentage is a claim that something measured the category. Only a
+  // categorizer answer that carried its own number is one, so the sentence
+  // chooses on where the grade came from and never on its value (#535).
+  describe('confidenceTooltip, by the source of the grade', () => {
+    const tooltip = (confidence: number, source?: CategorySource) => {
+      fixture.componentRef.setInput('confidence', confidence);
+      fixture.componentRef.setInput('source', source);
+      fixture.detectChanges();
+      return component.confidenceTooltip();
+    };
+
+    it('names each source with its own sentence, whatever the grade', () => {
+      expect(tooltip(0.95, 'memory')).toBe('import.categoryFromMemory');
+      expect(tooltip(1, 'reviewer')).toBe('import.categoryByYou');
+      expect(tooltip(1, 'backup')).toBe('import.categoryFromBackup');
+      expect(tooltip(1, 'file')).toBe('import.categoryFromFile');
+      expect(tooltip(0.8, 'reader')).toBe('import.categoryFromReader');
+      expect(tooltip(0.92, 'device')).toBe('import.categoryFromDevice');
+      // The band moves the dot's colour and not the sentence.
+      expect(tooltip(0.4, 'device')).toBe('import.categoryFromDevice');
+    });
+
+    it('keeps the band sentences, and their percentage, for an answer that reported one', () => {
+      expect(tooltip(0.9, 'reported')).toContain('confidenceHigh');
+      expect(tooltip(0.6, 'reported')).toContain('confidenceMedium');
+      expect(tooltip(0.3, 'reported')).toContain('confidenceLow');
+    });
+
+    it('says a category was suggested, or that none could be, where nothing names the source', () => {
+      // The 0.8 a categorizer answer earns with no number of its own, and
+      // the floors: none is a confidence anything reported.
+      expect(tooltip(0.8)).toBe('import.categorySuggested');
+      expect(tooltip(0.5)).toBe('import.categorySuggested');
+      expect(tooltip(0.3)).toBe('import.categoryUnresolved');
+      expect(tooltip(0.1)).toBe('import.categoryUnresolved');
+      expect(tooltip(0)).toBe('import.categoryUnresolved');
+    });
+
+    it('leaves the dot\'s band to the grade alone', () => {
+      // Pin: the source changes the words, never the colour or a count.
+      tooltip(0.95, 'memory');
+      expect(component.confidenceClass()).toBe('high-confidence');
+      tooltip(0.4, 'device');
+      expect(component.confidenceClass()).toBe('low-confidence');
+      tooltip(0.6);
+      expect(component.confidenceClass()).toBe('medium-confidence');
+    });
+
+    for (const locale of ['en', 'ja', 'tc'] as const) {
+      it(`quotes a percentage in ${locale} only for a reported answer`, () => {
+        const t = catalogTranslator(locale, { strict: true });
+        const sourced = [
+          'import.categoryFromMemory', 'import.categoryByYou', 'import.categoryFromBackup',
+          'import.categoryFromFile', 'import.categoryFromReader', 'import.categoryFromDevice',
+          'import.categorySuggested', 'import.categoryUnresolved',
+        ].map(key => t(key, { percent: 95 }));
+        for (const sentence of sourced) {
+          expect(sentence).not.toMatch(/[0-9０-９%％]/);
+          expect(sentence).not.toContain('{{');
+        }
+        expect(new Set(sourced).size).withContext('eight sources, eight sentences').toBe(8);
+        for (const key of ['import.confidenceHigh', 'import.confidenceMedium', 'import.confidenceLow']) {
+          expect(t(key, { percent: 95 })).toContain('95');
+        }
+      });
+    }
   });
 
   describe('selectCategory', () => {
@@ -463,7 +545,14 @@ describe('CategorySuggestionComponent, the chip through its own template', () =>
 
     expect(dot().classList.contains('high-confidence')).toBeTrue();
     expect(dot().classList.contains('low-confidence')).toBeFalse();
-    expect(dot().getAttribute('aria-label')).toContain('confidenceHigh');
+    // A grade with no source: the dot says a category was suggested, and
+    // quotes no 100% nothing measured.
+    expect(dot().getAttribute('aria-label')).toBe('import.categorySuggested');
+
+    fixture.componentRef.setInput('source', 'reviewer');
+    fixture.detectChanges();
+
+    expect(dot().getAttribute('aria-label')).toBe('import.categoryByYou');
   });
 
   // The dot is a graphic with a name of its own, not decoration beside a

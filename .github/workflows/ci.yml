@@ -101,9 +101,10 @@ jobs:
 
       # Keeps docs/analytics.md honest: every tracked event must appear in the
       # registry table, every row must have a call site, the screen table
-      # must match the configured routes, and every parameter the taxonomy
+      # must match the configured routes, every parameter the taxonomy
       # declares must have a row in the Parameter values table and a place in
-      # the console's custom-dimension list.
+      # the console's custom-dimension list, and every value it declares must
+      # be written somewhere under src/app.
       - name: Check analytics registry
         run: npm run analytics:check
 

@@ -1,11 +1,12 @@
-import { ChangeDetectionStrategy, Component, OnDestroy, OnInit, computed, inject, signal } from '@angular/core';
+import { ChangeDetectionStrategy, ChangeDetectorRef, Component, OnDestroy, OnInit, computed, inject, signal, viewChild } from '@angular/core';
+import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { CommonModule } from '@angular/common';
 
 import { MatButtonModule } from '@angular/material/button';
 import { MatIconModule } from '@angular/material/icon';
-import { MatTabsModule } from '@angular/material/tabs';
+import { MatTabGroup, MatTabsModule } from '@angular/material/tabs';
 import { MatDialog } from '@angular/material/dialog';
-import { ActivatedRoute } from '@angular/router';
+import { ActivatedRoute, ParamMap, Router } from '@angular/router';
 import { Subscription } from 'rxjs';
 
 import { BudgetService } from '../../core/services/budget.service';
@@ -57,6 +58,9 @@ export class BudgetsComponent implements OnInit, OnDestroy {
   private notifications = inject(NotificationService);
   private dialog = inject(MatDialog);
   private accessibility = inject(AccessibilityService);
+  private route = inject(ActivatedRoute);
+  private router = inject(Router);
+  private cdr = inject(ChangeDetectorRef);
 
   budgets = this.budgetService.budgets;
   isLoading = signal(true);
@@ -78,17 +82,51 @@ export class BudgetsComponent implements OnInit, OnDestroy {
   readonly tabAnimationDuration = this.accessibility.tabAnimationDuration;
 
   /**
-   * Which tab a ?tab= link opens on. Read once at construction rather than
-   * bound to the param stream: after that the tab strip owns the selection,
-   * and re-reading would drag the user back on every param change.
+   * The tab shown. A ?tab= link sets it, as the page is built and while it
+   * is open (a budget alert's link is /budgets?tab=budgets, and the page it
+   * is tapped on may be this one, on another tab); after that the tab strip
+   * owns it, through `selectedIndexChange`. Without that binding the strip
+   * moved on its own and this still held the tab the last link named, so a
+   * second link to that tab changed nothing.
    */
-  selectedTabIndex = tabIndexFromParam(
-    inject(ActivatedRoute).snapshot.queryParamMap.get('tab'),
-    BUDGET_TABS
-  );
+  selectedTabIndex = tabIndexFromParam(this.route.snapshot.queryParamMap.get('tab'), BUDGET_TABS);
+
+  private tabStrip = viewChild(MatTabGroup);
 
   private budgetsSub?: Subscription;
   private categoriesSub?: Subscription;
+
+  constructor() {
+    this.route.queryParamMap.pipe(takeUntilDestroyed()).subscribe(params => this.followTabLink(params));
+  }
+
+  /**
+   * Opens the tab a link names, then takes the name off the URL (as the
+   * dashboard does with a reminder's `bill` and `recap`, ADR 0082). It names
+   * something to do once: left there, a change of any other parameter would
+   * drag the reader back to it, and a second tap on the same alert would be a
+   * navigation to the URL the page is already on, which the router ignores.
+   * The stripped URL comes back through here and does nothing.
+   */
+  private followTabLink(params: ParamMap): void {
+    if (!params.has('tab')) return;
+    const index = tabIndexFromParam(params.get('tab'), BUDGET_TABS);
+    this.selectedTabIndex = index;
+    // And the strip itself, where it has rendered. The binding writes only a
+    // value that differs from the last one it wrote, and the strip reports a
+    // tab the reader chose a turn after it moves: a link that arrives inside
+    // that turn finds the field still on the tab the last link named, and
+    // the binding would write nothing.
+    const strip = this.tabStrip();
+    if (strip) strip.selectedIndex = index;
+    this.cdr.markForCheck();
+    void this.router.navigate([], {
+      relativeTo: this.route,
+      queryParams: { tab: null },
+      queryParamsHandling: 'merge',
+      replaceUrl: true,
+    });
+  }
 
   ngOnInit(): void {
     // Load categories if not already loaded

@@ -119,8 +119,8 @@ and `duration` arrived in 1.27.140. `household_action`'s `share`, `unshare`,
 <!-- analytics-params:start -->
 | Parameter | Values |
 |---|---|
-| `method` | `manual`, `receipt_scan`, `ai_import` |
-| `type` | `income`, `expense`, `mixed` |
+| `method` | `manual`, `receipt_scan` — the form was filled by hand, or by a scan the form ran; an import the wizard confirms sends `receipt_confirm`, not this |
+| `type` | `income`, `expense` |
 | `has_tags` | `true`, `false` — whether any tag was attached; the tag names themselves are never sent |
 | `has_location` | `true`, `false` — whether a location was attached; the place name and coordinates are never sent |
 | `receipt_image_count` | `0`–`5` — images attached at creation; later appends and removals are not re-reported |
@@ -355,10 +355,29 @@ stay quiet.
 It deliberately does **not** verify which parameters a call site passes. The
 payload is an object literal spanning lines with values computed from signals;
 a regex over it would produce false failures more often than true ones. The
-compiler covers that (the parameter types are derived from the taxonomy), and
-`AnalyticsService` drops anything outside the allowlist at runtime. Nor does it
-compare the values a parameter takes, whose cells are prose around the
-backticked words (`0`–`5` is a range, the `action` row is per event), or see
+compiler covers the names (an unknown event, or a parameter the event does not
+declare, does not compile), and `AnalyticsService` drops anything outside the
+allowlist at runtime. The compiler does not cover a value: the taxonomy is
+JSON, whose arrays TypeScript reads as `string[]`, so a wrapper's `method` or
+`type` accepts any string and the runtime check is the only thing that holds
+it. Earlier versions of this page and of the code's comments said the compiler
+rejected an off-taxonomy value; a probe that assigned one compiled.
+
+It does verify that every value the taxonomy declares is written somewhere:
+each one must appear as a quoted literal in a non-spec `.ts` file under
+`src/app` (comments blanked, the service's own files and the taxonomy
+skipped), or the check fails naming the event, the parameter and the value.
+`transaction_add` declared `ai_import` and `mixed` for a sender that was never
+written, and GA4 advertised both as values that could arrive (#517). A
+parameter the wrapper fills from a boolean or a number (`has_tags`,
+`receipt_image_count`) is exempt, since no code writes `true` or `3` as text.
+The check looks anywhere under `src/app`, not only in the files that call the
+event's wrapper, because `receipt_import`, `receipt_confirm` and
+`budget_exceeded_viewed` are handed values a helper or a model file wrote. That
+makes it thin for a common word, which some file always writes; it is a floor,
+not a proof that the sender can produce the value. Nor does it compare the
+Parameter values table's cells with the taxonomy's values, whose cells are prose
+around the backticked words (`0`–`5` is a range, the `action` row is per event), or see
 the console itself: the list is what the setup tells whoever does it to
 register.
 

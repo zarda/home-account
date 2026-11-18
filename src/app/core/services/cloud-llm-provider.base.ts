@@ -358,6 +358,9 @@ export abstract class CloudLLMProviderBase implements CloudLLMProviderAdapter {
         // Undefined when nothing was graded, so a source that cannot know stays
         // distinguishable from one that read the fields clearly.
         fieldConfidence: Object.keys(graded).length > 0 ? graded : undefined,
+        // The 0 above is this function's, of a date the answer gave and
+        // nothing could parse: the flag says so, and quotes no confidence.
+        ...(parsedDate === null ? { fieldDoubt: { date: 'unread' as const } } : {}),
         ...(printed ? { location: printed } : {}),
         ...(country ? { receiptCountry: country } : {}),
       };
@@ -405,6 +408,7 @@ export abstract class CloudLLMProviderBase implements CloudLLMProviderAdapter {
         // string parses just fine — so a claimed dateConfidence must not
         // outlive the date it was claimed about.
         dateConfidence: t.date ? t.dateConfidence : 0,
+        ...(t.date ? {} : { dateUnread: true as const }),
         ...this.countrySlots(t.country, readPrintedLocation(t.location, t.merchant)),
       }));
     });
@@ -476,6 +480,7 @@ export abstract class CloudLLMProviderBase implements CloudLLMProviderAdapter {
         // string parses just fine — so a claimed dateConfidence must not
         // outlive the date it was claimed about.
         dateConfidence: t.date ? t.dateConfidence : 0,
+        ...(t.date ? {} : { dateUnread: true as const }),
         ...this.countrySlots(t.country, readPrintedLocation(t.location, t.merchant)),
       }));
     });

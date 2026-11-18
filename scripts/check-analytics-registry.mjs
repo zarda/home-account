@@ -18,6 +18,10 @@
  * are read between markers (`analytics-params`, `analytics-dimensions`), the
  * way the registry and screen tables are.
  *
+ * And every value the taxonomy declares has to be written somewhere under
+ * src/app as a quoted literal, or the taxonomy (and with it the GA4
+ * dimension) advertises a value no sender can produce (`valueProblems`).
+ *
  * Without this, "where does this event come from" and "is this screen tagged"
  * are answerable only by grepping, and a renamed route or a deleted call site
  * leaves a row that documents something the app no longer does.
@@ -27,16 +31,20 @@
  * before anything reads the repository.
  *
  * What it deliberately cannot see:
- *   - Which values a parameter takes. The table's second column is prose
- *     around the backticked values (`0`–`5` is a range, the `action` row is
- *     per event), so only the names are held.
+ *   - Which values the doc's table lists. Its second column is prose around
+ *     the backticked values (`0`–`5` is a range, the `action` row is per
+ *     event), so only the names are held there.
+ *   - Whether the event's own sender can produce a declared value. A value
+ *     is looked for anywhere under src/app, so a common word some other file
+ *     writes passes.
  *   - Whether the console has the dimensions. The list is what the doc says to
  *     register; the registering is done by hand.
  *   - Which parameters a call site actually passes. The payload is an object
  *     literal spanning lines, carrying conditionals and values computed from
  *     signals; a regex over it would fail more often than it would catch. The
- *     compiler enforces it (AnalyticsEventParams is derived from the taxonomy)
- *     and AnalyticsService drops anything outside the allowlist at runtime.
+ *     compiler holds the names (AnalyticsEventParams is derived from the
+ *     taxonomy), not the values, which are plain strings to it; and
+ *     AnalyticsService drops anything outside the allowlist at runtime.
  *   - A tracking call whose method name is computed rather than written out.
  *     There are none today; the typed API makes them awkward to write.
  *   - Direct SDK use that bypasses AnalyticsService — the no-restricted-imports
@@ -223,6 +231,55 @@ function parameterProblems(taxonomy, docText) {
   return problems;
 }
 
+/**
+ * Whether a parameter's values are filled in by the wrapper from a boolean or
+ * a number (`has_tags`, `receipt_image_count`), so that no code writes them
+ * as text. Only a list that is all one or all the other: a list that mixes a
+ * digit with a word is looked for whole.
+ */
+function isCoerced(values) {
+  return (
+    values.length > 0 &&
+    (values.every(value => value === 'true' || value === 'false') || values.every(value => /^\d+$/.test(value)))
+  );
+}
+
+const escapeRegExp = text => text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
+/**
+ * Every value the taxonomy declares that no source writes as a quoted
+ * literal. `sources` is `{ path, text }` for each file a value could be
+ * written in; comments are blanked first, so a value named in one is not
+ * written.
+ *
+ * A value is looked for anywhere under the source directory, not only in the
+ * files that call its wrapper: `receipt_import`, `receipt_confirm` and
+ * `budget_exceeded_viewed` are handed values a helper or a model file wrote,
+ * and holding them to their senders' files would fail every one. The price
+ * is that the check is thin for a common word, which some file always
+ * writes. It catches what it was built for: a value declared for a sender
+ * that was never written, as `ai_import` and `mixed` were (#517).
+ */
+function valueProblems(taxonomy, sources) {
+  const texts = sources.map(source => blankComments(source.text));
+  const problems = [];
+  for (const [event, { params }] of Object.entries(taxonomy)) {
+    for (const [parameter, values] of Object.entries(params ?? {})) {
+      if (!Array.isArray(values) || isCoerced(values)) continue;
+      for (const value of values) {
+        const quoted = new RegExp(`(['"\`])${escapeRegExp(value)}\\1`);
+        if (!texts.some(text => quoted.test(text))) {
+          problems.push({
+            message: `${event}.${parameter} declares \`${value}\`, which no code under ${SOURCE_DIR} writes`,
+            sites: [TAXONOMY],
+          });
+        }
+      }
+    }
+  }
+  return problems;
+}
+
 // ---------------------------------------------------------------- self-test
 
 function selfTest() {
@@ -320,6 +377,60 @@ function selfTest() {
     'the custom-dimension list under Console setup has its markers but names no parameter',
   ]);
 
+  // ---- declared values against the code that could send them
+
+  const valued = {
+    add: { since: '1.0.0', params: { method: ['manual', 'scan'], has_tags: ['true', 'false'], count: ['0', '1', '2'] } },
+    view: { since: '1.0.0', params: { method: ['manual'], kind: ['list'] } },
+  };
+  const source = (path, text) => ({ path, text });
+  const values = sources => valueProblems(valued, sources).map(problem => problem.message);
+
+  check(
+    'every value written somewhere, in any quote, reports nothing',
+    values([
+      source('a.ts', "track({ method: scanned ? 'scan' : \"manual\" });"),
+      source('b.ts', 'const KIND = `list`;'),
+    ]),
+    []
+  );
+  check(
+    'a value no code writes is reported once for each event and parameter that declares it',
+    values([source('a.ts', "track({ method: 'scan', kind: 'list' });")]),
+    [
+      'add.method declares `manual`, which no code under src/app writes',
+      'view.method declares `manual`, which no code under src/app writes',
+    ]
+  );
+  check(
+    'a value named only in a comment is not written',
+    values([
+      source('a.ts', "/* 'manual' and 'list' were sent once */\n// method: 'scan'\ntrack({ method: 'manual', kind: 'list' });"),
+    ]),
+    ['add.method declares `scan`, which no code under src/app writes']
+  );
+  check(
+    'a value that is only part of a longer word is not written',
+    values([source('a.ts', "track({ method: 'manual_entry', other: 'rescan', kind: 'list' }); const m = 'manual';")]),
+    ['add.method declares `scan`, which no code under src/app writes']
+  );
+  check(
+    'a parameter the wrapper fills from a boolean or a number is not looked for',
+    values([source('a.ts', "track({ method: 'manual', other: 'scan', kind: 'list', has_tags: tags.length > 0, count });")]),
+    []
+  );
+  check(
+    'a value list that mixes words with digits is looked for whole',
+    valueProblems({ mixed: { since: '1.0.0', params: { step: ['1', 'done'] } } }, [source('a.ts', "go('done')")])
+      .map(problem => problem.message),
+    ['mixed.step declares `1`, which no code under src/app writes']
+  );
+  check(
+    'no sources at all reports every value, which is how an emptied walk would show',
+    valueProblems({ only: { since: '1.0.0', params: { kind: ['list'] } } }, []).map(problem => problem.message),
+    ['only.kind declares `list`, which no code under src/app writes']
+  );
+
   let failed = 0;
   for (const result of results) {
     if (result.ok) {
@@ -370,6 +481,8 @@ for (const prefix of SKIP_PREFIXES) {
 /** event -> Set of `file:line` */
 const callSites = new Map();
 let unknownMethods = 0;
+/** Every file a declared value could be written in, for the value check. */
+const sources = [];
 
 for (const file of walk(SOURCE_DIR)) {
   const normalized = relative('.', file);
@@ -377,7 +490,9 @@ for (const file of walk(SOURCE_DIR)) {
     continue;
   }
 
-  const text = blankComments(readFileSync(file, 'utf8'));
+  const raw = readFileSync(file, 'utf8');
+  sources.push({ path: normalized, text: raw });
+  const text = blankComments(raw);
   CALL_SITE.lastIndex = 0;
   let match;
   while ((match = CALL_SITE.exec(text)) !== null) {
@@ -532,6 +647,12 @@ for (const { message, sites } of parameterProblems(taxonomy, doc)) {
   fail(message, sites);
 }
 
+// ------------------------------------------- declared values in the code
+
+for (const { message, sites } of valueProblems(taxonomy, sources)) {
+  fail(message, sites);
+}
+
 // ------------------------------------------------------------------- report
 
 console.log(
@@ -540,7 +661,8 @@ console.log(
     `against ${rows.size} registry rows, ` +
     `and ${routedPaths.size} routed paths against ${documentedScreens.size} documented screens, ` +
     `and ${declaredParameters(taxonomy).size} parameters against the Parameter values table ` +
-    `and the custom-dimension list`
+    `and the custom-dimension list, ` +
+    `and every declared value against ${sources.length} source files`
 );
 
 if (failures.length > 0) {
@@ -555,4 +677,6 @@ if (failures.length > 0) {
   process.exit(1);
 }
 
-console.log(`Every analytics call site and parameter is registered in ${DOC}.`);
+console.log(
+  `Every analytics call site and parameter is registered in ${DOC}, and every declared value is written in ${SOURCE_DIR}.`
+);

@@ -212,6 +212,58 @@ describe('categorization.utils', () => {
       expect(result[1].confidence).toBe(0.8);
     });
 
+    // The chip quotes a percentage for `reported` alone, so the mark has to
+    // follow the number the answer carried and never the grade's value.
+    describe('the source of the grade', () => {
+      it('marks an answer that carried its own number as reported', () => {
+        const result = applyCategorizations(
+          txns,
+          [
+            { index: 0, categoryId: 'food_groceries', confidence: 0.65 },
+            { index: 1, categoryId: 'transport', confidence: '0.8' },
+          ],
+          categories
+        );
+        expect(result.map(r => r.categorySource)).toEqual(['reported', 'reported']);
+      });
+
+      it('leaves the default grade unmarked, though it equals a grade a model could report', () => {
+        const result = applyCategorizations(
+          txns,
+          [
+            { index: 0, categoryId: 'food' },
+            { index: 1, categoryId: 'transport', confidence: 'very sure' },
+          ],
+          categories
+        );
+        expect(result.map(r => r.confidence)).toEqual([0.8, 0.8]);
+        expect(result.every(r => !('categorySource' in r))).toBeTrue();
+      });
+
+      it('leaves an answer the catalogue could not place unmarked, whatever number came with it', () => {
+        const result = applyCategorizations(
+          txns,
+          [{ index: 0, categoryId: 'made_up', confidence: 0.99 }],
+          categories
+        );
+        expect('categorySource' in result[0]).toBeFalse();
+        // No entry at all for the second row.
+        expect('categorySource' in result[1]).toBeFalse();
+      });
+
+      it('leaves an answer on the wrong side of a typed row unmarked', () => {
+        const income = categories.find(c => c.type === 'income');
+        if (!income) throw new Error('fixture needs an income category');
+        const result = applyCategorizations(
+          [{ description: 'Milk', amount: 3, date: new Date(), type: 'expense' }],
+          [{ index: 0, categoryId: income.id, confidence: 0.9 }],
+          categories
+        );
+        expect(result[0].confidence).toBe(0.3);
+        expect('categorySource' in result[0]).toBeFalse();
+      });
+    });
+
     it('marks an unmatched index as fallback with 0.3', () => {
       const result = applyCategorizations(
         txns,
@@ -313,6 +365,21 @@ describe('categorization.utils', () => {
         suggestedCategoryId: 'food_groceries',
         confidence: 0.92,
       })).toEqual({ suggestedCategoryId: 'food_groceries', categoryConfidence: 0.92 });
+    });
+
+    it('names the reader of a kept category when the row says which lane read it', () => {
+      expect(gradeCategorySuggestion({ suggestedCategoryId: 'food_groceries', confidence: 0.92, source: 'native' }))
+        .toEqual({ suggestedCategoryId: 'food_groceries', categoryConfidence: 0.92, categorySource: 'device' });
+      expect(gradeCategorySuggestion({ suggestedCategoryId: 'food_groceries', confidence: 0.85, source: 'cloud' }))
+        .toEqual({ suggestedCategoryId: 'food_groceries', categoryConfidence: 0.85, categorySource: 'reader' });
+    });
+
+    it('names no source for a fallback, since nothing named the category the row then shows', () => {
+      expect('categorySource' in gradeCategorySuggestion({ suggestedCategoryId: undefined, confidence: 0.9, source: 'native' }))
+        .toBeFalse();
+      expect('categorySource' in gradeCategorySuggestion(
+        { suggestedCategoryId: undefined, confidence: 0.9, source: 'native', categoryAttempted: false }
+      )).toBeFalse();
     });
 
     it('grades an answer that resolved to nothing for review', () => {

@@ -327,7 +327,7 @@ export class GeminiService extends CloudLLMProviderBase {
         // model's own grade, an absent one is always 0, whatever it said.
         ...(receiptData.date
           ? (dateConfidence !== undefined ? { dateConfidence } : {})
-          : { dateConfidence: 0 }),
+          : { dateConfidence: 0, dateUnread: true as const }),
       }];
     });
   }
@@ -394,7 +394,7 @@ export class GeminiService extends CloudLLMProviderBase {
         // invented here either.
         ...(t.date
           ? (t.dateConfidence !== undefined ? { dateConfidence: t.dateConfidence } : {})
-          : { dateConfidence: 0 }),
+          : { dateConfidence: 0, dateUnread: true as const }),
       }));
     });
   }

@@ -1,6 +1,8 @@
 # 182. A control reads in the account's language and date format, and nothing re-provides Material's adapter or words
 
-**Status:** Accepted, implemented · **Date:** 2026-10-22 · **Issues:** #500
+**Status:** Accepted, implemented; amended by
+[0191](0191-sorts-reminders-the-filter-dates-and-an-open-calendar-follow-the-readers-language-the-taxonomy-declares-only-what-is-sent-and-the-budgets-page-follows-its-tab-while-open.md)
+· **Date:** 2026-10-22 · **Issues:** #500
 
 Reference documentation lives in
 [../locale-formatting.md](../locale-formatting.md), [../dates.md](../dates.md),
@@ -688,10 +690,18 @@ wizard shows its review step only after **続ける** on the processing step
   filters' compact From and To have no subscript room in their grid, so
   unreadable text shows the error outline and no sentence, and a screen
   reader hears no reason.
+  *Closed by
+  [0191](0191-sorts-reminders-the-filter-dates-and-an-open-calendar-follow-the-readers-language-the-taxonomy-declares-only-what-is-sent-and-the-budgets-page-follows-its-tab-while-open.md):
+  each input is described by an off-screen text that says why, once the
+  reader has left the field.*
 - **An open calendar keeps two labels in the language it opened in.**
   Material reads `closeCalendarLabel` and `comparisonDateLabel` once, when
   the calendar opens, so its hidden close button and its comparison label
   change only when it is reopened.
+  *Narrowed by
+  [0191](0191-sorts-reminders-the-filter-dates-and-an-open-calendar-follow-the-readers-language-the-taxonomy-declares-only-what-is-sent-and-the-budgets-page-follows-its-tab-while-open.md):
+  a directive on the calendar writes the new close label into an open one.
+  The comparison label, which nothing in the app reads, stays.*
 - **A switch leaves a stale parse error.** When the language or the format
   changes while a field holds unreadable text, Material reformats the field
   from its model, which is empty, and marks the value valid without
@@ -701,11 +711,22 @@ wizard shows its review step only after **続ける** on the processing step
 - **Two sorts collate without a locale.** The transaction list's
   description sort and the category suggestion list call `localeCompare`
   with no locale, so their order follows the device.
+  *Closed by
+  [0191](0191-sorts-reminders-the-filter-dates-and-an-open-calendar-follow-the-readers-language-the-taxonomy-declares-only-what-is-sent-and-the-budgets-page-follows-its-tab-while-open.md):
+  both collate through `LocaleFormatService.compare`, in the account's
+  locale.*
 - **Reminders keep the language they were booked in.** A bill reminder
   booked while the account was English says English after a switch, until
   it is booked again.
+  *Closed by
+  [0191](0191-sorts-reminders-the-filter-dates-and-an-open-calendar-follow-the-readers-language-the-taxonomy-declares-only-what-is-sent-and-the-budgets-page-follows-its-tab-while-open.md):
+  the device records the language its pending reminders were booked in, and
+  books what is still ahead again when the account's own catalog differs.*
 - **The English sort description reads as a fragment.** *Sort by* is
   announced alone after the column's name.
+  *Closed by
+  [0191](0191-sorts-reminders-the-filter-dates-and-an-open-calendar-follow-the-readers-language-the-taxonomy-declares-only-what-is-sent-and-the-budgets-page-follows-its-tab-while-open.md):
+  the key says a whole sentence in each language.*
 - **A stored `'User'` stays.** Accounts created before this record whose
   sign-in named nobody greet *Welcome back, User* until the name is
   changed.

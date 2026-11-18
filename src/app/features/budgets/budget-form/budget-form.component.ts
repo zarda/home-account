@@ -11,6 +11,7 @@ import { MatButtonModule } from '@angular/material/button';
 import { MatIconModule } from '@angular/material/icon';
 import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
 import { MatDatepicker, MatDatepickerInput, MatDatepickerToggle } from '@angular/material/datepicker';
+import { RelabelOpenCalendarDirective } from '../../../shared/directives/relabel-open-calendar.directive';
 import { MatTooltipModule } from '@angular/material/tooltip';
 
 import { BudgetService } from '../../../core/services/budget.service';
@@ -46,6 +47,7 @@ export interface BudgetFormDialogData {
     MatIconModule,
     MatProgressSpinnerModule,
     MatDatepicker,
+    RelabelOpenCalendarDirective,
     MatDatepickerInput,
     MatDatepickerToggle,
     MatTooltipModule,

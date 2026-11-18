@@ -1409,6 +1409,29 @@ describe('AIStrategyService', () => {
       expect(result.transactions[0].fieldConfidence).toEqual({ amount: 0.42, date: 0.99 });
     });
 
+    it('carries why a grade is the provider\'s own to the form\'s lane', async () => {
+      // The single-receipt lane is the one the transaction form scans
+      // through: a date the answer gave and nothing could parse is graded 0
+      // by the provider, and the form must not quote that as a confidence.
+      cloudMock.parseReceipt.and.resolveTo({
+        ...parsedReceipt,
+        fieldConfidence: { amount: 0.9, date: 0 },
+        fieldDoubt: { date: 'unread' },
+      });
+      const service = createService('web');
+
+      const result = await service.processReceipt(imageFile());
+      expect(result.transactions[0].fieldDoubt).toEqual({ date: 'unread' });
+    });
+
+    it('names no doubt on a receipt whose grades are all the model\'s', async () => {
+      cloudMock.parseReceipt.and.resolveTo({ ...parsedReceipt, fieldConfidence: { amount: 0.42, date: 0.99 } });
+      const service = createService('web');
+
+      const result = await service.processReceipt(imageFile());
+      expect('fieldDoubt' in result.transactions[0]).toBeFalse();
+    });
+
     it('falls back to the account base currency when the model read none', async () => {
       // The provider services used to invent one, and disagreed about which:
       // the same unreadable currency became CNY, JPY or USD depending only on
@@ -1668,6 +1691,7 @@ describe('AIStrategyService', () => {
       // review-flag confidence the same as the plain merge test above; the
       // unparseable date must carry its own 0 right alongside it.
       expect(result.transactions[0].fieldConfidence).toEqual({ amount: REVIEW_AMOUNT_CONFIDENCE, date: 0 });
+      expect(result.transactions[0].fieldDoubt).toEqual({ amount: 'itemSum', date: 'unread' });
     });
 
     it('honors an incoming zero date grade on a consolidated row', async () => {
@@ -1688,6 +1712,8 @@ describe('AIStrategyService', () => {
       // 0 through. The reported receipt total keeps deriveAmount from adding
       // its own review-flag noise to the amount slot.
       expect(result.transactions[0].fieldConfidence).toEqual({ date: 0 });
+      // A 0 that arrived with no mark is taken for the producer's own figure.
+      expect('fieldDoubt' in result.transactions[0]).toBeFalse();
     });
 
     it("carries a cloud-read refund's type grade onto its transaction", async () => {

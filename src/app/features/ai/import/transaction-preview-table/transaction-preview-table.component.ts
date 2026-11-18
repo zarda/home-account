@@ -17,6 +17,7 @@ import { MatIconModule } from '@angular/material/icon';
 import { MatButtonModule } from '@angular/material/button';
 import { MatMenuModule } from '@angular/material/menu';
 import { MatDatepicker, MatDatepickerInput } from '@angular/material/datepicker';
+import { RelabelOpenCalendarDirective } from '../../../../shared/directives/relabel-open-calendar.directive';
 import { MatDialog } from '@angular/material/dialog';
 import { FormsModule } from '@angular/forms';
 import {
@@ -137,6 +138,7 @@ let vocabularyListSeq = 0;
     MatButtonModule,
     MatMenuModule,
     MatDatepicker,
+    RelabelOpenCalendarDirective,
     MatDatepickerInput,
     FormsModule,
     CategorySuggestionComponent,
@@ -384,7 +386,8 @@ export class TransactionPreviewTableComponent implements AfterViewInit {
    * 3. Otherwise the category moves to this side's catch-all, graded as an
    *    answer that resolved to nothing and never above what the row had: a
    *    catch-all nobody categorized stays at its floor, and a hand-added
-   *    row at 0. The row remembers the category and grade it left.
+   *    row at 0. The row remembers the category, the grade and the grade's
+   *    source it left, and holds no source while it sits on the catch-all.
    *
    * Which side an id sits on is `fitsSide`'s, the doors' own grader, so the
    * card cannot disagree with them about it.
@@ -392,12 +395,13 @@ export class TransactionPreviewTableComponent implements AfterViewInit {
   private categoryOnSide(
     row: CategorizedImportTransaction,
     type: CategoryRowType
-  ): Pick<CategorizedImportTransaction, 'suggestedCategoryId' | 'categoryConfidence' | 'movedCategory'> {
+  ): Pick<CategorizedImportTransaction, 'suggestedCategoryId' | 'categoryConfidence' | 'categorySource' | 'movedCategory'> {
     const moved = row.movedCategory;
     if (moved && this.fitsSide(moved.suggestedCategoryId, type)) {
       return {
         suggestedCategoryId: moved.suggestedCategoryId,
         categoryConfidence: moved.categoryConfidence,
+        categorySource: moved.categorySource,
         movedCategory: undefined,
       };
     }
@@ -411,7 +415,16 @@ export class TransactionPreviewTableComponent implements AfterViewInit {
     return {
       suggestedCategoryId: fallbackCategoryFor(type),
       categoryConfidence: Math.min(row.categoryConfidence, UNRESOLVED_CATEGORY_CONFIDENCE),
-      movedCategory: { suggestedCategoryId: row.suggestedCategoryId, categoryConfidence: row.categoryConfidence },
+      // Nothing named the catch-all: the source leaves with the category it
+      // described, and comes back with it on a flip back. Written as
+      // undefined on purpose, since the caller's spread would otherwise keep
+      // the old one over a category it no longer describes.
+      categorySource: undefined,
+      movedCategory: {
+        suggestedCategoryId: row.suggestedCategoryId,
+        categoryConfidence: row.categoryConfidence,
+        ...(row.categorySource ? { categorySource: row.categorySource } : {}),
+      },
     };
   }
 
@@ -486,6 +499,7 @@ export class TransactionPreviewTableComponent implements AfterViewInit {
     this.replaceRow(transaction, {
       suggestedCategoryId: categoryId,
       categoryConfidence: 1.0, // User confirmed
+      categorySource: 'reviewer',
       movedCategory: undefined,
       ...EDITED_ON_CARD,
     });
@@ -965,9 +979,10 @@ export class TransactionPreviewTableComponent implements AfterViewInit {
    * 0162) — and a percentage would report a reading nothing took. A row the
    * device read (`readOnDevice`) grades its amount and date by policy too
    * (the parser's tiers and demotions, the cross-check's 0.5 and 0.8), so
-   * their sentences name the scan, for the same reason. The order is the
-   * point: the type, then an assumed date, then the device, then the
-   * percentage.
+   * their sentences name the scan, for the same reason, and a cloud row
+   * whose grade the app stamped itself (`fieldDoubt`) says why. The order is
+   * the point: the type, then an assumed date, then the device, then the
+   * app's own reason, then the percentage.
    */
   verificationTooltip(
     transaction: CategorizedImportTransaction,
@@ -984,6 +999,7 @@ export class TransactionPreviewTableComponent implements AfterViewInit {
       field,
       !!transaction.readOnDevice,
       transaction.fieldConfidence?.[field],
+      transaction.fieldDoubt,
     );
   }
 

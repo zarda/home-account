@@ -1,4 +1,4 @@
-import { CategorizedImportTransaction, FieldConfidence, gradeNeedsVerification, ImagePositionMetadata, ImportCurrencyTotals, ImportWarning, roundToMinorUnit } from '../../models';
+import { CategorizedImportTransaction, FieldConfidence, FieldDoubt, gradeNeedsVerification, ImagePositionMetadata, ImportCurrencyTotals, ImportWarning, roundToMinorUnit } from '../../models';
 import { dayKey } from './transaction-date.utils';
 import { normalizeTags } from './tag.utils';
 
@@ -334,10 +334,18 @@ export function sumByCurrency(
 
 /**
  * What a flagged amount or date says, on the review card and in the
- * transaction form alike (ADR 0171). A scan read on the device grades both
- * by policy, the parser's tiers and demotions and the cross-check's 0.5 and
- * 0.8, so its doubt names the scan; a cloud reader's doubt quotes the
- * confidence its model reported. What each caller says before or after it
+ * transaction form alike (ADR 0171). The sentence chooses on where the grade
+ * came from and never on its value, and quotes a percentage only where a
+ * model reported one (ADR 0045's rule: a grade names its source).
+ *
+ * A scan read on the device grades both fields by policy, the parser's tiers
+ * and demotions and the cross-check's 0.5 and 0.8, so its doubt names the
+ * scan. A cloud row's grade is its model's own, except the ones the app
+ * stamped itself, which `doubt` names: an amount that is the sum of the
+ * lines read, a printed total far from that sum, a date nothing read. Those
+ * say why, since "only 50% sure" and "only 0% sure" were the app's policy
+ * read back as a confidence. A cloud grade nobody reported reads as the
+ * scan's doubt too, with no figure. What each caller says before or after
  * (the card's assumed date, the form's not-today sentence) stays the
  * caller's.
  */
@@ -346,9 +354,16 @@ export function fieldDoubtSentence(
   field: 'amount' | 'date',
   readOnDevice: boolean,
   confidence: number | undefined,
+  doubt?: FieldDoubt | null,
 ): string {
-  if (readOnDevice) {
+  if (readOnDevice || (confidence === undefined && !doubt?.[field])) {
     return t(field === 'amount' ? 'import.verifyAmountOnDevice' : 'import.verifyDateOnDevice');
+  }
+  if (field === 'amount' && doubt?.amount) {
+    return t(doubt.amount === 'itemSum' ? 'import.verifyAmountItemSum' : 'import.verifyAmountTotalDisagrees');
+  }
+  if (field === 'date' && doubt?.date) {
+    return t('import.verifyDateUnread');
   }
   return t(field === 'amount' ? 'import.verifyAmount' : 'import.verifyDate', {
     percent: Math.round((confidence ?? 0) * 100),

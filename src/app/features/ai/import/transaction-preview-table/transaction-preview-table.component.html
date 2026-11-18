@@ -286,6 +286,7 @@
               <app-category-suggestion
                 [suggestedCategoryId]="row.suggestedCategoryId"
                 [confidence]="row.categoryConfidence"
+                [source]="row.categorySource"
                 [categories]="categories"
                 [rowType]="row.type"
                 (categoryChanged)="updateCategory(row, $event)"

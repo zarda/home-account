@@ -81,7 +81,12 @@ describe('overflow guard: the budgets tab strip', () => {
       providers: [
         {
           provide: ActivatedRoute,
-          useValue: { snapshot: { queryParamMap: convertToParamMap(tab ? { tab } : {}) } },
+          // The tab the strip opens on is the snapshot's; the stream is what
+          // a link followed later would arrive on, and none is followed here.
+          useValue: {
+            snapshot: { queryParamMap: convertToParamMap(tab ? { tab } : {}) },
+            queryParamMap: of(convertToParamMap({})),
+          },
         },
         { provide: BudgetService, useValue: budgetService },
         { provide: CategoryService, useValue: categoryService },

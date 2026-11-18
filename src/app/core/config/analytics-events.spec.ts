@@ -97,6 +97,20 @@ describe('validateAnalyticsParams', () => {
     expect(validateAnalyticsParams('receipt_import', { outcome: 'partially_ok' })).toBeNull();
   });
 
+  it('refuses the two transaction_add values no sender ever produced', () => {
+    // `ai_import` and `mixed` were declared for a wizard send that was never
+    // written; the wizard's confirm reports through receipt_confirm. Held
+    // here because nothing else holds a value: the wrapper's type is string.
+    const sent = {
+      method: 'manual', type: 'expense', has_tags: 'false', has_location: 'false', receipt_image_count: '0',
+    };
+    expect(validateAnalyticsParams('transaction_add', sent)).not.toBeNull();
+    expect(validateAnalyticsParams('transaction_add', { ...sent, method: 'receipt_scan', type: 'income' }))
+      .not.toBeNull();
+    expect(validateAnalyticsParams('transaction_add', { ...sent, method: 'ai_import' })).toBeNull();
+    expect(validateAnalyticsParams('transaction_add', { ...sent, type: 'mixed' })).toBeNull();
+  });
+
   it('accepts a full receipt_import payload and rejects one missing a dimension', () => {
     // Every declared parameter on every branch, or the event is dropped —
     // which is why the service fills 'none' for a branch that never chose an

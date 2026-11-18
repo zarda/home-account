@@ -186,6 +186,9 @@ describe('on-device receipt categories over the live catalog (smoke test)', () =
     expect(gradeCategorySuggestion(transaction)).toEqual({
       suggestedCategoryId: CUSTOM_ID,
       categoryConfidence: ocrResult.confidence,
+      // The grade is how clearly the text was read, so the row says the
+      // device named the category and the chip quotes no percentage.
+      categorySource: 'device',
     });
   });
 
@@ -315,6 +318,9 @@ describe('on-device receipt categories over the live catalog (smoke test)', () =
     expect(gradeCategorySuggestion(transaction, transaction.type, categories)).toEqual({
       suggestedCategoryId: CUSTOM_ID,
       categoryConfidence: ocrResult.confidence,
+      // The grade is how clearly the text was read, so the row says the
+      // device named the category and the chip quotes no percentage.
+      categorySource: 'device',
     });
   });
 

@@ -2301,6 +2301,71 @@ describe('TransactionFormComponent', () => {
       expect(translation.t.calls.mostRecent().args).toEqual(['import.verifyAmount', { percent: 40 }]);
     });
 
+    it('scanReceipt says a cloud date nothing could read is today\'s, and quotes no percentage', async () => {
+      // The provider grades a date it could not parse 0 and dates the form
+      // today. "The AI was only 0% sure" was a confidence in a date nothing
+      // read; the grade still flags the field, and the sentence says why.
+      strategy.processReceipt.and.resolveTo(scanResult({
+        fieldConfidence: { amount: 0.9, date: 0 }, fieldDoubt: { date: 'unread' }, date: new Date(),
+      }));
+      const component = build().componentInstance;
+      await (component as unknown as { scanReceipt: (f: File) => Promise<void> }).scanReceipt(receiptFile());
+      translation.t.calls.reset();
+
+      expect(component.verifyFieldTooltip('date')).toBe('import.verifyDateUnread');
+      expect(translation.t.calls.allArgs()).toEqual([['import.verifyDateUnread']]);
+    });
+
+    it('scanReceipt keeps the percentage a cloud reader reported for a date it gave', async () => {
+      // A pin. Mutation: read the doubt for every cloud date under the bar.
+      strategy.processReceipt.and.resolveTo(scanResult({ fieldConfidence: { date: 0.4 }, date: new Date() }));
+      const component = build().componentInstance;
+      await (component as unknown as { scanReceipt: (f: File) => Promise<void> }).scanReceipt(receiptFile());
+      translation.t.calls.reset();
+
+      expect(component.verifyFieldTooltip('date')).toBe('import.verifyDate');
+      expect(translation.t.calls.mostRecent().args).toEqual(['import.verifyDate', { percent: 40 }]);
+    });
+
+    it('scanReceipt names why a consolidated cloud amount is doubted', async () => {
+      strategy.processReceipt.and.resolveTo(scanResult({
+        fieldConfidence: { amount: 0.5 }, fieldDoubt: { amount: 'itemSum' }, date: new Date(),
+      }));
+      const component = build().componentInstance;
+      await (component as unknown as { scanReceipt: (f: File) => Promise<void> }).scanReceipt(receiptFile());
+
+      expect(component.verifyFieldTooltip('amount')).toBe('import.verifyAmountItemSum');
+    });
+
+    it('scanReceipt takes the doubt of each scan afresh, and a failed scan leaves none', async () => {
+      // A pin. Mutation: set the doubt on one scan and never reset it.
+      strategy.processReceipt.and.resolveTo(scanResult({
+        fieldConfidence: { date: 0 }, fieldDoubt: { date: 'unread' }, date: new Date(),
+      }));
+      const component = build().componentInstance;
+      const scan = (file: File) =>
+        (component as unknown as { scanReceipt: (f: File) => Promise<void> }).scanReceipt(file);
+      await scan(receiptFile());
+      expect(component.scanFieldDoubt()).toEqual({ date: 'unread' });
+
+      strategy.processReceipt.and.resolveTo(scanResult({ fieldConfidence: { date: 0.4 }, date: new Date() }));
+      await scan(receiptFile());
+      expect(component.scanFieldDoubt()).toBeNull();
+      expect(component.verifyFieldTooltip('date')).toBe('import.verifyDate');
+
+      strategy.processReceipt.and.resolveTo(scanResult({
+        fieldConfidence: { date: 0 }, fieldDoubt: { date: 'unread' }, date: new Date(),
+      }));
+      await scan(receiptFile());
+      // The failure is this case's own doing; its report stays off the
+      // suite's console, whose floor counts every such line.
+      const reported = spyOn(console, 'error');
+      strategy.processReceipt.and.rejectWith(new Error('scan failed'));
+      await scan(receiptFile());
+      expect(component.scanFieldDoubt()).toBeNull();
+      expect(reported).toHaveBeenCalledTimes(1);
+    });
+
     it('scanReceipt takes the reader of each scan afresh, so a cloud scan after a device one quotes its percentage', async () => {
       // A pin. Mutation: set the device mark on a device scan and never reset
       // it on the next one.

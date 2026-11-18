@@ -78,19 +78,23 @@ reaches it.
 Two gates cover the two halves.
 
 **`npm run material:check`** (`scripts/check-material-imports.mjs`, a CI step
-after *Check direction*) holds two rules. The first parses each
+after *Check direction*) holds three rules. The first parses each
 `@Component`'s `imports:` array and the template it declares, and fails when
 a listed Material module contributes no selector that template uses. The
-second is about one select's empty option (below). What the first proves is
-bounded on purpose:
+second is about one select's empty option (below). The third fails a
+component whose template declares a `<mat-datepicker>` without
+`RelabelOpenCalendarDirective` in its `imports`, since a calendar open across
+a change of language would keep its close button's old words and nothing else
+would say so ([locale-formatting.md](locale-formatting.md#what-a-datepicker-shows-and-reads),
+[ADR 0191](ADR/0191-sorts-reminders-the-filter-dates-and-an-open-calendar-follow-the-readers-language-the-taxonomy-declares-only-what-is-sent-and-the-budgets-page-follows-its-tab-while-open.md)). What the first proves is bounded on purpose:
 
 - A table maps **28 Material modules** to their full transitively-exported
   selector sets, spelled as the installed `@angular/material` spells them.
   `--self-test` asserts every string in it against the selectors the
   installed package actually declares, plus the three re-export edges it
-  leans on (List → Divider, Input → FormField, Select → Option); its 64
-  cases cover the second rule's fixtures too, so it prints
-  `check-material-imports self-test: 64 passed`. A Material upgrade that
+  leans on (List → Divider, Input → FormField, Select → Option); its 70
+  cases cover the second and third rules' fixtures too, so it prints
+  `check-material-imports self-test: 70 passed`. A Material upgrade that
   renames a selector fails the self-test, where the fix is the table — not
   the app, where the fix would look like deleting a live import.
 - Matching is lenient in every direction but one: an attribute selector
@@ -231,11 +235,33 @@ accepted and has not been measured.
 
 | | Warning | Error |
 |---|---|---|
-| Initial bundle | 2.422 MB | 2.7 MB |
+| Initial bundle | 2.425 MB | 2.7 MB |
 
-Against 2,421,291 bytes (JavaScript 2,389,924, stylesheet 31,367, in 63
+Against 2,424,293 bytes (JavaScript 2,392,926, stylesheet 31,367, in 63
 initial files), measured by `npm run build:analyze` from a production build
-of `26.11.184` on 2026-11-15.
+of `26.11.185` on 2026-11-17.
+
+The warning went up, to 2.425 MB, when the work of #535, #505, #517 and the
+last cheap gap of #446
+([ADR 0190](ADR/0190-a-review-sentence-names-where-its-grade-came-from-and-quotes-a-percentage-only-where-a-model-reported-one.md):
+a review sentence that names where its grade came from; and
+[ADR 0191](ADR/0191-sorts-reminders-the-filter-dates-and-an-open-calendar-follow-the-readers-language-the-taxonomy-declares-only-what-is-sent-and-the-budgets-page-follows-its-tab-while-open.md):
+sorts, reminders, the filter dates and an open calendar in the reader's
+language, and a budgets page that follows its tab while open) put the
+initial bundle at 2,424,293 bytes, 2,293 over the 2.422 MB it stood at. All
+3,002 bytes of the growth are JavaScript, in code the first page already
+holds: the reminder service's record of the language its reminders were
+booked in and the sweep that books them again; the transaction form's
+doubt sentence and the scan state behind it; the marks consolidation, the
+cloud readers, the import service, the categorization helpers and the import
+strategy stamp beside the grades they set; the
+directive that relabels an open calendar, which the form imports; and the
+collator beside the formatters. The budgets page, the review card, the
+category chip and the filters are lazy and are not in the figure. The
+stylesheet did not move. The warning moved to the whole kilobyte above the
+figure and no more, which leaves 707 bytes of headroom (2,425,000 less
+2,424,293). Before it, `26.11.184` read 2,421,291 bytes (JavaScript
+2,389,924, stylesheet 31,367, in 63 initial files) on 2026-11-15.
 
 The warning went up, to 2.422 MB, when the work of #524, #525, #526 and #529
 ([ADR 0189](ADR/0189-a-price-is-no-part-of-a-date-a-total-with-no-currency-mark-is-read-on-a-sum-a-reading-past-an-aside-asks-its-type-and-a-receipt-that-prints-a-code-and-no-sign-disputes-the-model.md):

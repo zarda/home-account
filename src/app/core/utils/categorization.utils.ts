@@ -145,6 +145,11 @@ interface CategorizationEntry {
  *   answer, so an ID landing there anyway is not a real resolution
  * - valid ID with a numeric confidence -> that value clamped to [0, 1]
  * - valid ID without a usable confidence -> 0.8
+ *
+ * Only the fourth is a figure the model reported about the category, and
+ * only it is marked `categorySource: 'reported'`: the 0.8 default and the
+ * 0.3 fallbacks are this function's, and 0.8 is a number a model could have
+ * said, so the mark is the one thing that tells them apart afterwards.
  */
 export function applyCategorizations(
   transactions: RawTransaction[],
@@ -168,12 +173,17 @@ export function applyCategorizations(
     const isValidId = categoryId === match.categoryId;
     const resolvedCategory = isValidId ? categories.find(c => c.id === categoryId) : undefined;
     const fitsType = !t.type || !resolvedCategory || categoryFitsType(resolvedCategory, t.type);
+    const placed = isValidId && fitsType;
+    // NaN is the fallback nothing reports: the same reading normalizeConfidence
+    // makes, asked first so the answer's own number can be told from the default.
+    const reported = placed && Number.isFinite(normalizeConfidence(match.confidence, NaN));
     return {
       ...t,
       suggestedCategoryId: fitsType ? categoryId : fallbackCategoryFor(t.type),
-      confidence: isValidId && fitsType
+      confidence: placed
         ? normalizeConfidence(match.confidence, 0.8)
         : UNRESOLVED_CATEGORY_CONFIDENCE,
+      ...(reported ? { categorySource: 'reported' as const } : {}),
     };
   });
 }
@@ -194,7 +204,8 @@ export function applyCategorizations(
  * Three cases, because "nobody answered" and "the answer meant nothing" are
  * not the same claim: a resolved category keeps the extraction's own
  * confidence, an answer that resolved to nothing earns the review grade, and
- * a row no categorizer ever looked at earns the floor.
+ * a row no categorizer ever looked at earns the floor. Only the first names a
+ * source, and only for a caller whose row says which lane read it.
  *
  * A caller that knows the row's side passes it, with the catalog, and the row
  * is then filed only under that side: a named id the catalog holds on the
@@ -220,16 +231,22 @@ export function applyCategorizations(
  * handed.
  */
 export function gradeCategorySuggestion(
-  row: Pick<ProcessedTransaction, 'suggestedCategoryId' | 'confidence' | 'categoryAttempted'>,
+  row: Pick<ProcessedTransaction, 'suggestedCategoryId' | 'confidence' | 'categoryAttempted'>
+    & Partial<Pick<ProcessedTransaction, 'source'>>,
   type?: CategoryRowType,
   categories: readonly Category[] = []
-): Pick<CategorizedImportTransaction, 'suggestedCategoryId' | 'categoryConfidence'> {
+): Pick<CategorizedImportTransaction, 'suggestedCategoryId' | 'categoryConfidence' | 'categorySource'> {
   const named = row.suggestedCategoryId;
   const category = named && type ? categories.find(c => c.id === named) : undefined;
   if (named && (!type || !category || categoryFitsType(category, type))) {
     return {
       suggestedCategoryId: named,
       categoryConfidence: row.confidence,
+      // The kept grade is the row's own `confidence`, which on no lane
+      // measures the category: the device's is how clearly the text was
+      // read, a cloud reader's a coarse score of the whole answer. The
+      // source says whose it is, where the caller's row says which lane.
+      ...(row.source ? { categorySource: row.source === 'native' ? 'device' as const : 'reader' as const } : {}),
     };
   }
 

@@ -63,6 +63,7 @@ export class LocaleFormatService {
   private unitFormatters = new Map<string, Intl.NumberFormat>();
   private timeFormatters = new Map<string, Intl.DateTimeFormat>();
   private fieldOrders = new Map<string, DateFieldOrder>();
+  private collators = new Map<string, Intl.Collator>();
 
   /**
    * The BCP 47 tag the active language maps to.
@@ -77,6 +78,24 @@ export class LocaleFormatService {
     return typeof resolve === 'function'
       ? resolve.call(this.translationService)
       : DEFAULT_INTL_LOCALE;
+  }
+
+  /**
+   * Orders two pieces of text as the account's language orders them: a sort
+   * comparator, negative when `a` comes first. A bare `localeCompare` orders
+   * by the device's language instead, so a list the account reads in
+   * Japanese on an English phone was sorted as English sorts it. Reads the
+   * locale, so a computed that sorts with it re-sorts on a switch of
+   * language.
+   */
+  compare(a: string, b: string): number {
+    const locale = this.locale;
+    let collator = this.collators.get(locale);
+    if (!collator) {
+      collator = new Intl.Collator(locale);
+      this.collators.set(locale, collator);
+    }
+    return collator.compare(a, b);
   }
 
   /**

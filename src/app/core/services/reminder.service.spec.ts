@@ -9,6 +9,7 @@ import { Subject, of } from 'rxjs';
 import {
   ReminderService,
   clearReminderDeviceState,
+  reminderLanguageStorageKey,
   reminderSentStorageKey,
 } from './reminder.service';
 import { AuthService } from './auth.service';
@@ -1533,6 +1534,193 @@ describe('ReminderService', () => {
       await expectAsync(sweep()).toBeResolved();
 
       expect(service.plugin.schedule).not.toHaveBeenCalled();
+    });
+  });
+
+  // A reminder is booked with the words of the moment, and its key does not
+  // name the language, so one booked in English stayed English after the
+  // account turned to Japanese, until the day it fired (#505).
+  describe('a change of the account\'s language', () => {
+    let locale: ReturnType<typeof signal<string>>;
+    let version: ReturnType<typeof signal<number>>;
+
+    /** The catalog `locale` has loaded: the words change, then the two signals, as the service sets them. */
+    function load(next: string): void {
+      translation.t.and.callFake((key: string) => `${next}:${key}`);
+      version.update(v => v + 1);
+      locale.set(next);
+    }
+
+    function bookedLanguage(): string | null {
+      return localStorage.getItem(reminderLanguageStorageKey(USER_ID));
+    }
+
+    const bodies = (service: TestReminderService) =>
+      service.plugin.schedule.calls.allArgs().map(([request]) => request.notifications.map(n => n.body));
+
+    beforeEach(() => {
+      isNative.and.returnValue(true);
+      locale = signal('en');
+      version = signal(1);
+      Object.assign(translation, { currentLocale: locale, translationsVersion: version });
+      translation.t.and.callFake((key: string) => `en:${key}`);
+      localStorage.removeItem(reminderLanguageStorageKey(USER_ID));
+      setPreferences({ enableReminders: true, language: 'en' });
+      occurrences = [occurrence({ date: daysOut(10), remindDaysBefore: 3 })];
+    });
+
+    afterEach(() => localStorage.removeItem(reminderLanguageStorageKey(USER_ID)));
+
+    it('books a reminder again, under the same id, in the language the account turned to', async () => {
+      const service = createService();
+      await sweep();
+      const [first] = service.plugin.schedule.calls.mostRecent().args;
+      expect(first.notifications[0].body).toBe('en:reminders.billDueIn');
+      expect(bookedLanguage()).toBe('en');
+
+      setPreferences({ enableReminders: true, language: 'ja' });
+      load('ja');
+      await sweep();
+
+      const [second] = service.plugin.schedule.calls.mostRecent().args;
+      expect(second.notifications.map(n => [n.id, n.title, n.body])).toEqual([
+        [first.notifications[0].id, 'ja:app.title', 'ja:reminders.billDueIn'],
+      ]);
+      expect(second.notifications[0].schedule?.at).toEqual(first.notifications[0].schedule?.at);
+      expect(service.plugin.cancel).withContext('replaced by its id, never cancelled').not.toHaveBeenCalled();
+      expect(bookedLanguage()).toBe('ja');
+    });
+
+    it('books the Monday nudge again with it', async () => {
+      setPreferences({ enableReminders: true, enableWeeklyRecap: true, language: 'en' });
+      const service = createService();
+      await sweep();
+
+      setPreferences({ enableReminders: true, enableWeeklyRecap: true, language: 'ja' });
+      load('ja');
+      await sweep();
+
+      const [request] = service.plugin.schedule.calls.mostRecent().args;
+      expect(request.notifications.map(n => n.body).sort())
+        .toEqual(['ja:reminders.billDueIn', 'ja:reminders.recapReady']);
+    });
+
+    it('raises nothing a second time: a bill due today and a budget alert already shown stay shown once', async () => {
+      // Neither has a moment ahead of it to be booked for; raising them again
+      // would be a second notification, not a translated one.
+      occurrences = [occurrence({ date: daysOut(0), remindDaysBefore: 0 })];
+      budgetAlerts.set([alert()]);
+      const service = createService();
+      await sweep();
+      const before = service.plugin.schedule.calls.count();
+      expect(before).withContext('precondition: both were raised').toBeGreaterThan(0);
+
+      setPreferences({ enableReminders: true, language: 'ja' });
+      load('ja');
+      await sweep();
+
+      expect(service.plugin.schedule.calls.count()).toBe(before);
+    });
+
+    it('books nothing again on a start in the language the reminders were booked in', async () => {
+      // A second session on the same device finds the sent log and the
+      // booked language the first one left.
+      const first = createService();
+      await sweep();
+      expect(first.plugin.schedule).toHaveBeenCalledTimes(1);
+
+      const second = createService();
+      await sweep();
+
+      expect(second.plugin.schedule).not.toHaveBeenCalled();
+      expect(bookedLanguage()).toBe('en');
+    });
+
+    it('waits for the account\'s own catalog: the device\'s language at start is no change of language', async () => {
+      // A phone set to English, an account that reads Japanese. Every cold
+      // start loads the device's catalog first and the account's second.
+      localStorage.setItem(reminderLanguageStorageKey(USER_ID), 'ja');
+      setPreferences({ enableReminders: true, language: 'ja' });
+      const service = createService();
+      await sweep();
+      const booked = service.plugin.schedule.calls.count();
+      expect(bodies(service).flat()).withContext('the first booking, in the words then loaded')
+        .toEqual(['en:reminders.billDueIn']);
+      expect(bookedLanguage()).withContext('a future booking records the language it was made in').toBe('en');
+
+      load('ja');
+      await sweep();
+
+      expect(service.plugin.schedule.calls.count()).toBe(booked + 1);
+      expect(bodies(service).at(-1)).toEqual(['ja:reminders.billDueIn']);
+      expect(bookedLanguage()).toBe('ja');
+    });
+
+    it('books nothing again while the catalog in use is not the account\'s', async () => {
+      // Pin. Mutation: re-book whenever the stored language differs.
+      const service = createService();
+      await sweep();
+      localStorage.setItem(reminderLanguageStorageKey(USER_ID), 'ja');
+      setPreferences({ enableReminders: true, language: 'ja' });
+      const before = service.plugin.schedule.calls.count();
+
+      jasmine.clock().tick(5 * 60_000 + 1);
+      document.dispatchEvent(new Event('visibilitychange'));
+      await sweep();
+
+      expect(service.plugin.schedule.calls.count()).toBe(before);
+    });
+
+    it('books nothing on the web, where nothing is booked ahead', async () => {
+      isNative.and.returnValue(false);
+      const service = createService();
+      await sweep();
+
+      setPreferences({ enableReminders: true, language: 'ja' });
+      load('ja');
+      await sweep();
+
+      expect(service.plugin.schedule).not.toHaveBeenCalled();
+      expect(service.webNotifications).toEqual([]);
+      expect(bookedLanguage()).toBeNull();
+    });
+
+    it('keeps the old language on record when the operating system refuses the booking, so the next sweep tries again', async () => {
+      const service = createService();
+      await sweep();
+      service.plugin.schedule.and.rejectWith(new Error('refused'));
+
+      setPreferences({ enableReminders: true, language: 'ja' });
+      load('ja');
+      await sweep();
+      expect(bookedLanguage()).toBe('en');
+
+      service.plugin.schedule.and.resolveTo({ notifications: [] });
+      jasmine.clock().tick(5 * 60_000 + 1);
+      document.dispatchEvent(new Event('visibilitychange'));
+      await sweep();
+
+      expect(bodies(service).at(-1)).toEqual(['ja:reminders.billDueIn']);
+      expect(bookedLanguage()).toBe('ja');
+    });
+
+    it('forgets the booked language with the rest of the device\'s record', () => {
+      localStorage.setItem(reminderLanguageStorageKey(USER_ID), 'ja');
+
+      clearReminderDeviceState(USER_ID);
+
+      expect(bookedLanguage()).toBeNull();
+    });
+
+    it('leaves a service whose translations name no language as it was', async () => {
+      // Plenty of specs stub the translation service with `t` alone.
+      Object.assign(translation, { currentLocale: undefined, translationsVersion: undefined });
+      const service = createService();
+
+      await sweep();
+
+      expect(service.plugin.schedule).toHaveBeenCalledTimes(1);
+      expect(bookedLanguage()).toBeNull();
     });
   });
 

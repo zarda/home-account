@@ -18,7 +18,7 @@ import { IMAGE_FILE_EXTENSIONS } from '../utils/file.utils';
 import { OfflineQueueService } from './offline-queue.service';
 import { PwaService } from './pwa.service';
 import { consolidateReceiptItems } from '../utils/receipt-consolidation';
-import { extractedFieldConfidence, readCurrencyCode, readTransactionType } from '../utils/receipt-extraction.utils';
+import { extractedFieldConfidence, fieldDoubtSlot, readCurrencyCode, readTransactionType } from '../utils/receipt-extraction.utils';
 import { localeRegion, suggestCurrency } from '../utils/currency-suggestion.utils';
 import { CurrencyChoiceSessionService } from './currency-choice-session.service';
 import {
@@ -499,8 +499,10 @@ export class AIImportService {
         notes: tx.notes,
         fieldConfidence: tx.fieldConfidence,
         // Whose grades those are: the device's are its policy, a cloud
-        // reader's the confidence its model reported.
+        // reader's the confidence its model reported, except the ones the
+        // app stamped on a cloud row itself, which `fieldDoubt` names.
         ...(tx.source === 'native' ? { readOnDevice: true as const } : {}),
+        ...(tx.fieldDoubt ? { fieldDoubt: tx.fieldDoubt } : {}),
         ...(imageMetadata ? { imageMetadata } : {}),
         ...(tx.tags?.length ? { tags: tx.tags } : {}),
         ...(tx.location ? { location: tx.location } : {}),
@@ -743,9 +745,16 @@ export class AIImportService {
       }
     }
 
+    // The source is written over whatever the row held: `t` here is the
+    // floor, or a provider answer for a row memory was never asked about.
     return categorized.map((t, index) =>
       remembered[index]
-        ? { ...t, suggestedCategoryId: remembered[index], confidence: CATEGORY_MEMORY_CONFIDENCE }
+        ? {
+            ...t,
+            suggestedCategoryId: remembered[index],
+            confidence: CATEGORY_MEMORY_CONFIDENCE,
+            categorySource: 'memory' as const,
+          }
         : t
     );
   }
@@ -805,7 +814,7 @@ export class AIImportService {
     const categorizedByAI: CategorizedTransaction[] = rawTransactions.map((raw, index) => {
       const categoryId = named[index];
       return categoryId
-        ? { ...raw, suggestedCategoryId: categoryId, confidence: EXTRACTION_CATEGORY_GRADE }
+        ? { ...raw, suggestedCategoryId: categoryId, confidence: EXTRACTION_CATEGORY_GRADE, categorySource: 'reader' as const }
         : ladderResults[ladderPosition++];
     });
 
@@ -825,8 +834,10 @@ export class AIImportService {
         type: original.type,
         suggestedCategoryId: t.suggestedCategoryId,
         categoryConfidence: t.confidence,
+        ...(t.categorySource ? { categorySource: t.categorySource } : {}),
         notes: this.formatItemNotes(original.details),
         fieldConfidence: extractedFieldConfidence(original, resolved.dateConfidence),
+        ...fieldDoubtSlot(original),
         isDuplicate: false,
         selected: true,
         imageMetadata: {
@@ -1163,6 +1174,8 @@ export class AIImportService {
         if (categoryId) {
           categorized[index].suggestedCategoryId = categoryId;
           categorized[index].categoryConfidence = EXACT_CATEGORY_GRADE;
+          // Over the source categorizeTransactions left for the cell's name.
+          categorized[index].categorySource = 'file';
         }
       });
 
@@ -1187,6 +1200,13 @@ export class AIImportService {
         const index = unresolvedIndexes[position];
         categorized[index].suggestedCategoryId = row.suggestedCategoryId;
         categorized[index].categoryConfidence = row.confidence;
+        // The ladder's answer replaces the row's, its source with it: a
+        // floor names none, and must not keep the one the row arrived with.
+        if (row.categorySource) {
+          categorized[index].categorySource = row.categorySource;
+        } else {
+          delete categorized[index].categorySource;
+        }
       });
 
       const suggested = await this.suggestTagsFor(categorized, history);
@@ -1307,7 +1327,7 @@ export class AIImportService {
     categoryId: string | undefined,
     type: CategoryRowType,
     categories: Category[]
-  ): Pick<CategorizedImportTransaction, 'suggestedCategoryId' | 'categoryConfidence'> {
+  ): Pick<CategorizedImportTransaction, 'suggestedCategoryId' | 'categoryConfidence' | 'categorySource'> {
     const catchAll = { suggestedCategoryId: fallbackCategoryFor(type), categoryConfidence: UNRESOLVED_CATEGORY_CONFIDENCE };
     if (!categoryId) return catchAll;
     if (categories.length === 0) {
@@ -1317,7 +1337,7 @@ export class AIImportService {
     const held = resolveCategoryId(categoryId, categories, '');
     const category = held ? categories.find(c => c.id === held) : undefined;
     return category && categoryFitsType(category, type)
-      ? { suggestedCategoryId: category.id, categoryConfidence: 1.0 }
+      ? { suggestedCategoryId: category.id, categoryConfidence: 1.0, categorySource: 'backup' }
       : catchAll;
   }
 
@@ -1405,11 +1425,13 @@ export class AIImportService {
         // row is flagged instead of wearing the high chip it never earned.
         // (ADR 0045)
         categoryConfidence: named ? EXTRACTION_CATEGORY_GRADE : UNRESOLVED_CATEGORY_CONFIDENCE,
+        ...(named ? { categorySource: 'reader' as const } : {}),
         // A row that carries its own note (a CSV's Note column) keeps it
         // verbatim; formatItemNotes is for receipt item lists and splits
         // plain commas into newlines.
         notes: t.note ?? this.formatItemNotes(t.details),
         fieldConfidence: extractedFieldConfidence(t, resolved.dateConfidence),
+        ...fieldDoubtSlot(t),
         isDuplicate: false,
         selected: true,
         ...(t.merchant ? { merchant: t.merchant } : {}),

@@ -2502,6 +2502,84 @@ describe('TransactionFiltersComponent', () => {
       expect(emitted.calls.mostRecent().args[0]?.startDate).withContext('the start date').toEqual(new Date(2026, 7, 19));
     }));
 
+    // The compact grid hides Material's subscript, so text that is no date
+    // showed the error outline and said nothing to a screen reader (#505).
+    describe('text that is no date', () => {
+      const describedBy = (input: HTMLInputElement): string =>
+        (input.getAttribute('aria-describedby') ?? '')
+          .split(/\s+/)
+          .filter(Boolean)
+          .map(id => document.getElementById(id)?.textContent?.trim() ?? '')
+          .join(' ')
+          .trim();
+      const type = (input: HTMLInputElement, text: string, leave = true): void => {
+        input.value = text;
+        input.dispatchEvent(new Event('input'));
+        if (leave) input.dispatchEvent(new Event('blur'));
+        fixture.detectChanges();
+        tick();
+        fixture.detectChanges();
+      };
+      const reason = () => TestBed.inject(TranslationService).t('datepicker.dateInvalid');
+
+      it('describes From by why it is refused, once the reader leaves the field', fakeAsync(() => {
+        render();
+        const [from] = dateInputs();
+        expect(describedBy(from)).withContext('a date that reads').toBe('');
+
+        type(from, 'next tuesday');
+
+        expect(describedBy(from)).toBe(reason());
+      }));
+
+      it('describes To the same way, by a text of its own', fakeAsync(() => {
+        render();
+        const [from, to] = dateInputs();
+
+        type(to, '31/31/2026');
+
+        expect(describedBy(to)).toBe(reason());
+        expect(describedBy(from)).withContext('From is not what was refused').toBe('');
+        expect(to.getAttribute('aria-describedby')).not.toBe(from.getAttribute('aria-describedby'));
+      }));
+
+      it('says nothing while the reader is still typing, as the outline does not show yet', fakeAsync(() => {
+        // Pin. Mutation: drop the touched test. Every first keystroke of a
+        // date is text that is no date.
+        render();
+        const [from] = dateInputs();
+        from.dispatchEvent(new Event('focus'));
+
+        type(from, '1', false);
+
+        expect(describedBy(from)).toBe('');
+      }));
+
+      it('takes the reason away once the text is a date again', fakeAsync(() => {
+        render();
+        const [from] = dateInputs();
+        type(from, 'next tuesday');
+        expect(describedBy(from)).withContext('precondition').toBe(reason());
+
+        type(from, '10/13/2026');
+
+        expect(describedBy(from)).toBe('');
+      }));
+
+      it('keeps the reason off the screen and in the accessibility tree', fakeAsync(() => {
+        render();
+        const [from] = dateInputs();
+        type(from, 'next tuesday');
+        const text = document.getElementById(from.getAttribute('aria-describedby')!.split(/\s+/)[0])!;
+        const style = getComputedStyle(text);
+
+        expect(style.display).not.toBe('none');
+        expect(style.visibility).toBe('visible');
+        expect(text.getBoundingClientRect().width).toBeLessThanOrEqual(1);
+        expect(text.getAttribute('aria-live')).toBe('polite');
+      }));
+    });
+
     // The dates are what each rendering shows; the widths are pins. Bites
     // when the track's floor drops to calc(56px + 9ch): every rendering
     // then overflows its input.

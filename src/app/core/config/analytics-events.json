@@ -2,8 +2,8 @@
   "transaction_add": {
     "since": "1.16.91",
     "params": {
-      "method": ["manual", "receipt_scan", "ai_import"],
-      "type": ["income", "expense", "mixed"],
+      "method": ["manual", "receipt_scan"],
+      "type": ["income", "expense"],
       "has_tags": ["true", "false"],
       "has_location": ["true", "false"],
       "receipt_image_count": ["0", "1", "2", "3", "4", "5"]

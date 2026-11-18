@@ -279,6 +279,10 @@ narrative is bounded by its key.
   a sweep needs the app to have been opened. Two weeks away from the app means
   no Monday notification about either.
 - **Two devices nudge twice**, and each keeps its own dismissal.
+- **A nudge booked in one language is booked again in the next** once the
+  account's own catalog differs from the language the device recorded, as a
+  bill reminder is ([reminders.md](reminders.md#a-change-of-the-accounts-language)).
+  A switch made on another device reaches this one at its next start.
 - **A Monday-morning dismissal before nine cancels that day's nudge.** The new
   week's card is dismissible the moment it appears, and a dismissed week is
   not announced; closing the card runs a sweep, which retires the one already

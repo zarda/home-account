@@ -428,6 +428,21 @@ describe('toCreateTransactionDTO and the review flags', () => {
     );
     expect('readOnDevice' in dto).toBeFalse();
   });
+
+  it('never forwards where a grade came from — categorySource and fieldDoubt are review-step marks', () => {
+    // A pin. Mutation: add either to ImportRowFields and copy it across.
+    const dto = toCreateTransactionDTO(
+      {
+        amount: 5,
+        date: new Date(2026, 0, 1),
+        categorySource: 'memory',
+        fieldDoubt: { amount: 'itemSum', date: 'unread' },
+      } as never,
+      'USD'
+    );
+    expect('categorySource' in dto).toBeFalse();
+    expect('fieldDoubt' in dto).toBeFalse();
+  });
 });
 
 describe('readTransactionSnapshot', () => {

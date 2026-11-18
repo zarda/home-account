@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 /**
- * Two rules over Material usage, the second written at the end of this
- * header.
+ * Three rules over Material usage, the second and third written at the end
+ * of this header.
  *
  * Fails when a component's `imports: [...]` names a Material NgModule whose
  * template uses none of that module's selectors.
@@ -93,6 +93,20 @@
  *     `null` and `undefined` and nothing else; no template spells an empty
  *     option any other way today.
  *   - An inline `template:` in a .ts file. None holds a select today.
+ *
+ * The third rule: a component whose template declares a `<mat-datepicker>`
+ * lists `RelabelOpenCalendarDirective` in its `imports`. Material (22.1.4)
+ * copies the calendar's close label once, when the calendar opens, and
+ * listens to nothing afterwards, so a calendar open across a change of
+ * language keeps the old one; the directive, whose selector is
+ * `mat-datepicker`, rewrites it. A standalone directive matches only in a
+ * component that imports it, and one that does not fails in silence: the
+ * calendar works and only its hidden close button is in the wrong language.
+ * Angular's NG8113 sees the opposite mistake, the directive imported by a
+ * template with no calendar.
+ *
+ * What the third rule cannot see: a calendar created in code, or declared in
+ * a template another component projects. There is none today.
  */
 
 import { readFileSync, readdirSync, statSync } from 'node:fs';
@@ -348,10 +362,12 @@ function readComponents(source) {
     decorator.lastIndex = open + 1;
 
     const modules = [];
+    let relabelsCalendar = false;
     const importsAt = topLevelKey(object, 'imports');
     if (importsAt !== -1) {
       const array = balanced(object, importsAt);
       if (array !== null) {
+        relabelsCalendar = /\bRelabelOpenCalendarDirective\b/.test(array);
         const name = /\bMat[A-Za-z0-9]*Module\b/g;
         let entry;
         while ((entry = name.exec(array)) !== null) {
@@ -364,6 +380,7 @@ function readComponents(source) {
     const inlineAt = topLevelKey(object, 'template');
     blocks.push({
       modules,
+      relabelsCalendar,
       templateUrl: urlAt === -1 ? null : stringAt(object, urlAt),
       template: inlineAt === -1 ? null : stringAt(object, inlineAt)
     });
@@ -399,6 +416,16 @@ function selectorUsed(selector, template) {
   }
   const tag = selector.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
   return new RegExp(`<\\s*${tag}(?![\\w-])`).test(template);
+}
+
+/**
+ * Whether a component declares a calendar its imports do not relabel: its
+ * template holds a `<mat-datepicker` element (the toggle and the input's
+ * attribute are other selectors) and `RelabelOpenCalendarDirective` is not
+ * in its `imports`.
+ */
+function declaresUnrelabelledCalendar(block, template) {
+  return selectorUsed('mat-datepicker', maskHtmlComments(template)) && !block.relabelsCalendar;
 }
 
 function moduleUsed(module, template) {
@@ -502,6 +529,8 @@ function run() {
   const untabled = new Map();
   const unparsed = [];
   const nullSelects = [];
+  const unrelabelled = [];
+  let calendarHosts = 0;
   let components = 0;
   let entries = 0;
   let templateless = 0;
@@ -525,6 +554,8 @@ function run() {
         templateless++;
         continue;
       }
+      if (selectorUsed('mat-datepicker', maskHtmlComments(template))) calendarHosts++;
+      if (declaresUnrelabelledCalendar(block, template)) unrelabelled.push(relative('.', file));
       for (const { name, index } of block.modules) {
         entries++;
         if (!(name in MODULE_SELECTORS)) {
@@ -616,12 +647,25 @@ function run() {
     );
   }
 
-  if (unparsed.length > 0 || findings.length > 0 || nullSelects.length > 0) {
+  console.log(`Checked ${calendarHosts} components that declare a calendar.`);
+
+  if (unrelabelled.length > 0) {
+    console.error(`\n${unrelabelled.length} component(s) declare a <mat-datepicker> without relabelling it:\n`);
+    for (const site of unrelabelled.sort()) console.error(`  ${site}`);
+    console.error(
+      '\nAdd RelabelOpenCalendarDirective (shared/directives/relabel-open-calendar.directive.ts) to the\n' +
+        "component's imports. Without it a calendar left open across a change of language keeps its\n" +
+        'close button in the old one, and nothing else says so.\n'
+    );
+  }
+
+  if (unparsed.length > 0 || findings.length > 0 || nullSelects.length > 0 || unrelabelled.length > 0) {
     process.exit(1);
   }
 
   console.log('Every Material module a component declares is used by its template.');
   console.log('Every mat-select that offers a null or undefined option can select it.');
+  console.log('Every component that declares a calendar relabels it.');
 }
 
 /** Every selector string the installed package declares, commas split out. */
@@ -922,6 +966,43 @@ class A {}
     'an undefined option ahead of an optgroup binds to its own select',
     unselectable(`<mat-select canSelectNullableOptions>${dayOption}</mat-select>\n<mat-select>${allOption}\n<mat-optgroup label="Expense">${dayOption}</mat-optgroup>\n</mat-select>`),
     [2]
+  );
+
+  // The third rule: a template that declares a calendar is hosted by a
+  // component that relabels it.
+  const host = (imports, template) =>
+    readComponents(`@Component({ selector: 'x', imports: [${imports}], template: \`${template}\` }) class X {}`)
+      .map(block => declaresUnrelabelledCalendar(block, block.template));
+  const picker = '<input [matDatepicker]="p"><mat-datepicker-toggle [for]="p"></mat-datepicker-toggle><mat-datepicker #p></mat-datepicker>';
+  check(
+    'a host that declares a calendar and imports the directive passes',
+    host('MatDatepicker, MatDatepickerInput, MatDatepickerToggle, RelabelOpenCalendarDirective', picker),
+    [false]
+  );
+  check(
+    'a host that declares a calendar without the directive fails',
+    host('MatDatepicker, MatDatepickerInput, MatDatepickerToggle', picker),
+    [true]
+  );
+  check(
+    'a toggle or an input alone is no calendar',
+    host('MatDatepickerToggle', '<mat-datepicker-toggle [for]="p"></mat-datepicker-toggle><input [matDatepicker]="p">'),
+    [false]
+  );
+  check(
+    'a calendar on its own line, with attributes, still counts',
+    host('MatDatepicker', '<mat-datepicker\n  #p\n  touchUi></mat-datepicker>'),
+    [true]
+  );
+  check(
+    'the directive named only in a comment beside the imports does not count',
+    host('MatDatepicker /* RelabelOpenCalendarDirective */', '<mat-datepicker #p></mat-datepicker>'),
+    [true]
+  );
+  check(
+    'a component with no calendar needs no directive',
+    host('MatButtonModule', '<button mat-button>Go</button>'),
+    [false]
   );
 
   const failed = cases.filter(c => !c.ok);

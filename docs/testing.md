@@ -538,8 +538,12 @@ carry `canSelectNullableOptions`, or Material reads that option as a reset and
 the field shows empty, its label unfloated, while the model holds `null` or
 `undefined`. A spec that renders such a field reads the trigger's text
 (`.mat-mdc-select-value`) and whether the label floats, since a model
-assertion passes either way. The script's `--self-test` runs 64 cases across
-both rules.
+assertion passes either way. A third rule ([ADR 0191](ADR/0191-sorts-reminders-the-filter-dates-and-an-open-calendar-follow-the-readers-language-the-taxonomy-declares-only-what-is-sent-and-the-budgets-page-follows-its-tab-while-open.md)) fails a component whose
+template declares a `<mat-datepicker>` without `RelabelOpenCalendarDirective`
+in its `imports`: the directive gives a calendar open across a change of
+language its close button in the new one, and a host that leaves the import
+out fails in silence. The script's `--self-test` runs 70 cases across the
+three rules.
 
 ### A real reload aborts the whole run
 
@@ -885,12 +889,12 @@ Both render in the CDK overlay, so the describe removes
 `test:ci` prints console output from paths that deliberately report a failure.
 The floor is a recorded number, not a gate: it exists so a new line is noticed.
 
-| | Base (`7b693953`) | `26.10.175` | `26.10.177` | `26.10.178` | `26.10.179` | `26.10.180` | `26.11.181` | `26.11.182` | `26.11.183` | `26.11.184` |
-|---|---|---|---|---|---|---|---|---|---|---|
-| ERROR | 40 | 53 | 53 | 44 | 44 | 44 | 44 | 43 | 43 | 43 |
-| WARN | 38 | 60 | 60 | 60 | 60 | 62 | 63 | 63 | 60 | 60 |
-| LOG | 26 | **0** | **0** | **0** | **0** | **0** | **0** | **0** | **0** | **0** |
-| 404 | — | — | — | — | — | — | 26 | 7 | 7 | 7 |
+| | Base (`7b693953`) | `26.10.175` | `26.10.177` | `26.10.178` | `26.10.179` | `26.10.180` | `26.11.181` | `26.11.182` | `26.11.183` | `26.11.184` | `26.11.185` |
+|---|---|---|---|---|---|---|---|---|---|---|---|
+| ERROR | 40 | 53 | 53 | 44 | 44 | 44 | 44 | 43 | 43 | 43 | 43 |
+| WARN | 38 | 60 | 60 | 60 | 60 | 62 | 63 | 63 | 60 | 60 | 60 |
+| LOG | 26 | **0** | **0** | **0** | **0** | **0** | **0** | **0** | **0** | **0** | **0** |
+| 404 | — | — | — | — | — | — | 26 | 7 | 7 | 7 | 7 |
 
 **Counting it.** Karma's progress reporter prints each console line twice, once
 behind an ANSI rewrite and once plain, so `grep -c 'ERROR: '` reports exactly

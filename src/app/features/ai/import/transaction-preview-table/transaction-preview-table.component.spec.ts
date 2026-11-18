@@ -477,6 +477,39 @@ describe('TransactionPreviewTableComponent', () => {
       expect(back.movedCategory).withContext('restored, so nothing is left to bring back').toBeUndefined();
     });
 
+    it('takes the source of the grade off a row a flip files on the catch-all, and brings it back with the category', () => {
+      // The chip names the source: a catch-all nobody chose must not go on
+      // saying the reviewer filed this merchant here before.
+      // Mutation: drop `categorySource: undefined` from the third branch.
+      const away = flip({ suggestedCategoryId: 'food', categoryConfidence: 0.95, categorySource: 'memory' });
+      expect(away.suggestedCategoryId).withContext('precondition: on the catch-all').toBe('other_income');
+      expect(away.categorySource).toBeUndefined();
+      expect(away.movedCategory)
+        .toEqual({ suggestedCategoryId: 'food', categoryConfidence: 0.95, categorySource: 'memory' });
+
+      component.toggleType(away);
+
+      const back = component.transactions[0];
+      expect(filed(back)).toEqual({ type: 'expense', category: 'food', grade: 0.95 });
+      expect(back.categorySource).toBe('memory');
+    });
+
+    it('keeps the source on a category the new side can also hold', () => {
+      const kept = flip({ suggestedCategoryId: 'shared', categoryConfidence: 0.9, categorySource: 'reader' });
+      expect(kept.categorySource).toBe('reader');
+    });
+
+    it('marks a pick as the reviewer\'s own, over whatever named the category before', () => {
+      component.categories = flipCatalogue();
+      component.transactions = [{
+        ...createMockTransactions()[0], suggestedCategoryId: 'food', categoryConfidence: 0.95, categorySource: 'memory',
+      }];
+      component.updateCategory(component.transactions[0], 'shared');
+
+      expect(component.transactions[0].categoryConfidence).toBe(1);
+      expect(component.transactions[0].categorySource).toBe('reviewer');
+    });
+
     it('forgets the moved category once the reviewer picks one', () => {
       // A pin: a pick is an answer of the reviewer's own, so the category a
       // flip once moved is not what a flip back should bring back over it.
@@ -581,6 +614,17 @@ describe('TransactionPreviewTableComponent', () => {
     it('reports the confidence as a percentage in the tooltip', () => {
       const t = row({ fieldConfidence: { amount: 0.42 } });
       expect(component.verificationTooltip(t, 'amount')).toContain('42');
+    });
+
+    it('names why the app doubts a cloud amount, and quotes no percentage for a grade it stamped itself', () => {
+      // Consolidation grades an item sum, and a total far from it, 0.5 so
+      // the flag fires. "Only 50% sure" was that policy read as a confidence.
+      const summed = row({ fieldConfidence: { amount: 0.5 }, fieldDoubt: { amount: 'itemSum' } });
+      const strayed = row({ fieldConfidence: { amount: 0.5 }, fieldDoubt: { amount: 'totalDisagrees' } });
+
+      expect(component.needsVerification(summed, 'amount')).withContext('the flag still fires').toBeTrue();
+      expect(component.verificationTooltip(summed, 'amount')).toBe('import.verifyAmountItemSum');
+      expect(component.verificationTooltip(strayed, 'amount')).toBe('import.verifyAmountTotalDisagrees');
     });
 
     it('flags a type the reader doubted, and leaves an ungraded type alone', () => {

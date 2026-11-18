@@ -254,6 +254,8 @@ describe('import-review.utils', () => {
           imageIndex: 0, imageId: 'image_0', confidenceScore: 0.9, receiptId: 1,
         },
         fieldConfidence: { amount: 0.2, date: 0.3 },
+        fieldDoubt: { amount: 'itemSum' },
+        categorySource: 'memory',
         dateAssumed: true,
         currencyFellBack: true,
         tags: ['coffee'],
@@ -262,6 +264,8 @@ describe('import-review.utils', () => {
 
       expect(row.imageMetadata).toBeUndefined();
       expect(row.fieldConfidence).toBeUndefined();
+      expect(row.fieldDoubt).toBeUndefined();
+      expect(row.categorySource).toBeUndefined();
       expect(row.dateAssumed).toBeUndefined();
       expect(row.currencyFellBack).toBeUndefined();
       expect(row.tags).toBeUndefined();
@@ -493,11 +497,58 @@ describe('import-review.utils', () => {
       expect(fieldDoubtSentence(echoTranslation, 'date', true, 0.3)).toBe('import.verifyDateOnDevice');
     });
 
-    it("quotes a cloud reader's confidence as a whole percentage, and 0 where it reported none", () => {
+    it("quotes a cloud reader's confidence as a whole percentage, where it reported one", () => {
       expect(fieldDoubtSentence(echoTranslation, 'amount', false, 0.655)).toBe('import.verifyAmount:{"percent":66}');
       expect(fieldDoubtSentence(echoTranslation, 'date', false, 0.5)).toBe('import.verifyDate:{"percent":50}');
-      expect(fieldDoubtSentence(echoTranslation, 'date', false, undefined)).toBe('import.verifyDate:{"percent":0}');
+      // A figure the model itself put at nothing is still its own.
+      expect(fieldDoubtSentence(echoTranslation, 'date', false, 0)).toBe('import.verifyDate:{"percent":0}');
     });
+
+    it('quotes no percentage where none was reported: the doubt reads as the scan\'s', () => {
+      // It used to read "0% sure", a confidence in a reading nobody graded.
+      expect(fieldDoubtSentence(echoTranslation, 'amount', false, undefined)).toBe('import.verifyAmountOnDevice');
+      expect(fieldDoubtSentence(echoTranslation, 'date', false, undefined)).toBe('import.verifyDateOnDevice');
+    });
+
+    it('names why the app stamped a review grade on a cloud amount, and never quotes that grade', () => {
+      expect(fieldDoubtSentence(echoTranslation, 'amount', false, 0.5, { amount: 'itemSum' }))
+        .toBe('import.verifyAmountItemSum');
+      expect(fieldDoubtSentence(echoTranslation, 'amount', false, 0.5, { amount: 'totalDisagrees' }))
+        .toBe('import.verifyAmountTotalDisagrees');
+    });
+
+    it('says a cloud date nothing read is today\'s, and never "0% sure"', () => {
+      expect(fieldDoubtSentence(echoTranslation, 'date', false, 0, { date: 'unread' })).toBe('import.verifyDateUnread');
+    });
+
+    it('reads each field\'s own doubt, so one field\'s reason never names the other', () => {
+      // Pin. Mutation: read the doubt without the field.
+      expect(fieldDoubtSentence(echoTranslation, 'date', false, 0.4, { amount: 'itemSum' }))
+        .toBe('import.verifyDate:{"percent":40}');
+      expect(fieldDoubtSentence(echoTranslation, 'amount', false, 0.4, { date: 'unread' }))
+        .toBe('import.verifyAmount:{"percent":40}');
+    });
+
+    it('lets the device speak first: its rows carry no doubt of this kind, and its sentence stands if one did', () => {
+      expect(fieldDoubtSentence(echoTranslation, 'amount', true, 0.5, { amount: 'itemSum' }))
+        .toBe('import.verifyAmountOnDevice');
+    });
+
+    for (const locale of ['en', 'ja', 'tc'] as const) {
+      it(`quotes no figure in the ${locale} sentences for a grade the app stamped`, () => {
+        const t = catalogTranslator(locale, { strict: true });
+        const sentences = [
+          fieldDoubtSentence(t, 'amount', false, 0.5, { amount: 'itemSum' }),
+          fieldDoubtSentence(t, 'amount', false, 0.5, { amount: 'totalDisagrees' }),
+          fieldDoubtSentence(t, 'date', false, 0, { date: 'unread' }),
+        ];
+        for (const sentence of sentences) {
+          expect(sentence).not.toMatch(/[0-9０-９%％]/);
+          expect(sentence).not.toContain('{{');
+        }
+        expect(new Set(sentences).size).withContext('three reasons, three sentences').toBe(3);
+      });
+    }
   });
 
   describe('joinSentences', () => {
@@ -695,6 +746,16 @@ describe('import-review.utils', () => {
       isDuplicate: false,
       selected: true,
       ...overrides,
+    });
+
+    it('carries the source of the category grade, and why a grade is the app\'s, on both halves', () => {
+      // Both are review-step marks read by the row's own sentences; a half
+      // that lost one would quote a percentage nothing reported.
+      const [kept, part] = splitImportRow(
+        row({ categorySource: 'memory', fieldConfidence: { date: 0 }, fieldDoubt: { date: 'unread' } }), 1.2, 'split_1'
+      )!;
+      expect([kept.categorySource, part.categorySource]).toEqual(['memory', 'memory']);
+      expect([kept.fieldDoubt, part.fieldDoubt]).toEqual([{ date: 'unread' }, { date: 'unread' }]);
     });
 
     it('splits the amount so the two halves sum to the original, rounded to cents', () => {
@@ -946,6 +1007,16 @@ describe('import-review.utils', () => {
       isDuplicate: false,
       selected: true,
       ...overrides,
+    });
+
+    it('keeps the target\'s source for the category it keeps, never the source row\'s', () => {
+      const merged = mergeImportRows(
+        target({ categorySource: 'reader' }),
+        source({ categorySource: 'memory', fieldDoubt: { amount: 'itemSum' } })
+      )!;
+      expect(merged.suggestedCategoryId).toBe('food');
+      expect(merged.categorySource).toBe('reader');
+      expect('fieldDoubt' in merged).toBeFalse();
     });
 
     it('sums two expenses', () => {

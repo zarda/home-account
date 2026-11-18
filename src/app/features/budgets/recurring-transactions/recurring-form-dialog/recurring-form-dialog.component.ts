@@ -10,6 +10,7 @@ import { MatButtonModule } from '@angular/material/button';
 import { MatButtonToggleModule } from '@angular/material/button-toggle';
 import { MatIconModule } from '@angular/material/icon';
 import { MatDatepicker, MatDatepickerInput, MatDatepickerToggle } from '@angular/material/datepicker';
+import { RelabelOpenCalendarDirective } from '../../../../shared/directives/relabel-open-calendar.directive';
 
 import { AuthService } from '../../../../core/services/auth.service';
 import { CategoryService } from '../../../../core/services/category.service';
@@ -56,6 +57,7 @@ export interface RecurringFormDialogData {
     MatButtonToggleModule,
     MatIconModule,
     MatDatepicker,
+    RelabelOpenCalendarDirective,
     MatDatepickerInput,
     MatDatepickerToggle,
     TranslatePipe,

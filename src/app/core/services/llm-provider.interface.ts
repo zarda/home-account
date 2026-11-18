@@ -3,7 +3,9 @@ import {
   Budget,
   BudgetPeriod,
   Category,
+  CategorySource,
   FieldConfidence,
+  FieldDoubt,
   Goal,
   MonthlyTotal,
   SearchIntent,
@@ -46,6 +48,8 @@ export interface ParsedReceipt {
    * so a blurred total looked exactly like a crisp one.
    */
   fieldConfidence?: FieldConfidence;
+  /** Why a grade above is under the bar where the app stamped it: here, a date the answer gave that does not parse. */
+  fieldDoubt?: FieldDoubt;
   location?: string;                // branch/address as printed, absent when none
   /** ISO 3166-1 alpha-2 the model concluded the receipt was issued in; absent when it could not say. A review-step mark, never written. */
   receiptCountry?: string;
@@ -73,6 +77,13 @@ export interface RawTransaction {
 export interface CategorizedTransaction extends RawTransaction {
   suggestedCategoryId: string;
   confidence: number;
+  /**
+   * Where `confidence` came from, when something named the category:
+   * `reported` for a categorizer answer that carried its own number,
+   * `memory` and `reader` from the ladder's callers. Absent on a floor, a
+   * fallback, and an answer graded at the default because it carried none.
+   */
+  categorySource?: CategorySource;
 }
 
 /**
@@ -104,6 +115,18 @@ export interface ExtractedTransaction {
   details?: string;                // Additional details (card last 4 digits, reference number, etc.)
   amountConfidence?: number;       // How legible the amount was (0-1); absent when unreported
   dateConfidence?: number;         // How legible the date was (0-1); absent when unreported
+  /**
+   * Set by receipt consolidation beside the review grade it stamps on the
+   * amount: the amount is the sum of the lines read, no printed total having
+   * been reported, or the reported total is far from that sum. Absent where
+   * `amountConfidence` is the reader's own.
+   */
+  amountBasis?: FieldDoubt['amount'];
+  /**
+   * The answer gave no date and the reader patched in today's, grading it 0.
+   * Set beside that 0, so the flag never quotes it as a confidence.
+   */
+  dateUnread?: true;
   /**
    * How firmly the app holds this row's `type`, from `modelTypeGrade`: set
    * on an income verdict by receipt consolidation (a lone line's own type or

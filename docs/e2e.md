@@ -33,7 +33,7 @@ deployed rules — and it is the reason for every constraint below. Read the
 whole thing as one rule: **the run is a reader with thirteen permitted writes,
 each named in *What a run may touch*, and it puts back every one it can.**
 
-**The emulators, on port 4300: journeys 68 to 77, and 79 to 118.** A journey that
+**The emulators, on port 4300: journeys 68 to 77, and 79 to 120.** A journey that
 needs several accounts signed in — one sharing rows into a household, another
 reading them there as copies, members counting them toward the household's own
 budgets and goals, and memberships removed, left, dissolved and erased —
@@ -47,7 +47,7 @@ cannot show — the deployed rules and indexes, the callable's public invoker, a
 mail that arrives — is what journey 78 is for, once, on production after the
 merge. Journey 79 needs one account, but it imports into it, and journey 80
 moves one origin's session between accounts under two open tabs, so both run
-there too; neither touches a household or calls a function. Journeys 81 to 118
+there too; neither touches a household or calls a function. Journeys 81 to 120
 need one account as well, and run there for what they write and what they need
 seeded: categories, rules, budgets and a household whose colours the seed
 fixes, a category made and deleted, a rule paused and resumed, rules due in the
@@ -643,7 +643,7 @@ Import never is.
 Everything else is read-only. Every dialog is closed or **cancelled** — the
 edit dialog in journey 5 opens on a real transaction and is left by Cancel,
 never Save — and nothing else is created, edited, deleted or imported.
-Journeys 68 to 77 and 79 to 118 are not in this table: they write freely, but
+Journeys 68 to 77 and 79 to 120 are not in this table: they write freely, but
 only into the local emulators, and the [teardown](#teardown) takes all of it
 with them.
 Journeys 58 to 67 are superseded and write nothing, because they are not run.
@@ -893,7 +893,7 @@ Alex alone, and imports three rows into his account; journey 80 needs Alex
 and Sam, in two tabs of one origin, and moves the session between them
 ([auth.md](auth.md) describes what it drives).
 
-Journeys 81 to 118 use the same seed as Alex alone, and drive the account's own
+Journeys 81 to 120 use the same seed as Alex alone, and drive the account's own
 pages: the theme tokens and a category's colour, measured where they are
 painted in both themes (81 and 82, whose last surface is Chen home's budget
 dialog); the papercuts of
@@ -946,7 +946,15 @@ discount, past round cash and beside an unmarked change, of
 the total printed with no currency mark, the asides and the receipt that
 prints a code and no sign of
 [ADR 0189](ADR/0189-a-price-is-no-part-of-a-date-a-total-with-no-currency-mark-is-read-on-a-sum-a-reading-past-an-aside-asks-its-type-and-a-receipt-that-prints-a-code-and-no-sign-disputes-the-model.md)
-(118), which stands in for it the same way.
+(118), which stands in for it the same way; the review sentences that name
+where a grade came from, of
+[ADR 0190](ADR/0190-a-review-sentence-names-where-its-grade-came-from-and-quotes-a-percentage-only-where-a-model-reported-one.md)
+(119), which imports five rows and leaves the memory of them; and the sort
+that collates in the account's language, the filter date that says why it is
+refused, the open calendar that takes a new language and the budgets page that
+follows a tab link while open, of
+[ADR 0191](ADR/0191-sorts-reminders-the-filter-dates-and-an-open-calendar-follow-the-readers-language-the-taxonomy-declares-only-what-is-sent-and-the-budgets-page-follows-its-tab-while-open.md)
+(120), which imports three rows of its own.
 [accessibility.md](accessibility.md), [dashboard.md](dashboard.md),
 [reminders.md](reminders.md), [shortcuts.md](shortcuts.md),
 [pwa.md](pwa.md), [receipt-import.md](receipt-import.md),
@@ -961,9 +969,9 @@ prints a code and no sign of
 [csv-format.md](csv-format.md), [data.md](data.md) and
 [ui-overflow.md](ui-overflow.md) describe what they drive.
 
-Journeys 87 to 96 build on one another's writes, 97 to 118 on the language
+Journeys 87 to 96 build on one another's writes, 97 to 120 on the language
 each one leaves, 107 on the records 105 and 106 write, and 115 on the goal
-113 writes, so 87 to 118 run in one emulator session, in this order:
+113 writes, so 87 to 120 run in one emulator session, in this order:
 
 1. journey 87's steps 4 and 5, which queue a scan and fail its drain;
 2. journey 88, which reads that drain's record in Import History;
@@ -1036,7 +1044,15 @@ each one leaves, 107 on the records 105 and 106 write, and 115 on the goal
 32. journey 118, which reads nine receipts on the review card through the
     same stand-in, switches the language to 日本語 and 繁體中文 and back,
     imports nothing, and ends in English;
-33. journey 103, **last**, which empties Alex's name and types one in, and
+33. journey 119, which imports two rows from a CSV and then reads a second
+    file and a backup without importing them, switches the language to 日本語
+    and 繁體中文 and back, and ends in English with two rows and their
+    category memory written;
+34. journey 120, which imports three rows for the sort, switches the
+    language the same way with a sort standing and with a calendar open,
+    leaves From holding text that is no date and then leaves the page, and
+    ends in English;
+35. journey 103, **last**, which empties Alex's name and types one in, and
     whose visit to the household page rewrites his member document there,
     and ends with both restored.
 
@@ -1083,7 +1099,7 @@ edit, with the shots `95-cold-refresh-unknown-ja`,
 `94-refused-after-rows-ja-r3` and `93-edit-day-unset-r3`. Every step it ran
 passed, and it found no further defect.
 
-Journeys 97 to 118 rest on none of the earlier journeys' writes, though 107
+Journeys 97 to 120 rest on none of the earlier journeys' writes, though 107
 reads the records 105 and 106 write, and 115 the goal 113 writes. A run of
 them alone starts from a fresh seed, in English, and journey 99's Sync Now
 then drains the one scan it queued; journey 108 then finds the queue as
@@ -1937,9 +1953,32 @@ of one card has no fold now, read again at 375px with the card whole, and
 [ADR 0189](ADR/0189-a-price-is-no-part-of-a-date-a-total-with-no-currency-mark-is-read-on-a-sum-a-reading-past-an-aside-asks-its-type-and-a-receipt-that-prints-a-code-and-no-sign-disputes-the-model.md)
 records the run.
 
+The run of journeys 119 and 120, on 2026-11-17, drove the branch with #535,
+#517, #505 and the last cheap gap of #446, alone on a fresh seed and a clean
+origin, served from that branch's own checkout, the functions emulator left
+out and the bundle naming `demo-home-account` only. The console held one
+error from the first load to the teardown, the Auth emulator's 400 for a
+session an earlier run had left on the origin. The pane was 1024px wide and
+hidden, with 375px by emulation for reads; the session record was fetched by
+the page from a loopback server that answered this origin alone. Every press
+the journeys name was a real click or key at the pane's own width, and every
+read was the DOM's after the page had settled, since a hidden pane paints
+late and its screenshots can show a frame behind. Every step passed as
+written and the run found no defect in the app. One reading looked like one:
+at 375px a load of `/budgets?tab=goals` left Goals cut at the strip's edge.
+The main branch's page read the same, and the cause was the venue: the strip
+puts its tab back from a `ResizeObserver`, a hidden pane paints no frame, and
+a probe observer on the same elements received no report
+([In a hidden pane](#in-a-hidden-pane)). The run did not switch to the dark
+theme, and its five and three imported rows went with the emulators.
+[ADR 0190](ADR/0190-a-review-sentence-names-where-its-grade-came-from-and-quotes-a-percentage-only-where-a-model-reported-one.md)
+and
+[ADR 0191](ADR/0191-sorts-reminders-the-filter-dates-and-an-open-calendar-follow-the-readers-language-the-taxonomy-declares-only-what-is-sent-and-the-budgets-page-follows-its-tab-while-open.md)
+record it.
+
 ### Pre-flight
 
-Journeys 79 to 118 call no function, and neither do 72 and 73. A run of only
+Journeys 79 to 120 call no function, and neither do 72 and 73. A run of only
 those skips checks 2 and 3 and starts the emulators without the functions
 emulator, `--only auth,firestore,storage` in check 4 — which is also how they
 start in a checkout without `functions/.secret.local`, whose functions that
@@ -2178,6 +2217,18 @@ ng.applyChanges(ng.getComponent(document.querySelector('app-household, app-trans
 document.querySelectorAll('.mat-mdc-dialog-component-host')
   .forEach(host => ng.applyChanges(ng.getComponent(host)));
 ```
+
+Nor is a `ResizeObserver` told anything there. Its reports are delivered
+with a frame, and a hidden pane paints none: an observer set on a page in
+view of nothing receives not even its first report, and
+`requestAnimationFrame` never runs. So what a page corrects from an observer
+stays uncorrected, and reads as a defect. The tab strips are the case met: a
+`?tab=goals` load at 375px leaves Goals cut at the strip's edge, because
+the strip puts its tab back from an observer once the Budgets count has
+widened the first label (journey 120's run). Before calling such a reading a
+finding, set a probe observer on the same element and see whether it is told
+anything; if it is not, the reading is the venue's, and the spec that holds
+the behaviour is the evidence.
 
 The last line is for an open dialog. A dialog is a view tree of its own,
 attached to the application beside the page's, so the page's flush never
@@ -10214,9 +10265,10 @@ through the page's own write path.
        ?.textContent.trim()]);
    ```
 
-   **Pass:** `[['日付', '並べ替え'], ['説明', '並べ替え'], ['金額', '並べ替え']]`:
-   each sortable header is described by the catalog's *並べ替え*, where
-   Material's own is the English *Sort*. Below 768px the list renders rows
+   **Pass:** `[['日付', 'この列で一覧を並べ替えます'], ['説明', 'この列で一覧を並べ替えます'], ['金額', 'この列で一覧を並べ替えます']]`:
+   each sortable header is described by the catalog's sentence, where
+   Material's own is the English *Sort*. (The catalog's was the fragment
+   *並べ替え* until [ADR 0191](ADR/0191-sorts-reminders-the-filter-dates-and-an-open-calendar-follow-the-readers-language-the-taxonomy-declares-only-what-is-sent-and-the-budgets-page-follows-its-tab-while-open.md) made it a sentence in each language.) Below 768px the list renders rows
    and no sortable header, which is why this step runs at the desktop width.
 3. **A yen row in the reports.** Write one past the rules, in a category the
    seed's own *Bookshop* row (`tx-hh-5`, $23.99) already holds this month:
@@ -13536,6 +13588,190 @@ writes that reached the emulators, and they go at the
 Three shots: the bare total's flagged card, the lost parenthesis's two
 flags, and the lone card at 375px.
 
+### 119. Review sentences that name where a grade came from
+
+**Emulators**, as Alex, at the pane's own width of 1024px, after journey 118,
+in English ([the run order](#emulator-journeys)), with no provider, on
+`/import/file`. The review card's category dot used to quote a percentage
+whatever had graded the category: *High confidence (95%) — the AI is confident
+about this category* for a merchant answered from memory, *(100%)* for a
+category the reviewer had picked. It names where the grade came from now, and
+keeps a percentage for a categorizer answer that carried its own
+([ADR 0190](ADR/0190-a-review-sentence-names-where-its-grade-came-from-and-quotes-a-percentage-only-where-a-model-reported-one.md), [import-fields.md](import-fields.md#what-the-chip-says-of-its-grade)).
+With no provider and no device the journey reaches five of the sentences: the
+file's, the reviewer's, memory's, the backup's and the unsourced one. The
+reader's, the device's and the two amount reasons are held by
+`import-wizard.smoke.spec.ts` and the specs.
+
+Each file is built in the page and put on the dropzone's hidden input
+([Feeding the dropzone](#fixtures)); **Process with AI**, **Continue**, the
+chip's menu, the type toggle and **Import** are real clicks. Every step reads
+the dots the same way:
+
+```js
+[...document.querySelectorAll('.confidence-dot')].map(dot => [
+  dot.className.match(/(high|medium|low)-confidence/)[0],
+  dot.getAttribute('aria-label'),
+  dot.parentElement.querySelector('.category-name').textContent.trim()]);
+```
+
+1. **A category the file names, and one it does not.** A CSV with the
+   detailed header and two expense rows of this month in USD: *E2E Sourced
+   Bakery*, whose Category cell is `Food & Drinks`, and *E2E Sourced Kiosk*,
+   whose cell is `Not A Category`. **Process with AI**. **Pass:**
+   `[['high-confidence', 'This category is the one the file names', 'Food & Drinks'], ['low-confidence', 'No category could be suggested — please pick one', 'Other']]`.
+   The first read *High confidence (100%)*. Hovering the green dot shows the
+   same sentence as its tooltip. Shot: `119-file-and-unresolved.png`.
+2. **A pick is the reviewer's.** **Continue** to the review step. On the
+   Kiosk row, open the chip's menu and choose **Entertainment**. **Pass:**
+   that row reads
+   `['high-confidence', 'You picked this category', 'Entertainment']`, where
+   a pick read *(100%)*.
+3. **In the reader's language.** Switch the account's language with the card
+   open, through the page's own write
+   (`ng.getComponent(document.querySelector('app-header')).authService.updateUserPreferences({ language })`),
+   to `ja`, to `tc` and back to `en`, reading the two names each time.
+   **Pass:** `このカテゴリはファイルに記載されているものです` and
+   `このカテゴリはあなたが選びました`; `此類別是檔案中所列的類別` and
+   `此類別是您選擇的`; and the English pair again. No name holds a figure.
+4. **Import them.** **Continue**, then **Import 2 Transactions**. **Pass:**
+   the page lands on `/transactions?showAll=true` with *Successfully imported
+   2 transactions*. The import writes the two merchants to the category
+   memory, which the next step reads.
+5. **A merchant filed before.** On `/import/file`, a second CSV: the same two
+   merchants with empty Category cells, and *E2E Sourced Stranger*, on three
+   other days. **Process with AI**. **Pass:**
+   `[['high-confidence', 'You filed this merchant here before', 'Food & Drinks'], ['high-confidence', 'You filed this merchant here before', 'Entertainment'], ['low-confidence', 'No category could be suggested — please pick one', 'Other']]`.
+   The first two read *High confidence (95%) — the AI is confident about this
+   category*, of a category no model was asked about. In Japanese the first
+   reads `以前、この店舗をこのカテゴリに分類しました` and the last
+   `カテゴリを提案できませんでした — 選択してください`; in Traditional Chinese
+   `您之前曾將這家商店歸在此類別` and `無法建議類別 — 請自行選擇`.
+6. **A flip takes the source with the category, and brings both back.**
+   **Continue**, and click the Kiosk row's **Expense** toggle. **Pass:** the
+   row is income, its chip *Other Income*, its dot
+   `['low-confidence', 'No category could be suggested — please pick one', 'Other Income']`,
+   and the card's row holds
+   `movedCategory: { suggestedCategoryId: 'entertainment', categoryConfidence: 0.95, categorySource: 'memory' }`
+   with no `categorySource` of its own
+   (`ng.getComponent(document.querySelector('app-transaction-preview-table')).transactions[1]`).
+   Click the toggle again. **Pass:** *Entertainment*, green, *You filed this
+   merchant here before*, and no `movedCategory`. A catch-all nobody chose
+   never says the reviewer filed the merchant there.
+7. **A backup's own category.** Leave the wizard without importing. On
+   `/import/file`, a file `sourced-backup.json`, `{ transactions: [...] }`
+   with two expense rows: one with `categoryId: 'food'`, one with an id the
+   account never had. **Process with AI**. **Pass:**
+   `[['high-confidence', 'This category comes from the backup', 'Food & Drinks'], ['low-confidence', 'No category could be suggested — please pick one', 'Other']]`,
+   and in Japanese and Traditional Chinese `このカテゴリはバックアップのものです`
+   and `此類別來自備份` for the first. Leave without importing.
+8. **At a phone's width**, a read only. Set the pane to 375px, load
+   `/import/file`, feed step 5's file again and press through to the review
+   step from the console. **Pass:** `document.documentElement.scrollWidth` is
+   375, no element of the card ends right of the viewport, and every button,
+   input and graphic on it has a name.
+
+The journey leaves two imported rows and their two memory entries in Alex's
+account, which go with the emulators. A fixture row dated the same day and of
+the same amount as a seeded one is offered as a possible duplicate: tick it,
+or choose another amount.
+
+### 120. The reader's language, late: a sort, a filter date, an open calendar and a tab link
+
+**Emulators**, as Alex, at the pane's own width of 1024px, after journey 119,
+in English ([the run order](#emulator-journeys)), with no provider. Four
+places still followed the device, or the language of an earlier moment, or
+said nothing: the description sort collated as the device's language does,
+From and To refused text with an outline and no reason, a calendar open
+across a switch kept its close button's old words, and a link to a budgets
+tab did nothing on a budgets page already open
+([ADR 0191](ADR/0191-sorts-reminders-the-filter-dates-and-an-open-calendar-follow-the-readers-language-the-taxonomy-declares-only-what-is-sent-and-the-budgets-page-follows-its-tab-while-open.md), [locale-formatting.md](locale-formatting.md),
+[accessibility.md](accessibility.md), [reminders.md](reminders.md)). The
+reminders booked again in a new language are not in a browser's reach; the
+service's spec and `reminder.service.smoke.spec.ts` hold them.
+
+The language is switched through the page's own write, as in journey 119's
+step 3: the calendar is a modal, and the account document is read once, so
+neither Settings nor a second tab can switch it while one is open.
+
+1. **Three rows that order differently.** On `/import/file`, a CSV of three
+   expense rows of one day in USD, each `Food & Drinks`: *東京*, *家賃* and
+   *apple*. Import all three (one may be offered as a duplicate of a seeded
+   row of that day and amount; tick it). **Pass:** *Successfully imported 3
+   transactions*.
+2. **The sort collates as the account does.** On
+   `/transactions?showAll=true`, scroll to the foot of the list until the
+   description header is no longer disabled (it sorts the complete list
+   only), switch to `ja`, and click the **説明** header. Read the
+   descriptions in order:
+
+   ```js
+   const names = [...document.querySelectorAll('td.col-description .description-text')].map(e => e.textContent.trim());
+   ['apple', '家賃', '東京'].map(name => names.indexOf(name));
+   ```
+
+   **Pass:** `apple` among the Latin rows at the head, and the list ending
+   `家賃`, `東京`. Switch to `tc` with the sort standing and read again,
+   clicking nothing. **Pass:** the list begins `東京`, `家賃`, and the Latin
+   rows follow: the order a Traditional Chinese reader's collator gives, and
+   the list re-sorted itself. Switch to `en`. **Pass:** the Japanese order.
+   Before, all three read as the device ordered them. Shot:
+   `120-sort-tc.png`.
+3. **The header's description is a sentence.** In each language, the id the
+   description header's `.mat-sort-header-container` names in
+   `aria-describedby`. **Pass:** `この列で一覧を並べ替えます`, `依此欄排序清單`
+   and `Sort the list by this column`, where English read *Sort by*.
+4. **A filter date says why it is refused.** In English, open the filters,
+   click **From**, type `next tuesday`, and read before leaving the field:
+
+   ```js
+   const [from, to] = [...document.querySelectorAll('.filter-grid input.mat-datepicker-input')];
+   const described = input => (input.getAttribute('aria-describedby') ?? '').split(/\s+/).filter(Boolean)
+     .map(id => document.getElementById(id)?.textContent.trim()).join('|');
+   [described(from), from.getAttribute('aria-invalid'), described(to)];
+   ```
+
+   **Pass:** `['', 'false', '']`: nothing is said while the reader types.
+   Press Tab. **Pass:** `['Enter a valid date.', 'true', '']`, the field
+   outlined in the error colour, the grid where it was and
+   `document.documentElement.scrollWidth` equal to `innerWidth`. The
+   describing text is 1px square, clipped, and `aria-live="polite"`. At
+   375px, a read only: the same three values and no sideways scroll. Shot:
+   `120-from-refused.png`.
+5. **An open calendar takes the new language.** Click **To**'s calendar
+   button. Read the close button, then switch to `ja`, to `tc` and back with
+   the calendar open, reading each time:
+
+   ```js
+   [document.querySelectorAll('mat-datepicker-content').length,
+     document.querySelector('.mat-datepicker-close-button').textContent.trim(),
+     document.querySelector('.mat-calendar-period-button').textContent.trim()];
+   ```
+
+   **Pass:** `[1, 'Close calendar', 'NOV 2026']`, then
+   `[1, 'カレンダーを閉じる', '2026年11月']`, `[1, '關閉日曆', '2026年11月']`
+   and the first again, the month being the run's own: one calendar
+   throughout, the same button element, still open. The close button kept
+   the language it opened in before. Press Escape.
+6. **A tab link on a page already open.** Load `/budgets`, click **Goals**,
+   and hand the page what a notification's tap hands it:
+
+   ```js
+   navigator.serviceWorker.dispatchEvent(new MessageEvent('message',
+     { data: { type: 'notification-route', route: '/budgets?tab=budgets' } }));
+   ```
+
+   **Pass:** the Budgets tab is the active one
+   (`.mdc-tab--active` is the first `.mdc-tab`) and the address is
+   `/budgets`, the parameter gone. Click **Goals** and send it again.
+   **Pass:** the same. The tab used to stay on Goals, and would have stayed
+   there the second time for a different reason: the router ignores a
+   navigation to the address it is already on. Wait ten seconds after the
+   load before sending: the page arms its tap listener from an idle task.
+
+The journey leaves three imported rows. Clear From, or leave the page, and
+end in English.
+
 ## Evidence
 
 Screenshots go to a scratch folder **outside the repo**, named as above, and
@@ -13632,7 +13868,7 @@ review card's type or category, the camera's converter, or the form's scanned
 type, and journey 80 on one that touches the session: the auth listener and
 its reload (`auth.service.ts`, `page-reload.ts`), where the web keeps the
 session (`appAuthFactory` in `app.config.ts`), the route guards
-(`auth.guard.ts`), or this protocol's session writes. Journeys 81 to 118 follow
+(`auth.guard.ts`), or this protocol's session writes. Journeys 81 to 120 follow
 it on a branch that touches what each one drives: 81 a theme token, a
 stylesheet's colours or the chart palette; 82 a category colour's reader —
 the category chip, the `categoryGlyph` and `readableOn` pipes, a category

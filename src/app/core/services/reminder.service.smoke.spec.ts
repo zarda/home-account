@@ -19,7 +19,7 @@ import { Capacitor } from '@capacitor/core';
 import type { LocalNotificationsPlugin } from '@capacitor/local-notifications';
 import { of } from 'rxjs';
 
-import { ReminderService, reminderSentStorageKey } from './reminder.service';
+import { ReminderService, reminderLanguageStorageKey, reminderSentStorageKey } from './reminder.service';
 import { AuthService } from './auth.service';
 import { BudgetService } from './budget.service';
 import { CurrencyService } from './currency.service';
@@ -261,6 +261,7 @@ describe('ReminderService sweep (emulator smoke test)', () => {
 
   afterEach(async () => {
     localStorage.removeItem(reminderSentStorageKey(uid));
+    localStorage.removeItem(reminderLanguageStorageKey(uid));
     clearWeeklyRecapDeviceState(uid);
     await deleteDoc(doc(firestore, `users/${uid}/recurring/${DUE_ID}`)).catch(() => undefined);
     await deleteDoc(doc(firestore, `users/${uid}/recurring/${AHEAD_ID}`)).catch(() => undefined);
@@ -316,6 +317,45 @@ describe('ReminderService sweep (emulator smoke test)', () => {
     expect(nudge?.schedule?.at as Date).toEqual(nextRecapMoment(service.at));
     expect(sentKeys()).toContain(`recap|${dayKey(nextRecapMoment(service.at))}`);
     expect(service.webNotifications).toEqual([]);
+  }, 30000);
+
+  it('books what is still ahead again, from the stored rules, once the account reads another language', async () => {
+    // The stub names a language here, as the real service does: the words it
+    // answers with carry it, the way a loaded catalog's would.
+    const locale = signal('en');
+    const version = signal(1);
+    const translation = TestBed.inject(TranslationService) as unknown as Record<string, unknown>;
+    translation['currentLocale'] = locale;
+    translation['translationsVersion'] = version;
+    translation['t'] = (key: string) => `${locale()}:${key}`;
+
+    const service = createService({ enableReminders: true, enableWeeklyRecap: true, language: 'en' });
+    await service.sweep();
+    const [first] = service.plugin.schedule.calls.mostRecent().args;
+    const booked = first.notifications.filter(n => n.schedule);
+    expect(booked.map(n => n.body).sort()).toEqual(['en:reminders.billDueIn', 'en:reminders.recapReady']);
+    expect(localStorage.getItem(reminderLanguageStorageKey(uid))).toBe('en');
+    const scheduledBefore = service.plugin.schedule.calls.count();
+
+    // The account turns to Japanese: its preference, then the catalog.
+    currentUser.set(createMockUser(uid, {
+      preferences: { ...DEFAULT_USER_PREFERENCES, enableReminders: true, enableWeeklyRecap: true, language: 'ja' }
+    }));
+    version.update(v => v + 1);
+    locale.set('ja');
+    TestBed.tick();
+    await service.sweep();
+
+    const again = service.plugin.schedule.calls.allArgs().slice(scheduledBefore).flatMap(([request]) => request.notifications);
+    // The bill due in three days was raised when the first sweep ran and has
+    // no moment ahead of it: it is not among them.
+    expect(again.map(n => [n.id, n.body]).sort()).toEqual(
+      booked.map(n => [n.id, (n.body as string).replace('en:', 'ja:')]).sort()
+    );
+    expect(again.every(n => n.title === 'ja:app.title')).toBeTrue();
+    expect(again.map(n => n.schedule?.at)).toEqual(jasmine.arrayWithExactContents(booked.map(n => n.schedule?.at)));
+    expect(service.plugin.cancel).not.toHaveBeenCalled();
+    expect(localStorage.getItem(reminderLanguageStorageKey(uid))).toBe('ja');
   }, 30000);
 
   it('books only the nudge, reading no rules at all, when reminders are off', async () => {

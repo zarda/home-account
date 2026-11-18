@@ -754,6 +754,31 @@ describe('AIImportService', () => {
 
       expect('readOnDevice' in row).toBeFalse();
     });
+
+    it('names the lane that suggested a kept category, and nothing for a fallback', () => {
+      // The grade a kept category wears is the row's own confidence: the
+      // device's measures the text and a cloud reader's the whole answer.
+      // The chip names the lane and quotes neither as a category confidence.
+      const rows = service.convertStrategyResultToCategories(processed([
+        { source: 'native', type: 'expense', suggestedCategoryId: 'food', confidence: 0.9 },
+        { source: 'cloud', type: 'expense', suggestedCategoryId: 'food', confidence: 0.85 },
+        { source: 'native', type: 'expense', suggestedCategoryId: undefined, confidence: 0.9 },
+        { source: 'cloud', type: 'income', suggestedCategoryId: 'food', confidence: 0.9 },
+      ]));
+
+      expect(rows.map(r => r.categorySource)).toEqual(['device', 'reader', undefined, undefined]);
+      expect('categorySource' in rows[2]).toBeFalse();
+    });
+
+    it('carries why a cloud row\'s grade is the app\'s own, and nothing on a row without one', () => {
+      const rows = service.convertStrategyResultToCategories(processed([
+        { source: 'cloud', fieldConfidence: { amount: 0.5, date: 0 }, fieldDoubt: { amount: 'itemSum', date: 'unread' } },
+        { source: 'cloud', fieldConfidence: { amount: 0.6, date: 0.9 } },
+      ]));
+
+      expect(rows[0].fieldDoubt).toEqual({ amount: 'itemSum', date: 'unread' });
+      expect('fieldDoubt' in rows[1]).toBeFalse();
+    });
   });
 
   describe('remembered categories', () => {
@@ -805,6 +830,7 @@ describe('AIImportService', () => {
       const result = await service.importFromMultipleImages([makeFile('a.png', 'image/png')]);
 
       expect(result.transactions[0].categoryConfidence).toBe(0.95);
+      expect(result.transactions[0].categorySource).toBe('memory');
       expect(result.transactions[0].categoryConfidence).toBeLessThan(1);
     });
 
@@ -1782,6 +1808,7 @@ describe('AIImportService', () => {
       const unresolved = result.transactions.find(t => t.description === 'Y');
       expect(resolved?.suggestedCategoryId).toBe('transport');
       expect(resolved?.categoryConfidence).toBe(0.8);
+      expect(resolved?.categorySource).toBe('reader');
       expect(unresolved?.suggestedCategoryId).toBe('food');
     });
 
@@ -2295,6 +2322,19 @@ describe('AIImportService', () => {
       const coffee = result.transactions.find(t => t.description === 'Coffee');
       expect(coffee?.suggestedCategoryId).toBe('food_coffee');
       expect(coffee?.categoryConfidence).toBe(0.95);
+      expect(coffee?.categorySource).toBe('memory');
+    });
+
+    it('keeps a categorizer\'s reported mark on the row, and none on the floor it could not answer', async () => {
+      cloudLLMProvider.categorizeTransactions.and.callFake(async raws => raws.map((r, i) => i === 0
+        ? { ...r, suggestedCategoryId: 'food', confidence: 0.72, categorySource: 'reported' as const }
+        : { ...r, suggestedCategoryId: 'food', confidence: 0.8 }));
+      exportService.importFromCSV.and.returnValue(csvRows());
+
+      const result = await service.importFromCSV(makeFile('data.csv', 'text/csv'));
+
+      expect(result.transactions.map(t => [t.categoryConfidence, t.categorySource]))
+        .toEqual([[0.72, 'reported'], [0.8, undefined]]);
     });
 
     it('does not file a refund under the expense category its merchant is remembered by', async () => {
@@ -2315,6 +2355,7 @@ describe('AIImportService', () => {
       const [purchase, refund] = result.transactions;
       expect(purchase.suggestedCategoryId).toBe('shopping');
       expect(purchase.categoryConfidence).toBe(0.95);
+      expect(purchase.categorySource).toBe('memory');
       expect(refund.suggestedCategoryId).not.toBe('shopping');
       // The remembered answer is no answer for the refund, so it falls to the
       // next rung: the model is asked about it, and only about it.
@@ -2349,6 +2390,7 @@ describe('AIImportService', () => {
       const ramen = result.transactions.find(t => t.description === 'Ramen');
       expect(ramen?.suggestedCategoryId).toBe('dining');
       expect(ramen?.categoryConfidence).toBe(1);
+      expect(ramen?.categorySource).toBe('file');
 
       // What the ladder answers for the row that did need it is untouched.
       const mystery = result.transactions.find(t => t.description === 'Mystery');
@@ -2473,6 +2515,8 @@ describe('AIImportService', () => {
       expect(result.transactions[1].suggestedCategoryId).toBe('other_expense');
       expect(result.transactions[0].categoryConfidence).toBe(1);
       expect(result.transactions[1].categoryConfidence).toBe(UNRESOLVED_CATEGORY_CONFIDENCE);
+      expect(result.transactions[0].categorySource).toBe('backup');
+      expect('categorySource' in result.transactions[1]).toBeFalse();
       // The stored Timestamp a stringified backup carries, read as the instant
       // it names and left unmarked; the row that carries no date at all lands
       // on today wearing the mark that lets the card ask about it.
@@ -3012,6 +3056,7 @@ describe('AIImportService', () => {
       ]);
       expect(result[0].suggestedCategoryId).toBe('transport');
       expect(result[0].categoryConfidence).toBe(0.8);
+      expect(result[0].categorySource).toBe('reader');
     });
 
     it('grades a category-bearing row above a category-less one', async () => {
@@ -3026,6 +3071,7 @@ describe('AIImportService', () => {
       expect(result[0].categoryConfidence).toBe(0.8);
       expect(result[1].suggestedCategoryId).toBe('other_expense');
       expect(result[1].categoryConfidence).toBe(0.3);
+      expect('categorySource' in result[1]).toBeFalse();
     });
 
     it("files a named category on the other side of the row's ledger as unresolved", async () => {
@@ -3039,6 +3085,7 @@ describe('AIImportService', () => {
 
       expect(result[0].suggestedCategoryId).toBe('other_income');
       expect(result[0].categoryConfidence).toBe(0.3);
+      expect('categorySource' in result[0]).toBeFalse();
       // One on the row's own side keeps the extraction's grade.
       expect(result[1].suggestedCategoryId).toBe('employment_salary');
       expect(result[1].categoryConfidence).toBe(0.8);

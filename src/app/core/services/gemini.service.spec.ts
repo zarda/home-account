@@ -1149,7 +1149,9 @@ describe('GeminiService', () => {
       visionModel.generateContent.and.resolveTo(makeResult(JSON.stringify({
         merchant: 'Cafe', totalAmount: 25.5, currency: 'JPY',
       })));
-      expect((await service.extractTransactionsFromImage('abc'))[0].dateConfidence).toBe(0);
+      const [row] = await service.extractTransactionsFromImage('abc');
+      expect(row.dateConfidence).toBe(0);
+      expect(row.dateUnread).toBeTrue();
 
       visionModel.generateContent.and.resolveTo(makeResult(JSON.stringify({
         date: '2024-05-10', merchant: 'Cafe', totalAmount: 25.5, currency: 'JPY',
@@ -1171,7 +1173,9 @@ describe('GeminiService', () => {
       visionModel.generateContent.and.resolveTo(makeResult(JSON.stringify({
         merchant: 'Cafe', totalAmount: 25.5, currency: 'JPY', dateConfidence: 0.9,
       })));
-      expect((await service.extractTransactionsFromImage('abc'))[0].dateConfidence).toBe(0);
+      const [row] = await service.extractTransactionsFromImage('abc');
+      expect(row.dateConfidence).toBe(0);
+      expect(row.dateUnread).toBeTrue();
     });
 
     it('rethrows on error and records lastError', async () => {

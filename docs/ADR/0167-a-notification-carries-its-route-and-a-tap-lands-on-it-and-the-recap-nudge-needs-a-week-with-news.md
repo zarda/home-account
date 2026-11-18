@@ -329,6 +329,10 @@ produces it and drops it unread, as 0096 decided, so it asks nothing there.
   from the route snapshot when it is created. A budget alert tapped while
   the page shows Recurring or Goals reuses the mounted page, and the tab
   stays where it was.
+  *Closed by
+  [0191](0191-sorts-reminders-the-filter-dates-and-an-open-calendar-follow-the-readers-language-the-taxonomy-declares-only-what-is-sent-and-the-budgets-page-follows-its-tab-while-open.md):
+  the page follows the parameter while it is open and takes it off the URL
+  once read, so a second tap follows too.*
 - **A week that gains news after the last sweep is not nudged.** The gate
   is asked by a sweep. A quiet fortnight books nothing, and an expense
   recorded afterwards, on another device or on this one with no sweep after
