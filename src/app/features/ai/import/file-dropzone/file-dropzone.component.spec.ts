@@ -17,11 +17,14 @@ import {
   expectOneRule,
   expectPainted,
   hoverValue,
+  inPalette,
   paintedBackground,
   paintedColor,
+  PALETTES,
   pressKey,
   provideNoMotion,
   ratio,
+  selectorsOf,
   settleAnimations,
   styleRules,
   textLines,
@@ -1704,6 +1707,103 @@ describe('FileDropzoneComponent, through its own template', () => {
   });
 
   /**
+   * What the pointer is told over the zone, read from the CSSOM: Karma can
+   * neither hover nor press. The list's dragging class is the one CDK's drop
+   * list binds while a photo is held, set here by hand; the real drags below
+   * show CDK sets it.
+   */
+  describe('the pointer over the upload area', () => {
+    /** The list as it is while a photo is held. */
+    function whileHeld(fn: () => void): void {
+      const list = el().querySelector('.file-list') as HTMLElement;
+      list.classList.add('cdk-drop-list-dragging');
+      try {
+        fn();
+      } finally {
+        list.classList.remove('cdk-drop-list-dragging');
+      }
+    }
+
+    /**
+     * The `cursor` each `:active` rule that styles `node` declares, as
+     * declared: a selector counts when `node` matches it with every `:active`
+     * taken to hold. A rule's list is split at its top-level commas only, as
+     * hoverValue splits it, so a selector written inside `:is()` or `:not()`
+     * is read whole.
+     */
+    function cursorsWhenPressed(node: Element): string[] {
+      const found = new Set<string>();
+      for (const { rule } of styleRules()) {
+        const cursor = rule.style.getPropertyValue('cursor').trim();
+        if (!cursor || !rule.selectorText.includes(':active')) continue;
+        for (const selector of selectorsOf(rule.selectorText)) {
+          if (selector.includes(':active') && node.matches(selector.replace(/:active/g, ':is(*)'))) found.add(cursor);
+        }
+      }
+      return [...found];
+    }
+
+    // Mutations: the zone's own cursor kept on a zone that holds files; the
+    // handle's :active rule dropped; the dragging rule written for the list
+    // alone, so the rows' own default and the buttons' pointer show through.
+    it('shows grab on a handle, grabbing once it is pressed and across the list while a photo is held, and no pointer on a zone that holds files', () => {
+      fixture.detectChanges();
+      const zone = () => el().querySelector('.dropzone') as HTMLElement;
+      expect(getComputedStyle(zone()).cursor).withContext('the empty zone, which opens the picker').toBe('pointer');
+
+      dropFiles([imageFile('first.png'), csvFile(), imageFile('second.png')]);
+      expect(getComputedStyle(zone()).cursor).withContext('the zone that holds files, which opens nothing').toBe('default');
+      const handle = rowOf('first.png')?.querySelector<HTMLElement>('.drag-handle') as HTMLElement;
+      expect(handle).withContext('the first photo\'s handle').toBeTruthy();
+      expect(getComputedStyle(handle).cursor).withContext('the handle').toBe('grab');
+      expect(cursorsWhenPressed(handle)).withContext('the handle, pressed').toEqual(['grabbing']);
+
+      whileHeld(() => {
+        const across: [string, Element | null | undefined][] = [
+          ['the list', el().querySelector('.file-list')],
+          ['a photo\'s row', rowOf('second.png')],
+          ['the CSV\'s row', rowOf('rows.csv')],
+          ['a move arrow', rowOf('second.png')?.querySelector('.reorder-btn')],
+          ['a remove button', rowOf('rows.csv')?.querySelector('.remove-btn')],
+        ];
+        for (const [what, node] of across) {
+          expect(node).withContext(what).toBeTruthy();
+          if (node) expect(getComputedStyle(node).cursor).withContext(`${what}, while a photo is held`).toBe('grabbing');
+        }
+      });
+    });
+
+    // A row that cannot move does not answer the pointer as if it could: a
+    // CSV, and a photo with no other photo to change places with. Nothing
+    // lifts while a photo is held either: a row CDK slides aside passes under
+    // the held pointer and would flash the lift mid-glide; the slot itself
+    // takes no pointer (CDK sets pointer-events: none on it). Mutations: the
+    // lift keyed on .file-item alone (the CSV lifts); the
+    // :not(.cdk-drop-list-dragging) clause dropped (a photo lifts while one
+    // is held).
+    it('lifts a row under the pointer only when it can move, and none while a photo is held', () => {
+      fixture.detectChanges();
+      dropFiles([imageFile('first.png'), csvFile(), imageFile('second.png')]);
+      const lift = (row: Element | undefined) => (row ? hoverValue(row, '.file-item', 'box-shadow') : null);
+      const edge = (row: Element | undefined) => (row ? hoverValue(row, '.file-item', 'border-color') : null);
+
+      expect(lift(rowOf('first.png'))).withContext('a photo of two, its shadow').toBe('var(--shadow-sm)');
+      expect(edge(rowOf('first.png'))).withContext('a photo of two, its edge').toBe('var(--color-primary)');
+      expect(() => lift(rowOf('rows.csv'))).withContext('the CSV, its shadow').toThrowError(/no :hover rule/);
+      expect(() => edge(rowOf('rows.csv'))).withContext('the CSV, its edge').toThrowError(/no :hover rule/);
+      whileHeld(() => {
+        expect(() => lift(rowOf('first.png'))).withContext('a photo of two while one is held').toThrowError(/no :hover rule/);
+      });
+
+      rowOf('second.png')?.querySelector<HTMLButtonElement>('.remove-btn')?.click();
+      fixture.detectChanges();
+      expect(rowNames()).withContext('the rows left').toEqual(['first.png', 'rows.csv']);
+      expect(() => lift(rowOf('first.png'))).withContext('a lone photo, its shadow').toThrowError(/no :hover rule/);
+      expect(() => edge(rowOf('first.png'))).withContext('a lone photo, its edge').toThrowError(/no :hover rule/);
+    });
+  });
+
+  /**
    * At 375px the wizard leaves the zone 303px beside the browser's 8px
    * scrollbar (311px on a phone), and a row of a multi-image pick lent its
    * name 51px beside the preview, the arrows, the remove button and the
@@ -1815,6 +1915,77 @@ describe('FileDropzoneComponent, through its own template', () => {
       const row = all('.file-item')[0];
       expect(getComputedStyle(row).display).withContext('the row').toBe('flex');
       expect(box(row, '.file-info').width).withContext('the name\'s column').toBeGreaterThanOrEqual(100);
+    });
+
+    // The lifted row is drawn inside the list, where the list's query
+    // reaches it, so a phone's two-line row is lifted as it lay rather than
+    // squeezed onto one line at the page's end. It has no transition on its
+    // transform, so it keeps up with the pointer, and it moves up and down
+    // only: a sideways move leaves it where it is. The list, which CDK marks
+    // as dragging, says grabbing. Mutations: the row's
+    // `transition: all` back (the preview trails the pointer by 200ms);
+    // the preview container attribute dropped (the preview is a one-line
+    // flex row at the end of the page); the axis attribute dropped.
+    it('lifts a dragged photo in its own two-line row, on the pointer and on the up-and-down axis', async () => {
+      narrow(303);
+      fixture.detectChanges();
+      dropFiles([imageFile('e2e-109-shared.png'), imageFile('image.jpg')]);
+      const list = el().querySelector('.file-list') as HTMLElement;
+      const dragged = rowOf('image.jpg') as HTMLElement;
+      const handle = box(dragged, '.drag-handle');
+      const onto = (rowOf('e2e-109-shared.png') as HTMLElement).getBoundingClientRect();
+      const left = dragged.getBoundingClientRect().left;
+
+      await dragByHandle('image.jpg', 'e2e-109-shared.png', () => {
+        const preview = document.querySelector<HTMLElement>('.cdk-drag-preview');
+        expect(preview).withContext('the lifted row').not.toBeNull();
+        if (!preview) return;
+        expect(preview.parentElement).withContext('the lifted row\'s parent').toBe(list);
+        expect(getComputedStyle(preview).display).withContext('the lifted row, at a 303px list').toBe('grid');
+        const transitioned = getComputedStyle(preview).transitionProperty.split(',').map(part => part.trim());
+        expect(transitioned).withContext('what the lifted row transitions').not.toContain('all');
+        expect(transitioned).withContext('what the lifted row transitions').not.toContain('transform');
+        expect(getComputedStyle(list).cursor).withContext('the list, while the photo is held').toBe('grabbing');
+
+        // Where the harness holds the pointer, 60px to the side.
+        mouse(document, 'mousemove', handle.left + handle.width / 2 + 60, onto.top + onto.height / 2);
+        expect(preview.getBoundingClientRect().left).withContext('the lifted row, moved sideways').toBeCloseTo(left, 0);
+      });
+    });
+
+    // A 40px target for the handle, the app's floor; each arrow's touch
+    // target held to the arrow's own 28px, since Material's 48px one reached
+    // 10px over the other arrow. Mutations: the handle back to its glyph and
+    // 4px padding (26px); the arrows' touch target left at Material's size.
+    it('gives the drag handle a 40px box and keeps each arrow\'s touch target off the other arrow, at 303px and 600px', () => {
+      narrow(303);
+      fixture.detectChanges();
+      dropFiles([imageFile('e2e-109-shared.png'), imageFile('image.jpg'), imageFile('third.png')]);
+
+      for (const width of [303, 600]) {
+        narrow(width);
+        for (const row of all('.file-item')) {
+          const label = `${width}px, ${row.querySelector('.file-name')?.textContent?.trim()}`;
+          const handle = box(row, '.drag-handle');
+          expect(handle.width).withContext(`${label}: the handle's width`).toBeGreaterThanOrEqual(40);
+          expect(handle.height).withContext(`${label}: the handle's height`).toBeGreaterThanOrEqual(40);
+
+          const [up, down] = Array.from(row.querySelectorAll<HTMLElement>('.reorder-btn'));
+          for (const [arrow, other, what] of [[up, down, 'up'], [down, up, 'down']] as const) {
+            const target = arrow.querySelector('.mat-mdc-button-touch-target')?.getBoundingClientRect();
+            expect(target).withContext(`${label}: the ${what} arrow's touch target`).toBeTruthy();
+            if (!target) continue;
+            const own = arrow.getBoundingClientRect();
+            const theOther = other.getBoundingClientRect();
+            expect(target.left <= own.left + 0.5 && target.right >= own.right - 0.5
+              && target.top <= own.top + 0.5 && target.bottom >= own.bottom - 0.5)
+              .withContext(`${label}: the ${what} arrow's touch target covers the arrow`).toBeTrue();
+            const overlaps = Math.min(target.right, theOther.right) - Math.max(target.left, theOther.left) > 0.5
+              && Math.min(target.bottom, theOther.bottom) - Math.max(target.top, theOther.top) > 0.5;
+            expect(overlaps).withContext(`${label}: the ${what} arrow's touch target over the other arrow`).toBeFalse();
+          }
+        }
+      }
     });
   });
 
@@ -2086,6 +2257,59 @@ describe('FileDropzoneComponent, through its own template', () => {
           expectPainted(row.querySelector<HTMLElement>('.file-type-label'), '--text-muted', `${theme} the type`);
         });
       }
+    });
+
+    /**
+     * The slot a dragged photo will land in is an empty outline, dashed in
+     * the primary's text step, which a graphic's 3:1 holds on the zone it
+     * shows through: at rest, as under a finger, and hovered, as under a
+     * mouse. The lifted row carries the overlay shadow and the same edge.
+     * Mutations: the slot back to a faded copy of the row (0.3 opacity on
+     * --surface-hover); the preview's edge left --border-primary.
+     */
+    it('outlines a dragged photo\'s slot, empty and dashed, in --color-primary-text at 3:1 on the zone, and edges the lifted row alike over the overlay shadow, in the four palettes', async () => {
+      fixture.detectChanges();
+      dropFiles([imageFile('first.png'), imageFile('second.png')]);
+      const zone = el().querySelector('.dropzone') as HTMLElement;
+      const hovered = hoverValue(zone, '.dropzone', 'background');
+      expect(hovered).withContext('the zone\'s hover rule').toBe('var(--surface-hover)');
+
+      await dragByHandle('second.png', 'first.png', () => {
+        const slot = el().querySelector<HTMLElement>('.file-list > .cdk-drag-placeholder');
+        const preview = document.querySelector<HTMLElement>('.cdk-drag-preview');
+        expect(slot).withContext('the slot').not.toBeNull();
+        expect(preview).withContext('the lifted row').not.toBeNull();
+        if (!slot || !preview) return;
+
+        for (const { name, classes } of PALETTES) {
+          inPalette(classes, () => {
+            settleAnimations(document);
+            const edge = tokenValue('--color-primary-text');
+            const outline = getComputedStyle(slot);
+            expect(outline.borderStyle).withContext(`${name}: the slot's edge`).toBe('dashed');
+            expect(outline.borderColor).withContext(`${name}: the slot's edge colour`).toBe(edge);
+            expect(getComputedStyle(slot.querySelector('.file-name') as HTMLElement).visibility)
+              .withContext(`${name}: the slot's file name`).toBe('hidden');
+            for (const [state, fill] of [['at rest', ''], ['hovered', hovered]] as const) {
+              zone.style.background = fill;
+              try {
+                const under = paintedBackground(slot);
+                expect(under).withContext(`${name}, ${state}: what shows through the slot`).toEqual(paintedBackground(zone));
+                expect(ratio(channels(outline.borderColor).rgb, under))
+                  .withContext(`${name}, ${state}: the slot's edge on the zone`)
+                  .toBeGreaterThanOrEqual(3);
+              } finally {
+                zone.style.background = '';
+              }
+            }
+
+            const lifted = getComputedStyle(preview);
+            expect(lifted.boxShadow).withContext(`${name}: the lifted row's shadow`)
+              .toBe(tokenValue('--shadow-overlay', 'box-shadow'));
+            expect(lifted.borderColor).withContext(`${name}: the lifted row's edge colour`).toBe(edge);
+          });
+        }
+      });
     });
 
     // The rest of a photo's row reads in tokens that clear text's bar; the

@@ -11,6 +11,7 @@ import {
   paintedColor,
   paintedVerdict,
   ratio,
+  selectorsOf,
   tokenValue,
   withTheme,
 } from './painted-contrast';
@@ -342,6 +343,18 @@ describe('painted-contrast', () => {
         expect(dim.colourMatches).withContext('below the floor').toBeTrue();
         expect(dim.ratio).withContext('below the floor, on gray-800').toBeLessThan(4.5);
       });
+    });
+  });
+
+  describe('selectorsOf', () => {
+    it('splits a selector list at its top-level commas only, keeping :is(), :not() and attribute lists whole', () => {
+      expect(selectorsOf('.a, .x:is(.b, .c):active,.y:not(.d,.e) > .f, [data-g="h,i"]')).toEqual([
+        '.a',
+        '.x:is(.b, .c):active',
+        '.y:not(.d,.e) > .f',
+        '[data-g="h,i"]',
+      ]);
+      expect(selectorsOf('.only')).toEqual(['.only']);
     });
   });
 

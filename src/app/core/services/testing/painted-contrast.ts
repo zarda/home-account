@@ -291,7 +291,7 @@ export function inPalette<T>(classes: readonly string[], fn: () => T): T {
 }
 
 /** A selector list split at its top-level commas, leaving `:is(a, b)` whole. */
-function selectorsOf(list: string): string[] {
+export function selectorsOf(list: string): string[] {
   const parts: string[] = [];
   let depth = 0;
   let start = 0;
