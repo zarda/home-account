@@ -91,7 +91,10 @@
                  A row that is no photo is no drag item at all: CDK slides
                  every item a drag passes, a disabled one too, so a CSV between
                  two photos would slide aside under a dragged photo. It keeps
-                 its place, and the drop list counts the photos alone. -->
+                 its place, and the drop list counts the photos alone.
+                 The lifted photo is drawn inside the list, where the list's
+                 width query still lays it out as it lay, and it moves up and
+                 down only, the one way a photo can change its place. -->
             @if (isImageFile(file)) {
               <div
                 class="file-item image-file"
@@ -99,6 +102,8 @@
                 [class.reorderable]="hasMultipleImages()"
                 cdkDrag
                 [cdkDragDisabled]="!hasMultipleImages()"
+                cdkDragPreviewContainer="parent"
+                cdkDragLockAxis="y"
               >
                 <!-- The photo's number among the photos, the order they are read in -->
                 @if (hasMultipleImages()) {

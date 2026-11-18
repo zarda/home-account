@@ -28,11 +28,14 @@
   transform: scale(1.01);
 }
 
+// Once files are picked a click on the zone opens nothing (Add more does), so
+// the zone no longer shows the pointer a control would.
 .dropzone.has-files {
   border-style: solid;
   border-color: var(--color-success);
   padding: 20px;
   min-height: auto;
+  cursor: default;
 }
 
 .dropzone.error {
@@ -203,22 +206,39 @@
   background: var(--surface-card);
   border-radius: var(--radius-md);
   border: 1px solid var(--border-primary);
-  transition: all 0.2s ease;
+  // The lift under the pointer fades in, and nothing else: CDK moves a lifted
+  // row by its transform, and a transition there left it trailing the pointer.
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
   position: relative;
   cursor: default;
 
+  // The photo as it is lifted: at full strength, over the overlay's shadow,
+  // edged in the colour of the slot it will land in. CDK owns its transform.
   &.cdk-drag-preview {
+    border-color: var(--color-primary-text);
     box-shadow: var(--shadow-overlay);
-    opacity: 0.95;
   }
 
+  // Where the photo will land: an empty outline, dashed in the primary's text
+  // step, which holds a graphic's 3:1 on the zone it shows through, hovered or
+  // not, in every palette. It keeps the row's own size, edge width included,
+  // so nothing below it moves as it opens.
   &.cdk-drag-placeholder {
-    opacity: 0.3;
-    background: var(--surface-hover);
+    background: transparent;
+    border-style: dashed;
+    border-color: var(--color-primary-text);
+
+    > * {
+      visibility: hidden;
+    }
   }
 }
 
-.file-item:hover {
+// Only a row that can move lifts under the pointer: a CSV, or a lone photo,
+// has nowhere to go. Nothing lifts while a photo is held: a row CDK slides
+// aside passes under the held pointer and would flash the lift mid-glide. The
+// slot itself takes no pointer (CDK sets pointer-events: none on it).
+.file-list:not(.cdk-drop-list-dragging) .file-item.reorderable:hover {
   border-color: var(--color-primary);
   box-shadow: var(--shadow-sm);
 }
@@ -251,7 +271,11 @@
   flex-direction: column;
   gap: 0;
 
+  // Each arrow's touch target is held to the arrow's own 28px, as the
+  // filters' suggestion removes hold theirs to 40: Material's 48 reached 10px
+  // over the other arrow, so a tap meant for one could land on the other.
   .reorder-btn {
+    --mat-icon-button-touch-target-size: 28px;
     width: 28px;
     height: 28px;
     transition: color 0.2s;
@@ -279,11 +303,20 @@
   }
 }
 
+// A 40px target round the glyph, the app's floor for a control, which says
+// grab under the pointer and grabbing once it is pressed.
 .drag-handle {
-  padding: 4px;
+  inline-size: 40px;
+  block-size: 40px;
+  flex-shrink: 0;
   cursor: grab;
   display: flex;
   align-items: center;
+  justify-content: center;
+
+  &:active {
+    cursor: grabbing;
+  }
 
   mat-icon {
     font-size: var(--text-lg);
@@ -300,21 +333,25 @@
 
 // A row of a multi-image pick holds four controls beside its name: the
 // preview (48px, 40 at a phone's width), the arrows (28), remove (40) and
-// the handle (26), with four 12px gaps between five items: 190px in all, 182
+// the handle (40), with four 12px gaps between five items: 204px in all, 196
 // on a phone. At 375px the list is 259px and the row's content 233px, which
-// left the name 51px: it broke over four lines and its size and type ran on
-// under the arrows. Below a 400px list, where one line would leave the name
-// under 176px, the arrows and the remove button take a second line under the
-// name and the handle, and the name keeps the row less the preview, the
-// third column and two gaps: 129px at 375px. Remove goes under the arrows,
-// not beside the name, because Tab reaches it after them: the handle takes
-// no focus, so the buttons read on screen in the order Tab reaches them. The
-// query reads the list, so a spec's narrow host reaches it
-// (docs/ui-overflow.md).
+// on one line leaves the name 37px (51 beside the old 26px handle, when it
+// broke over four lines and its size and type ran on under the arrows).
+// Below a 400px list, where one line would leave the name under 162px, the
+// arrows and the remove button take a second line under the name and the
+// handle, and the name keeps the row less the preview, the third column and
+// two gaps: 129px at 375px. Remove goes under the arrows, not beside the
+// name, because Tab reaches it after them: the handle takes no focus, so the
+// buttons read on screen in the order Tab reaches them. The query reads the
+// list, so a spec's narrow host reaches it (docs/ui-overflow.md), and so does
+// a photo lifted to be moved, which is drawn inside the list.
 //
-// A WebView with no container queries (iOS 15's) skips this block whole: its
-// rows keep the one-line layout, and only the size and type's wrap below
-// (outside the query) still holds there.
+// A WebView with no container queries (iOS 15's, which the app still
+// supports) skips this block whole: its rows keep the one-line layout, and
+// only the size and type's wrap below (outside the query) still holds there.
+// On that one line the 40px handle leaves the name the 37px column above at
+// 375px, 14px narrower than beside the old 26px handle: the trade made for a
+// handle a finger can hold.
 @container file-list (max-width: 399.98px) {
   .file-item.reorderable {
     display: grid;
@@ -350,13 +387,23 @@
   }
 }
 
-/* CDK Drag-drop animations */
+// On release the lifted photo glides into its slot.
 .cdk-drag-animating {
   transition: transform 200ms cubic-bezier(0, 0, 0.2, 1);
 }
 
-.file-list.cdk-drop-list-dragging .file-item:not(.cdk-drag-placeholder) {
+// While a photo is held the rows it passes glide aside. Not the lifted photo,
+// which is drawn inside the list too and has to keep up with the pointer, and
+// not the slot, which CDK moves through the list itself.
+.file-list.cdk-drop-list-dragging .file-item:not(.cdk-drag-placeholder):not(.cdk-drag-preview) {
   transition: transform 200ms cubic-bezier(0, 0, 0.2, 1);
+}
+
+// Grabbing wherever the pointer crosses the list while a photo is held, over
+// a row's own default and a button's pointer alike.
+.file-list.cdk-drop-list-dragging,
+.file-list.cdk-drop-list-dragging * {
+  cursor: grabbing;
 }
 
 .file-icon-wrapper {
