@@ -5,7 +5,9 @@
 <div class="transaction-row" [class.row-static]="!interactive()">
   <!-- Edit and Delete parked behind the surface, revealed by a left swipe.
        While closed the buttons are clipped off-canvas, so they leave the
-       keyboard and accessibility tree — the pinned menu is that route. -->
+       keyboard and accessibility tree — the pinned menu is that route.
+       The lists stamp one row per transaction, so each names the
+       transaction around the words it shows. -->
   @if (swipeActions()) {
     <div class="row-swipe-actions" #swipeDrawer>
       <button
@@ -13,6 +15,7 @@
         class="swipe-action swipe-action-edit"
         [tabindex]="swipeOpen() ? 0 : -1"
         [attr.aria-hidden]="!swipeOpen()"
+        [attr.aria-label]="'transactions.editNamed' | translate: { description: quotedName() }"
         (click)="onSwipeEdit($event)"
       >
         <mat-icon>edit</mat-icon>
@@ -23,6 +26,7 @@
         class="swipe-action swipe-action-delete"
         [tabindex]="swipeOpen() ? 0 : -1"
         [attr.aria-hidden]="!swipeOpen()"
+        [attr.aria-label]="'transactions.deleteNamed' | translate: { description: quotedName() }"
         (click)="onSwipeDelete($event)"
       >
         <mat-icon>delete</mat-icon>

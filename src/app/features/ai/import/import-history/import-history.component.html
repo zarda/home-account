@@ -142,14 +142,29 @@
             }
           </mat-card-content>
 
+          <!-- One card per record: View transaction, the View transactions menu
+               and Delete keep the words they show and add the record, by its
+               file and when it came in, since two photos can share a file name
+               and two records a count. -->
           <mat-card-actions align="end">
             @if (item.transactionIds?.length === 1) {
-              <button mat-button (click)="openTransaction(item.transactionIds![0])">
+              <button
+                mat-button
+                (click)="openTransaction(item.transactionIds![0])"
+                [attr.aria-label]="'import.viewTransactionFrom' | translate: { name: item.fileName, date: formatDate(item.importedAt) }"
+              >
                 <mat-icon>open_in_new</mat-icon>
                 {{ 'import.viewTransaction' | translate }}
               </button>
             } @else if ((item.transactionIds?.length ?? 0) > 1) {
-              <button mat-button [matMenuTriggerFor]="txMenu">
+              <button
+                mat-button
+                [matMenuTriggerFor]="txMenu"
+                [attr.aria-label]="
+                  'import.viewTransactionsFrom'
+                    | translate: { count: item.transactionIds!.length, name: item.fileName, date: formatDate(item.importedAt) }
+                "
+              >
                 <mat-icon>open_in_new</mat-icon>
                 {{ 'import.viewTransactions' | translate: { count: item.transactionIds!.length } }}
               </button>
@@ -161,7 +176,12 @@
                 }
               </mat-menu>
             }
-            <button mat-button color="warn" (click)="deleteHistory(item)">
+            <button
+              mat-button
+              color="warn"
+              (click)="deleteHistory(item)"
+              [attr.aria-label]="'import.deleteFromHistory' | translate: { name: item.fileName, date: formatDate(item.importedAt) }"
+            >
               <mat-icon>delete</mat-icon>
               {{ 'common.delete' | translate }}
             </button>

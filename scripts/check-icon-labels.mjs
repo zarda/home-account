@@ -1133,68 +1133,7 @@ export function itemlessTextHint() {
  * is the goal: a row is a debt with a name, and it goes when its controls name
  * their item.
  */
-export const ITEMLESS_FROZEN = [
-  {
-    file: 'src/app/features/ai/import/import-history/import-history.component.html',
-    key: 'import.viewTransaction',
-    count: 1,
-    why: "View transaction, named by its text, one per import record in the history's @for",
-  },
-  {
-    file: 'src/app/features/ai/import/import-history/import-history.component.html',
-    key: 'common.delete',
-    count: 1,
-    why: "Delete, named by its text, one per import record in the history's @for",
-  },
-  {
-    file: 'src/app/features/ai/search-history/search-answer-history.component.html',
-    key: 'common.refresh',
-    count: 1,
-    why: "Refresh, named by its text, under the expanded answer in the saved answers' @for",
-  },
-  {
-    file: 'src/app/features/dashboard/recent-transactions/recent-transactions.component.html',
-    key: 'dashboard.viewAll',
-    count: 1,
-    why: "View All, named by its text; two cases of the dashboard's card switch reach the key",
-  },
-  {
-    file: 'src/app/features/dashboard/upcoming-bills/upcoming-bills.component.html',
-    key: 'dashboard.viewAll',
-    count: 1,
-    why: "View All, named by its text; two cases of the dashboard's card switch reach the key",
-  },
-  {
-    file: 'src/app/features/reports/insights/insight-card/insight-card.component.html',
-    key: 'insights.viewTransactions',
-    count: 1,
-    why: "View transactions, named by its text; the insights tab stamps one card per insight",
-  },
-  {
-    file: 'src/app/features/reports/insights/insight-card/insight-card.component.html',
-    key: 'insights.hideTransactions : insights.showTransactions',
-    count: 1,
-    why: "the rows' show and hide toggle, named by its text; the insights tab stamps one card per insight",
-  },
-  {
-    file: 'src/app/shared/components/nl-answer-card/nl-answer-card.component.html',
-    key: 'aiSearch.viewTransactions',
-    count: 1,
-    why: "View transactions, named by its text; the saved answers' @for stamps one card per expanded answer",
-  },
-  {
-    file: 'src/app/shared/components/transaction-row/transaction-row.component.html',
-    key: 'common.edit',
-    count: 1,
-    why: "the swipe drawer's Edit, named by its text; the lists stamp one row per transaction",
-  },
-  {
-    file: 'src/app/shared/components/transaction-row/transaction-row.component.html',
-    key: 'common.delete',
-    count: 1,
-    why: "the swipe drawer's Delete, named by its text; the lists stamp one row per transaction",
-  },
-];
+export const ITEMLESS_FROZEN = [];
 
 /**
  * Sets one rule's hits (`{ site, tag, key }`, `site` a repo-relative

@@ -68,6 +68,10 @@ describe('InsightCardComponent', () => {
           },
         },
         {
+          provide: CurrencyService,
+          useValue: { formatCurrency: (a: number, c: string) => `${c} ${a.toFixed(2)}` },
+        },
+        {
           provide: TranslationService,
           useValue: {
             t: (key: string, params?: Record<string, unknown>) =>
@@ -235,7 +239,7 @@ describe('InsightCardComponent', () => {
  * The cases above override the template to `<div></div>`, so they prove the
  * computeds and leave the card's five gates unproven: the unknown-kind
  * fallback that stops old history rendering blank, the headline stat card,
- * the multi-category line, the inline row list, and the actions bar that only
+ * the category line, the inline row list, and the actions bar that only
  * exists when at least one of its two buttons does.
  */
 describe('InsightCardComponent, through its own template', () => {
@@ -342,12 +346,17 @@ describe('InsightCardComponent, through its own template', () => {
     expect(el().querySelector('app-stat-card')).toBeNull();
   });
 
-  it('names the categories only when there is more than one', () => {
+  // No body sentence names its category, and up to three trend cards share a
+  // title, so the card names the category it is about, one or several.
+  it('names the category the card is about, and each of several', () => {
     render(insight());
-    expect(el().querySelector('.card-categories')).toBeNull();
+    expect(text('.card-categories')).toBe('categoryNames.groceries');
 
     render(insight({ categoryIds: ['food_groceries', 'transport'] }));
     expect(text('.card-categories')).toBe('categoryNames.groceries, common.unknownCategory');
+
+    render(insight({ categoryIds: [] }));
+    expect(el().querySelector('.card-categories')).toBeNull();
   });
 
   it('offers the filters button for a filters card and hands them over on click', () => {

@@ -3,7 +3,13 @@
   <div class="card-header">
     <h3 class="card-title">{{ 'dashboard.recentTransactions' | translate }}</h3>
     <div class="header-actions">
-      <a routerLink="/transactions" [queryParams]="{showAll: true}" class="view-all-link">
+      <!-- Upcoming Bills shows a View All beside this one, so each names its card. -->
+      <a
+        routerLink="/transactions"
+        [queryParams]="{showAll: true}"
+        class="view-all-link"
+        [attr.aria-label]="'dashboard.viewAllNamed' | translate: { name: 'dashboard.recentTransactions' | translate }"
+      >
         {{ 'dashboard.viewAll' | translate }}
         <mat-icon class="view-all-icon">chevron_right</mat-icon>
       </a>

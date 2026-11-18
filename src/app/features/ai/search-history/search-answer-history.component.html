@@ -57,6 +57,9 @@
                 mat-stroked-button
                 class="history-refresh"
                 [disabled]="isRefreshing()"
+                [attr.aria-label]="
+                  'aiSearch.historyRefreshLabel' | translate: { query: record.query, date: recordDateLabel(record) }
+                "
                 (click)="refreshExpanded()"
               >
                 <mat-icon>refresh</mat-icon>

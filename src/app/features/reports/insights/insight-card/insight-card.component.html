@@ -32,7 +32,9 @@
         />
       }
 
-      @if (categoryNames().length > 1) {
+      <!-- No body sentence names a category, and trend cards share a few
+           titles, so the card names the category it is about, one or several. -->
+      @if (categoryNames().length > 0) {
         <p class="card-categories">{{ categoryNames().join(', ') }}</p>
       }
     }
@@ -50,16 +52,37 @@
     }
   </mat-card-content>
 
+  <!-- The insights tab stamps one card per insight, and cards of one kind
+       share a title, so each action names the insight by its title and what
+       tells it from the others (itemDetail), around the words it shows; the
+       toggle's name follows its words, and aria-expanded says which it is. -->
   @if (canOpenFilters() || canShowRows()) {
     <mat-card-actions class="card-actions">
       @if (canOpenFilters()) {
-        <button mat-stroked-button (click)="openFilters()">
+        <button
+          mat-stroked-button
+          (click)="openFilters()"
+          [attr.aria-label]="
+            (itemDetail() ? 'insights.viewTransactionsNamedWith' : 'insights.viewTransactionsNamed')
+              | translate: { name: title(), detail: itemDetail() }
+          "
+        >
           <mat-icon>list</mat-icon>
           <span>{{ 'insights.viewTransactions' | translate }}</span>
         </button>
       }
       @if (canShowRows()) {
-        <button mat-stroked-button (click)="toggleRows()" [attr.aria-expanded]="showRows()">
+        <button
+          mat-stroked-button
+          (click)="toggleRows()"
+          [attr.aria-expanded]="showRows()"
+          [attr.aria-label]="
+            (showRows()
+              ? (itemDetail() ? 'insights.hideTransactionsNamedWith' : 'insights.hideTransactionsNamed')
+              : (itemDetail() ? 'insights.showTransactionsNamedWith' : 'insights.showTransactionsNamed'))
+              | translate: { name: title(), detail: itemDetail() }
+          "
+        >
           <mat-icon>{{ showRows() ? 'expand_less' : 'expand_more' }}</mat-icon>
           <span>
             {{ (showRows() ? 'insights.hideTransactions' : 'insights.showTransactions') | translate }}

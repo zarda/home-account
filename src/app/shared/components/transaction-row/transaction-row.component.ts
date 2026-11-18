@@ -28,7 +28,7 @@ import { AuthService } from '../../../core/services/auth.service';
 import { DateFormatService } from '../../../core/services/date-format.service';
 import { CategoryHelperService } from '../../../core/services/category-helper.service';
 import { TranslationService } from '../../../core/services/translation.service';
-import { transactionDisplayName } from '../../../core/utils/transaction-display.utils';
+import { quotedTransactionName, transactionDisplayName } from '../../../core/utils/transaction-display.utils';
 import { CategoryChipComponent } from '../category-chip/category-chip.component';
 import { MemberChipComponent } from '../member-chip/member-chip.component';
 import { FitTextDirective } from '../../directives/fit-text.directive';
@@ -190,6 +190,15 @@ export class TransactionRowComponent {
   // untitled one; the list's select checkbox reads the same rule.
   protected transactionName(): string {
     return transactionDisplayName(this.transaction().description, key => this.translationService.t(key));
+  }
+
+  /**
+   * The transaction as the swipe drawer's Edit and Delete name it, whose keys
+   * only tc quotes: its description in the reader's own quotation marks, or
+   * the catalog's words for an untitled one, bare (quotedTransactionName).
+   */
+  protected quotedName(): string {
+    return quotedTransactionName(this.transaction().description, (key, params) => this.translationService.t(key, params));
   }
 
   // One string for the amount on screen and the amount in the row button's

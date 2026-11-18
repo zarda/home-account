@@ -4,6 +4,7 @@ import { MatButtonModule } from '@angular/material/button';
 import { MatCardModule } from '@angular/material/card';
 import { MatIconModule } from '@angular/material/icon';
 import { CategoryService } from '../../../../core/services/category.service';
+import { CurrencyService } from '../../../../core/services/currency.service';
 import { PendingFiltersService } from '../../../../core/services/pending-filters.service';
 import { TranslationService } from '../../../../core/services/translation.service';
 import {
@@ -15,6 +16,7 @@ import {
 } from '../../../../models';
 import { categoryDisplayName } from '../../../../core/utils/category-display.utils';
 import { cadenceKey } from '../../../../core/utils/insight-card.utils';
+import { snapDisplayZero } from '../../../../core/utils/money-display.utils';
 import { parseDayKey } from '../../../../core/utils/transaction-date.utils';
 import { RecurringCadence } from '../../../../core/utils/recurring-pattern.utils';
 import { StatCardComponent } from '../../../../shared/components/stat-card/stat-card.component';
@@ -72,6 +74,7 @@ const ICONS: Partial<Record<InsightKind, string>> = {
 })
 export class InsightCardComponent {
   private categoryService = inject(CategoryService);
+  private currencyService = inject(CurrencyService);
   private translation = inject(TranslationService);
   private pendingFilters = inject(PendingFiltersService);
   private router = inject(Router);
@@ -126,6 +129,28 @@ export class InsightCardComponent {
 
   readonly categoryNames = computed(
     () => this.card().categoryIds.map(id => this.categoryName(id)));
+
+  /**
+   * What tells this card's actions from those of another card of its kind,
+   * or '' when its title does. The tab shows up to three category trends
+   * under three titles and up to three recurring payments under two, so a
+   * card about one category names it, and a recurring payment adds the
+   * figure it features per month, since two can share a category. A card
+   * without exactly one category is the only one of its kind on the tab: a
+   * habit, the portfolio, the small purchases.
+   */
+  readonly itemDetail = computed(() => {
+    const card = this.card();
+    if (card.categoryIds.length !== 1) return '';
+    const [category] = this.categoryNames();
+    const figure = card.kind === 'recurringItem' ? this.headline() : null;
+    if (!figure) return category;
+    const currency = this.currency();
+    return this.translation.t('insights.recurringItemDetail', {
+      category,
+      amount: this.currencyService.formatCurrency(snapDisplayZero(figure.value, currency), currency),
+    });
+  });
 
   readonly canOpenFilters = computed(() => this.card().drillDown.mode === 'filters');
 
