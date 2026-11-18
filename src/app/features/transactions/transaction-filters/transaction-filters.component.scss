@@ -172,7 +172,8 @@
 // takes the caption in too. The ring is inset, as a transaction row's is:
 // the suggestions open 4px under the search pill, and the filter grid's
 // floated labels stand above the grid into the room the pill leaves it.
-// Save search, Save and Cancel inside the pills keep Material's own focus.
+// Save search, Save and Cancel inside the pills are Material buttons, which
+// show the focus indicator styles.scss draws inside every one, in its colour.
 @include a11y.frame-ring('.search-wrapper', '.search-input', -2px);
 @include a11y.frame-ring('.save-search-row', '.save-label-input', -2px);
 
