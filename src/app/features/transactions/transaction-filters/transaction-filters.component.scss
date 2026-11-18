@@ -113,16 +113,27 @@
   margin-top: 8px;
   background: var(--surface-muted);
   border-radius: var(--radius-sm);
-  padding: 4px 4px 4px 12px;
+  padding: 8px 4px 8px 12px;
 }
 
-// The box's name, for a screen reader: a placeholder is none.
+// The caption over the box, one column beside Save and Cancel. A tap on the
+// caption lands in the box, as its label's does.
+.save-name {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+// The caption wraps rather than be cut: a narrow pill keeps all its words.
 .save-name-label {
-  @include a11y.visually-hidden;
+  color: var(--text-muted);
+  font-size: var(--text-xs);
+  overflow-wrap: anywhere;
 }
 
 .save-label-input {
-  flex: 1;
   min-width: 0;
   background: none;
   border: none;
@@ -157,7 +168,8 @@
 // outranks styles.scss's ring, so a focused box would show its caret alone.
 // The pill is what a reader sees as the box, so the ring goes round it while
 // its box matches :focus-visible, which a text box does on a click as well as
-// from the keyboard. The ring is inset, as a transaction row's is:
+// from the keyboard; the save box's caption sits inside its pill, so the ring
+// takes the caption in too. The ring is inset, as a transaction row's is:
 // the suggestions open 4px under the search pill, and the filter grid's
 // floated labels stand above the grid into the room the pill leaves it.
 // Save search, Save and Cancel inside the pills keep Material's own focus.

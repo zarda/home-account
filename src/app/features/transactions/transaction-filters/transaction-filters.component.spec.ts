@@ -21,7 +21,10 @@ import {
   chooseOption,
   contentWidthPx,
   expectOneRule,
+  expectPainted,
   hoverValue,
+  inPalette,
+  PALETTES,
   paintedBackground,
   paintedColor,
   placeholderWidthPx,
@@ -1805,7 +1808,138 @@ describe('TransactionFiltersComponent', () => {
       bookmark!.click();
       render();
 
+      expectCaptionShown(captionOf((fixture.nativeElement as HTMLElement).querySelector('.save-search-row')));
       expectClearOfFloatedLabels('save-search-row');
+    }));
+  });
+
+  /** The save-search pill's caption: its one `<label>`. */
+  function captionOf(pill: Element | null): HTMLLabelElement | null {
+    const labels = pill ? Array.from(pill.querySelectorAll('label')) : [];
+    expect(labels.length).withContext("the pill's caption, one <label>").toBe(1);
+    return labels[0] ?? null;
+  }
+
+  /**
+   * The caption is on the screen at its full height: no box clipped to a
+   * pixel, as the off-screen text the app keeps for screen readers alone is.
+   */
+  function expectCaptionShown(caption: HTMLElement | null, at = 'the caption'): void {
+    expect(caption).withContext(at).not.toBeNull();
+    if (!caption) return;
+    const style = getComputedStyle(caption);
+    const box = caption.getBoundingClientRect();
+    expect([style.display, style.visibility, style.clipPath])
+      .withContext(`${at}: display, visibility, clip`)
+      .toEqual([jasmine.stringMatching(/^(?!none$)/), 'visible', 'none']);
+    expect(box.height).withContext(`${at}: its height against its font size, px`)
+      .toBeGreaterThanOrEqual(parseFloat(style.fontSize));
+    expect(box.width).withContext(`${at}: its width, px`).toBeGreaterThan(1);
+  }
+
+  /**
+   * The save-search box opens holding the query as the name it offers, so a
+   * placeholder in it showed only once the box was emptied, and was its only
+   * name. A caption stands inside the pill above the box instead, a real
+   * label the box is named by, shown whatever the box holds.
+   */
+  describe("the save-search box's caption (real template)", () => {
+    const root = () => fixture.nativeElement as HTMLElement;
+
+    /** The panel open over `query`, Save search pressed, and the box holding the query. */
+    function openOver(query: string): { pill: HTMLElement; caption: HTMLLabelElement; box: HTMLInputElement } {
+      // filters is a plain object, so it is set before the signal that renders it.
+      component.filters.searchQuery = query;
+      component.expanded.set(true);
+      fixture.detectChanges();
+      const bookmark = root().querySelector<HTMLButtonElement>('.save-search-button');
+      expect(bookmark).withContext('Save search, beside a query').not.toBeNull();
+      bookmark!.click();
+      fixture.detectChanges();
+      TestBed.tick();
+      flush(); // NgModel hands the box its value a microtask after it renders
+      fixture.detectChanges();
+      settleAnimations(document);
+      const pill = root().querySelector<HTMLElement>('.save-search-row');
+      expect(pill).withContext('the save-search pill').not.toBeNull();
+      const box = pill!.querySelector<HTMLInputElement>('.save-label-input');
+      expect(box).withContext('the save-search box').not.toBeNull();
+      expect(box!.value).withContext('the box, holding the query').toBe(query);
+      return { pill: pill!, caption: captionOf(pill)!, box: box! };
+    }
+
+    function inLocale(l: SupportedLocale): (key: string) => string {
+      mockTranslationService.t.and.callFake(catalogTranslator(l));
+      // The translate pipe memoises on the locale and the catalog version.
+      locale.set(l);
+      TestBed.inject(TranslationService).translationsVersion.update(version => version + 1);
+      return catalogTranslator(l, { strict: true });
+    }
+
+    /** `inner`'s box lies inside `outer`'s, to half a pixel. */
+    function expectInside(inner: Element, outer: Element, what: string): void {
+      const a = inner.getBoundingClientRect();
+      const b = outer.getBoundingClientRect();
+      expect([a.left - b.left, b.right - a.right, a.top - b.top, b.bottom - a.bottom].map(px => px >= -0.5))
+        .withContext(`${what}: room on its start, end, top and bottom inside the pill`)
+        .toEqual([true, true, true, true]);
+    }
+
+    for (const l of ['en', 'ja', 'tc'] as const) {
+      it(`names the box by its caption, shown above the query the box holds and after it is emptied, in ${l}`, fakeAsync(() => {
+        const t = inLocale(l);
+        const { caption, box } = openOver('utilities');
+
+        expect(caption.textContent?.trim()).withContext("the caption's words").toBe(t('transactions.saveNameLabel'));
+        expect(box.id).withContext("the box's id").not.toBe('');
+        expect(caption.htmlFor).withContext("the caption's for, the box's id").toBe(box.id);
+        expect(accessibleName(box)).withContext("the box's name").toBe(t('transactions.saveNameLabel'));
+        expect(box.hasAttribute('placeholder')).withContext('a placeholder in the box').toBeFalse();
+        expectCaptionShown(caption, 'the caption, the box holding the query');
+        expect(caption.getBoundingClientRect().bottom)
+          .withContext("the caption's foot against the box's top, px")
+          .toBeLessThanOrEqual(box.getBoundingClientRect().top + 0.5);
+
+        box.value = '';
+        box.dispatchEvent(new Event('input'));
+        fixture.detectChanges();
+        expectCaptionShown(caption, 'the caption, the box emptied');
+        expect(accessibleName(box)).withContext("the emptied box's name").toBe(t('transactions.saveNameLabel'));
+      }));
+
+      // A 375 px phone gives the host 336 px: the panel's 12 px padding on
+      // each side leaves the pill 312. The caption is text, so the face is pinned.
+      it(`keeps the caption whole and Save and Cancel 40px inside the pill at a 336 px host, in ${l}`, fakeAsync(() => {
+        inLocale(l);
+        pinFieldFace();
+        root().style.display = 'block';
+        root().style.width = '336px';
+        const { pill, caption, box } = openOver('utilities');
+
+        expect(pill.getBoundingClientRect().width).withContext("the pill's width, px").toBeCloseTo(312, 0);
+        expectCaptionShown(caption);
+        expect(caption.scrollWidth).withContext("the caption's scroll width against its client width, px")
+          .toBeLessThanOrEqual(caption.clientWidth);
+        expect(caption.scrollHeight).withContext("the caption's scroll height against its client height, px")
+          .toBeLessThanOrEqual(caption.clientHeight);
+        expectInside(caption, pill, 'the caption');
+        expectInside(box, pill, 'the box');
+        const buttons = Array.from(pill.querySelectorAll<HTMLButtonElement>('button'));
+        expect(buttons.length).withContext("the pill's Save and Cancel").toBe(2);
+        for (const [i, button] of buttons.entries()) {
+          const what = i === 0 ? 'Save' : 'Cancel';
+          const own = button.getBoundingClientRect();
+          expect([own.width, own.height]).withContext(`${what}, px`).toEqual([40, 40]);
+          expectInside(button, pill, what);
+        }
+      }));
+    }
+
+    it('paints the caption in --text-muted, at AA on the pill, in the four palettes', fakeAsync(() => {
+      const { caption } = openOver('utilities');
+      for (const { name, classes } of PALETTES) {
+        inPalette(classes, () => expectPainted(caption, '--text-muted', `${name}: the caption`));
+      }
     }));
   });
 

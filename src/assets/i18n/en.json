@@ -187,7 +187,6 @@
     "savedSearches": "Saved searches",
     "recentSearches": "Recent searches",
     "saveSearch": "Save search",
-    "searchLabelPlaceholder": "Name this search...",
     "saveNameLabel": "Name for this search",
     "removeSavedSearch": "Remove saved search {{name}}",
     "removeRecentSearch": "Remove recent search {{query}}",
