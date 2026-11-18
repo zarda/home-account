@@ -298,40 +298,84 @@
  * repeat, which leaves the reference ambiguous rather than empty; and whether
  * the element an id names holds any text.
  *
- * An eighth rule keeps a toggle from rendering a control with no name.
- * `mat-checkbox`, `mat-slide-toggle` and `mat-radio-button` each render the
- * control a screen reader lands on (an `<input>`, or a `role="switch"`
- * button) inside themselves, and name it from the text projected into their
- * own label or from their `aria-label` and `aria-labelledby` inputs. One with
- * neither is announced as a checkbox or a switch and nothing more. The import
- * review card's row checkbox had that shape, one per row, under a Select all
- * whose text named it. The rule: a toggle projects text, or carries
+ * An eighth rule keeps a control from rendering with no name, in any state of
+ * its blocks. `mat-checkbox`, `mat-slide-toggle` and `mat-radio-button` each
+ * render the control a screen reader lands on (an `<input>`, or a
+ * `role="switch"` button) inside themselves, and name it from the text
+ * projected into their own label or from their `aria-label` and
+ * `aria-labelledby` inputs. One with neither is announced as a checkbox or a
+ * switch and nothing more. The import review card's row checkbox had that
+ * shape, one per row, under a Select all whose text named it. A button, a
+ * link and an element with a control's literal role are named the same way,
+ * by what they hold when no `aria-label` or `aria-labelledby` names them, in
+ * any spelling (each lands on a plain element, as on a slider's thumb). And
+ * what a control holds names it only in the states that render it: the
+ * transaction filter toggle's only words were its badge's count, inside an
+ * `@if (activeFilterCount() > 0)`, so with no filter set it had no name, and
+ * this gate counted the badge as text. The rule: a toggle carries
  * `aria-label` or `aria-labelledby` as a literal, an interpolation or a bound
- * input (`[aria-label]`, `[aria-labelledby]`).
+ * input (`[aria-label]`, `[aria-labelledby]`), a plain control carries either
+ * in any spelling, each with a value that is not blank (an empty one names
+ * nothing, and the name comes from what the control holds), or what the
+ * control holds renders in every state of its blocks (readTree, heldBy).
+ * Anything outside every block renders always; an `@if` renders in every
+ * state when it ends in a plain `@else`, an `@switch` when it has an
+ * `@default` and an `@for` when it has an `@empty`, each with something in
+ * every branch.
  *
- *   - **`[attr.aria-label]` is not a name here.** It is written on the host,
- *     not on the control inside, which stays unnamed (Material's host
+ *   - **`[attr.aria-label]` is not a toggle's name.** It is written on the
+ *     host, not on the control inside, which stays unnamed (Material's host
  *     bindings clear the host's own `aria-label` and `aria-labelledby`). The
  *     input binding is the spelling that reaches the control.
- *   - **A `mat-icon` is not text.** MatIcon hides itself, so its ligature
- *     names nothing, and a toggle whose only content is an icon is unnamed.
+ *   - **What renders a name.** Text and interpolations; an `<img>` whose alt
+ *     is not empty; and, read as words since what they render is not in this
+ *     template, a component (a tag with a hyphen), an `<ng-content>`, and an
+ *     element that a binding (`[textContent]`, `[innerText]`, `[innerHTML]`)
+ *     or a template outlet fills. An `<ng-container>` is no component: what
+ *     it holds is read. A `mat-icon` is not text: MatIcon hides itself, so its
+ *     ligature names nothing, and a control whose only content is an icon is
+ *     unnamed, unless the icon is written to be read, named with a literal
+ *     `aria-hidden="false"`. An icon that carries a control's role is no
+ *     different: its own ligature does not name it. Nor is anything inside an
+ *     element with a literal `aria-hidden="true"`, or inside an
+ *     `<ng-template>`, which is stamped elsewhere if at all.
+ *   - **A control that holds nothing fails too.** It is the case of every
+ *     branch with no block: an icon button with no `aria-label` is unnamed in
+ *     every state. A hit says which it is (`sometimes`), since the fixes
+ *     differ.
+ *   - **An `@switch` needs an `@default`**, or Angular's exhaustive
+ *     `@default never;`, which has no body and which the compiler checks
+ *     against the subject's type, so that a value added later fails the
+ *     build. Cases that cover every value without saying so are read as
+ *     incomplete: the gate cannot read the type. **A `@defer` is read as an
+ *     `@if` with no `@else`**, whatever follows it: its main block renders
+ *     once loaded, and nothing says what shows when loading fails.
  *   - **A slider is read by its thumbs.** `mat-slider` takes no name input
  *     and forwards no attribute to its thumbs, so a name on its host reaches
  *     nothing: a screen reader lands on each `<input matSliderThumb>`, which
  *     is named by what it carries itself. The rule: each thumb carries
- *     `aria-label` or `aria-labelledby` with a value, as a literal, an
- *     interpolation or a binding (`[aria-label]`, `[aria-labelledby]`,
- *     `[attr.aria-label]`, `[attr.aria-labelledby]`), whatever its host
- *     carries.
+ *     `aria-label` or `aria-labelledby` with a value that is not blank, as a
+ *     literal, an interpolation or a binding (`[aria-label]`,
+ *     `[aria-labelledby]`, `[attr.aria-label]`, `[attr.aria-labelledby]`),
+ *     whatever its host carries.
  *   - **What it found and could not fix is frozen** in UNNAMED_FROZEN, in
  *     ITEMLESS_FROZEN's rows with the tag as the key, set against the hits by
  *     the same helper: a hit no row names fails, and so does a row whose
  *     count is not the tally.
  *
  * What it cannot see: a name set in TypeScript or by a directive's host
- * binding; text the toggle projects inside an element hidden from a screen
- * reader, which counts here and names nothing; text only one branch of a
- * block renders; and whether the text or the name says anything.
+ * binding; a `title`, which names a control only when nothing else does and
+ * is not read here, so a control named by one alone fails; a structural
+ * `*ngIf`, whose element is read as rendering always (no template here uses
+ * one); whether a component, a projection or a binding renders any words; an
+ * element hidden by a bound `[attr.aria-hidden]`, read as rendering; an
+ * `aria-label` bound to an expression that is null in some states, read as
+ * naming the control in every state, so what the control holds is not read
+ * at all (the API-key test buttons, the camera's process button and the
+ * form's submit button take that shape, and rely on their `@else` words
+ * while the label is null); an element the rule does not count as a control,
+ * such as a chip or a button toggle; and whether the text or the name says
+ * anything.
  *
  * Reference documentation lives in docs/accessibility.md.
  */
@@ -577,12 +621,51 @@ function openBlock(keyword, header, frames, { casesApart, at }) {
 }
 
 /**
+ * What follows `@default` in Angular's exhaustive default, `@default never;`,
+ * as the compiler spells it: blanks on one line, then `never`.
+ */
+const DEFAULT_NEVER = /^[^\S\r\n]+never\b/;
+
+/**
+ * The head of the block whose `@` sits at `i` in a run with its
+ * interpolations set aside: `{ keyword, header, opens, next }`, `opens` being
+ * whether a body follows and `next` where reading carries on, or null when no
+ * keyword follows the `@`. A head runs to the first `{` outside its
+ * parentheses, but two open nothing and end at their `;`: `@let name =
+ * expression;`, which declares a value, and the exhaustive `@default never;`,
+ * which has no body (the compiler proves that some `@case` matches), its
+ * keyword read as the compiler names it, `'default never'`. readBlocks and
+ * readTree both read heads through it.
+ */
+function readBlockHead(plain, i) {
+  const keyword = /^@(\w+)/.exec(plain.slice(i));
+  if (!keyword) return null;
+  const from = i + keyword[0].length;
+  const exhaustive = keyword[1] === 'default' && DEFAULT_NEVER.test(plain.slice(from));
+  if (keyword[1] === 'let' || exhaustive) {
+    const end = plain.indexOf(';', from);
+    const to = end < 0 ? plain.length : end;
+    const name = exhaustive ? 'default never' : keyword[1];
+    return { keyword: name, header: plain.slice(from, to), opens: false, next: to + 1 };
+  }
+  let depth = 0;
+  let j = from;
+  for (; j < plain.length; j++) {
+    if (plain[j] === '(') depth++;
+    else if (plain[j] === ')') depth--;
+    else if (plain[j] === '{' && depth === 0) break;
+  }
+  return { keyword: keyword[1], header: plain.slice(from, j), opens: j < plain.length, next: j + 1 };
+}
+
+/**
  * Reads the control-flow syntax in one run of text between two tags, pushing
  * a frame onto `frames` for each block it opens and removing one for each `}`.
  * `@for` opens a repeating block; any other `@name … {` (`@if`, `@else`,
- * `@empty`, `@switch`, `@case`, `@defer`, …) a plain one. Interpolations are
- * blanked first, because their braces are expressions; Angular rejects a bare
- * `{`, `}` or `@` in text, so what remains is block syntax.
+ * `@empty`, `@switch`, `@case`, `@defer`, …) a plain one; an `@let` and an
+ * `@default never;` open none (readBlockHead). Interpolations are blanked
+ * first, because their braces are expressions; Angular rejects a bare `{`,
+ * `}` or `@` in text, so what remains is block syntax.
  *
  * An `@for` frame records its item's name, and an `@switch` frame its
  * subject, with `on` set to the `@for` frame whose item it is when the
@@ -597,27 +680,10 @@ function readBlocks(text, frames, { casesApart = false, base = 0 } = {}) {
   let i = 0;
   while (i < plain.length) {
     if (plain[i] === '@') {
-      const keyword = /^@(\w+)/.exec(plain.slice(i));
-      if (!keyword) { i += 1; continue; }
-      if (keyword[1] === 'let') {
-        // `@let name = expression;` declares a value and opens nothing.
-        const end = plain.indexOf(';', i);
-        i = end < 0 ? plain.length : end + 1;
-        continue;
-      }
-      // The header runs to the first `{` outside its parentheses.
-      let depth = 0;
-      let j = i + keyword[0].length;
-      for (; j < plain.length; j++) {
-        if (plain[j] === '(') depth++;
-        else if (plain[j] === ')') depth--;
-        else if (plain[j] === '{' && depth === 0) break;
-      }
-      if (j < plain.length) {
-        const header = plain.slice(i + keyword[0].length, j);
-        frames.push(openBlock(keyword[1], header, frames, { casesApart, at: base + i }));
-      }
-      i = j + 1;
+      const head = readBlockHead(plain, i);
+      if (!head) { i += 1; continue; }
+      if (head.opens) frames.push(openBlock(head.keyword, head.header, frames, { casesApart, at: base + i }));
+      i = head.next;
       continue;
     }
     if (plain[i] === '}') {
@@ -832,8 +898,8 @@ const literallyHidden = (attrs) =>
 /**
  * The key a control's own text consists of when it names no item, or null.
  * `runs` are the runs of template text the control holds. Control-flow syntax
- * is taken out, as projectsText takes it out, with each interpolation set
- * aside first, since its braces are an expression's; the text is bare when
+ * is taken out, with each interpolation set aside first, since its braces
+ * are an expression's, as readTree sets them aside; the text is bare when
  * what is left is one interpolation and that is one key with no parameters, or
  * a ternary between two, piped through translate (bareKeyOf).
  */
@@ -845,7 +911,8 @@ function ownTextKey(runs) {
       interpolations.push(body);
       return ` \u0000${interpolations.length - 1}\u0000 `;
     })
-    .replace(/@let\b[^;]*;/g, ' ')
+    // The two heads that end at a `;` (readBlockHead), then the rest.
+    .replace(/@(?:let\b|default[^\S\r\n]+never\b)[^;]*;/g, ' ')
     .replace(/@\w+[^{]*\{/g, ' ')
     .replace(/[{}]/g, ' ')
     .trim();
@@ -1220,17 +1287,26 @@ function attributesOf(attrs) {
 }
 
 /**
+ * True when a tag carries one of `names` with a value that is not blank. An
+ * empty or blank `aria-label` or `aria-labelledby` names nothing: the name is
+ * then computed from what the control holds, as though the attribute were not
+ * written, so it is read as not written. An `<img>` with an empty alt is
+ * silent the same way (spokenBy).
+ */
+const namedBy = (names) => (attrs) =>
+  attributesOf(attrs).some(({ name, value }) => names.has(name) && value !== undefined && value.trim() !== '');
+
+/**
  * The names a toggle hands to the control inside it: `aria-label` or
  * `aria-labelledby`, literal, interpolated or bound to the input
- * (`[aria-label]`, `[aria-labelledby]`), each with a value. `[attr.aria-label]`
- * and `[attr.aria-labelledby]` are not among them, since they land on the
- * host, and neither is any other spelling that ends in the name, such as
- * `bind-attr.aria-label`.
+ * (`[aria-label]`, `[aria-labelledby]`), each with a value that is not blank.
+ * `[attr.aria-label]` and `[attr.aria-labelledby]` are not among them, since
+ * they land on the host, and neither is any other spelling that ends in the
+ * name, such as `bind-attr.aria-label`.
  */
 const TOGGLE_NAMES = new Set(['aria-label', 'aria-labelledby', '[aria-label]', '[aria-labelledby]']);
 
-const toggleNamed = (attrs) =>
-  attributesOf(attrs).some(({ name, value }) => value !== undefined && TOGGLE_NAMES.has(name));
+const toggleNamed = namedBy(TOGGLE_NAMES);
 
 /** MatSlider's thumb input, in each of its three spellings. */
 const SLIDER_THUMBS = new Set(['matSliderThumb', 'matSliderStartThumb', 'matSliderEndThumb']);
@@ -1239,83 +1315,266 @@ const isSliderThumb = (attrs) => attributesOf(attrs).some(({ name }) => SLIDER_T
 
 /**
  * The names a slider's thumb carries itself. The thumb is a plain input, so
- * the attribute bindings land on it too; each needs a value.
+ * the attribute bindings land on it too; each needs a value that is not
+ * blank (namedBy).
  */
 const THUMB_NAMES = new Set([...TOGGLE_NAMES, '[attr.aria-label]', '[attr.aria-labelledby]']);
 
-const thumbNamed = (attrs) =>
-  attributesOf(attrs).some(({ name, value }) => value !== undefined && THUMB_NAMES.has(name));
+const thumbNamed = namedBy(THUMB_NAMES);
 
 /**
- * True when a run of template text between two tags renders text: an
- * interpolation, or anything left once control-flow syntax is taken out.
+ * The block keywords that carry on the block before them rather than open
+ * one of their own: an `@if`'s `@else` and `@else if`, an `@for`'s `@empty`,
+ * and a `@defer`'s `@placeholder`, `@loading` and `@error`.
  */
-function projectsText(run) {
-  const plain = run
-    .replace(/\{\{[\s\S]*?\}\}/g, ' x ')
-    .replace(/@let\b[^;]*;/g, ' ')
-    .replace(/@\w+[^{]*\{/g, ' ')
-    .replace(/[{}]/g, ' ');
-  return /\S/.test(plain);
+const CHAIN_CONTINUES = new Set(['else', 'empty', 'placeholder', 'loading', 'error']);
+
+/**
+ * Opens one block in the tree readTree builds: a new chain, a further branch
+ * of the chain just closed, or a case of the open switch. `open` is the stack
+ * of open frames, innermost last; the branch opened goes on top of it.
+ */
+function openTreeBlock(keyword, header, open) {
+  const parent = open.at(-1);
+  const branch = { type: 'branch', children: [] };
+  const previous = parent.children.at(-1);
+  if (CHAIN_CONTINUES.has(keyword) && previous?.type === 'chain') {
+    previous.branches.push(branch);
+    if (keyword === 'empty' || (keyword === 'else' && !/^\s*if\b/.test(header))) previous.complete = true;
+  } else if ((keyword === 'case' || keyword === 'default') && parent.type === 'chain') {
+    parent.branches.push(branch);
+    if (keyword === 'default') parent.complete = true;
+  } else if (keyword === 'switch') {
+    // A switch's own body holds its cases and nothing that renders.
+    const chain = { type: 'chain', kind: keyword, branches: [], complete: false, children: [] };
+    parent.children.push(chain);
+    open.push(chain);
+    return;
+  } else {
+    parent.children.push({ type: 'chain', kind: keyword, branches: [branch], complete: false });
+  }
+  open.push(branch);
 }
 
 /**
- * Every toggle that hands the control inside it no name, and every slider
- * with a thumb that carries none, whatever the slider's host carries. A
- * toggle is named by text projected into it, outside any `mat-icon`, or by
- * one of TOGGLE_NAMES; a thumb by one of THUMB_NAMES. Returns `{ line, tag }`
- * for each, `line` being the opening tag's.
+ * A template read as a tree, for the eighth rule. An element is
+ * `{ type: 'element', name, attrs, line, children }`; a run of text that
+ * renders something, an interpolation or anything left once block syntax is
+ * taken out, is `{ type: 'text' }`; a block is a chain of its branches,
+ * `{ type: 'chain', kind, branches, complete }`, `kind` being the keyword
+ * that opened it and each branch `{ type: 'branch', children }`. A chain is
+ * complete when, whatever its condition, one of its branches renders: an `@if`
+ * that ends in a plain `@else`, an `@switch` with an `@default` or closed by
+ * the exhaustive `@default never;`, which the compiler holds to a `@case` for
+ * every value its subject's type takes, an `@for` with an `@empty`. A `@defer`
+ * never is, whatever follows it. Returns the root, a branch holding the
+ * template's top level.
+ *
+ * Interpolations are set aside before block syntax is read, as readBlocks
+ * sets them aside, since their braces are an expression's; an `@let`
+ * declares a value and renders nothing (readBlockHead).
  */
-export function scanUnnamedToggles(source) {
+function readTree(source) {
   const masked = maskComments(source);
-  const hits = [];
-  const judge = (entry) => {
-    if (entry.tag === 'mat-slider') {
-      if (entry.thumbs.some((thumb) => !thumbNamed(thumb))) hits.push({ line: entry.line, tag: entry.tag });
-      return;
+  const root = { type: 'branch', children: [] };
+  // Open elements, branches and switches, innermost last.
+  const open = [root];
+  const readRun = (run) => {
+    const plain = run.replace(/\{\{[\s\S]*?\}\}/g, (body) => 'x'.padEnd(body.length));
+    let from = 0;
+    const text = (to) => {
+      if (/\S/.test(plain.slice(from, to))) open.at(-1).children.push({ type: 'text' });
+    };
+    let i = 0;
+    while (i < plain.length) {
+      if (plain[i] === '}') {
+        text(i);
+        const block = open.findLastIndex((frame) => frame.type !== 'element');
+        if (block > 0) open.length = block;
+        i += 1;
+        from = i;
+        continue;
+      }
+      const head = plain[i] === '@' ? readBlockHead(plain, i) : null;
+      if (!head) {
+        i += 1;
+        continue;
+      }
+      text(i);
+      if (head.opens) openTreeBlock(head.keyword, head.header, open);
+      else if (head.keyword === 'default never' && open.at(-1).type === 'chain') open.at(-1).complete = true;
+      i = head.next;
+      from = i;
     }
-    if (entry.text || toggleNamed(entry.attrs)) return;
-    hits.push({ line: entry.line, tag: entry.tag });
+    text(plain.length);
   };
-  // The toggle or slider being read, and how many icons are open inside it.
-  let open = null;
-  let icons = 0;
   const tag = new RegExp(ANY_TAG.source, 'g');
   let last = 0;
   let match;
   while ((match = tag.exec(masked)) !== null) {
-    if (open !== null && icons === 0 && projectsText(masked.slice(last, match.index))) open.text = true;
+    readRun(masked.slice(last, match.index));
     last = tag.lastIndex;
     const [, closing, rawName, attrs] = match;
     const name = rawName.toLowerCase();
-    const selfClosing = /\/\s*$/.test(attrs) || VOID_ELEMENTS.has(name);
-    if (open === null) {
-      if (closing || !(TOGGLE_TAGS.has(name) || name === 'mat-slider')) continue;
-      const entry = { tag: name, line: lineOf(masked, match.index), attrs, text: false, thumbs: [] };
-      if (selfClosing) judge(entry);
-      else open = entry;
-      continue;
-    }
     if (closing) {
-      if (name === 'mat-icon' && icons > 0) icons--;
-      if (name === open.tag) {
-        judge(open);
-        open = null;
-        icons = 0;
-      }
+      const at = open.map((frame) => (frame.type === 'element' ? frame.name : null)).lastIndexOf(name);
+      if (at > 0) open.length = at;
       continue;
     }
-    if (name === 'mat-icon' && !selfClosing) icons++;
-    if (open.tag === 'mat-slider' && isSliderThumb(attrs)) open.thumbs.push(attrs);
+    const element = { type: 'element', name, attrs, line: lineOf(masked, match.index), children: [] };
+    open.at(-1).children.push(element);
+    if (!/\/\s*$/.test(attrs) && !VOID_ELEMENTS.has(name)) open.push(element);
   }
-  return hits;
+  readRun(masked.slice(last));
+  return root;
+}
+
+/** What renders nothing that names a control, and what names it in every state. */
+const SILENT = { ever: false, always: false };
+const SPOKEN = { ever: true, always: true };
+
+/** The spellings of an image's alternative text. */
+const ALT_NAMES = new Set(['alt', '[alt]', '[attr.alt]']);
+
+/**
+ * Attributes that fill an element with something the template does not hold
+ * as a child: text a property binding writes, or a template an outlet stamps.
+ */
+const FILLED_BY = new Set(['[textContent]', '[innerText]', '[innerHTML]', '*ngTemplateOutlet', '[ngTemplateOutlet]']);
+
+/**
+ * What a list of nodes renders that can name the control holding them:
+ * `ever`, in at least one state of their blocks; `always`, in every state.
+ * One node that renders in every state is enough.
+ */
+function spokenIn(nodes) {
+  const parts = nodes.map(spokenBy);
+  return { ever: parts.some((part) => part.ever), always: parts.some((part) => part.always) };
+}
+
+/** What an element renders inside itself (spokenIn), or SPOKEN when FILLED_BY fills it. */
+function heldBy(element) {
+  return attributesOf(element.attrs).some(({ name }) => FILLED_BY.has(name)) ? SPOKEN : spokenIn(element.children);
 }
 
 /**
- * Toggles and sliders the eighth rule found unnamed when it landed, outside
- * what that change fixed. Rows as ITEMLESS_FROZEN's, read by againstFrozen,
- * the key being the tag; `why` says which control it is and where its name
- * went instead. Empty is the goal.
+ * What one node renders that can name its control (spokenIn). Text does. A
+ * chain renders in every state when it is complete and each of its branches
+ * does. Of the elements, a `mat-icon` renders its name only when it is written
+ * to be read, named with a literal `aria-hidden="false"` (the first rule's
+ * shape), since MatIcon hides it and its ligature otherwise; one with a
+ * literal `aria-hidden="true"` and an `<ng-template>`, stamped elsewhere if at
+ * all, render nothing; an `<img>` renders its alt when that is not empty; an
+ * `<ng-content>` and a component, any other tag with a hyphen but an
+ * `<ng-container>`, are read as words, since what they render is not in this
+ * template; any other element renders what it holds (heldBy).
+ */
+function spokenBy(node) {
+  if (node.type === 'text') return SPOKEN;
+  if (node.type === 'chain') {
+    const parts = node.branches.map((branch) => spokenIn(branch.children));
+    return { ever: parts.some((part) => part.ever), always: node.complete && parts.every((part) => part.always) };
+  }
+  if (node.name === 'mat-icon') return NAMED.test(node.attrs) && LITERAL_VISIBLE.test(node.attrs) ? SPOKEN : SILENT;
+  if (node.name === 'ng-template' || literallyHidden(node.attrs)) return SILENT;
+  if (node.name === 'img') {
+    return attributesOf(node.attrs).some(({ name, value }) => ALT_NAMES.has(name) && value) ? SPOKEN : SILENT;
+  }
+  if (node.name === 'ng-content' || (node.name.includes('-') && node.name !== 'ng-container')) return SPOKEN;
+  return heldBy(node);
+}
+
+/** True when a list of nodes holds a control-flow block, at any depth. */
+function holdsBlock(nodes) {
+  return nodes.some((node) => node.type === 'chain' || (node.type === 'element' && holdsBlock(node.children)));
+}
+
+/** Controls named by a label or an attribute, never by what they hold, whatever role they carry. */
+const FIELD_TAGS = new Set(['select', 'textarea', 'mat-select']);
+
+/**
+ * Every control in a template the eighth rule reads, in the order its opening
+ * tags come: `{ line, tag, kind, named, ever, always, blocks }`. `kind` is
+ * `'toggle'` for a checkbox, a slide toggle or a radio button, `'slider'` for
+ * a slider, and `'plain'` for a button, a link or an element with a control's
+ * literal role (CONTROL_ROLE), a void element or a field (FIELD_TAGS) aside.
+ * `named` is true when an attribute names it: for a toggle one of
+ * TOGGLE_NAMES (toggleNamed); for a plain control any spelling of
+ * `aria-label` or `aria-labelledby` with a value that is not blank, since each
+ * lands on a plain element, as on a slider's thumb (thumbNamed); for a slider,
+ * every thumb carrying one. `ever` and `always` say what it holds (heldBy),
+ * and `blocks` whether that is read through a control-flow block.
+ */
+function readControls(source) {
+  const found = [];
+  const thumbsIn = (nodes) =>
+    nodes.flatMap((node) => {
+      if (node.type === 'chain') return node.branches.flatMap((branch) => thumbsIn(branch.children));
+      if (node.type !== 'element') return [];
+      return [...(isSliderThumb(node.attrs) ? [node.attrs] : []), ...thumbsIn(node.children)];
+    });
+  const visit = (nodes) => {
+    for (const node of nodes) {
+      if (node.type === 'chain') {
+        for (const branch of node.branches) visit(branch.children);
+        continue;
+      }
+      if (node.type !== 'element') continue;
+      const { name, attrs, line } = node;
+      if (name === 'mat-slider') {
+        const named = thumbsIn(node.children).every(thumbNamed);
+        found.push({ line, tag: name, kind: 'slider', named, ever: named, always: named, blocks: false });
+      } else if (
+        (TEXT_NAMED_TAGS.has(name) || CONTROL_ROLE.test(attrs)) &&
+        !VOID_ELEMENTS.has(name) &&
+        !FIELD_TAGS.has(name)
+      ) {
+        const toggle = TOGGLE_TAGS.has(name);
+        found.push({
+          line,
+          tag: name,
+          kind: toggle ? 'toggle' : 'plain',
+          named: toggle ? toggleNamed(attrs) : thumbNamed(attrs),
+          // An icon that is itself the control is read as spokenBy reads one
+          // inside a control: MatIcon hides it, ligature and all.
+          ...(name === 'mat-icon' ? spokenBy(node) : heldBy(node)),
+          blocks: holdsBlock(node.children),
+        });
+      }
+      visit(node.children);
+    }
+  };
+  visit(readTree(source).children);
+  return found;
+}
+
+/**
+ * Every control that names nothing in some state of its blocks, or in all of
+ * them: a toggle or a plain control (readControls) that no attribute names
+ * and that holds nothing rendering in every state, and a slider with a thumb
+ * no attribute names, whatever the slider's host carries. Returns
+ * `{ line, tag, sometimes }` for each, `line` being the opening tag's and
+ * `sometimes` true when what the control holds renders in some states and
+ * not in others: words inside an `@if` with no `@else`, an `@switch` with no
+ * `@default` or an `@for` with no `@empty`.
+ */
+export function scanUnnamedControls(source) {
+  return unnamedAmong(readControls(source));
+}
+
+/** The controls among readControls' that scanUnnamedControls reports, as it reports them. */
+function unnamedAmong(controls) {
+  return controls
+    .filter((control) => !control.named && !control.always)
+    .map(({ line, tag, ever }) => ({ line, tag, sometimes: ever }));
+}
+
+/**
+ * Controls the eighth rule found unnamed in some state or in all, toggles and
+ * sliders when it landed and buttons, links and controls by role when it
+ * widened, outside what each change fixed. Rows as ITEMLESS_FROZEN's, read by
+ * againstFrozen, the key being the tag; `why` says which control it is and
+ * where its name went instead. Empty is the goal.
  */
 export const UNNAMED_FROZEN = [];
 
@@ -1557,24 +1816,30 @@ function run() {
     }
   }
 
-  // The toggle rule reads what each toggle projects and each slider's
-  // thumbs, and sets what it finds against the rows frozen when it landed.
-  let toggles = 0;
-  let sliders = 0;
+  // The unnamed-control rule reads what each control holds across the
+  // branches of its blocks, and each slider's thumbs, and sets what it finds
+  // against the rows frozen when it landed.
+  const controlKinds = { toggle: 0, plain: 0, slider: 0 };
+  let byContent = 0;
+  let throughBlocks = 0;
   const unnamed = [];
   for (const template of sources) {
-    if (!/<mat-(checkbox|slide-toggle|radio-button|slider)\b/.test(template.source)) continue;
-    walkTemplate(template.source, ({ name }) => {
-      if (TOGGLE_TAGS.has(name)) toggles++;
-      else if (name === 'mat-slider') sliders++;
-    });
-    for (const hit of scanUnnamedToggles(template.source)) {
-      unnamed.push({ site: `${template.key}:${hit.line + template.offset}`, tag: hit.tag, key: hit.tag });
+    const controls = readControls(template.source);
+    for (const control of controls) {
+      controlKinds[control.kind]++;
+      if (control.kind === 'slider' || control.named) continue;
+      byContent++;
+      if (control.blocks) throughBlocks++;
+    }
+    for (const hit of unnamedAmong(controls)) {
+      unnamed.push({ site: `${template.key}:${hit.line + template.offset}`, tag: hit.tag, key: hit.tag, sometimes: hit.sometimes });
     }
   }
-  const toggleVerdict = againstFrozen(unnamed, UNNAMED_FROZEN);
-  for (const hit of toggleVerdict.fresh) findings.push({ rule: 'unnamed', site: hit.site, tag: hit.tag });
-  for (const row of toggleVerdict.drift) findings.push({ rule: 'unnamed-drift', site: row.file, ...row });
+  const unnamedVerdict = againstFrozen(unnamed, UNNAMED_FROZEN);
+  for (const hit of unnamedVerdict.fresh) {
+    findings.push({ rule: 'unnamed', site: hit.site, tag: hit.tag, sometimes: hit.sometimes });
+  }
+  for (const row of unnamedVerdict.drift) findings.push({ rule: 'unnamed-drift', site: row.file, ...row });
 
   const templates = files.filter((file) => file.endsWith('.html')).length;
   console.log(
@@ -1608,8 +1873,11 @@ function run() {
       `aria-controls, aria-owns or for across ${sources.length} template(s).`
   );
   console.log(
-    `Checked ${toggles} checkbox, slide toggle and radio button tag(s) and ${sliders} slider(s) ` +
-      `across ${sources.length} template(s): ${unnamed.length} hand their control no name, ` +
+    `Checked ${controlKinds.toggle} checkbox, slide toggle and radio button tag(s), ` +
+      `${controlKinds.plain} button(s), link(s) and element(s) with a control's role, and ` +
+      `${controlKinds.slider} slider(s) across ${sources.length} template(s): ${byContent} take their name ` +
+      `from what they hold, ${throughBlocks} of them through a control-flow block; ${unnamed.length} name ` +
+      `nothing in some state of their blocks or in all, ` +
       `${UNNAMED_FROZEN.reduce((sum, row) => sum + row.count, 0)} frozen by name.`
   );
 
@@ -1781,20 +2049,37 @@ function run() {
     }
 
     if (unnamedFindings.length > 0) {
-      console.error(`\n${unnamedFindings.length} toggle(s) or slider(s) leave the control inside them unnamed:\n`);
+      console.error(`\n${unnamedFindings.length} control(s) name nothing in some state of their blocks, or in all:\n`);
       for (const finding of unnamedFindings) {
+        const toggle = TOGGLE_TAGS.has(finding.tag);
         if (finding.tag === 'mat-slider') {
           console.error(`  ${finding.site}  <mat-slider> with a thumb named by nothing`);
           console.error(`    → put the aria-label or aria-labelledby on each <input matSliderThumb>\n`);
-        } else {
+        } else if (finding.sometimes) {
+          console.error(`  ${finding.site}  <${finding.tag}> whose words sit only in a block that can render none`);
+          console.error(
+            `    → put words in every branch and close the block with an @else, an @empty, or an @default ` +
+              `(an exhaustive @default never; closes an @switch), keep words outside it, or ` +
+              (toggle ? `bind the [aria-label] input\n` : `name it with an aria-label, as the filter toggle does\n`)
+          );
+        } else if (toggle) {
           console.error(`  ${finding.site}  <${finding.tag}> with no text and no aria-label or aria-labelledby`);
           console.error(`    → project its label as text, or bind the [aria-label] input, as the review card's row checkbox does\n`);
+        } else {
+          console.error(`  ${finding.site}  <${finding.tag}> with no words and no aria-label or aria-labelledby`);
+          console.error(`    → name it with an aria-label that says what it does, or give it words\n`);
         }
       }
       console.error(
-        `mat-checkbox, mat-slide-toggle and mat-radio-button render the control a\n` +
-          `screen reader lands on inside themselves, and name it from the text\n` +
-          `projected into their own label or from their aria-label and\n` +
+        `A button, a link and an element with a control's role take their name from\n` +
+          `what they hold when no aria-label or aria-labelledby names them, and what\n` +
+          `they hold counts only where it renders in every state: words inside an @if\n` +
+          `with no @else are gone while the condition is false, and so is the name.\n` +
+          `The transaction filter toggle had that shape, its only words a badge's\n` +
+          `count inside an @if, and no name with no filter set. mat-checkbox,\n` +
+          `mat-slide-toggle and mat-radio-button render the control a screen reader\n` +
+          `lands on inside themselves, and name it from the text projected into their\n` +
+          `own label, held to the same reading, or from their aria-label and\n` +
           `aria-labelledby inputs. With neither, it is announced as a checkbox or a\n` +
           `switch and nothing more. [attr.aria-label] does not reach it: it is\n` +
           `written on the host, and the control inside stays unnamed. mat-slider has\n` +
@@ -1806,7 +2091,7 @@ function run() {
     }
 
     if (unnamedDriftFindings.length > 0) {
-      console.error(`\n${unnamedDriftFindings.length} frozen unnamed-toggle row(s) no longer match their count:\n`);
+      console.error(`\n${unnamedDriftFindings.length} frozen unnamed-control row(s) no longer match their count:\n`);
       for (const finding of unnamedDriftFindings) {
         console.error(`  ${finding.file}  <${finding.key}>  frozen ${finding.count}, found ${finding.sites.length}`);
         for (const site of finding.sites) console.error(`    at ${site}`);
@@ -1837,8 +2122,9 @@ function run() {
       `stamped once per item names its item, by its aria-label or by its own ` +
       `text, or is frozen by name, every id ` +
       `a literal reference names is declared in its own template, and every ` +
-      `checkbox, slide toggle, radio button and slider names the ` +
-      `control inside it or is frozen by name.`
+      `button, link, control by role, checkbox, slide toggle and radio button ` +
+      `is named in every state of its blocks, and every slider on each of its ` +
+      `thumbs, or is frozen by name.`
   );
 }
 
@@ -2150,6 +2436,14 @@ function selfTest() {
     'a @let declaration opens no block',
     menuLines(`@let total = sum();\n${BARE}</button>`),
     []
+  );
+  check(
+    'an exhaustive @default never; opens no block, so the @for around it closes at its own brace',
+    menuLines(
+      "@for (row of rows(); track row.id) {\n  @switch (row.kind) {\n    @case ('a') {\n      <span>a</span>\n    }\n" +
+        `    @default never;\n  }\n  ${BARE}</button>\n}\n${BARE}</button>`
+    ),
+    [8]
   );
   check(
     'a commented-out repeated trigger is not a trigger',
@@ -2646,15 +2940,15 @@ function selfTest() {
   check('a component source with no inline template has none', inlineTemplateOf("@Component({ templateUrl: './x.html' })"), null);
 
   // --- the toggle rule: must hit ---
-  const unnamedTags = (source) => scanUnnamedToggles(source).map((hit) => `${hit.line} ${hit.tag}`);
+  const unnamedTags = (source) => scanUnnamedControls(source).map((hit) => `${hit.line} ${hit.tag}`);
 
   check(
     'a bare checkbox, the review card\'s row checkbox spread over several lines',
-    scanUnnamedToggles(
+    scanUnnamedControls(
       '<div class="card-select">\n  <mat-checkbox\n    [checked]="row.selected"\n' +
         '    (change)="toggleSelection(row, $event.checked)"\n  ></mat-checkbox>\n</div>'
     ),
-    [{ line: 2, tag: 'mat-checkbox' }]
+    [{ line: 2, tag: 'mat-checkbox', sometimes: false }]
   );
   check(
     'a bare slide toggle beside a span it never references',
@@ -2706,6 +3000,16 @@ function selfTest() {
     ['2 mat-checkbox']
   );
   check(
+    'text inside an @if with no @else names the toggle in one state only',
+    scanUnnamedControls('<mat-checkbox>\n  @if (name) {\n    <span>{{ name }}</span>\n  }\n</mat-checkbox>'),
+    [{ line: 1, tag: 'mat-checkbox', sometimes: true }]
+  );
+  check(
+    'text inside a literally hidden element names no toggle',
+    unnamedTags('<mat-checkbox>\n  <span aria-hidden="true">{{ count }}</span>\n</mat-checkbox>'),
+    ['1 mat-checkbox']
+  );
+  check(
     'a slider named on its host alone, by a literal aria-labelledby, leaves its thumb unnamed',
     unnamedTags(
       '<mat-slider min="50" max="100" step="5" aria-labelledby="threshold-label" discrete>\n' +
@@ -2728,6 +3032,20 @@ function selfTest() {
   );
   check('a slider named nowhere', unnamedTags('<mat-slider>\n  <input matSliderThumb>\n</mat-slider>'), ['1 mat-slider']);
   check(
+    'a thumb inside a block is still a thumb, in every branch, and named in each it passes',
+    [
+      unnamedTags(
+        '<mat-slider>\n  @if (range()) {\n    <input matSliderStartThumb aria-label="From">\n' +
+          '    <input matSliderEndThumb aria-label="To">\n  } @else {\n    <input matSliderThumb>\n  }\n</mat-slider>'
+      ),
+      unnamedTags(
+        '<mat-slider>\n  @if (range()) {\n    <input matSliderStartThumb aria-label="From">\n' +
+          '    <input matSliderEndThumb aria-label="To">\n  } @else {\n    <input matSliderThumb aria-label="Level">\n  }\n</mat-slider>'
+      ),
+    ],
+    [['1 mat-slider'], []]
+  );
+  check(
     'a thumb\'s aria-labelledby with no value names nothing',
     unnamedTags('<mat-slider>\n  <input matSliderThumb aria-labelledby>\n</mat-slider>'),
     ['1 mat-slider']
@@ -2737,7 +3055,7 @@ function selfTest() {
   const inlineSwitch = inlineTemplateOf(inlineToggle);
   check(
     'an inline template in a .ts file, reported at the file\'s line',
-    scanUnnamedToggles(inlineSwitch.source).map((hit) => hit.line + inlineSwitch.offset),
+    scanUnnamedControls(inlineSwitch.source).map((hit) => hit.line + inlineSwitch.offset),
     [5]
   );
 
@@ -2762,8 +3080,8 @@ function selfTest() {
     []
   );
   check(
-    'text inside a block',
-    unnamedTags('<mat-checkbox>\n  @if (name) {\n    <span>{{ name }}</span>\n  }\n</mat-checkbox>'),
+    'text in both branches of an @if names the toggle in both states',
+    unnamedTags('<mat-checkbox>\n  @if (name) {\n    <span>{{ name }}</span>\n  } @else {\n    {{ \'common.untitled\' | translate }}\n  }\n</mat-checkbox>'),
     []
   );
   check('a literal aria-label', unnamedTags('<mat-checkbox aria-label="Choose"></mat-checkbox>'), []);
@@ -2850,11 +3168,12 @@ function selfTest() {
     { fresh: [unnamedAt('src/app/x.component.html:20', 'mat-checkbox')], drift: [] }
   );
   check(
-    'every frozen toggle row names its file, its tag, a count and why',
+    'every frozen unnamed-control row names its file, its tag, a count and why',
     UNNAMED_FROZEN.filter(
       (r) =>
         !/^src\/app\/.+\.(html|ts)$/.test(r.file) ||
-        !(TOGGLE_TAGS.has(r.key) || r.key === 'mat-slider') ||
+        // A role makes any element a control, so the key is any lower-case tag.
+        !/^[a-z][a-z0-9-]*$/.test(r.key ?? '') ||
         !(Number.isInteger(r.count) && r.count > 0) ||
         !r.why
     ),
@@ -2863,6 +3182,340 @@ function selfTest() {
   check(
     'no file and tag is frozen twice',
     UNNAMED_FROZEN.map((r) => `${r.file} ${r.key}`).filter((pair, i, pairs) => pairs.indexOf(pair) !== i),
+    []
+  );
+
+  // --- the branch rule: must hit ---
+  check(
+    'the filter toggle\'s old shape: its only words are its badge\'s, inside an @if with no @else',
+    scanUnnamedControls(
+      '<button\n  class="filter-toggle"\n  [class.has-filters]="activeFilterCount() > 0"\n  (click)="expanded.set(!expanded())"\n>\n' +
+        '  <mat-icon>tune</mat-icon>\n  @if (activeFilterCount() > 0) {\n' +
+        '    <span class="filter-badge">{{ activeFilterCount() }}</span>\n  }\n</button>'
+    ),
+    [{ line: 1, tag: 'button', sometimes: true }]
+  );
+  check(
+    'an @switch with no @default renders no words for any other value',
+    unnamedTags(
+      '<button mat-button (click)="next()">\n  @switch (step()) {\n    @case (\'review\') {\n' +
+        "      {{ 'import.review' | translate }}\n    }\n    @case ('save') {\n      {{ 'common.save' | translate }}\n    }\n  }\n</button>"
+    ),
+    ['1 button']
+  );
+  check(
+    'an @for with no @empty renders no words for an empty list',
+    unnamedTags('<button mat-stroked-button>\n  @for (tag of tags(); track tag) {\n    <span>{{ tag }}</span>\n  }\n</button>'),
+    ['1 button']
+  );
+  check(
+    'an @else if with no final @else leaves a state with no words',
+    unnamedTags(
+      "<button mat-button>\n  @if (saving()) {\n    {{ 'common.saving' | translate }}\n  } @else if (dirty()) {\n" +
+        "    {{ 'common.save' | translate }}\n  }\n</button>"
+    ),
+    ['1 button']
+  );
+  check(
+    'an @else that holds only an icon names nothing in its state',
+    unnamedTags(
+      "<button mat-button>\n  @if (busy()) {\n    <mat-icon>sync</mat-icon>\n  } @else {\n    {{ 'common.retry' | translate }}\n  }\n</button>"
+    ),
+    ['1 button']
+  );
+  check(
+    'an inner @if with no @else inside a complete outer one',
+    unnamedTags(
+      "<button mat-button>\n  @if (a()) {\n    @if (b()) {\n      {{ 'x.b' | translate }}\n    }\n  } @else {\n" +
+        "    {{ 'x.c' | translate }}\n  }\n</button>"
+    ),
+    ['1 button']
+  );
+  check(
+    'a link and an element with a control\'s role are read too',
+    unnamedTags(
+      '<a [routerLink]="path">\n  @if (label) {\n    {{ label }}\n  }\n</a>\n<div role="button" tabindex="0">\n' +
+        "  @if (busy) {\n    <mat-icon>sync</mat-icon>\n  } @else {\n    {{ 'common.upload' | translate }}\n  }\n</div>"
+    ),
+    ['1 a', '6 div']
+  );
+  check(
+    'a button that holds nothing but an icon and carries no name names nothing in any state',
+    scanUnnamedControls('<button mat-icon-button (click)="close()">\n  <mat-icon>close</mat-icon>\n</button>'),
+    [{ line: 1, tag: 'button', sometimes: false }]
+  );
+  check(
+    'words inside a literally hidden element, an <img> with an empty alt and an <ng-template> name nothing',
+    [
+      unnamedTags("<button>\n  <span aria-hidden=\"true\">{{ 'common.close' | translate }}</span>\n</button>"),
+      unnamedTags('<button>\n  <img src="close.svg" alt="">\n</button>'),
+      unnamedTags("<button>\n  <ng-template>{{ 'common.close' | translate }}</ng-template>\n</button>"),
+    ],
+    [['1 button'], ['1 button'], ['1 button']]
+  );
+  check(
+    'an <ng-container> is no component: what it holds is read',
+    unnamedTags(
+      "<button mat-flat-button>\n  @if (busy()) {\n    <ng-container>\n      <mat-icon>sync</mat-icon>\n    </ng-container>\n" +
+        "  } @else {\n    {{ 'common.export' | translate }}\n  }\n</button>"
+    ),
+    ['1 button']
+  );
+  check(
+    'an @defer is read as an @if with no @else, whatever follows it',
+    unnamedTags(
+      "<button>\n  @defer {\n    {{ 'x.ready' | translate }}\n  } @placeholder {\n    {{ 'x.wait' | translate }}\n  }\n</button>"
+    ),
+    ['1 button']
+  );
+  check(
+    'a control inside an @if, an @for, an @empty, an @case or an @default is read there, at its own line',
+    [
+      scanUnnamedControls('@if (open()) {\n  <button mat-icon-button (click)="close()">\n    <mat-icon>close</mat-icon>\n  </button>\n}'),
+      unnamedTags(
+        '@for (row of rows(); track row.id) {\n  <button mat-icon-button>\n    <mat-icon>delete</mat-icon>\n  </button>\n' +
+          '} @empty {\n  <mat-checkbox />\n}'
+      ),
+      unnamedTags(
+        "@switch (step()) {\n  @case ('a') {\n    <mat-checkbox />\n  }\n  @default {\n" +
+          '    <a [routerLink]="path"><mat-icon>home</mat-icon></a>\n  }\n}'
+      ),
+    ],
+    [[{ line: 2, tag: 'button', sometimes: false }], ['2 button', '6 mat-checkbox'], ['3 mat-checkbox', '6 a']]
+  );
+  check(
+    'an empty or blank aria-label or aria-labelledby names nothing, on a button, a toggle or a thumb',
+    [
+      unnamedTags('<button mat-icon-button aria-label="">\n  <mat-icon>close</mat-icon>\n</button>'),
+      unnamedTags('<a routerLink="/" aria-labelledby=" ">\n  <mat-icon>home</mat-icon>\n</a>'),
+      unnamedTags('<mat-checkbox aria-label=" "></mat-checkbox>'),
+      unnamedTags('<mat-slider>\n  <input matSliderThumb aria-label="">\n</mat-slider>'),
+    ],
+    [['1 button'], ['1 a'], ['1 mat-checkbox'], ['1 mat-slider']]
+  );
+  check(
+    'an exhaustive @switch, closed by @default never;, whose one case holds only an icon names nothing in that case',
+    scanUnnamedControls(
+      "<button mat-button>\n  @switch (step()) {\n    @case ('review') {\n      <mat-icon>search</mat-icon>\n    }\n" +
+        "    @case ('save') {\n      {{ 'common.save' | translate }}\n    }\n    @default never;\n  }\n</button>"
+    ),
+    [{ line: 1, tag: 'button', sometimes: true }]
+  );
+  check(
+    'a control after an exhaustive @switch is read where it stands, not as part of the switch',
+    unnamedTags(
+      "@switch (step()) {\n  @case ('a') {\n    <span>a</span>\n  }\n  @default never;\n}\n" +
+        '<button mat-icon-button>\n  <mat-icon>close</mat-icon>\n</button>'
+    ),
+    ['7 button']
+  );
+  check(
+    'an icon with a control\'s role is not named by its ligature, which MatIcon hides, as it is by an aria-label',
+    [
+      scanUnnamedControls('<mat-icon role="button" tabindex="0" (click)="close()">close</mat-icon>'),
+      scanUnnamedControls('<mat-icon role="button" tabindex="0" aria-label="Close" (click)="close()">close</mat-icon>'),
+    ],
+    [[{ line: 1, tag: 'mat-icon', sometimes: false }], []]
+  );
+
+  // --- the branch rule: must not hit (the load-bearing half) ---
+  check(
+    'an @if…@else with words in both, the transaction list\'s select toggle',
+    unnamedTags(
+      '<button mat-button class="select-toggle" (click)="toggleSelectMode()">\n' +
+        "  <mat-icon>{{ inSelectMode() ? 'done' : 'checklist' }}</mat-icon>\n  @if (inSelectMode()) {\n" +
+        "    {{ 'transactions.select.done' | translate }}\n  } @else {\n    {{ 'transactions.select.start' | translate }}\n  }\n</button>"
+    ),
+    []
+  );
+  check(
+    'an @switch…@default with words in every case',
+    unnamedTags(
+      "<button mat-button>\n  @switch (step()) {\n    @case ('review') {\n      {{ 'import.review' | translate }}\n    }\n" +
+        "    @default {\n      {{ 'common.next' | translate }}\n    }\n  }\n</button>"
+    ),
+    []
+  );
+  check(
+    'an exhaustive @switch, closed by @default never;, with words in every case, and one with words after it',
+    [
+      unnamedTags(
+        "<button mat-button>\n  @switch (step()) {\n    @case ('review') {\n      {{ 'import.review' | translate }}\n    }\n" +
+          "    @case ('save') {\n      {{ 'common.save' | translate }}\n    }\n    @default never;\n  }\n</button>"
+      ),
+      unnamedTags(
+        "<button mat-button>\n  @switch (step()) {\n    @case ('review') {\n      <mat-icon>search</mat-icon>\n    }\n" +
+          "    @default never;\n  }\n  {{ 'common.next' | translate }}\n</button>"
+      ),
+    ],
+    [[], []]
+  );
+  check(
+    'an @for…@empty with words in both',
+    unnamedTags(
+      "<button mat-stroked-button>\n  @for (tag of tags(); track tag) {\n    <span>{{ tag }}</span>\n  } @empty {\n" +
+        "    {{ 'transactions.addTag' | translate }}\n  }\n</button>"
+    ),
+    []
+  );
+  check(
+    'an @else if chain closed by an @else, with words in each',
+    unnamedTags(
+      "<button mat-button>\n  @if (saving()) {\n    {{ 'common.saving' | translate }}\n  } @else if (dirty()) {\n" +
+        "    {{ 'common.save' | translate }}\n  } @else {\n    {{ 'common.saved' | translate }}\n  }\n</button>"
+    ),
+    []
+  );
+  check(
+    'a bound aria-label names the control whatever its blocks hold, the filter toggle fixed',
+    unnamedTags(
+      '<button\n  class="filter-toggle"\n  [attr.aria-label]="activeFilterCount() > 0\n' +
+        "    ? ('transactions.filtersToggleActive' | translate: { active: activeFilterCount() })\n" +
+        "    : ('transactions.filtersToggle' | translate)\"\n  [attr.aria-expanded]=\"expanded()\"\n>\n" +
+        '  <mat-icon>tune</mat-icon>\n  @if (activeFilterCount() > 0) {\n' +
+        '    <span class="filter-badge" aria-hidden="true">{{ activeFilterCount() }}</span>\n  }\n</button>'
+    ),
+    []
+  );
+  check(
+    'a button named by an aria-label or aria-labelledby in each spelling, its content in an @if',
+    ['aria-label="x"', 'aria-labelledby="t"', '[aria-label]="x"', '[aria-labelledby]="t"', '[attr.aria-label]="x"', '[attr.aria-labelledby]="t"'].map(
+      (name) => unnamedTags(`<button ${name}>\n  @if (n) {\n    {{ n }}\n  }\n</button>`)
+    ),
+    [[], [], [], [], [], []]
+  );
+  check(
+    'a role-button whose branch stamps a component, the Data page\'s upload area',
+    unnamedTags(
+      '<div class="import-dropzone" role="button" tabindex="0" (click)="fileInput.click()">\n  @if (isImporting()) {\n' +
+        "    <app-loading-spinner [message]=\"'settings.processingFile' | translate\" />\n  } @else {\n" +
+        "    <mat-icon>cloud_upload</mat-icon>\n    <span class=\"dropzone-text\">{{ 'settings.uploadPrompt' | translate }}</span>\n  }\n</div>"
+    ),
+    []
+  );
+  check(
+    'an <img [alt]> beside an @if that holds a spinner, the form\'s stored-receipt thumbnail',
+    unnamedTags(
+      '<button type="button" class="receipt-preview" (click)="openReceipt(stored)">\n' +
+        "  <img\n    [src]=\"stored.url\"\n    [alt]=\"'receiptImages.imageNumber' | translate: { index: i + 1, total: 2 }\"\n  />\n" +
+        '  @if (busyStoredSlot() === stored.slot) {\n    <div class="scanning-overlay">\n' +
+        "      <app-loading-spinner [message]=\"'receiptImages.converting' | translate\" />\n    </div>\n  }\n</button>"
+    ),
+    []
+  );
+  check(
+    'words outside every block name the control beside an @if with no @else',
+    unnamedTags(
+      "<button mat-button>\n  {{ 'transactions.filters' | translate }}\n  @if (count() > 0) {\n" +
+        '    <span class="badge">{{ count() }}</span>\n  }\n</button>'
+    ),
+    []
+  );
+  check(
+    'a nested @if complete at every level, beside an @let',
+    unnamedTags(
+      "<button mat-button>\n  @let n = count();\n  @if (n > 1) {\n    @if (all()) {\n      {{ 'x.all' | translate }}\n" +
+        "    } @else {\n      {{ 'x.some' | translate: { n } }}\n    }\n  } @else {\n    {{ 'x.one' | translate }}\n  }\n</button>"
+    ),
+    []
+  );
+  check(
+    'an icon written to be read names the control holding it, as an icon left hidden does not',
+    [
+      unnamedTags('<button>\n  <mat-icon role="img" aria-hidden="false" [attr.aria-label]="tip()">error</mat-icon>\n</button>'),
+      unnamedTags('<button>\n  <mat-icon role="img" [attr.aria-label]="tip()">error</mat-icon>\n</button>'),
+    ],
+    [[], ['1 button']]
+  );
+  check(
+    'a block around the control is not in it',
+    unnamedTags("@if (canSave()) {\n  <button mat-button>{{ 'common.save' | translate }}</button>\n}"),
+    []
+  );
+  check(
+    'projected content, text a property binding writes and a template an outlet stamps each count',
+    [
+      unnamedTags('<button mat-button (click)="go()">\n  <ng-content />\n</button>'),
+      unnamedTags('<button [textContent]="label()"></button>'),
+      unnamedTags('<button>\n  <ng-container *ngTemplateOutlet="labelTemplate" />\n</button>'),
+    ],
+    [[], [], []]
+  );
+  check(
+    'an input, a select and a textarea are named by a label, not by what they hold, whatever role they carry',
+    unnamedTags(
+      '<input type="checkbox" role="switch">\n<select role="button">\n  @if (a) {\n    <option>A</option>\n  }\n</select>\n' +
+        '<textarea role="button"></textarea>'
+    ),
+    []
+  );
+  check(
+    'each spelling of a binding or an outlet that fills an element counts as words',
+    ['[textContent]', '[innerText]', '[innerHTML]', '*ngTemplateOutlet', '[ngTemplateOutlet]'].map((attribute) =>
+      unnamedTags(`<button>\n  <span ${attribute}="label"></span>\n</button>`)
+    ),
+    [[], [], [], [], []]
+  );
+  check(
+    'each spelling of an image\'s alt counts as words',
+    ['alt="Close"', '[alt]="label"', '[attr.alt]="label"'].map((attribute) =>
+      unnamedTags(`<button>\n  <img src="close.svg" ${attribute}>\n</button>`)
+    ),
+    [[], [], []]
+  );
+  check(
+    'words after a self-closing or a void element are the control\'s own',
+    [
+      unnamedTags('<button>\n  <mat-icon svgIcon="save" /> Save\n</button>'),
+      unnamedTags('<button>\n  <img src="save.svg" alt="">Save\n</button>'),
+    ],
+    [[], []]
+  );
+  check(
+    'an @let renders nothing and hides nothing after it',
+    [
+      unnamedTags('<button mat-button>\n  @let n = count();\n  {{ n }}\n</button>'),
+      unnamedTags('<button mat-icon-button>\n  @let n = count();\n  <mat-icon>close</mat-icon>\n</button>'),
+    ],
+    [[], ['1 button']]
+  );
+  check('a commented-out button is not a button', unnamedTags('<!-- <button><mat-icon>x</mat-icon></button> -->'), []);
+
+  check(
+    'a control read through a block says so, at any depth, and one inside a block or holding none does not',
+    [
+      "<button mat-button>\n  @if (a()) {\n    {{ 'x.a' | translate }}\n  } @else {\n    {{ 'x.b' | translate }}\n  }\n</button>",
+      "<button mat-button>\n  <span>\n    @if (a()) {\n      {{ 'x.a' | translate }}\n    } @else {\n" +
+        "      {{ 'x.b' | translate }}\n    }\n  </span>\n</button>",
+      "@if (canSave()) {\n  <button mat-button>{{ 'common.save' | translate }}</button>\n}",
+      "<button mat-button>{{ 'common.save' | translate }}</button>",
+    ].map((source) => readControls(source).map((control) => control.blocks)),
+    [[true], [true], [false], [false]]
+  );
+
+  // --- the branch rule: what the header lists as unseen ---
+  check(
+    'a title is not read as a name, so a control named by one alone fails: the header lists it as unseen',
+    unnamedTags('<button mat-icon-button title="Close">\n  <mat-icon>close</mat-icon>\n</button>'),
+    ['1 button']
+  );
+  check(
+    'an element under a structural *ngIf is read as rendering always: the header lists it as unseen',
+    unnamedTags('<button mat-button>\n  <span *ngIf="label">{{ label }}</span>\n</button>'),
+    []
+  );
+  check(
+    'an element hidden by a bound [attr.aria-hidden] is read as rendering: the header lists it as unseen',
+    unnamedTags('<button mat-button>\n  <span [attr.aria-hidden]="true">{{ label }}</span>\n</button>'),
+    []
+  );
+  check(
+    'an aria-label bound to an expression that is null in some states names the control in all, the API-key ' +
+      'test button with its @else words gone: the header lists it as unseen',
+    unnamedTags(
+      '<button mat-flat-button\n  [attr.aria-label]="testing() ? (\'settings.testApiKey\' | translate) : null"\n>\n' +
+        '  @if (testing()) {\n    <mat-spinner diameter="18" aria-hidden="true"></mat-spinner>\n  }\n</button>'
+    ),
     []
   );
 
@@ -3106,6 +3759,14 @@ function selfTest() {
         "    <mat-icon>open_in_new</mat-icon>\n    {{ 'import.viewTransaction' | translate }}\n  </button>\n}"
     ),
     [{ line: 2, tag: 'button', key: 'import.viewTransaction', via: 'text' }]
+  );
+  check(
+    'an exhaustive @default never; is block syntax, not text, beside a bare key',
+    itemlessLines(
+      "@for (t of rows; track t.id) {\n  <button mat-button>\n    @switch (t.kind) {\n      @case ('a') {\n" +
+        "        <mat-icon>edit</mat-icon>\n      }\n      @default never;\n    }\n    {{ 'common.edit' | translate }}\n  </button>\n}"
+    ),
+    [2]
   );
   check(
     'text a child element holds is the control\'s, the swipe drawer\'s Edit',
