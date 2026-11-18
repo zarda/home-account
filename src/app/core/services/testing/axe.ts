@@ -111,11 +111,33 @@ export const KNOWN_VIOLATION_REASONS: Readonly<Record<string, string>> = {};
  */
 export const KNOWN_VIOLATIONS: Readonly<Record<string, readonly string[]>> = {};
 
-/** The options every pass shares, so the smoke run and the fixture agree. */
+/**
+ * The options every pass shares, so the smoke run and the fixture agree.
+ *
+ * `button-name` runs without its `explicit-label` check. That check names a
+ * button by any `<label for>` pointing at it, and passes outright when the
+ * label is out of sight, whatever it says. Material's slide toggle renders
+ * such a label beside its `role="switch"` button and hides it while it
+ * projects nothing (`label:empty { display: none }`), so a switch nobody named
+ * passed every sweep. A named switch still passes: Material points the
+ * button's `aria-labelledby` at that label, and so at the words it projects,
+ * unless the page gives an `aria-label` or names other words. The entry is
+ * scoped to the one rule: explicit-label is shared with the rules that name
+ * fields, and a field named by its `<label for>` alone must keep that name.
+ * Nothing else here labels a `<button>` that way.
+ *
+ * The entry is a plain const because axe's `RuleObject` declares `enabled`
+ * alone, though axe reads a rule's `checks` too; a const is not held to the
+ * object-literal check that would refuse the extra key.
+ */
 export function axeOptions(): RunOptions {
+  const buttonName = { enabled: true, checks: { 'explicit-label': { enabled: false } } };
   return {
     runOnly: { type: 'tag', values: ['wcag2a', 'wcag2aa'] },
-    rules: Object.fromEntries(DISABLED_RULES.map(id => [id, { enabled: false }])),
+    rules: {
+      ...Object.fromEntries(DISABLED_RULES.map(id => [id, { enabled: false }])),
+      'button-name': buttonName,
+    },
     resultTypes: ['violations'],
   };
 }

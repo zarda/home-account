@@ -5902,8 +5902,12 @@ reports that:
 const audit = el => axe.run(el, {
   runOnly: { type: 'tag', values: ['wcag2a', 'wcag2aa'] },
   // The whole-page rules core/services/testing/axe.ts disables for a fragment (DISABLED_RULES).
-  rules: Object.fromEntries(['html-has-lang', 'document-title', 'landmark-one-main', 'landmark-unique',
-    'landmark-banner-is-top-level', 'page-has-heading-one', 'bypass', 'region'].map(id => [id, { enabled: false }])),
+  rules: {
+    ...Object.fromEntries(['html-has-lang', 'document-title', 'landmark-one-main', 'landmark-unique',
+      'landmark-banner-is-top-level', 'page-has-heading-one', 'bypass', 'region'].map(id => [id, { enabled: false }])),
+    // button-name without explicit-label, as axeOptions() runs it: a hidden, empty <label for> names no switch.
+    'button-name': { enabled: true, checks: { 'explicit-label': { enabled: false } } },
+  },
   resultTypes: ['violations'],
 }).then(r => r.violations.map(v => `${v.id} ${v.nodes.length}`));
 await audit(document.querySelector('.select-bar'));  // []

@@ -203,10 +203,8 @@ describe('AiSettingsPageComponent', () => {
         expect(toggle).withContext('the switch').not.toBeNull();
         if (!row || !toggle) return;
         expect(accessibleName(toggle)).toBe(catalogTranslator(locale, { strict: true })('aiPage.autoSync'));
-        // Material renders an empty <label for> beside the button, and axe's
-        // button-name takes any label it cannot see as a name, so an unnamed
-        // switch would pass. Without it, axe reads only the button's own names.
-        row.querySelector(`label[for="${toggle.id}"]`)?.remove();
+        // Material's empty <label for> stays: the shared pass no longer takes
+        // a label it cannot see as the switch's name.
         const violations = summarizeViolations(await runAxe(row));
         expect(violations.filter(line => line.startsWith('button-name'))).withContext(locale).toEqual([]);
       });

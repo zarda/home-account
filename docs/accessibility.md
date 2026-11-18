@@ -147,9 +147,13 @@ speaks its own `aria-valuetext`. The AI page's Auto sync switch is named by
 the words beside it: the span carries `id="auto-sync-label"` and the
 `mat-slide-toggle` `aria-labelledby="auto-sync-label"`, which Material hands
 to the `role="switch"` button inside, as the dashboard layout settings' card
-toggles do. axe cannot tell an unnamed Material switch from a named one
-(Known gaps), so the AI page's spec reads the name first, and takes
-Material's empty `<label for>` out before its axe pass.
+toggles do. The shared axe pass (`runAxe`) runs `button-name` without its
+`explicit-label` check, which takes any `<label for>` pointing at a button
+as its name, even one out of sight: Material renders such a label beside
+its switch and hides it while it projects nothing, so a switch nobody named
+passed every sweep. Only `button-name` drops the check, so a field named by
+its `<label for>` keeps that name. The AI page's spec runs the pass over the
+real row, with Material's empty label in place.
 
 **A control stamped once per item names its item.** A list of buttons that
 all say *Delete* cannot be told apart by ear, nor can the rows they act on.
@@ -1636,11 +1640,6 @@ controls and six drag states.
   offer, which can show together, and the AI settings page's three *Remove*
   buttons (`common.remove`), one in each provider's field, every field
   labelled *API Key*.
-- **axe cannot find an unnamed Material switch.** Its `button-name` accepts
-  the empty label Material renders, so every axe sweep over a slide toggle
-  passes it named or not. The eighth rule and the `accessibleName` cases are
-  the guard; a per-run option that turns that label check off, passed in the
-  shared `runAxe`, would close it for every sweep.
 - **A CSV slides while a photo is dragged across it.** The drop is remapped
   after CDK's sort, so the CSV snaps back to its row only on the drop. CDK's
   drop list offers no sort that skips rows, and a list of photos apart from

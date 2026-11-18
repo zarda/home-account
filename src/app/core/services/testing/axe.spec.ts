@@ -1,5 +1,6 @@
 import { ChangeDetectionStrategy, Component, inject, signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
+import { MatSlideToggle } from '@angular/material/slide-toggle';
 import axe, { type AxeResults } from 'axe-core';
 import { type EffectiveTheme, ThemeService } from '../theme.service';
 import {
@@ -198,6 +199,50 @@ class ThemeReaderFixtureComponent {
   readonly theme = inject(ThemeService);
 }
 
+/**
+ * Material's slide toggle with nothing to name it. Its `role="switch"` button
+ * points `aria-labelledby` at the toggle's own `<label for>`, which projects
+ * nothing, and Material hides a label that is empty (`label:empty { display:
+ * none }`).
+ */
+@Component({
+  selector: 'app-axe-unnamed-switch-fixture',
+  standalone: true,
+  changeDetection: ChangeDetectionStrategy.OnPush,
+  imports: [MatSlideToggle],
+  template: '<mat-slide-toggle />',
+})
+class UnnamedSwitchFixtureComponent {}
+
+/** The same switch named by the words beside it, the way the Auto sync switch is. */
+@Component({
+  selector: 'app-axe-labelled-switch-fixture',
+  standalone: true,
+  changeDetection: ChangeDetectionStrategy.OnPush,
+  imports: [MatSlideToggle],
+  template: '<span id="axe-switch-words">Auto sync</span><mat-slide-toggle aria-labelledby="axe-switch-words" />',
+})
+class LabelledSwitchFixtureComponent {}
+
+/** The same switch named by the words it projects into its own label. */
+@Component({
+  selector: 'app-axe-projected-switch-fixture',
+  standalone: true,
+  changeDetection: ChangeDetectionStrategy.OnPush,
+  imports: [MatSlideToggle],
+  template: '<mat-slide-toggle>Auto sync</mat-slide-toggle>',
+})
+class ProjectedSwitchFixtureComponent {}
+
+/** A field named by a `<label for>` alone, which the same check reads for a field's own rule. */
+@Component({
+  selector: 'app-axe-labelled-field-fixture',
+  standalone: true,
+  changeDetection: ChangeDetectionStrategy.OnPush,
+  template: '<label for="axe-field">Amount</label><input id="axe-field" />',
+})
+class LabelledFieldFixtureComponent {}
+
 describe('the axe harness', () => {
   function rulesOf(results: AxeResults): string[] {
     return summarizeViolations(results).map(line => line.split(' ')[0]);
@@ -291,6 +336,104 @@ describe('the axe harness', () => {
       [host.querySelector('.first') as HTMLElement, 'the first'],
       [host.querySelector('.undrawn') as HTMLElement, 'the undrawn words'],
     ])).toEqual(['the undrawn words: no pass of its own']);
+  });
+
+  describe('an unnamed switch', () => {
+    const BUTTON_NAME_ENTRY = { enabled: true, checks: { 'explicit-label': { enabled: false } } };
+
+    function render(component: typeof UnnamedSwitchFixtureComponent): HTMLElement {
+      TestBed.configureTestingModule({ imports: [component] });
+      const fixture = TestBed.createComponent(component);
+      fixture.detectChanges();
+      return fixture.nativeElement as HTMLElement;
+    }
+
+    function switchOf(host: HTMLElement): HTMLElement {
+      return host.querySelector('button[role="switch"]') as HTMLElement;
+    }
+
+    /** Every rule a run looked at, whatever it found. */
+    function rulesRun(results: AxeResults): string[] {
+      return [...results.passes, ...results.violations, ...results.incomplete, ...results.inapplicable]
+        .map(result => result.id)
+        .sort();
+    }
+
+    it('reports button-name on a slide toggle that nothing names', async () => {
+      const host = render(UnnamedSwitchFixtureComponent);
+      expect(accessibleName(switchOf(host))).withContext('the switch has no name').toBe('');
+
+      expect(rulesOf(await runAxe(host))).toEqual(['button-name']);
+    });
+
+    // The gap the entry closes, proved on the same fixture: axe's
+    // explicit-label check takes a `<label for>` it cannot see as a name,
+    // whatever the label says, and Material's empty label is out of sight.
+    it('passes the same switch without the entry, through the label it cannot see', async () => {
+      const host = render(UnnamedSwitchFixtureComponent);
+      const options = axeOptions();
+      const { 'button-name': entry, ...others } = options.rules ?? {};
+      expect(entry as unknown).withContext('the entry the shared pass carries').toEqual(BUTTON_NAME_ENTRY);
+
+      const results = await axe.run(host, { ...options, rules: others });
+
+      expect(rulesOf(results)).withContext('without the entry').not.toContain('button-name');
+      const passed = results.passes.find(result => result.id === 'button-name')?.nodes[0];
+      expect(passed?.any.map(check => check.id)).withContext('the check that passed it').toEqual(['explicit-label']);
+    });
+
+    // Every rule of the pass but contrast: the projected words' colours follow
+    // the machine's colour scheme here, so contrast is left to the sweeps that
+    // force a scheme. Any other rule a named switch trips is reported.
+    it('reports nothing on a switch named by the words beside it or by the words it projects, contrast aside', async () => {
+      for (const [component, how] of [
+        [LabelledSwitchFixtureComponent, 'aria-labelledby'],
+        [ProjectedSwitchFixtureComponent, 'projected words'],
+      ] as const) {
+        const host = render(component);
+        expect(accessibleName(switchOf(host))).withContext(`named by ${how}`).toBe('Auto sync');
+        expect(rulesOf(await runAxe(host)).filter(id => id !== 'color-contrast'))
+          .withContext(`named by ${how}`)
+          .toEqual([]);
+        TestBed.resetTestingModule();
+      }
+    });
+
+    // Five rules share explicit-label. Switched off for every rule, a field
+    // named by its `<label for>` alone would read as unnamed.
+    it('turns explicit-label off for button-name alone, and leaves a field its label', async () => {
+      const options = axeOptions();
+      expect(options.rules?.['button-name'] as unknown).toEqual(BUTTON_NAME_ENTRY);
+      expect((options as { checks?: unknown }).checks).withContext('no check switched for every rule').toBeUndefined();
+      expect(Object.entries(options.rules ?? {}).filter(([, rule]) => 'checks' in rule).map(([id]) => id))
+        .withContext('the rules that set a check')
+        .toEqual(['button-name']);
+
+      const field = render(LabelledFieldFixtureComponent);
+      expect(accessibleName(field.querySelector('input') as HTMLElement)).withContext('the field\'s name').toBe('Amount');
+      expect(rulesOf(await runAxe(field))).withContext('a field named by its label').not.toContain('label');
+    });
+
+    // `enabled: true` runs button-name in the tag pass, where wcag2a already
+    // asks for it. A run cut to named rules runs those alone whatever the map
+    // enables, so the contrast sweep, built on the shared options, never meets
+    // an unnamed switch, nor does a one-rule run spread over them. That
+    // one-rule run is built here and stands for no helper of this file: it
+    // pins how axe ranks a rule-type runOnly over the map. A tag run spread
+    // over the shared options would carry button-name with it, since axe
+    // honours a rule's own `enabled` ahead of its tags.
+    it('stays out of the contrast sweep and of a one-rule run', async () => {
+      const host = render(UnnamedSwitchFixtureComponent);
+      const run = spyOn(axe, 'run').and.callThrough();
+
+      await contrastUnscored([[host, 'the switch']]);
+      // Typed by axe.run's last overload, the callback form, which returns void.
+      const contrast = await (run.calls.mostRecent().returnValue as unknown as Promise<AxeResults>);
+      expect(rulesRun(contrast)).withContext('the contrast sweep').toEqual(['color-contrast']);
+
+      const oneRule = await axe.run(host, { ...axeOptions(), runOnly: { type: 'rule', values: ['heading-order'] } });
+      expect(rulesRun(oneRule)).withContext('a one-rule run of heading-order').toEqual(['heading-order']);
+    });
   });
 
   describe('motion', () => {
