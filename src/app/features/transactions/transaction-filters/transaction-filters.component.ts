@@ -38,6 +38,9 @@ import { ImportFocusContext, focusWhenRendered } from '../../ai/import/import-fo
 /** Numbers each filter panel's date descriptions, so two panels on one page never share an id. */
 let nextDateErrorId = 0;
 
+/** Numbers each filter panel's save-search box, so its label's `for` names that panel's box alone. */
+let nextSaveNameId = 0;
+
 @Component({
   selector: 'app-transaction-filters',
   standalone: true,
@@ -65,6 +68,8 @@ export class TransactionFiltersComponent implements OnInit, OnChanges, OnDestroy
   /** The ids of the off-screen text that says why From or To is refused; each input is described by its own. */
   readonly startDateErrorId = `filters-from-error-${nextDateErrorId}`;
   readonly endDateErrorId = `filters-to-error-${nextDateErrorId++}`;
+  /** The save-search box's id, which its label's `for` names. */
+  readonly saveNameId = `filters-save-name-${nextSaveNameId++}`;
 
   private transactionService = inject(TransactionService);
   private cdr = inject(ChangeDetectorRef);

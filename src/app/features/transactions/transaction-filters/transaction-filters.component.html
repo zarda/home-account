@@ -110,9 +110,12 @@
       <!-- Search -->
       <div class="search-wrapper" (focusout)="onSearchAreaFocusout($event)">
         <mat-icon class="search-icon">search</mat-icon>
+        <!-- Named in the hint's own words: a placeholder is no name, and it
+             goes as soon as the box holds a query. -->
         <input
           type="text"
           class="search-input"
+          [attr.aria-label]="'transactions.searchBoxLabel' | translate"
           [placeholder]="'transactions.searchPlaceholder' | translate"
           [(ngModel)]="filters.searchQuery"
           (input)="onSearchInput()"
@@ -189,9 +192,14 @@
 
       @if (saveMode()) {
         <div class="save-search-row">
+          <!-- The box's name, a label of its own: it opens holding the query
+               as the name it offers, so its placeholder showed only once it
+               was emptied, and was all a screen reader had to name it by. -->
+          <label class="save-name-label" [for]="saveNameId">{{ 'transactions.saveNameLabel' | translate }}</label>
           <input
             type="text"
             class="save-label-input"
+            [id]="saveNameId"
             [placeholder]="'transactions.searchLabelPlaceholder' | translate"
             [(ngModel)]="saveLabel"
             (keydown.enter)="onSaveLabelEnter($event)"
