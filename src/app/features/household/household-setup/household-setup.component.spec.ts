@@ -649,6 +649,24 @@ describe('HouseholdSetupComponent', () => {
         expect(heading?.getAttribute('tabindex')).withContext('script can focus it, Tab does not').toBe('-1');
       });
 
+      it("leaves focus where the viewer moved it while the declined invite's row was going", async () => {
+        const elsewhere = document.body.appendChild(document.createElement('button'));
+        elsewhere.type = 'button';
+        try {
+          inviteRows()[0].querySelector<HTMLButtonElement>('button.invite-decline')!.focus();
+          await decline();
+          elsewhere.focus();
+
+          receivedInvites.set([]);
+          await settleFocus();
+
+          expect(inviteRows().length).withContext('the declined invite, gone').toBe(0);
+          expect(document.activeElement).toBe(elsewhere);
+        } finally {
+          elsewhere.remove();
+        }
+      });
+
       it('keeps focus on Decline when the service refuses', async () => {
         household.decline.and.rejectWith(new HouseholdError('household.errors.offline'));
         const declineButton = inviteRows()[0].querySelector<HTMLButtonElement>('button.invite-decline')!;

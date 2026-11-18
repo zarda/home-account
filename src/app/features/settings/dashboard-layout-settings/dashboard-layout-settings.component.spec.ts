@@ -7,7 +7,7 @@ import { AuthService, withPreferenceFields } from '../../../core/services/auth.s
 import { NotificationService } from '../../../core/services/notification.service';
 import { TranslationService } from '../../../core/services/translation.service';
 import { DashboardCardId, DashboardLayout, User, UserPreferences } from '../../../models';
-import { provideNoMotion } from '../../../core/services/testing';
+import { pressKey, provideNoMotion } from '../../../core/services/testing';
 
 describe('DashboardLayoutSettingsComponent', () => {
   let fixture: ComponentFixture<DashboardLayoutSettingsComponent>;
@@ -302,6 +302,31 @@ describe('DashboardLayoutSettingsComponent', () => {
 
       expect(rows()[2]).toBe('insights');
       expect(document.activeElement).toBe(moveButton('insights', 'up'));
+    });
+
+    // A held Enter's repeats go to whatever holds focus by then, and focus
+    // stays on Move down while the card can still go down: each repeat moved
+    // the card one row further, down to the last.
+    it('moves a card one row for an Enter held down on Move down', async () => {
+      const moved: DashboardCardId[] = ['upcoming', 'recent', 'chart', 'insights', 'budgets'];
+      render();
+      const down = moveButton('recent', 'down');
+      down.focus();
+      pressKey(down, 'Enter');
+      await fixture.whenStable();
+      fixture.detectChanges();
+      expect(rows()).withContext('the rows, recent moved down').toEqual(moved);
+      expect(document.activeElement).withContext('focus, on the moved card\'s Move down')
+        .toBe(moveButton('recent', 'down'));
+
+      for (const n of [1, 2, 3]) {
+        const repeat = pressKey(document.activeElement!, 'Enter', { repeat: true });
+        await fixture.whenStable();
+        fixture.detectChanges();
+        expect(repeat.defaultPrevented).withContext(`repeat ${n}, cancelled`).toBeTrue();
+        expect(rows()).withContext(`the rows, after repeat ${n}`).toEqual(moved);
+      }
+      expect(auth.updatePreferenceFields).withContext('the writes').toHaveBeenCalledTimes(1);
     });
 
     it('writes the order a drop leaves behind', async () => {

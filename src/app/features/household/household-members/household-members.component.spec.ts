@@ -23,7 +23,7 @@ import { DateFormatService } from '../../../core/services/date-format.service';
 import { NotificationService } from '../../../core/services/notification.service';
 import { PwaService } from '../../../core/services/pwa.service';
 import { TranslationService } from '../../../core/services/translation.service';
-import { createTranslationStub, provideNoMotion } from '../../../core/services/testing';
+import { createTranslationStub, pressKey, provideNoMotion } from '../../../core/services/testing';
 import { ConfirmDialogComponent, ConfirmDialogData } from '../../../shared/components/confirm-dialog/confirm-dialog.component';
 import { Household, HouseholdInvite, HouseholdMember } from '../../../models';
 import { HouseholdPageFocus } from '../household-focus';
@@ -324,6 +324,22 @@ describe('HouseholdMembersComponent', () => {
           expect(document.activeElement).toBe(removeOf('Kai'));
         });
 
+        // A held Enter's repeats go to whatever holds focus by then: once the
+        // removed member's row went, each pressed the next member's Remove
+        // and asked about them too.
+        it("asks about no one else for an Enter held through the hand-off to the next Remove", async () => {
+          await removeWithFocus('Sam Ito', [alex, kai]);
+          expect(document.activeElement).withContext("focus, on Kai's Remove").toBe(removeOf('Kai'));
+
+          for (const n of [1, 2, 3]) {
+            const repeat = pressKey(document.activeElement!, 'Enter', { repeat: true });
+            await settle();
+            expect(repeat.defaultPrevented).withContext(`repeat ${n}, cancelled`).toBeTrue();
+          }
+          expect(dialog.open).withContext('the confirms asked').toHaveBeenCalledTimes(1);
+          expect(service.remove).toHaveBeenCalledOnceWith('sam', HOUSEHOLD, jasmine.any(Function));
+        });
+
         it('moves back to the one before when the last is removed', async () => {
           await removeWithFocus('Kai', [alex, sam]);
 
@@ -452,6 +468,29 @@ describe('HouseholdMembersComponent', () => {
           );
           expect(document.activeElement).toBe(element().querySelector<HTMLElement>('#household-members-title'));
           expect(analytics.trackHouseholdAction).toHaveBeenCalledTimes(1);
+        });
+
+        it('leaves focus where the owner moved it while the purge was tried again', async () => {
+          const elsewhere = document.body.appendChild(document.createElement('button'));
+          elsewhere.type = 'button';
+          try {
+            service.remove.and.rejectWith(new HouseholdPurgeError('household.errors.purge'));
+            await remove();
+            await drain();
+            let finish!: () => void;
+            service.purgeRemoved.and.returnValue(new Promise<void>(resolve => (finish = resolve)));
+            retry()!.focus();
+            await click(retry());
+            elsewhere.focus();
+
+            finish();
+            await settleFocus();
+
+            expect(purge()).withContext('the purge line, gone').toBeNull();
+            expect(document.activeElement).toBe(elsewhere);
+          } finally {
+            elsewhere.remove();
+          }
         });
 
         describe('of a member without a name', () => {

@@ -352,6 +352,28 @@ describe('HouseholdComponent', () => {
       expect(document.activeElement).toBe(invitesTitle());
     });
 
+    it('leaves focus where the viewer moved it while a leave or dissolve was on its way', async () => {
+      const elsewhere = document.body.appendChild(document.createElement('button'));
+      elsewhere.type = 'button';
+      try {
+        household.set(HOUSEHOLD);
+        status.set('member');
+        render();
+        element().querySelector<HTMLButtonElement>('.stub-leave')?.focus();
+        pageFocus().afterSwapTo('none');
+        elsewhere.focus();
+
+        household.set(null);
+        status.set('none');
+        await settleFocus();
+
+        expect(invitesTitle()).withContext("the setup's first heading").not.toBeNull();
+        expect(document.activeElement).toBe(elsewhere);
+      } finally {
+        elsewhere.remove();
+      }
+    });
+
     it("moves to the next household's first heading when a leave or dissolve lands on it", async () => {
       showMember(HOUSEHOLD, [membership(HOUSEHOLD), membership(FLAT)]);
       element().querySelector<HTMLButtonElement>('.stub-leave')?.focus();

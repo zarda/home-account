@@ -638,6 +638,34 @@ describe('HouseholdPlansComponent', () => {
       }
     });
 
+    it("leave focus where the viewer moved it while a new budget's card was on its way", async () => {
+      const host = element();
+      document.body.appendChild(host);
+      const elsewhere = document.body.appendChild(document.createElement('button'));
+      elsewhere.type = 'button';
+      try {
+        const origin = button('.plans-new-budget');
+        origin.focus();
+        origin.click();
+        const ref = openDialog<HouseholdBudgetDialogComponent>();
+        ref.componentInstance.form.patchValue({ name: 'Home', categoryIds: ['food', 'bills'], amount: 900 });
+        await ref.componentInstance.submit();
+        await settle();
+        expect(document.activeElement).withContext('the dialog hands focus back to its button').toBe(origin);
+        elsewhere.focus();
+
+        plans.budgets.update(budgets => [...budgets, budgetFigures({ id: 'b-new', name: 'Home' })]);
+        render();
+        await settle();
+
+        expect(card('Home')).withContext("the new budget's card").toBeDefined();
+        expect(document.activeElement).toBe(elsewhere);
+      } finally {
+        elsewhere.remove();
+        host.remove();
+      }
+    });
+
     it('edit a budget in the same dialog, its currency fixed and never sent, sending only what changed, and count nothing', async () => {
       button('.plan-edit', card('Fuel')).click();
       const ref = openDialog<HouseholdBudgetDialogComponent>();
