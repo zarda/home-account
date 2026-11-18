@@ -624,6 +624,11 @@ describe('FileDropzoneComponent, through its own template', () => {
     TestBed.tick();
   }
 
+  /** The listed row that shows `name`; never the slot or the preview a drag leaves. */
+  const rowOf = (name: string) =>
+    all('.file-list > .file-item:not(.cdk-drag-placeholder):not(.cdk-drag-preview)')
+      .find(row => row.querySelector('.file-name')?.textContent?.trim() === name);
+
   beforeEach(async () => {
     await TestBed.configureTestingModule({
       imports: [FileDropzoneComponent],
@@ -1004,63 +1009,67 @@ describe('FileDropzoneComponent, through its own template', () => {
         .toEqual(['a.png', 'rows.csv', 'b.png']);
     });
 
-    // CDK sorts every row the pointer passes, a CSV's too, and reports only
-    // where the dragged row started and where it landed. The zone reads the
-    // photos off in the order CDK left them and writes them back into the
-    // photos' own rows.
+    // Only a photo's row is a drag item, so CDK counts the photos alone: a
+    // drop reports where the dragged photo started and where it landed among
+    // the photos. The zone moves it there among the photos and writes them
+    // back into the photos' own rows; every other file keeps its row.
     it('a drop reorders photos among themselves', () => {
       const emitted: File[][] = [];
       component.filesSelected.subscribe(files => emitted.push(files));
       fixture.detectChanges();
       dropFiles([imageFile('a.png'), csvFile(), imageFile('b.png')]);
 
-      component.onFileDrop({ previousIndex: 2, currentIndex: 0 } as CdkDragDrop<File[]>);
+      component.onFileDrop({ previousIndex: 1, currentIndex: 0 } as CdkDragDrop<File[]>);
       fixture.detectChanges();
 
       expect(rowNames()).withContext('the rows').toEqual(['b.png', 'rows.csv', 'a.png']);
       expect(emitted.at(-1)?.map(f => f.name)).withContext('what the zone emits').toEqual(['b.png', 'rows.csv', 'a.png']);
     });
 
-    // A pin. Mutation: onFileDrop back to a plain moveItemInArray on the list.
-    // CDK leaves a dragged down past the CSV and b as [csv, b, a]; the photos
-    // read b then a, and go back into the photos' rows.
+    // A pin. Mutation: onFileDrop moving the list's own rows by the photos'
+    // indices, which takes the CSV up past a and leaves b where it was.
     it('a downward drop reorders photos among themselves', () => {
       const emitted: File[][] = [];
       component.filesSelected.subscribe(files => emitted.push(files));
       fixture.detectChanges();
       dropFiles([imageFile('a.png'), csvFile(), imageFile('b.png')]);
 
-      component.onFileDrop({ previousIndex: 0, currentIndex: 2 } as CdkDragDrop<File[]>);
+      component.onFileDrop({ previousIndex: 0, currentIndex: 1 } as CdkDragDrop<File[]>);
       fixture.detectChanges();
 
       expect(rowNames()).withContext('the rows').toEqual(['b.png', 'rows.csv', 'a.png']);
       expect(emitted.at(-1)?.map(f => f.name)).withContext('what the zone emits').toEqual(['b.png', 'rows.csv', 'a.png']);
     });
 
-    // A pin. Mutation: onFileDrop back to a plain moveItemInArray on the list.
-    // A photo dropped on the CSV's own row passes no other photo: CDK leaves
-    // b in the CSV's slot, [a, b, csv], and the photos still read a then b.
-    // So the list is unchanged, and the CSV keeps its row.
+    // A photo held over the CSV's row passes no other photo, so CDK reports
+    // the same place twice, and the list stays as it was.
     it('a drop on the CSV\'s row leaves the list as it was', () => {
       const emitted: File[][] = [];
       component.filesSelected.subscribe(files => emitted.push(files));
       fixture.detectChanges();
       dropFiles([imageFile('a.png'), csvFile(), imageFile('b.png')]);
 
-      component.onFileDrop({ previousIndex: 2, currentIndex: 1 } as CdkDragDrop<File[]>);
+      component.onFileDrop({ previousIndex: 1, currentIndex: 1 } as CdkDragDrop<File[]>);
       fixture.detectChanges();
 
       expect(rowNames()).withContext('the rows').toEqual(['a.png', 'rows.csv', 'b.png']);
       expect(emitted.at(-1)?.map(f => f.name)).withContext('what the zone emits').toEqual(['a.png', 'rows.csv', 'b.png']);
     });
 
+    // A disabled cdkDrag is still one of the list's items, and CDK slides
+    // every item a drag passes: the CSV's row is no drag item at all.
     it('offers no drag on a non-photo row', () => {
-      const dragsDisabled = () =>
-        fixture.debugElement.queryAll(By.directive(CdkDrag)).map(row => row.injector.get(CdkDrag).disabled);
+      const drags = () => fixture.debugElement.queryAll(By.directive(CdkDrag));
+      const dragged = () =>
+        drags().map(row => (row.nativeElement as HTMLElement).querySelector('.file-name')?.textContent?.trim());
+      const disabled = () => drags().map(row => row.injector.get(CdkDrag).disabled);
       fixture.detectChanges();
       dropFiles([imageFile('a.png'), csvFile(), imageFile('b.png')]);
 
-      expect(dragsDisabled()).withContext('two photos and a CSV').toEqual([false, true, false]);
+      expect(dragged()).withContext('the drag items, two photos and a CSV').toEqual(['a.png', 'b.png']);
+      expect(disabled()).withContext('the photos\' drags, two photos and a CSV').toEqual([false, false]);
+      expect(rowOf('rows.csv')?.classList.contains('cdk-drag'))
+        .withContext('the CSV\'s row, a cdk-drag, two photos and a CSV').toBeFalse();
 
       arrows(2)[0]?.click();
       fixture.detectChanges();
@@ -1068,7 +1077,10 @@ describe('FileDropzoneComponent, through its own template', () => {
       fixture.detectChanges();
 
       expect(rowNames()).withContext('the rows left').toEqual(['b.png', 'rows.csv']);
-      expect(dragsDisabled()).withContext('one photo and a CSV').toEqual([true, true]);
+      expect(dragged()).withContext('the drag items, one photo and a CSV').toEqual(['b.png']);
+      expect(disabled()).withContext('the photo\'s drag, one photo and a CSV').toEqual([true]);
+      expect(rowOf('rows.csv')?.classList.contains('cdk-drag'))
+        .withContext('the CSV\'s row, a cdk-drag, one photo and a CSV').toBeFalse();
     });
 
     // A pin. Mutation: otherNumber counting every file listed, so the second

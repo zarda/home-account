@@ -73,84 +73,102 @@
           </div>
         }
 
+        <!-- A file's name, size and type, written once for a photo's row and
+             any other file's alike. -->
+        <ng-template #fileInfo let-file>
+          <div class="file-info">
+            <span class="file-name">{{ file.name }}</span>
+            <span class="file-meta">
+              <span class="file-size">{{ formatFileSize(file.size) }}</span>
+              <span class="file-type-label">{{ getFileTypeLabel(file) }}</span>
+            </span>
+          </div>
+        </ng-template>
+
         <div class="file-list" cdkDropList (cdkDropListDropped)="onFileDrop($event)">
           @for (file of selectedFiles(); track file) {
-            <!-- A photo is numbered, moved and dragged among the photos alone;
-                 a row that is no photo is never dragged and keeps its place. -->
-            <div
-              class="file-item"
-              [attr.data-row]="$index"
-              [class.image-file]="isImageFile(file)"
-              [class.reorderable]="isImageFile(file) && hasMultipleImages()"
-              cdkDrag
-              [cdkDragDisabled]="!(isImageFile(file) && hasMultipleImages())"
-            >
-              <!-- The photo's number among the photos, the order they are read in -->
-              @if (isImageFile(file) && hasMultipleImages()) {
-                <div class="image-number">{{ photoNumber(file) }}</div>
-              }
+            <!-- A photo is numbered, moved and dragged among the photos alone.
+                 A row that is no photo is no drag item at all: CDK slides
+                 every item a drag passes, a disabled one too, so a CSV between
+                 two photos would slide aside under a dragged photo. It keeps
+                 its place, and the drop list counts the photos alone. -->
+            @if (isImageFile(file)) {
+              <div
+                class="file-item image-file"
+                [attr.data-row]="$index"
+                [class.reorderable]="hasMultipleImages()"
+                cdkDrag
+                [cdkDragDisabled]="!hasMultipleImages()"
+              >
+                <!-- The photo's number among the photos, the order they are read in -->
+                @if (hasMultipleImages()) {
+                  <div class="image-number">{{ photoNumber(file) }}</div>
+                }
 
-              @if (isImageFile(file)) {
                 <div class="file-thumbnail">
                   <img [src]="getFilePreview(file)" [alt]="file.name" />
                 </div>
-              } @else {
+                <ng-container [ngTemplateOutlet]="fileInfo" [ngTemplateOutletContext]="{ $implicit: file }" />
+
+                <!-- Each button names the photo it acts on by its place and its name: two photos from an iPhone are both image.jpg. A photo's place is the number its badge shows, among the photos. -->
+                @if (hasMultipleImages()) {
+                  <div class="reorder-controls">
+                    <button
+                      mat-icon-button
+                      data-move="up"
+                      (click)="moveFileUp(file, $event)"
+                      [disabled]="photoNumber(file) === 1"
+                      class="reorder-btn"
+                      [attr.aria-label]="'import.movePhotoUpLabel' | translate: { position: photoNumber(file), name: file.name }"
+                    >
+                      <mat-icon>arrow_upward</mat-icon>
+                    </button>
+                    <button
+                      mat-icon-button
+                      data-move="down"
+                      (click)="moveFileDown(file, $event)"
+                      [disabled]="photoNumber(file) === photoCount()"
+                      class="reorder-btn"
+                      [attr.aria-label]="'import.movePhotoDownLabel' | translate: { position: photoNumber(file), name: file.name }"
+                    >
+                      <mat-icon>arrow_downward</mat-icon>
+                    </button>
+                  </div>
+                }
+
+                <button
+                  mat-icon-button
+                  (click)="removeFile(file, $event)"
+                  class="remove-btn"
+                  [attr.aria-label]="'import.removePhotoLabel' | translate: { position: photoNumber(file), name: file.name }"
+                >
+                  <mat-icon>close</mat-icon>
+                </button>
+
+                @if (hasMultipleImages()) {
+                  <div class="drag-handle" cdkDragHandle>
+                    <mat-icon>drag_indicator</mat-icon>
+                  </div>
+                }
+              </div>
+            } @else {
+              <div class="file-item" [attr.data-row]="$index">
                 <div class="file-icon-wrapper">
                   <mat-icon [class]="getFileTypeClass(file)">{{ getFileIcon(file) }}</mat-icon>
                 </div>
-              }
-              <div class="file-info">
-                <span class="file-name">{{ file.name }}</span>
-                <span class="file-meta">
-                  <span class="file-size">{{ formatFileSize(file.size) }}</span>
-                  <span class="file-type-label">{{ getFileTypeLabel(file) }}</span>
-                </span>
+                <ng-container [ngTemplateOutlet]="fileInfo" [ngTemplateOutletContext]="{ $implicit: file }" />
+
+                <!-- Named by its number among the files that are not photos, and its name. -->
+                <button
+                  mat-icon-button
+                  (click)="removeFile(file, $event)"
+                  class="remove-btn"
+                  [attr.aria-label]="'import.removeFileLabel' | translate: { position: otherNumber(file), name: file.name }"
+                >
+                  <mat-icon>close</mat-icon>
+                </button>
               </div>
-
-              <!-- Each button names the file it acts on by its place and its name: two photos from an iPhone are both image.jpg. A photo's place is the number its badge shows, among the photos; any other file's is its number among the files that are not photos. Reorder controls for photos. -->
-              @if (isImageFile(file) && hasMultipleImages()) {
-                <div class="reorder-controls">
-                  <button
-                    mat-icon-button
-                    data-move="up"
-                    (click)="moveFileUp(file, $event)"
-                    [disabled]="photoNumber(file) === 1"
-                    class="reorder-btn"
-                    [attr.aria-label]="'import.movePhotoUpLabel' | translate: { position: photoNumber(file), name: file.name }"
-                  >
-                    <mat-icon>arrow_upward</mat-icon>
-                  </button>
-                  <button
-                    mat-icon-button
-                    data-move="down"
-                    (click)="moveFileDown(file, $event)"
-                    [disabled]="photoNumber(file) === photoCount()"
-                    class="reorder-btn"
-                    [attr.aria-label]="'import.movePhotoDownLabel' | translate: { position: photoNumber(file), name: file.name }"
-                  >
-                    <mat-icon>arrow_downward</mat-icon>
-                  </button>
-                </div>
-              }
-
-              <button
-                mat-icon-button
-                (click)="removeFile(file, $event)"
-                class="remove-btn"
-                [attr.aria-label]="isImageFile(file)
-                  ? ('import.removePhotoLabel' | translate: { position: photoNumber(file), name: file.name })
-                  : ('import.removeFileLabel' | translate: { position: otherNumber(file), name: file.name })"
-              >
-                <mat-icon>close</mat-icon>
-              </button>
-
-              <!-- Drag handle for images -->
-              @if (isImageFile(file) && hasMultipleImages()) {
-                <div class="drag-handle" cdkDragHandle>
-                  <mat-icon>drag_indicator</mat-icon>
-                </div>
-              }
-            </div>
+            }
           }
         </div>
         <button

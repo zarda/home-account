@@ -454,17 +454,17 @@ export class FileDropzoneComponent implements OnDestroy {
     );
   }
 
-  // CDK sorts every row the dragged photo passes, a CSV's too, and no
-  // cdkDropListSortPredicate can hold one in place: the predicate gates only
-  // where the dragged row lands. So the drop is remapped after the sort: the
-  // photos are read off in the order CDK left them and written back into the
-  // photos' own rows, and every other file keeps its row. A CSV the drag
-  // slid aside snaps back when the photo is dropped.
+  // Only a photo's row is a drag item, so the indices a drop reports count
+  // the photos alone: where the dragged photo started among them and where
+  // it landed. CDK slides every item a drag passes, a disabled one too, and
+  // no sort predicate holds an item in place, so a row that is no photo is no
+  // item at all: it never moves under a drag. The photos are reordered among
+  // themselves and written back into the photos' own rows; every other file
+  // keeps its row.
   onFileDrop(event: CdkDragDrop<File[]>): void {
     const files = this.selectedFiles();
-    const sorted = [...files];
-    moveItemInArray(sorted, event.previousIndex, event.currentIndex);
-    const photos = sorted.filter(f => this.isImageFile(f));
+    const photos = files.filter(f => this.isImageFile(f));
+    moveItemInArray(photos, event.previousIndex, event.currentIndex);
     let next = 0;
     const placed = files.map(f => (this.isImageFile(f) ? photos[next++] : f));
     this.selectedFiles.set(placed);
