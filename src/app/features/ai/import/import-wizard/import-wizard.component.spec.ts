@@ -6,7 +6,6 @@ import { MatSnackBar } from '@angular/material/snack-bar';
 import { MatStepper } from '@angular/material/stepper';
 import { provideNativeDateAdapter } from '@angular/material/core';
 import { By } from '@angular/platform-browser';
-import axe from 'axe-core';
 
 import { ImportWizardComponent } from './import-wizard.component';
 import { FileDropzoneComponent } from '../file-dropzone/file-dropzone.component';
@@ -28,6 +27,7 @@ import {
   MockAuthService,
   channels,
   expectEachContrastScored,
+  expectHeadingsInOrder,
   type ContrastPart,
   expectOneRule,
   expectPainted,
@@ -4419,21 +4419,6 @@ describe('ImportWizardComponent', () => {
       }));
     });
 
-    /**
-     * Runs axe's heading-order alone over the whole wizard, whose h1 heads the
-     * page, so a heading on a step sits one level under it: the stepper's
-     * labels are no headings. heading-order is best practice, outside the
-     * wcag2a/wcag2aa tags axeOptions runs, so the steps' sweeps never ask it.
-     */
-    async function expectHeadingsInOrder(): Promise<void> {
-      const results = await axe.run(realFixture.nativeElement as HTMLElement, {
-        runOnly: { type: 'rule', values: ['heading-order'] },
-        resultTypes: ['violations'],
-      });
-      expect(summarizeViolations(results)).withContext('heading-order').toEqual([]);
-      expect(results.passes.map(result => result.id)).withContext('headings were found to order').toContain('heading-order');
-    }
-
     // The same step with nothing picked, the state a reader meets first: the
     // zone, its hint, the four file types and Browse. The zone was a
     // role="button" around Browse, axe's nested-interactive, and no pass had
@@ -4508,7 +4493,7 @@ describe('ImportWizardComponent', () => {
 
           await withScheme(TestBed.inject(ThemeService), scheme, async () => {
             realFixture.detectChanges();
-            await expectHeadingsInOrder();
+            await expectHeadingsInOrder(realFixture.nativeElement as HTMLElement, 'the wizard');
           });
         });
       }
@@ -4675,7 +4660,7 @@ describe('ImportWizardComponent', () => {
 
           await withScheme(TestBed.inject(ThemeService), scheme, async () => {
             realFixture.detectChanges();
-            await expectHeadingsInOrder();
+            await expectHeadingsInOrder(realFixture.nativeElement as HTMLElement, 'the wizard');
           });
         });
       }

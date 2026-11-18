@@ -67,6 +67,7 @@ import {
   MockAuthService,
   auditInView,
   createMockUser,
+  expectHeadingsInOrder,
   runAxe,
   unexpectedViolations,
   withScheme,
@@ -187,6 +188,12 @@ describe('App routes (emulator smoke test)', () => {
    * real ThemeService, so a pair that fails only in the scheme the host
    * does not resolve to (light on a dark Mac, dark on CI) still fails here.
    *
+   * Then the page's headings are ordered, once, since a scheme cannot move
+   * one: `heading-order` alone (`headingsOutOfOrder`), which fails a heading
+   * more than one level under the heading before it, and a page with no
+   * heading at all. It is best practice, outside the two tags, so the pass
+   * itself never asks it.
+   *
    * The routes this reaches are the walkthrough's: /dashboard (its top,
    * then the spending legend and the budget widget scrolled into view, and
    * once a rule exists, Upcoming), /transactions, /budgets (its Budgets tab,
@@ -225,6 +232,8 @@ describe('App routes (emulator smoke test)', () => {
           .toEqual([]);
       });
     }
+
+    await expectHeadingsInOrder(element, url);
   }
 
   /**

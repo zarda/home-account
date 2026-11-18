@@ -66,7 +66,11 @@ import { INTL_LOCALES, type SupportedLocale } from '../translation.service';
  *     `transaction-list.component.spec.ts` and friends, at the widths they
  *     were designed for.
  *   - **best-practice.** Not a conformance level; it would make this a
- *     matter of opinion.
+ *     matter of opinion. One of its rules is run, apart from the pass:
+ *     `heading-order`, by `headingsOutOfOrder`. A reader who moves by
+ *     headings takes a skipped level for a missing section, and the
+ *     walkthrough asks it once per page, since the scheme cannot move a
+ *     heading.
  */
 export const DISABLED_RULES = [
   // Karma's debug.html is the document: these all judge a whole page.
@@ -486,6 +490,52 @@ export function summarizeViolations(results: AxeResults): string[] {
       return `${violation.id} (${violation.nodes.length}): ${targets}${more}`;
     })
     .sort();
+}
+
+/**
+ * The heading run: `heading-order` alone, by a rule-type runOnly with no
+ * rules map. Nothing of the shared pass rides along with it. A tag run spread
+ * over `axeOptions()` would carry `button-name`, whose entry there says
+ * `enabled: true`, since axe honours a rule's own flag ahead of its tags.
+ */
+function headingOrderOptions(): RunOptions {
+  return {
+    runOnly: { type: 'rule', values: ['heading-order'] },
+    resultTypes: ['violations'],
+  };
+}
+
+/** The line {@link headingsOutOfOrder} gives for a root with no heading to order. */
+const NO_HEADING_FOUND = 'heading-order: no heading found';
+
+/**
+ * Runs `heading-order` over `root` and gives one line per heading that sits
+ * more than one level under the heading before it, in `summarizeViolations`'
+ * form. An empty list means `root` holds headings and none skips a level.
+ *
+ * A root with no heading leaves the rule inapplicable, and an inapplicable
+ * rule reports no violation: a page whose headings had all gone would read
+ * as ordered. So a run that neither passed nor failed a heading gives the
+ * line `heading-order: no heading found`.
+ *
+ * axe orders every heading of the document and judges those inside `root`,
+ * so the first heading in `root` is judged against the last one before it
+ * anywhere in the document. Karma's page has none, and the first heading of
+ * the document passes at any level.
+ */
+export async function headingsOutOfOrder(root: Element): Promise<string[]> {
+  const results = await axe.run(root, headingOrderOptions());
+  const lines = summarizeViolations(results);
+  const judged = [...results.passes, ...results.violations].some(result => result.id === 'heading-order');
+  return judged ? lines : [...lines, NO_HEADING_FOUND];
+}
+
+/**
+ * Expects `root` to hold headings, none more than one level under the
+ * heading before it. `where` names the root in a failure.
+ */
+export async function expectHeadingsInOrder(root: Element, where = 'the root'): Promise<void> {
+  expect(await headingsOutOfOrder(root)).withContext(`heading-order on ${where}`).toEqual([]);
 }
 
 /** The same lines, with every violation this route already carried dropped. */

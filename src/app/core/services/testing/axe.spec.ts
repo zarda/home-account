@@ -15,6 +15,8 @@ import {
   contrastUnscored,
   expectContrastScored,
   expectEachContrastScored,
+  expectHeadingsInOrder,
+  headingsOutOfOrder,
   holdsShownWords,
   runAxe,
   standOnThePage,
@@ -243,6 +245,33 @@ class ProjectedSwitchFixtureComponent {}
 })
 class LabelledFieldFixtureComponent {}
 
+/** A page's heading, then a card's that skips the level between. */
+@Component({
+  selector: 'app-axe-skipped-heading-fixture',
+  standalone: true,
+  changeDetection: ChangeDetectionStrategy.OnPush,
+  template: '<h1>Data</h1><h3 id="axe-skipped-heading">Export</h3>',
+})
+class SkippedHeadingFixtureComponent {}
+
+/** The same card's heading one level under the page's. */
+@Component({
+  selector: 'app-axe-nested-heading-fixture',
+  standalone: true,
+  changeDetection: ChangeDetectionStrategy.OnPush,
+  template: '<h1>Data</h1><h2>Export</h2>',
+})
+class NestedHeadingFixtureComponent {}
+
+/** Words and no heading at all. */
+@Component({
+  selector: 'app-axe-headingless-fixture',
+  standalone: true,
+  changeDetection: ChangeDetectionStrategy.OnPush,
+  template: '<p>Total</p>',
+})
+class HeadinglessFixtureComponent {}
+
 describe('the axe harness', () => {
   function rulesOf(results: AxeResults): string[] {
     return summarizeViolations(results).map(line => line.split(' ')[0]);
@@ -417,12 +446,12 @@ describe('the axe harness', () => {
     // `enabled: true` runs button-name in the tag pass, where wcag2a already
     // asks for it. A run cut to named rules runs those alone whatever the map
     // enables, so the contrast sweep, built on the shared options, never meets
-    // an unnamed switch, nor does a one-rule run spread over them. That
-    // one-rule run is built here and stands for no helper of this file: it
-    // pins how axe ranks a rule-type runOnly over the map. A tag run spread
-    // over the shared options would carry button-name with it, since axe
-    // honours a rule's own `enabled` ahead of its tags.
-    it('stays out of the contrast sweep and of a one-rule run', async () => {
+    // an unnamed switch. Nor does the heading run, which is read here from
+    // the helper's own call: a tag run spread over the shared options, a
+    // best-practice one say, would carry button-name with it, since axe
+    // honours a rule's own `enabled` ahead of its tags, and the page pass
+    // would then report one switch twice.
+    it('stays out of the contrast sweep and of the heading run', async () => {
       const host = render(UnnamedSwitchFixtureComponent);
       const run = spyOn(axe, 'run').and.callThrough();
 
@@ -431,8 +460,44 @@ describe('the axe harness', () => {
       const contrast = await (run.calls.mostRecent().returnValue as unknown as Promise<AxeResults>);
       expect(rulesRun(contrast)).withContext('the contrast sweep').toEqual(['color-contrast']);
 
-      const oneRule = await axe.run(host, { ...axeOptions(), runOnly: { type: 'rule', values: ['heading-order'] } });
-      expect(rulesRun(oneRule)).withContext('a one-rule run of heading-order').toEqual(['heading-order']);
+      run.calls.reset();
+      const lines = await headingsOutOfOrder(host);
+      expect(run).withContext('the heading run is one axe run').toHaveBeenCalledTimes(1);
+      const headings = await (run.calls.mostRecent().returnValue as unknown as Promise<AxeResults>);
+      expect(rulesRun(headings)).withContext('the heading run').toEqual(['heading-order']);
+      expect(lines.filter(line => line.startsWith('button-name')))
+        .withContext('what the heading run reports')
+        .toEqual([]);
+    });
+  });
+
+  describe('the heading run', () => {
+    function render(component: typeof SkippedHeadingFixtureComponent): HTMLElement {
+      TestBed.configureTestingModule({ imports: [component] });
+      const fixture = TestBed.createComponent(component);
+      fixture.detectChanges();
+      return fixture.nativeElement as HTMLElement;
+    }
+
+    // heading-order is best practice, outside the tags of the shared pass,
+    // so the page pass never asks it: an h3 straight under the page's h1
+    // read clean on every route that had one.
+    it('reports a heading that skips the level under the one before it', async () => {
+      const host = render(SkippedHeadingFixtureComponent);
+      expect(rulesOf(await runAxe(host))).withContext('the shared pass').toEqual([]);
+
+      expect(await headingsOutOfOrder(host)).toEqual(['heading-order (1): #axe-skipped-heading']);
+    });
+
+    // A root with no heading leaves the rule inapplicable, which reports no
+    // violation either: a page whose headings all went would read as
+    // ordered. The run says so instead.
+    it('says it found no heading under a root that has none, rather than reading clean', async () => {
+      expect(await headingsOutOfOrder(render(HeadinglessFixtureComponent))).toEqual(['heading-order: no heading found']);
+    });
+
+    it('passes a heading one level under the one before it', async () => {
+      await expectHeadingsInOrder(render(NestedHeadingFixtureComponent));
     });
   });
 
