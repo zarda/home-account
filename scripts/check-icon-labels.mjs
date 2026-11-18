@@ -132,10 +132,10 @@
  *
  * What it cannot see: a name built in TypeScript and bound as an expression;
  * a component stamped through `NgComponentOutlet`, a dialog or a router
- * outlet rather than by its selector; a repeat written as
- * `<ng-template ngFor>`; and a trigger with no `aria-label` at all, whose
- * name comes from its text. Any other key that names no item is the sixth
- * rule's, below.
+ * outlet rather than by its selector; and a repeat written as
+ * `<ng-template ngFor>`. A trigger with no `aria-label` at all, whose name
+ * comes from its text, is the sixth rule's, below, as is any other key that
+ * names no item.
  *
  * A fifth rule puts a flag's tooltip within reach of the keyboard. MatTooltip
  * opens for a pointer and for keyboard focus, and a `mat-icon` takes focus
@@ -165,7 +165,8 @@
  *
  * A sixth rule widens the fourth from one key on one kind of control to any.
  * A control stamped once per item whose `aria-label` is a catalog key with no
- * parameters gives every copy the same name. The upload area had that shape:
+ * parameters gives every copy the same name, and so does one with no
+ * `aria-label` whose own text is such a key. The upload area had that shape:
  * each file's row read "Move up", "Move down" and "Remove", and two photos
  * from an iPhone are both image.jpg, so neither the buttons nor the rows could
  * be told apart by ear. The rule: a control stamped once per item, by its own
@@ -191,6 +192,38 @@
  *     item it acts on: the search history's pin buttons had that shape. A
  *     ternary with parameters on either branch, or on the pipe after it, has
  *     a slot.
+ *   - **A control's own text is read too (readOwnTexts).** A link, a button,
+ *     a Material toggle or an element with a control's role takes its name
+ *     from what it holds when no `aria-label` or `aria-labelledby` names it,
+ *     in any spelling, and text that is one key with no parameters, or a
+ *     ternary between two, names no item as such a label does: every
+ *     transaction row's swipe drawer read "Edit" and "Delete". The text is
+ *     every run the control holds, its descendants' included, outside a
+ *     `mat-icon` (MatIcon hides its ligature) and outside an element with a
+ *     literal `aria-hidden="true"`, with control-flow syntax taken out; it
+ *     is bare when what is left is that one interpolation. walkTemplate reads
+ *     opening tags only, so the text pass keeps its own stack of open
+ *     elements. Each control records where its name comes from, `via:
+ *     'label'` or `via: 'text'`, and both kinds feed the same tally across
+ *     templates and the same freeze: a key is one name, however a control
+ *     comes by it, so the dashboard's two View All links, one in each of two
+ *     cards, are two cases of one switch reaching one key. A text hit is
+ *     reported at the control's opening tag, since its text may run over
+ *     several lines, and its fix has a hint of its own: keep the visible
+ *     words, add the item, in an `aria-label` whose sentence holds them, so a
+ *     speech user can say what they see (WCAG 2.5.3).
+ *   - **Two text-named controls are exempt.** One inside a `<mat-menu>`: its
+ *     panel is open only for the one trigger that opened it, and that trigger
+ *     is already held to name its item, by the fourth rule and this one. A
+ *     control named by its `aria-label` is read inside a menu as anywhere.
+ *     And one with a bound `aria-describedby` (`[attr.aria-describedby]`,
+ *     `[aria-describedby]`, or a literal that interpolates,
+ *     `aria-describedby="{{ r.hintId }}"`): the household's six buttons are
+ *     named by what they do and described by their item. That second
+ *     exemption is a Known gap, not a pattern to copy: a description is read
+ *     after the name, after a pause or not at all, and a name that holds the
+ *     item is still the better fix. A literal `aria-describedby` with no
+ *     interpolation points every copy at one element, so it exempts nothing.
  *   - **"Once per item" is read two ways, as the fourth rule reads it.**
  *     Inside the template, an `@for` block or an element under a repeating
  *     structural directive. Across templates, a component another template
@@ -228,8 +261,16 @@
  * through an outlet or a dialog rather than by its selector, as the fourth
  * rule cannot; a selector or key that two switches on the same item each
  * reach in one case, since the tally counts the cases of one switch; an item
- * the list holds twice, whose `@case` then renders twice; and a name that
- * comes from `aria-labelledby` or from the control's text.
+ * the list holds twice, whose `@case` then renders twice; a name that comes
+ * from `aria-labelledby`; text that is more than one interpolation, such as a
+ * bare key beside literal words or beside a second bare key, or whose one
+ * bare key sits beside a component or an `<img>` that adds to the name; the
+ * text a toggle projects when an `[attr.aria-label]` sits on its host, which
+ * names nothing inside and keeps the text pass away; whether a bound
+ * `aria-describedby` points each copy at its own element, so one bound to a
+ * constant (`[attr.aria-describedby]="hintId"`) points every copy at one and
+ * still exempts its control, as one that reads the item does; and an element
+ * the rule does not count as a control, such as a chip or a button toggle.
  *
  * A seventh rule keeps a reference from pointing at nothing. `aria-labelledby`,
  * `aria-describedby`, `aria-controls`, `aria-owns` and a label's `for` name
@@ -593,7 +634,8 @@ function readBlocks(text, frames, { casesApart = false, base = 0 } = {}) {
 
 /**
  * Walks a template's opening tags in order, calling
- * `visit({ name, attrs, line, repeated, inTemplate, cases })` for each.
+ * `visit({ name, attrs, line, at, repeated, inTemplate, cases })` for each,
+ * `at` being the tag's offset in the template (readOwnTexts keys on it).
  * `repeated` is true when the element is stamped once per item within this
  * template: inside an `@for` block, or on or under an element carrying a
  * repeating structural directive. `inTemplate` is true when an
@@ -630,6 +672,7 @@ export function walkTemplate(source, visit, { casesApart = false } = {}) {
       name,
       attrs,
       line: lineOf(masked, match.index),
+      at: match.index,
       repeated: repeat || frames.some((frame) => frame.repeat && !lifted.has(frame)),
       inTemplate: frames.some((frame) => frame.element === 'ng-template'),
       cases: cases.map((frame) => ({ switchAt: frame.switchAt, caseAt: frame.at })),
@@ -761,24 +804,153 @@ function bareKeyLabel(attrs) {
 }
 
 /**
+ * The controls whose name can come from what they hold. An input, a select
+ * and a textarea are named by a label or an attribute, never by their content;
+ * an element with a control's literal `role` (CONTROL_ROLE) is read too.
+ */
+const TEXT_NAMED_TAGS = new Set(['a', 'button', 'mat-checkbox', 'mat-slide-toggle', 'mat-radio-button']);
+
+/** An `aria-describedby` bound to an expression, which can name each copy's own item. */
+const BOUND_DESCRIBEDBY = new Set(['[attr.aria-describedby]', '[aria-describedby]']);
+
+/**
+ * True when a tag's `aria-describedby` is bound: in brackets, or a literal
+ * that interpolates (`aria-describedby="{{ r.hintId }}"`), which Angular binds
+ * the same way, as bareKeyLabel reads an interpolated `aria-label`. Whether
+ * the expression gives each copy its own element is not read.
+ */
+const describedByBound = (attrs) =>
+  attributesOf(attrs).some(
+    ({ name, value }) =>
+      value !== undefined && (BOUND_DESCRIBEDBY.has(name) || (name === 'aria-describedby' && value.includes('{{')))
+  );
+
+/** A literal `aria-hidden="true"` among a tag's attributes, read as an attribute and never inside another's value. */
+const literallyHidden = (attrs) =>
+  attributesOf(attrs).some(({ name, value }) => name === 'aria-hidden' && value === 'true');
+
+/**
+ * The key a control's own text consists of when it names no item, or null.
+ * `runs` are the runs of template text the control holds. Control-flow syntax
+ * is taken out, as projectsText takes it out, with each interpolation set
+ * aside first, since its braces are an expression's; the text is bare when
+ * what is left is one interpolation and that is one key with no parameters, or
+ * a ternary between two, piped through translate (bareKeyOf).
+ */
+function ownTextKey(runs) {
+  const interpolations = [];
+  const plain = runs
+    .join(' ')
+    .replace(/\{\{([\s\S]*?)\}\}/g, (_, body) => {
+      interpolations.push(body);
+      return ` \u0000${interpolations.length - 1}\u0000 `;
+    })
+    .replace(/@let\b[^;]*;/g, ' ')
+    .replace(/@\w+[^{]*\{/g, ' ')
+    .replace(/[{}]/g, ' ')
+    .trim();
+  const only = /^\u0000(\d+)\u0000$/.exec(plain);
+  return only ? bareKeyOf(interpolations[Number(only[1])]) : null;
+}
+
+/**
+ * The sixth rule's text pass: each control in a template that takes its name
+ * from its own text, and whose text is one key with no parameters (or a
+ * ternary between two), by its opening tag's offset, mapped to that key.
+ * walkTemplate reads opening tags only, so this pass keeps its own stack of
+ * open elements, which is also how it knows a `<mat-menu>` is open.
+ *
+ * A control takes its name from its text when no `aria-label` or
+ * `aria-labelledby` names it, in any spelling (THUMB_NAMES). Its text is every
+ * run of text it holds, its descendants' included, outside a `mat-icon` (whose
+ * ligature MatIcon hides) and outside an element with a literal
+ * `aria-hidden="true"`. Two text-named controls are left out: one inside a
+ * `<mat-menu>`, whose panel opens for the one trigger that names the item, and
+ * one with a bound `aria-describedby` (describedByBound), the household's
+ * "named by what it does, described by its item" (a Known gap, see the
+ * header).
+ */
+function readOwnTexts(source) {
+  const masked = maskComments(source);
+  const found = new Map();
+  // Open elements, innermost last: `{ name, hidden, control }`, `control`
+  // being the runs a text-named control has gathered, or null.
+  const open = [];
+  const tag = new RegExp(ANY_TAG.source, 'g');
+  let last = 0;
+  let match;
+  while ((match = tag.exec(masked)) !== null) {
+    const run = masked.slice(last, match.index);
+    if (!open.some((frame) => frame.hidden)) {
+      for (const frame of open) frame.control?.runs.push(run);
+    }
+    last = tag.lastIndex;
+    const [, closing, rawName, attrs] = match;
+    const name = rawName.toLowerCase();
+    if (closing) {
+      const at = open.map((frame) => frame.name).lastIndexOf(name);
+      if (at >= 0) {
+        for (const frame of open.slice(at)) {
+          if (frame.control) {
+            const key = ownTextKey(frame.control.runs);
+            if (key) found.set(frame.control.at, key);
+          }
+        }
+        open.length = at;
+      }
+      continue;
+    }
+    const selfClosing = /\/\s*$/.test(attrs) || VOID_ELEMENTS.has(name);
+    if (selfClosing) continue;
+    const textNamed =
+      (TEXT_NAMED_TAGS.has(name) || CONTROL_ROLE.test(attrs)) &&
+      !thumbNamed(attrs) &&
+      !describedByBound(attrs) &&
+      !open.some((frame) => frame.name === 'mat-menu');
+    open.push({
+      name,
+      hidden: name === 'mat-icon' || literallyHidden(attrs),
+      control: textNamed ? { at: match.index, runs: [] } : null,
+    });
+  }
+  return found;
+}
+
+/**
  * One template read for the sixth rule, an `@case` on the `@for`'s own item
- * held apart: each control named by a bare key (`{ line, tag, key, repeated,
- * cases }`, `line` the label's own), and, when `selectors` is given, each
- * use of one of them (`{ name, repeated, cases }`).
+ * held apart: each control named by a bare key (`{ line, tag, key, via,
+ * repeated, cases }`), and, when `selectors` is given, each use of one of them
+ * (`{ name, repeated, cases }`). `via` says where the name comes from:
+ * `'label'`, its `aria-label`, `line` being the label's own; or `'text'`, its
+ * own text (readOwnTexts), `line` being the opening tag's. Both kinds feed the
+ * same tally across templates (heldApartAcross): a key is one name, however a
+ * control comes by it.
  */
 function readHeldApart(source, selectors = null) {
   const controls = [];
   const stamps = [];
+  const texts = readOwnTexts(source);
   walkTemplate(
     source,
-    ({ name, attrs, line, repeated, cases }) => {
+    ({ name, attrs, line, at, repeated, cases }) => {
       if (selectors?.has(name)) stamps.push({ name, repeated, cases });
       if (!CONTROL_TAGS.has(name) && !CONTROL_ROLE.test(attrs)) return;
       if (MENU_TRIGGER.test(attrs) && itemlessName(attrs)) return;
       const label = bareKeyLabel(attrs);
-      if (!label) return;
-      const before = attrs.slice(0, label.index);
-      controls.push({ line: line + before.split('\n').length - 1, tag: name, key: label.key, repeated, cases });
+      if (label) {
+        const before = attrs.slice(0, label.index);
+        controls.push({
+          line: line + before.split('\n').length - 1,
+          tag: name,
+          key: label.key,
+          via: 'label',
+          repeated,
+          cases,
+        });
+        return;
+      }
+      const key = texts.get(at);
+      if (key) controls.push({ line, tag: name, key, via: 'text', repeated, cases });
     },
     { casesApart: true }
   );
@@ -901,9 +1073,12 @@ export function heldApartAcross(templates) {
  * template by the run: `keys`, the keys of its controls that two cases of a
  * switch elsewhere reach through what they stamp, and `slots`, each
  * `switchAt key` its own switches reach in two cases. Without it, this
- * template is read alone. `line` is the label's own line, which is where a
- * finding is reported. A menu trigger the fourth rule reports is left to it.
- * Returns `{ line, tag, key }` for each.
+ * template is read alone. A control with no `aria-label` is read by its own
+ * text (readOwnTexts) and judged the same way. `line` is where a finding is
+ * reported: the label's own line for a control named by its label, the
+ * opening tag's for one named by its text. A menu trigger the fourth rule
+ * reports is left to it. Returns `{ line, tag, key, via }` for each, `via`
+ * being `'label'` or `'text'`.
  */
 export function scanItemlessLabels(source, componentRepeated = false, across = null) {
   const { controls } = readHeldApart(source);
@@ -915,7 +1090,7 @@ export function scanItemlessLabels(source, componentRepeated = false, across = n
     apart.keys.has(control.key) || control.cases.some(({ switchAt }) => apart.slots.has(`${switchAt} ${control.key}`));
   return controls
     .filter((control) => control.repeated || componentRepeated || reachedApart(control))
-    .map(({ line, tag, key }) => ({ line, tag, key }));
+    .map(({ line, tag, key, via }) => ({ line, tag, key, via }));
 }
 
 /**
@@ -932,13 +1107,94 @@ export function itemlessHint() {
 }
 
 /**
+ * The binding the sixth rule's hint for a text-named control gives as its
+ * model: the goal card's View Transactions, whose name holds the words it
+ * shows and the goal. The self-test holds it to goal-progress-card's
+ * template, as it holds ITEMLESS_MODEL to the upload area's.
+ */
+export const ITEMLESS_TEXT_MODEL = "'goal.viewTransactionsNamed' | translate: { name: goal().name }";
+
+/**
+ * The fix the sixth rule prints under a hit named by its own text,
+ * ITEMLESS_TEXT_MODEL its example. The name a screen reader hears has to hold
+ * the words a sighted user sees, so a speech user can say them (WCAG 2.5.3).
+ */
+export function itemlessTextHint() {
+  return (
+    'keep the visible words, add the item: bind [attr.aria-label] to a key whose sentence holds ' +
+    `the control's own text and a slot for the item, as ${ITEMLESS_TEXT_MODEL}`
+  );
+}
+
+/**
  * Per-item controls named by a key with no parameters that the sixth rule
  * found when it landed, outside what that change fixed. Each row is a file, a
  * key, how many controls in that file carry it, and what repeats them. Empty
  * is the goal: a row is a debt with a name, and it goes when its controls name
  * their item.
  */
-export const ITEMLESS_FROZEN = [];
+export const ITEMLESS_FROZEN = [
+  {
+    file: 'src/app/features/ai/import/import-history/import-history.component.html',
+    key: 'import.viewTransaction',
+    count: 1,
+    why: "View transaction, named by its text, one per import record in the history's @for",
+  },
+  {
+    file: 'src/app/features/ai/import/import-history/import-history.component.html',
+    key: 'common.delete',
+    count: 1,
+    why: "Delete, named by its text, one per import record in the history's @for",
+  },
+  {
+    file: 'src/app/features/ai/search-history/search-answer-history.component.html',
+    key: 'common.refresh',
+    count: 1,
+    why: "Refresh, named by its text, under the expanded answer in the saved answers' @for",
+  },
+  {
+    file: 'src/app/features/dashboard/recent-transactions/recent-transactions.component.html',
+    key: 'dashboard.viewAll',
+    count: 1,
+    why: "View All, named by its text; two cases of the dashboard's card switch reach the key",
+  },
+  {
+    file: 'src/app/features/dashboard/upcoming-bills/upcoming-bills.component.html',
+    key: 'dashboard.viewAll',
+    count: 1,
+    why: "View All, named by its text; two cases of the dashboard's card switch reach the key",
+  },
+  {
+    file: 'src/app/features/reports/insights/insight-card/insight-card.component.html',
+    key: 'insights.viewTransactions',
+    count: 1,
+    why: "View transactions, named by its text; the insights tab stamps one card per insight",
+  },
+  {
+    file: 'src/app/features/reports/insights/insight-card/insight-card.component.html',
+    key: 'insights.hideTransactions : insights.showTransactions',
+    count: 1,
+    why: "the rows' show and hide toggle, named by its text; the insights tab stamps one card per insight",
+  },
+  {
+    file: 'src/app/shared/components/nl-answer-card/nl-answer-card.component.html',
+    key: 'aiSearch.viewTransactions',
+    count: 1,
+    why: "View transactions, named by its text; the saved answers' @for stamps one card per expanded answer",
+  },
+  {
+    file: 'src/app/shared/components/transaction-row/transaction-row.component.html',
+    key: 'common.edit',
+    count: 1,
+    why: "the swipe drawer's Edit, named by its text; the lists stamp one row per transaction",
+  },
+  {
+    file: 'src/app/shared/components/transaction-row/transaction-row.component.html',
+    key: 'common.delete',
+    count: 1,
+    why: "the swipe drawer's Delete, named by its text; the lists stamp one row per transaction",
+  },
+];
 
 /**
  * Sets one rule's hits (`{ site, tag, key }`, `site` a repo-relative
@@ -1183,8 +1439,9 @@ export function repeatedTemplates(templates, { casesApart = false, apart = null 
  * two cases of a held-apart switch reach in it (heldApartAcross,
  * scanItemlessLabels). `templates` is a list of
  * `{ key, selector, source, offset }`. Returns `{ hits, keys }`: each hit as
- * `{ site, tag, key }`, `site` the template's key and the label's line in its
- * file, and `keys` the set of repeated templates.
+ * `{ site, tag, key, via }`, `site` the template's key and the hit's line in
+ * its file (the label's, or the opening tag's for a control named by its
+ * text), and `keys` the set of repeated templates.
  */
 export function scanItemlessAcross(templates) {
   const apart = heldApartAcross(templates);
@@ -1193,7 +1450,7 @@ export function scanItemlessAcross(templates) {
   for (const template of templates) {
     const across = { keys: apart.keys.get(template.key) ?? new Set(), slots: apart.slots.get(template.key) ?? new Set() };
     for (const hit of scanItemlessLabels(template.source, keys.has(template.key), across)) {
-      hits.push({ site: `${template.key}:${hit.line + template.offset}`, tag: hit.tag, key: hit.key });
+      hits.push({ site: `${template.key}:${hit.line + template.offset}`, tag: hit.tag, key: hit.key, via: hit.via });
     }
   }
   return { hits, keys };
@@ -1348,7 +1605,7 @@ function run() {
   // item, and sets what it finds against the rows frozen when it landed.
   const { hits: itemless, keys: itemlessKeys } = scanItemlessAcross(sources);
   const { fresh, drift } = againstFrozen(itemless, ITEMLESS_FROZEN);
-  for (const hit of fresh) findings.push({ rule: 'itemless', site: hit.site, tag: hit.tag, key: hit.key });
+  for (const hit of fresh) findings.push({ rule: 'itemless', site: hit.site, tag: hit.tag, key: hit.key, via: hit.via });
   for (const row of drift) findings.push({ rule: 'itemless-drift', site: row.file, ...row });
 
   // The id rule reads each template whole, since a reference may come before
@@ -1399,9 +1656,11 @@ function run() {
     `Checked ${tooltipFlags} named icon(s) with a tooltip: ${reachableFlags} take focus ` +
       `or are stamped through an ng-template.`
   );
+  const itemlessByText = itemless.filter((hit) => hit.via === 'text').length;
   console.log(
     `Checked the controls stamped once per item across ${sources.length} template(s): ` +
-      `${itemless.length} take their name from a key with no parameters, ` +
+      `${itemless.length} take their name from a key with no parameters ` +
+      `(${itemless.length - itemlessByText} by their aria-label, ${itemlessByText} by their own text), ` +
       `${ITEMLESS_FROZEN.reduce((sum, row) => sum + row.count, 0)} frozen by name; ` +
       `${itemlessKeys.size} template(s) belong to a component another template stamps once per item.`
   );
@@ -1518,19 +1777,28 @@ function run() {
     if (itemlessFindings.length > 0) {
       console.error(`\n${itemlessFindings.length} repeated control(s) take a name that names no item:\n`);
       for (const finding of itemlessFindings) {
-        console.error(`  ${finding.site}  <${finding.tag}> '${finding.key}' | translate`);
-        console.error(`    → ${itemlessHint()}\n`);
+        if (finding.via === 'text') {
+          console.error(`  ${finding.site}  <${finding.tag}> text {{ '${finding.key}' | translate }}`);
+          console.error(`    → ${itemlessTextHint()}\n`);
+        } else {
+          console.error(`  ${finding.site}  <${finding.tag}> '${finding.key}' | translate`);
+          console.error(`    → ${itemlessHint()}\n`);
+        }
       }
       console.error(
         `A control stamped once per item takes its whole name from its aria-label,\n` +
-          `and a key with no parameters gives every copy the same one: a screen\n` +
-          `reader moving down the list hears the same button again and nothing that\n` +
-          `says which item it acts on. Name the item through the key's parameters,\n` +
-          `as the upload area's photo arrows do, with whatever tells two items apart\n` +
-          `(two photos from an iPhone are both image.jpg, so those name the photo's\n` +
-          `place among the photos too). A control repeated by its parent counts: the\n` +
-          `goal card is one per goal. A site that cannot be fixed in the same change is\n` +
-          `frozen in ITEMLESS_FROZEN with its reason (ADR 0145).\n` +
+          `or from its own text when it has none, and a key with no parameters gives\n` +
+          `every copy the same one: a screen reader moving down the list hears the\n` +
+          `same button again and nothing that says which item it acts on. Name the\n` +
+          `item through the key's parameters, as the upload area's photo arrows do,\n` +
+          `with whatever tells two items apart (two photos from an iPhone are both\n` +
+          `image.jpg, so those name the photo's place among the photos too). A control\n` +
+          `named by its text keeps the words it shows inside the name that adds the\n` +
+          `item, so a speech user can say what they see: the goal card's View\n` +
+          `Transactions reads "View Transactions for" and the goal. A control repeated\n` +
+          `by its parent counts: the goal card is one per goal. A site that cannot be\n` +
+          `fixed in the same change is frozen in ITEMLESS_FROZEN with its reason\n` +
+          `(ADR 0145).\n` +
           `Reference: ${DOC}.\n`
       );
     }
@@ -1627,7 +1895,8 @@ function run() {
       `carries a name or is hidden inside the control that already announces it, ` +
       `every option icon sits beside its option's name, every repeated menu ` +
       `button names its item, every tooltip icon takes focus, every control ` +
-      `stamped once per item names its item or is frozen by name, every id ` +
+      `stamped once per item names its item, by its aria-label or by its own ` +
+      `text, or is frozen by name, every id ` +
       `a literal reference names is declared in its own template, and every ` +
       `checkbox, slide toggle, radio button and slider names the ` +
       `control inside it or is frozen by name.`
@@ -2107,7 +2376,7 @@ function selfTest() {
       '@for (file of files(); track file; let i = $index) {\n  <button\n    mat-icon-button\n' +
         '    (click)="moveFileUp(i, $event)"\n    [attr.aria-label]="\'common.moveUp\' | translate"\n  >x</button>\n}'
     ),
-    [{ line: 5, tag: 'button', key: 'common.moveUp' }]
+    [{ line: 5, tag: 'button', key: 'common.moveUp', via: 'label' }]
   );
   check(
     'the interpolated literal form',
@@ -2142,7 +2411,7 @@ function selfTest() {
         '      (record.pinned ? \'aiSearch.historyUnpin\' : \'aiSearch.historyPin\') | translate\n    "\n' +
         '    (click)="togglePin(record)"\n  >x</button>\n}'
     ),
-    [{ line: 5, tag: 'button', key: 'aiSearch.historyUnpin : aiSearch.historyPin' }]
+    [{ line: 5, tag: 'button', key: 'aiSearch.historyUnpin : aiSearch.historyPin', via: 'label' }]
   );
   check(
     'a ternary between two bare keys, each branch piped',
@@ -2165,7 +2434,7 @@ function selfTest() {
       scanItemlessLabels(`@for (r of rows; track r.id) {\n  <button [attr.aria-label]="r.on ? ('a.turnOff' | translate) : 'a.turnOn' | translate">x</button>\n}`),
       itemlessLines(`@for (r of rows; track r.id) {\n  <button aria-label="{{ r.on ? ('a.turnOff' | translate) : 'a.turnOn' | translate }}">x</button>\n}`),
     ],
-    [[{ line: 2, tag: 'button', key: 'a.turnOff : a.turnOn' }], [2]]
+    [[{ line: 2, tag: 'button', key: 'a.turnOff : a.turnOn', via: 'label' }], [2]]
   );
 
   // --- the per-item rule: must not hit (the load-bearing half) ---
@@ -2888,6 +3157,232 @@ function selfTest() {
       ]),
     ],
     [[], []]
+  );
+
+  // --- the per-item rule, a control's own text: must hit ---
+  check(
+    'a repeated button named by one bare visible key is reported at its opening tag, the import history\'s View',
+    scanItemlessLabels(
+      '@for (item of history(); track item.id) {\n  <button\n    mat-button\n    (click)="open(item)"\n  >\n' +
+        "    <mat-icon>open_in_new</mat-icon>\n    {{ 'import.viewTransaction' | translate }}\n  </button>\n}"
+    ),
+    [{ line: 2, tag: 'button', key: 'import.viewTransaction', via: 'text' }]
+  );
+  check(
+    'text a child element holds is the control\'s, the swipe drawer\'s Edit',
+    itemlessLines(
+      "@for (t of rows; track t.id) {\n  <button class=\"swipe-action\">\n    <mat-icon>edit</mat-icon>\n" +
+        "    <span>{{ 'common.edit' | translate }}</span>\n  </button>\n}"
+    ),
+    [2]
+  );
+  check(
+    'an icon\'s ligature and a literally hidden child are not text',
+    itemlessLines(
+      '@for (c of cards; track c.id) {\n  <button>\n    <mat-icon>{{ c.icon }}</mat-icon>\n' +
+        "    <span aria-hidden=\"true\">{{ c.emoji }}</span>\n    {{ 'common.open' | translate }}\n  </button>\n}"
+    ),
+    [2]
+  );
+  check(
+    'a bare ternary in the text, the insight card\'s show and hide toggle',
+    scanItemlessLabels(
+      '@for (c of cards(); track c.id) {\n  <button (click)="toggle(c)" [attr.aria-expanded]="c.open">\n' +
+        "    <mat-icon>{{ c.open ? 'expand_less' : 'expand_more' }}</mat-icon>\n    <span>\n" +
+        "      {{ (c.open ? 'insights.hideTransactions' : 'insights.showTransactions') | translate }}\n    </span>\n  </button>\n}"
+    ),
+    [{ line: 2, tag: 'button', key: 'insights.hideTransactions : insights.showTransactions', via: 'text' }]
+  );
+  check(
+    'a repeated toggle named by one bare visible key is reported at its opening tag, each of the three',
+    ['mat-checkbox', 'mat-slide-toggle', 'mat-radio-button'].map((toggle) =>
+      scanItemlessLabels(
+        `@for (r of rules; track r.id) {\n  <${toggle} [checked]="r.on" (change)="flip(r)">\n` +
+          `    {{ 'common.enabled' | translate }}\n  </${toggle}>\n}`
+      )
+    ),
+    ['mat-checkbox', 'mat-slide-toggle', 'mat-radio-button'].map((toggle) => [
+      { line: 2, tag: toggle, key: 'common.enabled', via: 'text' },
+    ])
+  );
+  check(
+    'a link and an element with a control\'s role are read by their text too',
+    itemlessLines(
+      "@for (r of rows; track r.id) {\n  <a [routerLink]=\"r.path\">{{ 'common.open' | translate }}</a>\n" +
+        "  <span role=\"button\" tabindex=\"0\">{{ 'common.remove' | translate }}</span>\n}"
+    ),
+    [2, 3]
+  );
+  check(
+    'a literal aria-describedby names one element for every copy, so it exempts nothing',
+    itemlessLines(
+      "@for (r of rows; track r.id) {\n  <button aria-describedby=\"row-hint\">{{ 'common.remove' | translate }}</button>\n}\n" +
+        '<p id="row-hint">x</p>'
+    ),
+    [2]
+  );
+  const CONTRIBUTE =
+    "<button mat-stroked-button (click)=\"contribute.emit()\">\n      <mat-icon>add</mat-icon>\n" +
+    "      {{ 'goal.contribute' | translate }}\n    </button>";
+  check(
+    'a text-named button in a card its parent stamps per item is reported at the card\'s line, the goal card\'s shape',
+    itemlessSites([
+      ['goals', 'app-goals', '@for (goal of goals(); track goal.id) {\n  <app-goal-card [goal]="goal" />\n}'],
+      ['card', 'app-goal-card', `<mat-card>\n  <mat-card-actions>\n    ${CONTRIBUTE}\n  </mat-card-actions>\n</mat-card>`],
+    ]),
+    ['card:3']
+  );
+  const VIEW_ALL = (route) =>
+    `<a routerLink="${route}" class="view-all-link">\n    {{ 'dashboard.viewAll' | translate }}\n` +
+    '    <mat-icon>chevron_right</mat-icon>\n  </a>';
+  check(
+    'one bare visible key two cases of a held-apart switch reach is reported in each card, the dashboard\'s View All',
+    itemlessSites([
+      ['dashboard', 'app-dashboard', twoCases('<app-a />', '<app-b />')],
+      ['a', 'app-a', `<mat-card>\n  ${VIEW_ALL('/transactions')}\n</mat-card>`],
+      ['b', 'app-b', `<mat-card>\n  ${VIEW_ALL('/budgets')}\n</mat-card>`],
+    ]),
+    ['a:2', 'b:2']
+  );
+  check(
+    'a key one case shows as text and another gives as a label is one name twice',
+    itemlessSites([
+      ['dashboard', 'app-dashboard', twoCases('<app-a />', '<app-b />')],
+      ['a', 'app-a', "<mat-card>\n  <button>{{ 'common.retry' | translate }}</button>\n</mat-card>"],
+      ['b', 'app-b', `<mat-card>\n  ${RETRY}\n</mat-card>`],
+    ]),
+    ['a:2', 'b:2']
+  );
+  const RETRY_TEXT = "<button mat-button>{{ 'common.retry' | translate }}</button>";
+  check(
+    'a text-named control written in two cases of one lifted switch still repeats, as a label-named one does',
+    itemlessLines(twoCases(RETRY_TEXT, RETRY_TEXT)),
+    [4, 7]
+  );
+
+  // --- the per-item rule, a control's own text: must not hit (the load-bearing half) ---
+  check(
+    'a visible key with parameters has a slot, and the rule does not judge what fills it',
+    itemlessLines(
+      '@for (item of history(); track item.id) {\n  <button mat-button [matMenuTriggerFor]="m">\n' +
+        "    {{ 'import.viewTransactions' | translate: { count: item.ids.length } }}\n  </button>\n}"
+    ),
+    []
+  );
+  check(
+    'a bare key beside the item\'s own value is more than one interpolation, a Remove that says its file',
+    itemlessLines("@for (f of files; track f) {\n  <button mat-button>{{ 'common.remove' | translate }} {{ f.name }}</button>\n}"),
+    []
+  );
+  check(
+    'a bound aria-label names the control whatever its text says, the goal card fixed',
+    itemlessLines(
+      '@for (goal of goals(); track goal.id) {\n  <button\n    mat-button\n' +
+        "    [attr.aria-label]=\"'goal.viewTransactionsNamed' | translate: { name: goal.name }\"\n  >\n" +
+        "    {{ 'goal.viewTransactions' | translate }}\n  </button>\n}"
+    ),
+    []
+  );
+  check(
+    'a literal aria-label or an aria-labelledby names the control instead of its text',
+    [
+      itemlessLines("@for (r of rows; track r.id) {\n  <button aria-label=\"Open {{ r.name }}\">{{ 'common.open' | translate }}</button>\n}"),
+      itemlessLines(
+        '@for (r of rows; track r.id) {\n  <span [id]="r.id">{{ r.name }}</span>\n' +
+          "  <button [attr.aria-labelledby]=\"r.id\">{{ 'common.open' | translate }}</button>\n}"
+      ),
+    ],
+    [[], []]
+  );
+  const MENU_OF = (inside) =>
+    '@for (c of list; track c.id) {\n' +
+    "  <button [matMenuTriggerFor]=\"m\" [attr.aria-label]=\"'common.moreActionsFor' | translate: { description: c.name }\">x</button>\n" +
+    `  <mat-menu #m="matMenu">\n    ${inside}\n  </mat-menu>\n}`;
+  check(
+    'a text-named item inside a <mat-menu> is exempt, its trigger naming the row',
+    itemlessLines(
+      MENU_OF("<button mat-menu-item (click)=\"edit(c)\">\n      <mat-icon>edit</mat-icon>\n      {{ 'common.edit' | translate }}\n    </button>")
+    ),
+    []
+  );
+  check(
+    'a text-named control with a bound aria-describedby is exempt, the household\'s Remove',
+    [
+      itemlessLines(
+        '@for (view of members(); track view.uid) {\n  <span [id]="view.nameId">{{ view.name }}</span>\n' +
+          "  <button mat-stroked-button [attr.aria-describedby]=\"view.nameId\">\n    {{ 'household.members.remove' | translate }}\n  </button>\n}"
+      ),
+      itemlessLines("@for (r of rows; track r.id) {\n  <button [aria-describedby]=\"r.hintId\">{{ 'common.remove' | translate }}</button>\n}"),
+    ],
+    [[], []]
+  );
+  check(
+    'an interpolated literal aria-describedby is bound, each copy pointing at its own element',
+    itemlessLines("@for (r of rows; track r.id) {\n  <button aria-describedby=\"{{ r.hintId }}\">{{ 'common.remove' | translate }}</button>\n}"),
+    []
+  );
+  check(
+    'a bound aria-describedby exempts its control whatever it reads, a constant too: the header lists it as unseen',
+    itemlessLines("@for (r of rows; track r.id) {\n  <button [attr.aria-describedby]=\"hintId\">{{ 'common.remove' | translate }}</button>\n}"),
+    []
+  );
+  check(
+    'a text-named button in the @empty branch, which renders once',
+    itemlessLines(
+      "@for (f of files; track f) {\n  <span>{{ f.name }}</span>\n} @empty {\n  <button mat-button>{{ 'import.browse' | translate }}</button>\n}"
+    ),
+    []
+  );
+  check(
+    'a text-named button rendered once, a page\'s own',
+    itemlessLines("<div class=\"toolbar\">\n  <button mat-button>{{ 'common.refresh' | translate }}</button>\n</div>"),
+    []
+  );
+  check(
+    'text after a control has closed is not its text',
+    itemlessLines(
+      "@for (r of rows; track r.id) {\n  <button [attr.aria-pressed]=\"r.on\"><mat-icon>close</mat-icon></button>\n  {{ 'common.close' | translate }}\n}"
+    ),
+    []
+  );
+  check(
+    'a select\'s options are not its name',
+    itemlessLines(
+      "@for (r of rows; track r.id) {\n  <select [(ngModel)]=\"r.kind\">\n    <option value=\"a\">{{ 'common.yes' | translate }}</option>\n  </select>\n}"
+    ),
+    []
+  );
+  check(
+    'a commented-out text-named button is not a button',
+    itemlessLines("<!-- @for (r of rows; track r.id) { <button>{{ 'common.open' | translate }}</button> } -->"),
+    []
+  );
+
+  // --- the per-item rule, a control's own text: guards ---
+  check(
+    'a label-named item inside a <mat-menu> is still read',
+    scanItemlessLabels(MENU_OF("<button mat-menu-item [attr.aria-label]=\"'common.edit' | translate\">x</button>")),
+    [{ line: 4, tag: 'button', key: 'common.edit', via: 'label' }]
+  );
+  check(
+    'the menu\'s exemption ends where the menu closes',
+    itemlessLines(
+      "@for (c of list; track c.id) {\n  <mat-menu #m=\"matMenu\">\n    <button mat-menu-item>{{ 'common.edit' | translate }}</button>\n" +
+        "  </mat-menu>\n  <button mat-button>{{ 'common.delete' | translate }}</button>\n}"
+    ),
+    [5]
+  );
+  const GOAL_CARD_TEMPLATE = join(SOURCE_DIR, 'features/budgets/goals/goal-progress-card/goal-progress-card.component.html');
+  check(
+    'the text hint\'s model is a binding the goal card carries; if it left the goal card, update ITEMLESS_TEXT_MODEL',
+    existsSync(GOAL_CARD_TEMPLATE) &&
+      readFileSync(GOAL_CARD_TEMPLATE, 'utf8').includes(`[attr.aria-label]="${ITEMLESS_TEXT_MODEL}"`),
+    true
+  );
+  check(
+    'the text hint keeps the visible words, adds the item and quotes its model',
+    [itemlessTextHint().startsWith('keep the visible words, add the item'), itemlessTextHint().includes(ITEMLESS_TEXT_MODEL)],
+    [true, true]
   );
 
   const failed = cases.filter((c) => !c.ok);
