@@ -226,6 +226,13 @@ describe('GoalsComponent empty state CTA', () => {
     expect(component.openAddDialog).toHaveBeenCalled();
   });
 
+  // The tab sits directly under the Budgets page's h1, with no heading between.
+  it("heads the empty state one level under the page's own heading", () => {
+    const outline = (Array.from(fixture.nativeElement.querySelectorAll('h1, h2, h3, h4, h5, h6')) as HTMLElement[])
+      .map(heading => `${heading.tagName.toLowerCase()} ${heading.textContent?.trim()}`);
+    expect(outline).toEqual(['h2 goal.emptyTitle']);
+  });
+
   // #533: the tab's hint sits on the page itself, and rests in the muted
   // token, not a fade, which the high-contrast palette could never deepen.
   it('rests its hint in the muted token, at AA on the page, in all four palettes', () => {

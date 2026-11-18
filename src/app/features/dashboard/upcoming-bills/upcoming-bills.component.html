@@ -1,7 +1,7 @@
 <mat-card class="card">
   <!-- Header -->
   <div class="card-header">
-    <h3 class="card-title">{{ 'dashboard.upcomingBills' | translate }}</h3>
+    <h2 class="card-title">{{ 'dashboard.upcomingBills' | translate }}</h2>
     <div class="header-actions">
       <!-- Recent Transactions shows a View All beside this one, so each names its card. -->
       <a
@@ -37,7 +37,7 @@
       <div class="day-list">
         @for (day of days(); track day.key) {
           <div class="day-group">
-            <h4 class="day-header">{{ day.date | localeDate:'long' }}</h4>
+            <h3 class="day-header">{{ day.date | localeDate:'long' }}</h3>
             <!-- A rule advances by at least a day each step, so its id is
                  unique inside one day group. -->
             @for (occurrence of day.occurrences; track occurrence.recurringId) {

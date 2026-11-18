@@ -472,6 +472,18 @@ describe('BudgetsComponent, through its own template', () => {
     expect(dialogSpy.open).toHaveBeenCalled();
   });
 
+  // No heading sits between the page's h1 and the tab's empty state.
+  it("heads the empty state one level under the page's own heading", () => {
+    render();
+    component.isLoading.set(false);
+    budgets.set([]);
+    fixture.detectChanges();
+
+    const outline = (Array.from(el().querySelectorAll('h1, h2, h3, h4, h5, h6')) as HTMLElement[])
+      .map(heading => `${heading.tagName.toLowerCase()} ${heading.textContent?.trim()}`);
+    expect(outline).toEqual(['h1 budget.title', 'h2 budget.noBudgets']);
+  });
+
   it('shows the budget grid once there is a budget', () => {
     render();
     component.isLoading.set(false);

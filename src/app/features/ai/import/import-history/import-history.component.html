@@ -26,6 +26,7 @@
   } @else if (importHistory().length === 0) {
     <app-empty-state
       icon="history"
+      [headingLevel]="2"
       [title]="'import.noHistory' | translate"
       [description]="'import.noHistoryDescription' | translate"
       [actionLabel]="'import.startImport' | translate"

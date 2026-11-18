@@ -536,6 +536,16 @@ describe('RecurringTransactionsComponent', () => {
       return fixture.nativeElement as HTMLElement;
     }
 
+    // The tab sits directly under the Budgets page's h1, with no heading
+    // between.
+    it("heads the empty state one level under the page's own heading", () => {
+      const host = renderRules([]);
+
+      const outline = (Array.from(host.querySelectorAll('h1, h2, h3, h4, h5, h6')) as HTMLElement[])
+        .map(heading => `${heading.tagName.toLowerCase()} ${heading.textContent?.trim()}`);
+      expect(outline).toEqual(['h2 settings.noRecurring']);
+    });
+
     it('shows the next date of a rule whose pointer reads', () => {
       expect(renderRules(mockRecurring).querySelector('.recurring-next')).toBeTruthy();
     });

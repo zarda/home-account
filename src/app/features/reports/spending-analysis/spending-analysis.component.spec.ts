@@ -720,6 +720,33 @@ describe('SpendingAnalysisComponent', () => {
     });
   });
 
+  // The tab sits directly under the Reports page's h1, with no heading between.
+  describe('its headings (real template)', () => {
+    it("heads the empty state one level under the page's own heading", async () => {
+      TestBed.resetTestingModule();
+      await TestBed.configureTestingModule({
+        imports: [SpendingAnalysisComponent],
+        providers: [
+          provideAppCharts(),
+          { provide: CurrencyService, useValue: mockCurrencyService },
+          { provide: TranslationService, useValue: mockTranslationService },
+          provideNoMotion()
+        ]
+      }).compileComponents();
+
+      const renderFixture = TestBed.createComponent(SpendingAnalysisComponent);
+      const instance = renderFixture.componentInstance;
+      instance.transactions = [];
+      instance.categories = mockCategories;
+      instance.dateRange = { start: new Date(2024, 5, 1), end: new Date(2024, 5, 30) };
+      renderFixture.detectChanges();
+
+      const outline = (Array.from(renderFixture.nativeElement.querySelectorAll('h1, h2, h3, h4, h5, h6')) as HTMLElement[])
+        .map(heading => `${heading.tagName.toLowerCase()} ${heading.textContent?.trim()}`);
+      expect(outline).toEqual(['h2 reports.noDataAvailable']);
+    });
+  });
+
   describe('colours, as painted (real template)', () => {
     const THEMES = ['light', 'dark'] as const;
     let renderFixture: ComponentFixture<SpendingAnalysisComponent>;

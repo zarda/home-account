@@ -219,6 +219,17 @@ describe('GoalProgressCardComponent, through its own template', () => {
     expect(text('.kind-icon')).toBe('savings');
   });
 
+  // The Goals tab lists the cards under the page's own h1, as the Budgets tab
+  // lists its cards, so each goal's name is an h2, as each budget's is.
+  it('names the goal in an h2, one level under the page', () => {
+    card({ kind: 'project', items: [{ name: 'Deposit', amount: 100, done: false }] });
+
+    const outline = (Array.from(el().querySelectorAll('h1, h2, h3, h4, h5, h6')) as HTMLElement[])
+      .map(heading => `${heading.tagName.toLowerCase()} ${heading.textContent?.trim()}`);
+    expect(outline).toEqual(['h2 Emergency fund']);
+    expect(el().querySelector('.goal-name')?.tagName).toBe('H2');
+  });
+
   it('carries a project goal\'s own icon', () => {
     card({ kind: 'project' });
 

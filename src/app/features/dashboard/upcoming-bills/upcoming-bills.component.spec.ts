@@ -129,6 +129,22 @@ describe('UpcomingBillsComponent', () => {
     component = fixture.componentInstance;
   });
 
+  // The dashboard's h1 heads the page, so the card's title is an h2, and each
+  // day, or the empty state, an h3 under it.
+  it('titles the card one level under the page, and each day or its empty state one under the title', () => {
+    const outline = () =>
+      (Array.from(fixture.nativeElement.querySelectorAll('h1, h2, h3, h4, h5, h6')) as HTMLElement[])
+        .map(heading => `${heading.tagName.toLowerCase()} ${heading.textContent?.trim()}`);
+    render([]);
+    expect(outline()).toEqual(['h2 dashboard.upcomingBills', 'h3 dashboard.noUpcomingBills']);
+
+    render([
+      occurrence({ recurringId: 'r1', date: new Date(2026, 8, 1, 9, 0) }),
+      occurrence({ recurringId: 'r3', date: new Date(2026, 8, 4, 8, 0) }),
+    ]);
+    expect(outline()).toEqual(['h2 dashboard.upcomingBills', 'h3 day 1', 'h3 day 4']);
+  });
+
   it('groups occurrences by local day, keeping the order they arrive in', () => {
     render([
       occurrence({ recurringId: 'r1', date: new Date(2026, 8, 1, 9, 0) }),

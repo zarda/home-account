@@ -254,6 +254,17 @@ describe('TransactionListComponent', () => {
 
       expect(quickAdd.openAddTransaction).toHaveBeenCalled();
     });
+
+    // The list sits directly under the Transactions page's h1, with no
+    // heading between.
+    it("heads the empty state one level under the page's own heading", () => {
+      fixture.componentRef.setInput('transactions', []);
+      fixture.detectChanges();
+
+      const outline = (Array.from(fixture.nativeElement.querySelectorAll('h1, h2, h3, h4, h5, h6')) as HTMLElement[])
+        .map(heading => `${heading.tagName.toLowerCase()} ${heading.textContent?.trim()}`);
+      expect(outline).toEqual(['h2 transactions.noTransactions']);
+    });
   });
 
   it('delegates category and formatting helpers', () => {

@@ -186,6 +186,15 @@ describe('WeeklyRecapComponent', () => {
     expect(recap.load).toHaveBeenCalled();
   });
 
+  // The dashboard's h1 heads the page, so the card's title is an h2.
+  it('titles the card one level under the page', () => {
+    render();
+
+    const outline = (Array.from(fixture.nativeElement.querySelectorAll('h1, h2, h3, h4, h5, h6')) as HTMLElement[])
+      .map(heading => `${heading.tagName.toLowerCase()} ${heading.textContent?.trim()}`);
+    expect(outline).toEqual(['h2 recap.title']);
+  });
+
   it('heads the card with the recapped week and the spend', () => {
     render();
 

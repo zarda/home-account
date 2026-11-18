@@ -2,7 +2,9 @@
   border-radius: var(--radius-lg);
 }
 
-mat-card-title {
+// Material's own class, so the rule holds whichever tag carries the title and
+// still outranks Material's larger, lighter card title.
+.mat-mdc-card-title {
   font-size: var(--text-lg);
   font-weight: 600;
 }

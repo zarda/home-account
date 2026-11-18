@@ -466,6 +466,19 @@ describe('SpendingChartComponent', () => {
       }
     });
 
+    // The dashboard's h1 heads the page, so a card's title is an h2 and the
+    // empty state under it an h3. Reports reuses the card at the same level.
+    it('titles the card one level under the page, and its empty state one under the title', () => {
+      const outline = () =>
+        (Array.from(realFixture.nativeElement.querySelectorAll('h1, h2, h3, h4, h5, h6')) as HTMLElement[])
+          .map(heading => `${heading.tagName.toLowerCase()} ${heading.textContent?.trim()}`);
+      expect(outline()).toEqual(['h2 dashboard.spendingByCategory']);
+
+      realFixture.componentRef.setInput('categoryTotals', []);
+      realFixture.detectChanges();
+      expect(outline()).toEqual(['h2 dashboard.spendingByCategory', 'h3 dashboard.noExpenses']);
+    });
+
     it('should render each legend row as a real button', () => {
       const buttons = realFixture.debugElement.queryAll(By.css('button.legend-item'));
       expect(buttons.length).toBe(3);

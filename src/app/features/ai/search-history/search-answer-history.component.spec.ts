@@ -148,6 +148,12 @@ describe('SearchAnswerHistoryComponent', () => {
     expect(fixture.nativeElement.querySelectorAll('.history-row').length).toBe(0);
   });
 
+  it("heads the empty state one level under the page's own heading", () => {
+    const outline = (Array.from(fixture.nativeElement.querySelectorAll('h1, h2, h3, h4, h5, h6')) as HTMLElement[])
+      .map(heading => `${heading.tagName.toLowerCase()} ${heading.textContent?.trim()}`);
+    expect(outline).toEqual(['h1 aiSearch.historyPageTitle', 'h2 aiSearch.historyEmpty']);
+  });
+
   it('expanding a row shows the stored snapshot with its computed-at label and touches recency', () => {
     storedAnswers.set([rec('a-1', 2_000)]);
     fixture.detectChanges();

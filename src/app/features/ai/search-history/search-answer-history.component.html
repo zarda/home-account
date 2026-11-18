@@ -4,6 +4,7 @@
   @if (history.answers().length === 0) {
     <app-empty-state
       icon="travel_explore"
+      [headingLevel]="2"
       [title]="emptyTitle()"
       [description]="emptyHint()"
     />

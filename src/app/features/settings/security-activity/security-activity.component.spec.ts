@@ -156,5 +156,16 @@ describe('SecurityActivityComponent', () => {
       const meta = (fixture.nativeElement as HTMLElement).querySelector('.activity-meta');
       expect(meta?.textContent).toContain('settings.activityAt:Yesterday:TIME-FROM-FORMATTER');
     });
+
+    // Settings' panels are titled by no heading, and the section's own label
+    // is a line of text, so the empty state sits directly under the page's h1.
+    it("heads the empty state one level under the page's own heading", async () => {
+      await setup();
+      fixture.detectChanges();
+
+      const outline = (Array.from((fixture.nativeElement as HTMLElement).querySelectorAll('h1, h2, h3, h4, h5, h6')) as HTMLElement[])
+        .map(heading => `${heading.tagName.toLowerCase()} ${heading.textContent?.trim()}`);
+      expect(outline).toEqual(['h2 settings.securityActivityEmpty']);
+    });
   });
 });

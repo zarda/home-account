@@ -3,6 +3,7 @@
     @if (!hasRules()) {
       <app-empty-state
         icon="query_stats"
+        [headingLevel]="2"
         [title]="'reports.forecastNoRulesTitle' | translate"
         [description]="'reports.forecastNoRulesBody' | translate"
       />

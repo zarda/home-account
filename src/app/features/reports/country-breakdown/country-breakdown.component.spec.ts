@@ -206,6 +206,17 @@ describe('CountryBreakdownComponent, through its own template', () => {
     expect(fixture.nativeElement.querySelector('.row-label')).toBeNull();
   });
 
+  // The card is one of the Reports page's own sections, so its title is an h2
+  // under the page's h1 and the empty state inside it an h3 under the title.
+  it("titles the card one level under the page's own heading, and its empty state one under the title", () => {
+    component.transactions = [inCountry(10), inCountry(5)];
+    fixture.detectChanges();
+
+    const outline = (Array.from(fixture.nativeElement.querySelectorAll('h1, h2, h3, h4, h5, h6')) as HTMLElement[])
+      .map(heading => `${heading.tagName.toLowerCase()} ${heading.textContent?.trim()}`);
+    expect(outline).toEqual(['h2 reports.spendingByCountry', 'h3 reports.noCountriesRecorded']);
+  });
+
   it('renders nothing at all for a period with no expenses', () => {
     component.transactions = [txn({ type: 'income', amount: 500 })];
     fixture.detectChanges();

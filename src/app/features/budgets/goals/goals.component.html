@@ -12,6 +12,7 @@
   } @else if (goals().length === 0) {
     <app-empty-state
       icon="flag"
+      [headingLevel]="2"
       [title]="'goal.emptyTitle' | translate"
       [description]="'goal.emptyBody' | translate"
       [actionLabel]="'goal.addGoal' | translate"

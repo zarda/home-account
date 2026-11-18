@@ -587,6 +587,15 @@ describe('MonthlyComparisonComponent, through its own template', () => {
     expect(el().querySelector('canvas')).toBeNull();
   });
 
+  // The tab sits directly under the Reports page's h1, with no heading between.
+  it("heads the empty state one level under the page's own heading", () => {
+    render([]);
+
+    const outline = (Array.from(el().querySelectorAll('h1, h2, h3, h4, h5, h6')) as HTMLElement[])
+      .map(heading => `${heading.tagName.toLowerCase()} ${heading.textContent?.trim()}`);
+    expect(outline).toEqual(['h2 reports.noDataAvailable']);
+  });
+
   it('always shows the two averages, formatted in the page currency', () => {
     render(mockTransactionSet);
 

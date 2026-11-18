@@ -98,6 +98,7 @@
 } @else if (showEmptyState()) {
   <app-empty-state
     icon="receipt_long"
+    [headingLevel]="2"
     [title]="'transactions.noTransactions' | translate"
     [description]="'transactions.adjustFilters' | translate"
     [actionLabel]="'transactions.addTransaction' | translate"

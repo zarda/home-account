@@ -575,6 +575,14 @@ describe('BudgetProgressComponent', () => {
       expect(compiled.textContent?.includes('Budget Progress') || compiled.textContent?.includes('dashboard.budgetProgress')).toBe(true);
     });
 
+    // The dashboard's h1 heads the page, so the card's title is an h2, as every
+    // other card's is; a budget's name is a line of the card, not a heading.
+    it('titles the card one level under the page', () => {
+      const outline = (Array.from(fixture.nativeElement.querySelectorAll('h1, h2, h3, h4, h5, h6')) as HTMLElement[])
+        .map(heading => `${heading.tagName.toLowerCase()} ${heading.textContent?.trim()}`);
+      expect(outline).toEqual(['h2 dashboard.budgetProgress']);
+    });
+
     it('should display manage link', () => {
       const compiled = fixture.nativeElement as HTMLElement;
       // Check for translation key or translated text

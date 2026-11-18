@@ -1093,6 +1093,22 @@ describe('DataManagementComponent, through its own template', () => {
       .every(b => b.disabled)).toBeTrue();
   });
 
+  // The Data page's h1 heads the five sections with no heading between, so
+  // each section's title is an h2.
+  it("heads each of its five sections one level under the page's own heading", () => {
+    fixture.detectChanges();
+
+    const outline = (Array.from(el().querySelectorAll('h1, h2, h3, h4, h5, h6')) as HTMLElement[])
+      .map(heading => `${heading.tagName.toLowerCase()} ${heading.textContent?.trim()}`);
+    expect(outline).toEqual([
+      'h2 settings.exportData',
+      'h2 import.smartImport',
+      'h2 receiptImages.title',
+      'h2 settings.importData',
+      'h2 settings.dangerZone',
+    ]);
+  });
+
   it('routes into the import wizard and its history', () => {
     fixture.detectChanges();
 
@@ -1556,7 +1572,7 @@ describe('DataManagementComponent, through its own template', () => {
             .withContext(`${theme} zone edge`)
             .toBe(computedAs('color-mix(in srgb, var(--color-error) 30%, transparent)', 'border-top-color'));
 
-          expectPainted(zone.querySelector('.section-header h3'), '--text-primary', `${theme} heading`);
+          expectPainted(zone.querySelector('.section-header h2'), '--text-primary', `${theme} heading`);
           expectPainted(zone.querySelector('.section-description'), '--text-muted', `${theme} description`);
           expectPainted(zone.querySelector('.section-icon.danger'), '--color-error', `${theme} warning glyph`, 3);
 
@@ -1600,7 +1616,7 @@ describe('DataManagementComponent, through its own template', () => {
           for (const [name, end] of Object.entries(ends)) {
             withInline(section, 'background', end, () => {
               const at = `${theme}, at the ${name}`;
-              expectPainted(section.querySelector('.section-header h3'), '--text-primary', `${at}: heading`);
+              expectPainted(section.querySelector('.section-header h2'), '--text-primary', `${at}: heading`);
               expectPainted(section.querySelector('.section-description'), '--text-muted', `${at}: description`);
               expectPainted(section.querySelector('.section-icon.ai-icon'), '--color-ai', `${at}: AI glyph`, 3);
               features.forEach((feature, i) => {

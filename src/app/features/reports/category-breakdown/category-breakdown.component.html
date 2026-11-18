@@ -31,6 +31,7 @@
   @if (!hasData()) {
     <app-empty-state
       icon="pie_chart"
+      [headingLevel]="2"
       [title]="selectedType() === 'expense' ? ('reports.noExpenses' | translate) : ('reports.noIncome' | translate)"
       [description]="translationService.t('reports.noTransactionsForPeriod', { type: selectedType() })"
     />
@@ -107,7 +108,7 @@
 
             <!-- Recent transactions in this category -->
             <div class="recent-transactions">
-              <h4 class="section-title">{{ 'reports.recentTransactions' | translate }}</h4>
+              <h3 class="section-title">{{ 'reports.recentTransactions' | translate }}</h3>
               <div class="transactions-list">
                 @for (transaction of getTransactionsForCategory(category.categoryId); track transaction.id) {
                   <div class="transaction-item">

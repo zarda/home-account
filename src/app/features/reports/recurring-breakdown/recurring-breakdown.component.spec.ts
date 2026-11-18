@@ -249,7 +249,7 @@ describe('RecurringBreakdownComponent, through its own template', () => {
       expenseTxn({ id: 'b', amount: 100 }),
     ]);
 
-    expect(text('mat-card-title')).toBe('reports.recurringVsOneOff');
+    expect(text('[mat-card-title]')).toBe('reports.recurringVsOneOff');
     const [recurring, oneOff] = rows();
     expect(cell(recurring, '.row-count')).toBe('(1)');
     expect(cell(recurring, '.row-amount')).toBe('USD 300.00');
@@ -283,6 +283,16 @@ describe('RecurringBreakdownComponent, through its own template', () => {
     expect(empty.textContent).toContain('reports.noRecurringExpenses');
     expect(empty.textContent).toContain('reports.noRecurringExpensesHint');
     expect(cell(rows()[0], '.row-amount')).toBe('USD 100.00');
+  });
+
+  // The card is one of the Reports page's own sections, so its title is an h2
+  // under the page's h1 and the empty state inside it an h3 under the title.
+  it("titles the card one level under the page's own heading, and its empty state one under the title", () => {
+    render([expenseTxn({ id: 'b', amount: 100 })]);
+
+    const outline = (Array.from(el().querySelectorAll('h1, h2, h3, h4, h5, h6')) as HTMLElement[])
+      .map(heading => `${heading.tagName.toLowerCase()} ${heading.textContent?.trim()}`);
+    expect(outline).toEqual(['h2 reports.recurringVsOneOff', 'h3 reports.noRecurringExpenses']);
   });
 
   it('formats the amounts in the currency it was given', () => {

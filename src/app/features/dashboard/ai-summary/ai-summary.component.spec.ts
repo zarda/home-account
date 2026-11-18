@@ -596,6 +596,25 @@ describe('AiSummaryComponent, through its own template', () => {
     expect(refresh.getAttribute('title')).toBe('ai.refresh');
   });
 
+  // The dashboard's h1 heads the page, so the card's title is an h2, as every
+  // other card's is, and the empty state under it an h3. Headings inside the
+  // summary's own text arrive with the provider's answer, and are not held here.
+  it('titles the card one level under the page, and its empty state one under the title', () => {
+    const outline = () =>
+      (Array.from(el().querySelectorAll('h1, h2, h3, h4, h5, h6')) as HTMLElement[])
+        .map(heading => `${heading.tagName.toLowerCase()} ${heading.textContent?.trim()}`);
+    render(rows(2));
+    expect(outline()).toEqual(['h2 ai.insights', 'h3 ai.noInsights']);
+
+    render();
+    component.isLoading.set(false);
+    component.hasError.set(false);
+    component.summary.set('Groceries are **up** 18%.');
+    component.advice.set('Try a weekly cap.');
+    fixture.detectChanges();
+    expect(outline()).toEqual(['h2 ai.insights']);
+  });
+
   it('says there is nothing to summarise below three rows, and locks refresh', () => {
     render(rows(2));
 

@@ -314,6 +314,17 @@ describe('ForecastComponent, through its own template', () => {
     expect(el().querySelector('.horizon-toggle')).toBeNull();
   });
 
+  // The card carries no title, so the empty state sits directly under the
+  // Reports page's h1.
+  it("heads the empty state one level under the page's own heading", () => {
+    rules.set([]);
+    fixture.detectChanges();
+
+    const outline = (Array.from(el().querySelectorAll('h1, h2, h3, h4, h5, h6')) as HTMLElement[])
+      .map(heading => `${heading.tagName.toLowerCase()} ${heading.textContent?.trim()}`);
+    expect(outline).toEqual(['h2 reports.forecastNoRulesTitle']);
+  });
+
   it('draws the projection on a real canvas, with its note and summary', () => {
     render();
 

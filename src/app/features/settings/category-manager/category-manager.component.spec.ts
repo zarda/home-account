@@ -520,6 +520,16 @@ describe('CategoryManagerComponent, through its own template', () => {
     expect(dialog.open).toHaveBeenCalledTimes(2);
   });
 
+  // Settings' panels are titled by no heading, so the empty state sits
+  // directly under the page's h1.
+  it("heads the empty state one level under the page's own heading", () => {
+    setUp([]);
+
+    const outline = (Array.from(el().querySelectorAll('h1, h2, h3, h4, h5, h6')) as HTMLElement[])
+      .map(heading => `${heading.tagName.toLowerCase()} ${heading.textContent?.trim()}`);
+    expect(outline).toEqual(['h2 settings.noCategoriesFound']);
+  });
+
   it('badges a default category and refuses to offer its delete', () => {
     setUp([
       mockCategoryList[0],

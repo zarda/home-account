@@ -544,6 +544,14 @@ describe('ImportHistoryComponent transaction shortcut', () => {
     fixture = TestBed.createComponent(ImportHistoryComponent);
   });
 
+  it("heads the empty state one level under the page's own heading", () => {
+    render([]);
+
+    const outline = (Array.from(fixture.nativeElement.querySelectorAll('h1, h2, h3, h4, h5, h6')) as HTMLElement[])
+      .map(heading => `${heading.tagName.toLowerCase()} ${heading.textContent?.trim()}`);
+    expect(outline).toEqual(['h1 import.history', 'h2 import.noHistory']);
+  });
+
   it('renders each record\'s day and time of day through the locale formatter', () => {
     render([itemWith(undefined)]);
 

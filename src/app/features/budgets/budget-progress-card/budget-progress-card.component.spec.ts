@@ -586,16 +586,18 @@ describe('BudgetProgressCardComponent', () => {
     });
   });
 
-  // The Budgets page lists the cards under the page's own heading.
+  // The Budgets page lists the cards under the page's own h1, with no heading
+  // between, so each card's name is an h2 and the card holds no other.
   describe('its heading', () => {
     beforeEach(() => fixture.componentRef.setInput('budget', createMockBudget()));
 
-    it('names the budget in an h3', () => {
+    it('names the budget in an h2, one level under the page', () => {
       fixture.detectChanges();
 
-      const name = fixture.nativeElement.querySelector('.budget-name') as HTMLElement;
-      expect(name.tagName).toBe('H3');
-      expect(name.textContent?.trim()).toBe('Food Budget');
+      const outline = (Array.from(fixture.nativeElement.querySelectorAll('h1, h2, h3, h4, h5, h6')) as HTMLElement[])
+        .map(heading => `${heading.tagName.toLowerCase()} ${heading.textContent?.trim()}`);
+      expect(outline).toEqual(['h2 Food Budget']);
+      expect(fixture.nativeElement.querySelector('.budget-name')?.tagName).toBe('H2');
     });
   });
 

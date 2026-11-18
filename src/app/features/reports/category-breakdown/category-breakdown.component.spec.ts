@@ -7,6 +7,8 @@ import { CategoryBreakdownComponent } from './category-breakdown.component';
 import { Transaction, Category } from '../../../models';
 import { CurrencyService } from '../../../core/services/currency.service';
 import { TranslationService } from '../../../core/services/translation.service';
+import { AuthService } from '../../../core/services/auth.service';
+import { provideAppCharts } from '../../../core/config/chart.config';
 import { SpendingChartComponent } from '../../dashboard/spending-chart/spending-chart.component';
 import { AmountDisplayComponent } from '../../../shared/components/amount-display/amount-display.component';
 import { CategoryChipComponent } from '../../../shared/components/category-chip/category-chip.component';
@@ -510,6 +512,71 @@ describe('CategoryBreakdownComponent', () => {
       const names = Array.from((realFixture.nativeElement as HTMLElement).querySelectorAll('.category-name'))
         .map(el => (el.textContent ?? '').replace(/\s*\(\d+\)\s*$/, '').trim());
       expect(names).toEqual(['‹common.unknownCategory›', '‹Food & Drinks›']);
+    });
+  });
+
+  // The Reports page's h1 heads the tab with no heading between. The reused
+  // donut's title is an h2 under it, and each panel's recent transactions an
+  // h3 under that; with nothing to chart, the empty state stands where the
+  // donut would, an h2. The donut is the real one here, as its title is the
+  // level the panels sit under.
+  describe('its headings (real template, with the real donut)', () => {
+    let realFixture: ComponentFixture<CategoryBreakdownComponent>;
+    const outline = () =>
+      (Array.from((realFixture.nativeElement as HTMLElement).querySelectorAll('h1, h2, h3, h4, h5, h6')) as HTMLElement[])
+        .map(heading => `${heading.tagName.toLowerCase()} ${heading.textContent?.trim()}`);
+
+    beforeEach(async () => {
+      TestBed.resetTestingModule();
+      await TestBed.configureTestingModule({
+        imports: [CategoryBreakdownComponent],
+        providers: [
+          provideAppCharts(),
+          {
+            provide: CurrencyService,
+            useValue: {
+              currencies: signal([{ code: 'USD', name: 'US Dollar', symbol: '$' }]),
+              getCurrencyInfo: () => ({ code: 'USD', name: 'US Dollar', symbol: '$' }),
+              convert: (amount: number) => amount,
+              amountInBase: (t: Transaction) => t.amountInBaseCurrency,
+              formatCurrency: (a: number, c: string) => `${c} ${a.toFixed(2)}`
+            }
+          },
+          { provide: TranslationService, useValue: { t: (key: string) => key, currentLocale: signal('en') } },
+          {
+            provide: AuthService,
+            useValue: {
+              currentUser: signal({
+                preferences: { baseCurrency: 'USD', theme: 'light', language: 'en', dateFormat: 'MM/DD/YYYY' }
+              })
+            }
+          },
+          provideNoMotion()
+        ]
+      }).compileComponents();
+
+      realFixture = TestBed.createComponent(CategoryBreakdownComponent);
+      realFixture.componentInstance.categories = mockCategories;
+    });
+
+    afterEach(() => realFixture.destroy());
+
+    it("heads the empty state one level under the page's own heading", () => {
+      realFixture.componentInstance.transactions = [];
+      realFixture.detectChanges();
+
+      expect(outline()).toEqual(['h2 reports.noExpenses']);
+    });
+
+    it("heads each panel's recent transactions one level under the donut's title", () => {
+      realFixture.componentInstance.transactions = mockTransactions;
+      realFixture.detectChanges();
+
+      expect(outline()).toEqual([
+        'h2 dashboard.spendingByCategory',
+        'h3 reports.recentTransactions',
+        'h3 reports.recentTransactions'
+      ]);
     });
   });
 
