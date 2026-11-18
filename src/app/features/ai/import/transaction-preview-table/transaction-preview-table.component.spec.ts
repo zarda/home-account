@@ -31,6 +31,7 @@ import {
   channels,
   contentWidthPx,
   echoTranslation,
+  expectEachContrastScored,
   expectPainted,
   holdsShownWords,
   hoverValue,
@@ -6231,13 +6232,13 @@ describe('TransactionPreviewTableComponent, the offer chip through its own templ
 
   // The smoke walkthrough opens /import/file only with nothing picked, so no
   // axe pass there meets the review card. Its controls are swept here, over a
-  // card carrying every kind of row the review shows: a plain one, one whose
-  // amount and date are doubted, a refund whose type is, a duplicate, and one
-  // added by hand, in both schemes.
+  // card carrying every kind of row the review shows: a plain one with a
+  // place and a tag, one whose amount and date are doubted, a refund whose
+  // type is, a duplicate, and one added by hand, in both schemes.
   describe('under the axe sweep', () => {
     function renderEveryKind(): void {
       component.transactions = [
-        makeRow({ id: 'plain' }),
+        makeRow({ id: 'plain', location: { name: 'Shibuya' }, tags: ['coffee'] }),
         makeRow({ id: 'doubted', fieldConfidence: { amount: 0.6, date: 0.6 } }),
         makeRow({ id: 'refund', type: 'income', suggestedCategoryId: 'other_income', fieldConfidence: { type: 0.5 } }),
         makeRow({ id: 'duplicate', isDuplicate: true, duplicateOf: 'stored-1', selected: false }),
@@ -6262,11 +6263,42 @@ describe('TransactionPreviewTableComponent, the offer chip through its own templ
       });
     }
 
-    it('scores the card\'s contrast rather than skipping it', async () => {
-      renderEveryKind();
-      const results = await withEveryCardShown(fixture.nativeElement, () => runAxe(fixture.nativeElement));
-      expect(results.passes.map(result => result.id)).toContain('color-contrast');
-    });
+    /**
+     * What holds words on a card, apart from any glyph beside them. The date
+     * chip's day, the currency chip's code and the duplicate badge's word sit
+     * in spans of their own: a bare text node beside a glyph cannot be
+     * pointed at apart from it, and Karma serves no icon font, so axe reads
+     * the glyph's ligature as text whose pass would hold the part by itself.
+     */
+    const WORDS = [
+      '.description-text',
+      '.amount-text',
+      '.extra-text',
+      '.date-chip-text',
+      '.currency-chip-code',
+      '.duplicate-label',
+    ] as const;
+
+    // Each part's pass is read back to its words (expectEachContrastScored):
+    // one pass over the whole card held color-contrast as soon as any one
+    // node there cleared it, whether or not the rest were measured.
+    for (const scheme of AUDIT_SCHEMES) {
+      it(`scores the words of each part of a card of every kind of row, in the ${scheme} scheme`, async () => {
+        renderEveryKind();
+        const root = fixture.nativeElement as HTMLElement;
+
+        await withScheme(TestBed.inject(ThemeService), scheme, async () => {
+          fixture.detectChanges();
+          await withEveryCardShown(root, () =>
+            expectEachContrastScored(WORDS.flatMap(part => {
+              const nodes = [...root.querySelectorAll(part)];
+              expect(nodes.length).withContext(`${part} is on the card`).toBeGreaterThan(0);
+              return nodes.map((node, i) => [node, `${part} ${i + 1}`] as const);
+            }))
+          );
+        });
+      });
+    }
   });
 });
 

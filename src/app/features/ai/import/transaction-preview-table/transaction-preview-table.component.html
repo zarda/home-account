@@ -65,7 +65,7 @@
               @if (row.isDuplicate) {
                 <span class="duplicate-badge">
                   <mat-icon>content_copy</mat-icon>
-                  {{ 'import.duplicate' | translate }}
+                  <span class="duplicate-label">{{ 'import.duplicate' | translate }}</span>
                   <!-- import.recheckFailed tells the reviewer to use "Not a
                        duplicate", so the name has to be findable by sight
                        too: the glyph alone says nothing about what it does. -->
@@ -203,7 +203,7 @@
                 } @else {
                   <mat-icon aria-hidden="true">calendar_today</mat-icon>
                 }
-                {{ row.date | localeDate }}
+                <span class="date-chip-text">{{ row.date | localeDate }}</span>
               </button>
               <button
                 type="button"
@@ -220,7 +220,7 @@
                     aria-hidden="true"
                   >error_outline</mat-icon>
                 }
-                {{ row.currency }}
+                <span class="currency-chip-code">{{ row.currency }}</span>
                 <mat-icon class="chip-caret" aria-hidden="true">arrow_drop_down</mat-icon>
               </button>
               <mat-menu #currencyMenu="matMenu">

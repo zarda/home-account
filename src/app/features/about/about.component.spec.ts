@@ -11,6 +11,7 @@ import { DateFormatService } from '../../core/services/date-format.service';
 import { FeedbackService } from '../../core/services/feedback.service';
 import { OnboardingService } from '../../core/services/onboarding.service';
 import { PwaService } from '../../core/services/pwa.service';
+import { ThemeService } from '../../core/services/theme.service';
 import { TranslationService } from '../../core/services/translation.service';
 import { FeedbackEntry } from '../../models';
 import {
@@ -18,6 +19,7 @@ import {
   accessibleName,
   catalogTranslator,
   echoTranslation,
+  expectEachContrastScored,
   expectPainted,
   provideNoMotion,
   runAxe,
@@ -25,6 +27,7 @@ import {
   summarizeViolations,
   textLines,
   tokenValue,
+  withScheme,
   withTheme,
 } from '../../core/services/testing';
 import packageJson from '../../../../package.json';
@@ -283,26 +286,53 @@ describe('AboutComponent', () => {
       expect(card()).toBeNull();
     });
 
-    it('passes the axe sweep in each state that shows a card, in both schemes', async () => {
-      const states = { prompt: { canPromptInstall: true }, ios: { isIOS: true } };
+    /**
+     * Each state that shows a card, and what holds its words apart from the
+     * glyph beside them: the title, the body, and the button's label or the
+     * steps. Material projects a button's glyph outside its label, and Karma
+     * serves no icon font, so axe would read the glyph's ligature as text.
+     */
+    const SHOWN: Readonly<Record<string, { state: Parameters<typeof render>[0]; words: readonly string[] }>> = {
+      prompt: {
+        state: { canPromptInstall: true },
+        words: ['.welcome-title', 'p.welcome-body', '.install-button .mdc-button__label'],
+      },
+      ios: {
+        state: { isIOS: true },
+        words: ['.welcome-title', 'p.welcome-body', '.install-steps li'],
+      },
+    };
 
-      for (const [name, state] of Object.entries(states)) {
-        render(state);
-        expect(card()).withContext(`the ${name} card under audit`).not.toBeNull();
-        for (const scheme of AUDIT_SCHEMES) {
-          await withTheme(scheme, async () => {
-            const results = await runAxe(card()!);
-            expect(summarizeViolations(results)).withContext(`${name}, ${scheme} scheme`).toEqual([]);
-            expect(results.passes.map(result => result.id))
-              .withContext(`${name}, ${scheme} scheme: contrast was scored`)
-              .toContain('color-contrast');
+    // Each part's pass is read back to its words (expectEachContrastScored):
+    // one pass over the whole card held color-contrast as soon as any one
+    // node there cleared it, whether or not the rest were measured. That pass
+    // still guards the text outside the listed parts: none of it may be left
+    // undecided. The scheme is forced through the real ThemeService
+    // (withScheme), not just stamped as classes.
+    for (const [name, { state, words }] of Object.entries(SHOWN)) {
+      for (const scheme of AUDIT_SCHEMES) {
+        it(`passes the axe sweep over the ${name} card and scores the words of each part, in the ${scheme} scheme`, async () => {
+          render(state);
+          const shown = card();
+          expect(shown).withContext(`the ${name} card under audit`).not.toBeNull();
+          if (!shown) return;
+
+          await withScheme(TestBed.inject(ThemeService), scheme, async () => {
+            fixture.detectChanges();
+            const results = await runAxe(shown);
+            expect(summarizeViolations(results)).toEqual([]);
             expect(results.incomplete.map(result => result.id))
-              .withContext(`${name}, ${scheme} scheme: contrast was scored, not left undecided`)
+              .withContext('contrast left undecided somewhere on the card')
               .not.toContain('color-contrast');
+            await expectEachContrastScored(words.flatMap(part => {
+              const nodes = [...shown.querySelectorAll(part)];
+              expect(nodes.length).withContext(`${part} is on the card`).toBeGreaterThan(0);
+              return nodes.map((node, i) => [node, `${part} ${i + 1}`] as const);
+            }));
           });
-        }
+        });
       }
-    });
+    }
   });
 
   it('renders the feedback card with its open button', () => {
