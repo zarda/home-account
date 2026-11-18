@@ -18,6 +18,7 @@ import { TranslationService } from '../../../core/services/translation.service';
 import {
   accessibleName,
   catalogTranslator,
+  holdsShownWords,
   provideNoMotion,
   runAxe,
   settleAnimations,
@@ -470,8 +471,8 @@ describe('AiSettingsPageComponent', () => {
   });
 
   describe('provider API keys', () => {
-    // The button carries no name of its own in either state, so the
-    // spinner is hidden rather than named — see check-icon-labels.mjs.
+    // The button's own aria-label names it in both states, so the spinner
+    // is hidden rather than named — see check-icon-labels.mjs.
     it('hides the test-button spinner from the accessibility tree', () => {
       component.isTestingGemini.set(true);
       fixture.detectChanges();
@@ -482,48 +483,73 @@ describe('AiSettingsPageComponent', () => {
       expect(button.querySelector('mat-spinner')?.getAttribute('aria-hidden')).toBe('true');
     });
 
-    it('names the busy test button with its idle key, and carries neither while idle', () => {
+    it('names the test button by its provider while busy and while idle alike', () => {
+      const translation = TestBed.inject(TranslationService);
+      spyOn(translation, 't').and.callFake(catalogTranslator('en'));
+      translation.translationsVersion.update(version => version + 1);
       const providers: {
         flag: 'isTestingGemini' | 'isTestingOpenai' | 'isTestingClaude';
         cardIndex: number;
+        name: string;
       }[] = [
-        { flag: 'isTestingGemini', cardIndex: 0 },
-        { flag: 'isTestingOpenai', cardIndex: 1 },
-        { flag: 'isTestingClaude', cardIndex: 2 },
+        { flag: 'isTestingGemini', cardIndex: 0, name: 'Test Key for Gemini' },
+        { flag: 'isTestingOpenai', cardIndex: 1, name: 'Test Key for OpenAI' },
+        { flag: 'isTestingClaude', cardIndex: 2, name: 'Test Key for Claude' },
       ];
 
-      for (const { flag, cardIndex } of providers) {
+      for (const { flag, cardIndex, name } of providers) {
         const card = fixture.nativeElement.querySelectorAll('.provider-card')[cardIndex] as HTMLElement;
         const button = card.querySelector('mat-card-actions button') as HTMLButtonElement;
 
         component[flag].set(true);
         fixture.detectChanges();
         expect(button.getAttribute('aria-busy')).withContext(flag).toBe('true');
-        expect(button.getAttribute('aria-label')).withContext(flag).toBe('settings.testApiKey');
+        expect(button.getAttribute('aria-label')).withContext(`${flag} busy`).toBe(name);
 
         component[flag].set(false);
         fixture.detectChanges();
         expect(button.getAttribute('aria-busy')).withContext(flag).not.toBe('true');
-        expect(button.hasAttribute('aria-label')).withContext(flag).toBeFalse();
+        expect(button.getAttribute('aria-label')).withContext(`${flag} idle`).toBe(name);
       }
     });
 
     /**
-     * The three provider cards stand side by side, each with a remove for its
-     * key, so each remove names its provider and none reads as another
-     * card's. Every key is set, so every card shows its remove.
+     * The three provider cards stand side by side, each with a key field, a
+     * remove for its key, a Get API Key link and a Test Key button, so each
+     * of the four names its provider and none reads as another card's. The
+     * link and the button keep the words they show inside the name, so a
+     * voice user can say what they see (WCAG 2.5.3); the field is named by
+     * its label, which shows the provider. Every key is set, so every card
+     * shows its remove and an enabled Test Key. Once its provider is
+     * configured, the OpenAI card and the Claude card each show a model
+     * select too, named by its label as the field is; the Gemini card's two
+     * say what each picks a model for, and no other card has them.
      */
     describe('each card names its provider (real template)', () => {
       const PROVIDERS = ['Gemini', 'OpenAI', 'Claude'];
+      /** The providers whose card holds one model select. */
+      const MODEL_PROVIDERS = ['OpenAI', 'Claude'];
       const pinned = {
         en: {
           remove: ['Remove the Gemini API key', 'Remove the OpenAI API key', 'Remove the Claude API key'],
+          field: ['Gemini API key', 'OpenAI API key', 'Claude API key'],
+          link: ['Get API Key for Gemini', 'Get API Key for OpenAI', 'Get API Key for Claude'],
+          test: ['Test Key for Gemini', 'Test Key for OpenAI', 'Test Key for Claude'],
+          model: ['OpenAI model', 'Claude model'],
         },
         ja: {
           remove: ['GeminiのAPIキーを削除', 'OpenAIのAPIキーを削除', 'ClaudeのAPIキーを削除'],
+          field: ['Gemini APIキー', 'OpenAI APIキー', 'Claude APIキー'],
+          link: ['GeminiのAPIキーを取得', 'OpenAIのAPIキーを取得', 'ClaudeのAPIキーを取得'],
+          test: ['Geminiのキーをテスト', 'OpenAIのキーをテスト', 'Claudeのキーをテスト'],
+          model: ['OpenAI モデル', 'Claude モデル'],
         },
         tc: {
           remove: ['移除 Gemini API 金鑰', '移除 OpenAI API 金鑰', '移除 Claude API 金鑰'],
+          field: ['Gemini API 金鑰', 'OpenAI API 金鑰', 'Claude API 金鑰'],
+          link: ['前往 Gemini 取得 API 金鑰', '前往 OpenAI 取得 API 金鑰', '前往 Claude 取得 API 金鑰'],
+          test: ['測試金鑰：Gemini', '測試金鑰：OpenAI', '測試金鑰：Claude'],
+          model: ['OpenAI 模型', 'Claude 模型'],
         },
       } as const;
 
@@ -543,6 +569,10 @@ describe('AiSettingsPageComponent', () => {
         return cards;
       }
 
+      /** The words a control shows: its label's text, an icon's ligature left out. */
+      const shownBy = (control: Element) =>
+        (control.querySelector('.mdc-button__label') ?? control).textContent!.replace(/\s+/g, ' ').trim();
+
       for (const locale of ['en', 'ja', 'tc'] as const) {
         it(`names each key's remove by its provider, in ${locale}`, () => {
           const cards = speak(locale);
@@ -554,6 +584,66 @@ describe('AiSettingsPageComponent', () => {
           expect(names).withContext('pinned').toEqual([...pinned[locale].remove]);
           const t = catalogTranslator(locale, { strict: true });
           expect(names).toEqual(PROVIDERS.map(provider => t('settings.removeApiKey', { provider })));
+        });
+
+        it(`names each field, Get API Key link and Test Key button by its provider, holding the words it shows, in ${locale}`, () => {
+          const cards = speak(locale);
+          const t = catalogTranslator(locale, { strict: true });
+          const read = (kind: 'field' | 'link' | 'test', control: (card: HTMLElement) => Element | null, shown: (control: Element) => string) => {
+            const controls = cards.map(control);
+            expect(controls.every(found => found !== null)).withContext(`a ${kind} on every card`).toBeTrue();
+            const names = controls.map(found => accessibleName(found!));
+            names.forEach((name, i) => {
+              const words = shown(controls[i]!);
+              expect(name).withContext(`${kind} ${i} names ${PROVIDERS[i]}`).toContain(PROVIDERS[i]);
+              expect(holdsShownWords(name, words, locale)).withContext(`"${name}" holds "${words}" whole`).toBeTrue();
+            });
+            expect(new Set(names).size).withContext(`three ${kind} names: ${names.join(' / ')}`).toBe(3);
+            expect(names).withContext(`${kind}, pinned`).toEqual([...pinned[locale][kind]]);
+            return names;
+          };
+
+          const fields = read(
+            'field',
+            card => card.querySelector('.api-key-field input'),
+            input => input.closest('mat-form-field')!.querySelector('mat-label')!.textContent!.trim(),
+          );
+          const links = read('link', card => card.querySelector('mat-card-actions a'), shownBy);
+          const tests = read('test', card => card.querySelector('mat-card-actions button'), shownBy);
+          expect(cards.map(card => [card.querySelector('mat-card-actions a')!, card.querySelector('mat-card-actions button')!].map(shownBy)))
+            .withContext('each link and Test Key shows its words as before')
+            .toEqual(PROVIDERS.map(() => [t('settings.getApiKey'), t('settings.testApiKey')]));
+
+          // Busy, a Test Key shows a spinner in place of its words and keeps its name.
+          component.isTestingGemini.set(true);
+          component.isTestingOpenai.set(true);
+          component.isTestingClaude.set(true);
+          fixture.detectChanges();
+          expect(cards.map(card => accessibleName(card.querySelector('mat-card-actions button')!)))
+            .withContext('busy')
+            .toEqual([...pinned[locale].test]);
+
+          expect(fields).toEqual(PROVIDERS.map(provider => t('settings.apiKeyFor', { provider })));
+          expect(links).toEqual(PROVIDERS.map(provider => t('settings.getApiKeyFor', { provider })));
+          expect(tests).toEqual(PROVIDERS.map(provider => t('settings.testApiKeyFor', { provider })));
+        });
+
+        it(`names the OpenAI and Claude model selects by their provider, in ${locale}`, () => {
+          // A card shows its model select once its provider is configured.
+          cloudLLMProviderMock.isProviderAvailable.and.returnValue(true);
+          const cards = speak(locale);
+          const selects = cards.slice(1).map(card => card.querySelector('.model-field mat-select'));
+          expect(selects.every(select => select !== null)).withContext('a model select on the OpenAI and Claude cards').toBeTrue();
+          const names = selects.map(select => accessibleName(select!));
+          names.forEach((name, i) => {
+            const label = selects[i]!.closest('mat-form-field')!.querySelector('mat-label')!.textContent!.trim();
+            expect(name).withContext(`model ${i} names ${MODEL_PROVIDERS[i]}`).toContain(MODEL_PROVIDERS[i]);
+            expect(name).withContext(`model ${i} is named by the label it shows`).toBe(label);
+          });
+          expect(new Set(names).size).withContext(`two model names: ${names.join(' / ')}`).toBe(2);
+          expect(names).withContext('model, pinned').toEqual([...pinned[locale].model]);
+          const t = catalogTranslator(locale, { strict: true });
+          expect(names).toEqual(MODEL_PROVIDERS.map(provider => t('settings.modelFor', { provider })));
         });
       }
     });

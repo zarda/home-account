@@ -16,7 +16,7 @@ import { ProviderKeyService } from '../../../core/services/provider-key.service'
 import { NotificationService } from '../../../core/services/notification.service';
 import { TranslationService } from '../../../core/services/translation.service';
 import { TEXT_MODELS, VISION_MODELS } from '../../../core/config/ai-models';
-import { catalogTranslationStub, provideNoMotion, textLines } from '../../../core/services/testing';
+import { catalogTranslationStub, catalogTranslator, provideNoMotion, textLines } from '../../../core/services/testing';
 
 /**
  * The Gemini model selects at the Extra large font scale on a phone.
@@ -364,4 +364,119 @@ describe('overflow guard: the AI settings card actions at phone width', () => {
     const lines = expectOneLineEach(await queueActions(375), ['Sync Now', 'Clear Queue'], '375 px Offline Queue');
     expect(new Set(lines).size).withContext('lines the two actions stand on').toBe(1);
   });
+});
+
+/**
+ * Each provider card's key field is labelled with its provider, by the short
+ * name (`settings.apiKeyFor`: "Gemini API key"), and so is the model select
+ * the OpenAI card and the Claude card show once their provider is configured
+ * (`settings.modelFor`: "OpenAI model"). Material cuts a label longer than
+ * its field with an ellipsis, at rest inside the field and floated into the
+ * outline's notch once the field holds a value, as a model select always
+ * does. At 320 px, on the page the card actions' guard above sizes for that
+ * screen and in its face, every label fits whole in each locale, in each
+ * place it stands.
+ */
+describe('overflow guard: the AI settings provider field labels at 320 px', () => {
+  const FACE = "Verdana, 'DejaVu Sans', sans-serif";
+  /** A 320 px screen less the main container's 8 px scrollbar and the layout's 16 px gutter a side. */
+  const PAGE_WIDTH_PX = 320 - 8 - 2 * 16;
+  const PROVIDERS = ['Gemini', 'OpenAI', 'Claude'];
+  const LABELS = {
+    en: ['Gemini API key', 'OpenAI API key', 'Claude API key'],
+    ja: ['Gemini APIキー', 'OpenAI APIキー', 'Claude APIキー'],
+    tc: ['Gemini API 金鑰', 'OpenAI API 金鑰', 'Claude API 金鑰'],
+  } as const;
+  /** The providers whose card holds one model select. */
+  const MODEL_PROVIDERS = ['OpenAI', 'Claude'];
+  const MODEL_LABELS = {
+    en: ['OpenAI model', 'Claude model'],
+    ja: ['OpenAI モデル', 'Claude モデル'],
+    tc: ['OpenAI 模型', 'Claude 模型'],
+  } as const;
+  let fixture: ComponentFixture<PageProbeComponent>;
+  let host: HTMLElement;
+
+  async function render(locale: 'en' | 'ja' | 'tc'): Promise<AiSettingsPageComponent> {
+    // Every provider configured, so the OpenAI and Claude cards show their model selects.
+    const cloudLLMProviderMock = jasmine.createSpyObj('CloudLLMProviderService', [
+      'isProviderAvailable',
+      'updateProviderApiKey',
+    ]);
+    cloudLLMProviderMock.isProviderAvailable.and.returnValue(true);
+    await TestBed.configureTestingModule({
+      imports: [PageProbeComponent, RouterTestingModule, HttpClientTestingModule],
+      providers: [
+        ...pageProviders(),
+        { provide: TranslationService, useValue: catalogTranslationStub(locale) },
+        { provide: CloudLLMProviderService, useValue: cloudLLMProviderMock },
+      ],
+      schemas: [NO_ERRORS_SCHEMA],
+    }).compileComponents();
+
+    fixture = TestBed.createComponent(PageProbeComponent);
+    fixture.componentInstance.width = PAGE_WIDTH_PX;
+    host = fixture.nativeElement as HTMLElement;
+    host.style.fontFamily = FACE;
+    for (const token of ['--mat-sys-body-large-font', '--mat-sys-body-small-font', '--mat-sys-label-large-font']) {
+      host.style.setProperty(token, FACE);
+    }
+    document.body.appendChild(host);
+    fixture.detectChanges();
+    await fixture.whenStable();
+    fixture.detectChanges();
+    return fixture.debugElement.query(By.directive(AiSettingsPageComponent)).componentInstance as AiSettingsPageComponent;
+  }
+
+  afterEach(() => host?.remove());
+
+  /**
+   * Each label under `fields` reads `pinned` and holds its words whole,
+   * unclipped, floated or not as `floated` says. Returns the words.
+   */
+  function expectLabelsFit(fields: string, pinned: readonly string[], floated: boolean, what: string): (string | undefined)[] {
+    const where = `${what}, ${floated ? 'floated' : 'at rest'}`;
+    const labels = Array.from(host.querySelectorAll<HTMLElement>(`${fields} .mdc-floating-label`));
+    const words = labels.map(label => label.textContent?.trim());
+    expect(words).withContext(`${where}: the labels, pinned`).toEqual([...pinned]);
+    for (const label of labels) {
+      const shown = `${where}: "${label.textContent?.trim()}"`;
+      expect(label.classList.contains('mdc-floating-label--float-above')).withContext(`${shown} floated`).toBe(floated);
+      expect(label.clientWidth).withContext(`${shown} has a width`).toBeGreaterThan(0);
+      expect(label.scrollWidth).withContext(`${shown} scrollWidth against clientWidth`).toBeLessThanOrEqual(label.clientWidth);
+    }
+    return words;
+  }
+
+  /** Each key field's label holds its provider's words whole, floated or not as `floated` says. */
+  function expectKeyLabelsFit(locale: 'en' | 'ja' | 'tc', floated: boolean): void {
+    const words = expectLabelsFit('.api-key-field', LABELS[locale], floated, locale);
+    const t = catalogTranslator(locale, { strict: true });
+    expect(words).withContext(`${locale}: the labels`).toEqual(PROVIDERS.map(provider => t('settings.apiKeyFor', { provider })));
+  }
+
+  for (const locale of ['en', 'ja', 'tc'] as const) {
+    it(`fits each key field's label whole at rest and floated, in ${locale}`, async () => {
+      const page = await render(locale);
+      expectKeyLabelsFit(locale, false);
+
+      page.geminiApiKey.set('g-key');
+      page.openaiApiKey.set('o-key');
+      page.claudeApiKey.set('c-key');
+      // NgModel writes the field's value a microtask after the change.
+      fixture.detectChanges();
+      await fixture.whenStable();
+      fixture.detectChanges();
+      expectKeyLabelsFit(locale, true);
+    });
+
+    it(`fits the OpenAI and Claude model selects' labels whole, floated over the model each holds, in ${locale}`, async () => {
+      await render(locale);
+      // The Gemini card's two model selects stand in a group of their own,
+      // so the one select a card holds is its content's own child.
+      const words = expectLabelsFit('mat-card-content > .model-field', MODEL_LABELS[locale], true, `${locale} model selects`);
+      const t = catalogTranslator(locale, { strict: true });
+      expect(words).withContext(`${locale}: the model labels`).toEqual(MODEL_PROVIDERS.map(provider => t('settings.modelFor', { provider })));
+    });
+  }
 });
