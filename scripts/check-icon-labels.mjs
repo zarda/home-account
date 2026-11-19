@@ -201,7 +201,9 @@
  *     every run the control holds, its descendants' included, outside a
  *     `mat-icon` (MatIcon hides its ligature) and outside an element with a
  *     literal `aria-hidden="true"`, with control-flow syntax taken out; it
- *     is bare when what is left is that one interpolation. walkTemplate reads
+ *     is bare when what is left is that one interpolation. An `<img>` whose
+ *     alt is not empty and a component add to the name as the eighth rule
+ *     reads them, so a key beside one is not bare. walkTemplate reads
  *     opening tags only, so the text pass keeps its own stack of open
  *     elements. Each control records where its name comes from, `via:
  *     'label'` or `via: 'text'`, and both kinds feed the same tally across
@@ -1000,6 +1002,28 @@ const describedByBound = (attrs) =>
 const literallyHidden = (attrs) =>
   attributesOf(attrs).some(({ name, value }) => name === 'aria-hidden' && value === 'true');
 
+/** Elements with a hyphen that are no component: what they hold is read, or nothing is. */
+const NOT_COMPONENTS = new Set(['ng-container', 'ng-template', 'mat-icon']);
+
+/**
+ * True when an element adds to the name of the control it sits in, beside any
+ * text: an `<img>` whose alt is not empty, and a component, any tag with a
+ * hyphen but those NOT_COMPONENTS lists, an `<ng-content>` among them, as
+ * spokenBy reads them; neither when it carries a literal `aria-hidden="true"`.
+ */
+const addsToName = (name, attrs) =>
+  !literallyHidden(attrs) &&
+  (name === 'img'
+    ? attributesOf(attrs).some(({ name: attr, value }) => ALT_NAMES.has(attr) && value)
+    : name.includes('-') && !NOT_COMPONENTS.has(name));
+
+/**
+ * What readOwnTexts adds to a control's runs where an element adds to its
+ * name (addsToName): not blank and no interpolation, so a bare key beside it
+ * is not the control's whole text (ownTextKey).
+ */
+const BESIDE_THE_TEXT = ' \u0001 ';
+
 /**
  * The key a control's own text consists of when it names no item, or null.
  * `runs` are the runs of template text the control holds. Control-flow syntax
@@ -1036,7 +1060,9 @@ function ownTextKey(runs) {
  * `aria-labelledby` names it, in any spelling (THUMB_NAMES). Its text is every
  * run of text it holds, its descendants' included, outside a `mat-icon` (whose
  * ligature MatIcon hides) and outside an element with a literal
- * `aria-hidden="true"`. Two text-named controls are left out: one inside a
+ * `aria-hidden="true"`, with BESIDE_THE_TEXT where an `<img>` with an alt or a
+ * component adds to the name (addsToName), so that a bare key beside one is
+ * not read as bare. Two text-named controls are left out: one inside a
  * `<mat-menu>`, whose panel opens for the one trigger that names the item, and
  * one with a bound `aria-describedby` (describedByBound), the household's
  * "named by what it does, described by its item" (a Known gap, see the
@@ -1073,6 +1099,9 @@ function readOwnTexts(source) {
       continue;
     }
     const selfClosing = /\/\s*$/.test(attrs) || VOID_ELEMENTS.has(name);
+    if (addsToName(name, attrs) && !open.some((frame) => frame.hidden)) {
+      for (const frame of open) frame.control?.runs.push(BESIDE_THE_TEXT);
+    }
     if (selfClosing) continue;
     const textNamed =
       (TEXT_NAMED_TAGS.has(name) || CONTROL_ROLE.test(attrs)) &&
@@ -4216,6 +4245,30 @@ function selfTest() {
     []
   );
   check(
+    'a bare key beside an <img> with an alt is not read as bare, in each spelling of the alt',
+    ['alt="{{ r.name }}"', '[alt]="r.name"', '[attr.alt]="r.name"'].map((alt) =>
+      itemlessLines(
+        `@for (r of rows; track r.id) {\n  <button>\n    <img ${alt} src="x.png">\n` +
+          "    {{ 'common.open' | translate }}\n  </button>\n}"
+      )
+    ),
+    [[], [], []]
+  );
+  check(
+    'a bare key beside a component is not read as bare, self-closing, with an empty body or projected',
+    [
+      '<app-avatar [user]="r" />',
+      '<app-avatar [user]="r"></app-avatar>',
+      '<span><app-avatar [user]="r" /></span>',
+      '<ng-content />',
+    ].map((beside) =>
+      itemlessLines(
+        `@for (r of rows; track r.id) {\n  <button>\n    ${beside}\n    {{ 'common.open' | translate }}\n  </button>\n}`
+      )
+    ),
+    [[], [], [], []]
+  );
+  check(
     'a bound aria-label names the control whatever its text says, the goal card fixed',
     itemlessLines(
       '@for (goal of goals(); track goal.id) {\n  <button\n    mat-button\n' +
@@ -4300,6 +4353,30 @@ function selfTest() {
   );
 
   // --- the per-item rule, a control's own text: guards ---
+  check(
+    'an <img> with an empty alt, a hidden <img> or component, and an icon add nothing beside a bare key',
+    [
+      '<img alt="" src="x.png">',
+      '<img [alt]="r.name" aria-hidden="true" src="x.png">',
+      '<app-avatar aria-hidden="true" [user]="r" />',
+      '<span aria-hidden="true"><app-avatar [user]="r" /></span>',
+      '<ng-container></ng-container>',
+      '<mat-icon>person</mat-icon>',
+    ].map((beside) =>
+      itemlessLines(
+        `@for (r of rows; track r.id) {\n  <button>\n    ${beside}\n    {{ 'common.open' | translate }}\n  </button>\n}`
+      )
+    ),
+    [[2], [2], [2], [2], [2], [2]]
+  );
+  check(
+    'an <img> or a component after the control has closed is not beside its text',
+    itemlessLines(
+      "@for (r of rows; track r.id) {\n  <button>{{ 'common.open' | translate }}</button>\n  <img [alt]=\"r.name\" src=\"x.png\">\n" +
+        '  <app-avatar [user]="r" />\n}'
+    ),
+    [2]
+  );
   check(
     'a label-named item inside a <mat-menu> is still read',
     scanItemlessLabels(MENU_OF("<button mat-menu-item [attr.aria-label]=\"'common.edit' | translate\">x</button>")),
