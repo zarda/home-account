@@ -33,12 +33,16 @@ export function mouse(target: EventTarget, type: 'mousedown' | 'mousemove' | 'mo
 /**
  * A real drag of the photo `dragged` by its handle onto the row that shows
  * `over`, the way a mouse makes one, on the upload area `fixture` drew,
- * whether alone or inside the wizard. The press lands on the handle with a
- * button held and a click count, or CDK takes it for a screen reader's; the
- * first move goes past CDK's 5px start threshold, toward `over`, and starts
- * the drag; the second puts the pointer in the middle of `over`'s row, where
- * it is held; one render runs there, as the zone would run one once CDK
- * starts the drag, so host-bound drag classes are current. Then `during`
+ * whether alone or inside the wizard. The handle is scrolled into view, and
+ * the press lands on what a pointer at its middle hits, which must be the
+ * handle or inside it: a handle covered, cut off or deaf to the pointer
+ * throws. The press carries a button held and a click count, or CDK takes
+ * it for a screen reader's; the first move goes past CDK's 5px start
+ * threshold, toward `over`, and starts the drag; the second puts the
+ * pointer in the middle of `over`'s row, where it is held; one render runs
+ * there, as the zone would run one once CDK starts the drag, so host-bound
+ * drag classes are current. A drag that did not start, with no preview
+ * lifted, throws before `during` runs. Then `during`
  * runs, once the pointer has been held past the 200ms glide of the rows CDK
  * slides aside, so a row's drawn place is the one a user sees rather than
  * where its glide starts. The release always follows, and the drop lands
@@ -59,16 +63,27 @@ export async function dragByHandle(
   expect(target).withContext(`${over}'s row`).toBeTruthy();
   if (!handle || !target) return;
 
+  handle.scrollIntoView({ block: 'nearest', inline: 'nearest' });
   const grip = handle.getBoundingClientRect();
   const onto = target.getBoundingClientRect();
   const x = grip.left + grip.width / 2;
   const y = grip.top + grip.height / 2;
   const held = onto.top + onto.height / 2;
-  mouse(handle, 'mousedown', x, y);
+  const pressed = document.elementFromPoint(x, y);
+  if (!pressed || !handle.contains(pressed)) {
+    throw new Error(
+      `dragByHandle: a pointer at the middle of ${dragged}'s handle presses ` +
+        `${pressed ? pressed.outerHTML.slice(0, 80) : 'nothing'}, not the handle`
+    );
+  }
+  mouse(pressed, 'mousedown', x, y);
   try {
     mouse(document, 'mousemove', x, y + (held < y ? -6 : 6));
     mouse(document, 'mousemove', x, held);
     fixture.detectChanges();
+    if (!document.querySelector('.cdk-drag-preview')) {
+      throw new Error(`dragByHandle: the drag of ${dragged} did not start: no preview was lifted`);
+    }
     await new Promise(resolve => setTimeout(resolve, 250));
     during();
   } finally {

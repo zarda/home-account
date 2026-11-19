@@ -1141,6 +1141,40 @@ describe('FileDropzoneComponent, through its own template', () => {
       expect(landed?.currentIndex).withContext('where b landed, against where it started').toBe(landed?.previousIndex);
     });
 
+    // The drag helper drags as a mouse does, so it refuses a handle a pointer
+    // could not press, and a drag that never started, rather than reading
+    // either as a drag.
+    it('refuses to drag by a handle the pointer cannot press', async () => {
+      fixture.detectChanges();
+      dropFiles([imageFile('a.png'), imageFile('b.png')]);
+      const handle = rowOf('b.png')?.querySelector<HTMLElement>('.drag-handle');
+      expect(handle).withContext("b's drag handle").toBeTruthy();
+      if (!handle) return;
+      handle.style.pointerEvents = 'none';
+
+      const during = jasmine.createSpy('during');
+      await expectAsync(dragByHandle(fixture, 'b.png', 'a.png', during)).toBeRejectedWithError(/presses/);
+      expect(during).withContext('the reading mid-drag').not.toHaveBeenCalled();
+      expect(rowNames()).withContext('the rows, nothing dropped').toEqual(['a.png', 'b.png']);
+    });
+
+    it('refuses a drag that never started', async () => {
+      fixture.detectChanges();
+      dropFiles([imageFile('a.png'), imageFile('b.png')]);
+      const rowB = rowOf('b.png');
+      const drag = fixture.debugElement
+        .queryAll(By.directive(CdkDrag))
+        .find(debug => debug.nativeElement === rowB)
+        ?.injector.get(CdkDrag);
+      expect(drag).withContext("b's drag").toBeTruthy();
+      if (!drag) return;
+      drag.disabled = true;
+
+      const during = jasmine.createSpy('during');
+      await expectAsync(dragByHandle(fixture, 'b.png', 'a.png', during)).toBeRejectedWithError(/did not start/);
+      expect(during).withContext('the reading mid-drag').not.toHaveBeenCalled();
+    });
+
     // A pin. Mutation: otherNumber counting every file listed, so the second
     // CSV, behind the photo, is numbered 3. The CSVs are numbered among the
     // files that are not photos, so two of one name stay apart, and the photo
