@@ -28,6 +28,7 @@ import { NotificationService } from '../../core/services/notification.service';
 import { AnnouncerService } from '../../core/services/announcer.service';
 import { QuickAddService } from '../../core/services/quick-add.service';
 import { TransactionFormComponent } from './transaction-form/transaction-form.component';
+import { TransactionListComponent } from './transaction-list/transaction-list.component';
 import { Category, Transaction, TransactionFilters, User } from '../../models';
 import { TypeTotals } from '../../core/utils/transaction-aggregation.utils';
 import {
@@ -714,20 +715,27 @@ describe('TransactionsComponent', () => {
 
   it('onDeleteTransaction deletes via the service', async () => {
     const component = build().componentInstance;
-    await component.onDeleteTransaction(createTransaction({ id: 'x' }));
+    const list = jasmine.createSpyObj<Pick<TransactionListComponent, 'deleteFailed'>>('list', ['deleteFailed']);
+
+    await component.onDeleteTransaction(createTransaction({ id: 'x' }), list);
+
     expect(transactionService.deleteTransaction).toHaveBeenCalledWith('x');
+    expect(list.deleteFailed).not.toHaveBeenCalled();
   });
 
   it('onDeleteTransaction reports a failed delete instead of swallowing it', async () => {
     transactionService.deleteTransaction.and.rejectWith(new Error('nope'));
     spyOn(console, 'error');
     const component = build().componentInstance;
+    const list = jasmine.createSpyObj<Pick<TransactionListComponent, 'deleteFailed'>>('list', ['deleteFailed']);
 
-    await expectAsync(component.onDeleteTransaction(createTransaction())).toBeResolved();
+    await expectAsync(component.onDeleteTransaction(createTransaction({ id: 'x' }), list)).toBeResolved();
 
     const notifications = TestBed.inject(NotificationService) as jasmine.SpyObj<NotificationService>;
     expect(notifications.error).toHaveBeenCalledWith('common.error');
     expect(console.error).toHaveBeenCalled();
+    // The row stays, so the list stops following it for a focus hand-off.
+    expect(list.deleteFailed).withContext('the list, told the delete failed').toHaveBeenCalledOnceWith('x');
   });
 
   it('navigateToImportFile delegates to the quick-add service', () => {

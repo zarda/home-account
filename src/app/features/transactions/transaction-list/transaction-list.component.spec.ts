@@ -3,7 +3,7 @@ import { computed, signal } from '@angular/core';
 import { By } from '@angular/platform-browser';
 import { BreakpointObserver } from '@angular/cdk/layout';
 import { FocusMonitor } from '@angular/cdk/a11y';
-import { MatDialog } from '@angular/material/dialog';
+import { MatDialog, type MatDialogRef } from '@angular/material/dialog';
 import { MatTooltip } from '@angular/material/tooltip';
 import { Sort } from '@angular/material/sort';
 import { Timestamp } from '@angular/fire/firestore';
@@ -1117,8 +1117,18 @@ describe('TransactionListComponent desktop receipt doors', () => {
  * row's menu trigger, never to the document. The real MatDialog renders the
  * confirm under the app's own dialog providers, so the container's restore
  * runs as it does in the app, and the menu's entry has left the page by the
- * time the confirm is cancelled. Two rows, so the trigger focus lands on is
- * the one whose menu was opened, not merely the first on the page.
+ * time the confirm is cancelled. Three rows, so the trigger focus lands on is
+ * the one whose menu was opened, not merely the first on the page, and a row
+ * that leaves has one row after it and one before it.
+ *
+ * A confirmed delete gives focus back to the row's menu button too, and the
+ * row leaves only when the page's refresh lands, several renders later; each
+ * case stands that in with the list it would hand over (setInput). Once the
+ * row has gone, taking that button with it, focus goes to the menu button of
+ * the row now in its place, else the row before it, else the empty state's
+ * button. The swipe drawer's Delete is the third door: the drawer shuts on
+ * the press, which hides that button, so the confirm, cancelled or not, gives
+ * focus to the row's menu button instead, as from the menus.
  */
 describe('TransactionListComponent focus after a dialog a row menu opened (real template)', () => {
   let fixture: ComponentFixture<TransactionListComponent>;
@@ -1126,13 +1136,100 @@ describe('TransactionListComponent focus after a dialog a row menu opened (real 
   const txns: Transaction[] = [
     createTransaction({ id: 'a', amount: 30, description: 'Banana' }),
     createTransaction({ id: 'b', amount: 10, description: 'Apple' }),
+    createTransaction({ id: 'c', amount: 20, description: 'Cherry' }),
   ];
+  const [banana, apple, cherry] = txns;
 
-  for (const [door, desktop, triggerSelector] of [
-    ['the desktop actions menu', true, '.action-btn'],
-    ["the phone's trailing menu", false, '.row-menu-btn'],
+  for (const [door, desktop, triggerSelector, swipe] of [
+    ['the desktop actions menu', true, '.action-btn', false],
+    ["the phone's trailing menu", false, '.row-menu-btn', false],
+    ["the phone's swipe drawer", false, '.row-menu-btn', true],
   ] as const) {
     describe(door, () => {
+      let deleted: jasmine.Spy;
+
+      /** A row's menu button: the trigger of a menu door, and where every door's hand-off lands. */
+      function menuButton(id: string): HTMLElement {
+        const button = (fixture.nativeElement as HTMLElement)
+          .querySelector<HTMLElement>(`[data-tx-id="${id}"] ${triggerSelector}`);
+        expect(button).withContext(`row ${id}'s menu button`).not.toBeNull();
+        return button!;
+      }
+
+      /** The stand-in window source the list reads, whose edges a case moves. */
+      function windowSource(): ReturnType<typeof createMockWindowSource> {
+        return TestBed.inject(TransactionWindowService) as unknown as ReturnType<typeof createMockWindowSource>;
+      }
+
+      /** Hands the list its rows and lets every render hook run, as the page's refresh would. */
+      function show(rows: readonly Transaction[]): void {
+        fixture.componentRef.setInput('transactions', rows);
+        fixture.detectChanges();
+        TestBed.tick();
+      }
+
+      /**
+       * The drawer's Delete, pressed. A synthetic click moves no focus, so it
+       * is focused first, as a press focuses it; the drawer need not be
+       * opened for that, since it shuts itself on the press either way, and
+       * the confirm gives focus to the row's menu button, not to this one.
+       */
+      async function pressDrawerDelete(button: HTMLElement): Promise<MatDialogRef<unknown>> {
+        const dialog = TestBed.inject(MatDialog);
+        const before = new Set(dialog.openDialogs);
+        button.focus();
+        expect(document.activeElement).withContext("focus, on the drawer's Delete").toBe(button);
+        button.click();
+        fixture.detectChanges();
+        TestBed.tick();
+        const ref = dialog.openDialogs.find(open => !before.has(open));
+        expect(ref).withContext('the confirm the drawer opened').toBeDefined();
+        await firstValueFrom(ref!.afterOpened());
+        expect(document.getElementById(ref!.id)?.contains(document.activeElement))
+          .withContext('focus, in the dialog')
+          .toBeTrue();
+        return ref!;
+      }
+
+      /** Opens row `id`'s Delete confirm from this door: its menu's entry, or its drawer's Delete. */
+      function openConfirmOf(id: string): Promise<MatDialogRef<unknown>> {
+        if (!swipe) return pressMenuEntry(fixture, menuButton(id), '.menu-item-destructive');
+        const button = (fixture.nativeElement as HTMLElement)
+          .querySelector<HTMLElement>(`[data-tx-id="${id}"] .swipe-action-delete`);
+        expect(button).withContext(`row ${id}'s drawer Delete`).not.toBeNull();
+        return pressDrawerDelete(button!);
+      }
+
+      /** Presses one of the open confirm's two buttons and lets the close and every render hook run. */
+      async function answerConfirm(ref: MatDialogRef<unknown>, answer: 'cancel' | 'delete'): Promise<void> {
+        const buttons = document.getElementById(ref.id)?.querySelectorAll<HTMLElement>('mat-dialog-actions button');
+        const button = buttons?.[answer === 'cancel' ? 0 : 1];
+        expect(button?.textContent?.trim()).withContext(`the confirm's ${answer}`).toBe(`common.${answer}`);
+        const closed = firstValueFrom(ref.afterClosed());
+        button!.click();
+        TestBed.tick();
+
+        expect(await closed).withContext(answer === 'delete' ? 'confirmed' : 'cancelled').toBe(answer === 'delete');
+        fixture.detectChanges();
+        TestBed.tick();
+      }
+
+      /**
+       * Deletes row `id` from this door, confirmed, and gives back the row's
+       * menu button, where the confirm has put focus back while the row is
+       * still listed: the trigger of a menu door, and for the drawer, which
+       * shut on the press, the menu button in place of its own Delete.
+       */
+      async function confirmDeleteOf(id: string): Promise<HTMLElement> {
+        await answerConfirm(await openConfirmOf(id), 'delete');
+
+        expect(deleted).toHaveBeenCalledOnceWith(jasmine.objectContaining({ id }));
+        expect(document.activeElement)
+          .withContext("focus, on the row's menu button while its row is still listed")
+          .toBe(menuButton(id));
+        return menuButton(id);
+      }
+
       beforeEach(async () => {
         const currency = jasmine.createSpyObj('CurrencyService', ['formatCurrency', 'amountInBase']);
         currency.amountInBase.and.callFake(
@@ -1169,27 +1266,173 @@ describe('TransactionListComponent focus after a dialog a row menu opened (real 
         fixture = TestBed.createComponent(TransactionListComponent);
         fixture.componentRef.setInput('transactions', txns);
         fixture.detectChanges();
+        deleted = jasmine.createSpy('delete');
+        fixture.componentInstance.delete.subscribe(deleted);
       });
 
       afterEach(closeEveryDialog);
 
-      it("hands focus back to the row's menu trigger when its Delete confirm is cancelled", async () => {
-        const triggers = Array.from((fixture.nativeElement as HTMLElement).querySelectorAll<HTMLElement>(triggerSelector));
-        expect(triggers.length).withContext("each row's menu trigger").toBe(2);
-        const trigger = triggers[1];
+      it("hands focus to the row's menu button when its Delete confirm is cancelled", async () => {
+        const buttons = Array.from((fixture.nativeElement as HTMLElement).querySelectorAll<HTMLElement>(triggerSelector));
+        expect(buttons.length).withContext("each row's menu button").toBe(3);
 
-        const ref = await pressMenuEntry(fixture, trigger, '.menu-item-destructive');
-        const cancel = document.getElementById(ref.id)?.querySelector<HTMLElement>('mat-dialog-actions button');
-        expect(cancel?.textContent?.trim()).withContext("the confirm's Cancel").toBe('common.cancel');
-        const closed = firstValueFrom(ref.afterClosed());
-        cancel!.click();
+        await answerConfirm(await openConfirmOf('b'), 'cancel');
+
+        expect(deleted).not.toHaveBeenCalled();
+        expect(document.activeElement)
+          .withContext("focus, on the second row's menu button, not the first on the page")
+          .toBe(buttons[1]);
+      });
+
+      it('puts focus on the menu button of the row now in the place of the one deleted', async () => {
+        await confirmDeleteOf('b');
+
+        show([banana, cherry]);
+
+        expect(document.activeElement)
+          .withContext("focus, on the menu button of the row that followed, now second")
+          .toBe(menuButton('c'));
+
+        // Handed on once: the row is no longer followed, so a later change of
+        // the list leaves focus where it is, even on the document.
+        (document.activeElement as HTMLElement).blur();
+        show([cherry]);
+
+        expect(document.activeElement)
+          .withContext('focus, left on the document by a later list change')
+          .toBe(document.body);
+      });
+
+      it("puts focus on the menu button of the row before when the last row is deleted", async () => {
+        await confirmDeleteOf('c');
+
+        show([banana, apple]);
+
+        expect(document.activeElement)
+          .withContext("focus, on the menu button of the row now last")
+          .toBe(menuButton('b'));
+      });
+
+      it('puts focus on the menu button of the last row left when the refresh takes more than the row deleted', async () => {
+        await confirmDeleteOf('c');
+
+        show([banana]);
+
+        expect(document.activeElement)
+          .withContext('focus, on the menu button of the only row left')
+          .toBe(menuButton('a'));
+      });
+
+      it("puts focus on the empty state's button when the only row is deleted", async () => {
+        show([banana]);
+        await confirmDeleteOf('a');
+
+        show([]);
+
+        const add = (fixture.nativeElement as HTMLElement).querySelector<HTMLElement>('app-empty-state button');
+        expect(add).withContext("the empty state's button").not.toBeNull();
+        expect(document.activeElement).withContext("focus, on the empty state's button").toBe(add);
+      });
+
+      // A filter only the loaded rows are matched against (search, tags, an
+      // amount) can leave a page with no row while older ones are still to
+      // load: the list shows neither a row nor its empty state until they do.
+      it("waits for the empty state when the only row leaves a list still loading", async () => {
+        show([banana]);
+        await confirmDeleteOf('a');
+        windowSource().reachedEnd.set(false);
+
+        show([]);
+
+        const host = fixture.nativeElement as HTMLElement;
+        expect(host.querySelector('app-empty-state')).withContext('the empty state, while rows are still to load').toBeNull();
+        expect(document.activeElement).withContext('focus, on the document while nothing is listed').toBe(document.body);
+
+        windowSource().reachedEnd.set(true);
+        fixture.detectChanges();
         TestBed.tick();
 
-        expect(await closed).withContext('cancelled').toBeFalse();
-        fixture.detectChanges();
+        const add = host.querySelector<HTMLElement>('app-empty-state button');
+        expect(add).withContext("the empty state's button").not.toBeNull();
+        expect(document.activeElement).withContext("focus, on the empty state's button once it shows").toBe(add);
+      });
+
+      it('waits for rows when the only row leaves a list still loading', async () => {
+        show([banana]);
+        await confirmDeleteOf('a');
+        windowSource().reachedEnd.set(false);
+        show([]);
+        expect(document.activeElement).withContext('focus, on the document while nothing is listed').toBe(document.body);
+
+        show([cherry]);
+
         expect(document.activeElement)
-          .withContext("focus, on the second row's menu trigger, not the first on the page")
-          .toBe(trigger);
+          .withContext('focus, on the menu button of the first row to load')
+          .toBe(menuButton('c'));
+      });
+
+      it('follows the row as rows load above it before it leaves', async () => {
+        // A scroll prefetch between the confirm and the refresh moves the row
+        // down; the row in its place is the one that followed it, not the
+        // one now at the index it was confirmed at.
+        const own = await confirmDeleteOf('b');
+        const earlier = createTransaction({ id: 'z', amount: 5, description: 'Date' });
+        show([earlier, ...txns]);
+        expect(document.activeElement)
+          .withContext("focus, still on the row's menu button while its row is listed")
+          .toBe(own);
+
+        show([earlier, banana, cherry]);
+
+        expect(document.activeElement)
+          .withContext('focus, on the menu button of the row that followed, now third')
+          .toBe(menuButton('c'));
+      });
+
+      it('keeps the place a row had as its confirm opened, when the row leaves while it is open', async () => {
+        const ref = await openConfirmOf('b');
+        show([banana, cherry]);
+
+        await answerConfirm(ref, 'delete');
+
+        expect(deleted).toHaveBeenCalledOnceWith(jasmine.objectContaining({ id: 'b' }));
+        expect(document.activeElement)
+          .withContext('focus, on the menu button of the row that followed it')
+          .toBe(menuButton('c'));
+      });
+
+      it('leaves focus where the reader moved it before the row left', async () => {
+        await confirmDeleteOf('b');
+        const moved = menuButton('a');
+        moved.focus();
+
+        show([banana, cherry]);
+
+        expect(document.activeElement).withContext('focus, where the reader put it').toBe(moved);
+      });
+
+      it('stops following a row whose delete failed', async () => {
+        await confirmDeleteOf('b');
+        fixture.componentInstance.deleteFailed('b');
+
+        // The row stays, and leaves later for a reason of its own: a filter,
+        // or the window trimming it as the reader scrolls.
+        show([banana, cherry]);
+
+        expect(document.activeElement)
+          .withContext('focus, left on the document, since no delete took the row')
+          .toBe(document.body);
+      });
+
+      it("keeps following the row when another row's delete is reported failed", async () => {
+        await confirmDeleteOf('b');
+        fixture.componentInstance.deleteFailed('a');
+
+        show([banana, cherry]);
+
+        expect(document.activeElement)
+          .withContext('focus, on the menu button of the row that followed, now second')
+          .toBe(menuButton('c'));
       });
     });
   }
