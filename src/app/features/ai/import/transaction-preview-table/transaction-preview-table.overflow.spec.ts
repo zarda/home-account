@@ -13,8 +13,15 @@ import { FitTextDirective } from '../../../../shared/directives/fit-text.directi
 import { echoKey, provideNoMotion, textLines } from '../../../../core/services/testing';
 
 /**
- * The review card at the narrowest width the app supports, carrying
- * everything a receipt import can put on it.
+ * The review card in a 288px box, carrying everything a receipt import can
+ * put on it.
+ *
+ * 288px is a 320px phone less the layout's 16px gutter a side, and it is not
+ * what such a phone gives the card: the wizard keeps a 16px gutter of its own
+ * inside the layout's, so a 320px page leaves the table 256px, or 248px beside
+ * the main container's 8px scrollbar. So every containment reading here
+ * gives the card 32px more than a 320px phone does. ADR 0192 records the card
+ * at that width under its Known gaps.
  *
  * Every other spec on this component overrides the template away, so this is
  * the only place its own stylesheet is measured — and the card just grew a
@@ -37,7 +44,7 @@ import { echoKey, provideNoMotion, textLines } from '../../../../core/services/t
   standalone: true,
   imports: [TransactionPreviewTableComponent],
   template: `
-    <!-- 320px, the narrowest phone still in use, less the page's own padding. -->
+    <!-- A 320px phone less the layout's gutters, not the wizard's: see above. -->
     <div class="narrow">
       <app-transaction-preview-table [transactions]="rows" [categories]="categories()" [dateAttentionIds]="attention" />
     </div>
