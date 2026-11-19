@@ -762,13 +762,22 @@
     height: 16px;
   }
 
-  // A 40×32 tap target laid over a 20px glyph: the chip has to stay chip-sized,
-  // so the hit area grows outside the box instead of the button growing.
+  // The hit area grows outside the box: the chip has to stay chip-sized, so
+  // 10px over and under a 20px box make the 40px of height. Sideways only 6px,
+  // the most there is room for: the removal's sits 4px in from the chip's
+  // end, and further would reach past `.card-extras`'s 6px column gap into
+  // the next chip, or back into the control before it.
   &::after {
     content: '';
     position: absolute;
     inset: -10px -6px;
   }
+}
+
+// So the removal's own box is wider than its glyph, 28px, and with the 6px a
+// side its hit area is 40px both ways. The chip grows 8px wider, not taller.
+.extra-remove {
+  inline-size: 28px;
 }
 
 // Unlike the removal, this control can hold text — a country name — so it
