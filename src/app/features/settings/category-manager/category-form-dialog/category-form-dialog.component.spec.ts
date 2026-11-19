@@ -417,9 +417,7 @@ describe('CategoryFormDialogComponent', () => {
      * halo and the edge are what tell the chosen colour from the others, so
      * each is held to 3:1 against the dialog (WCAG 1.4.11); the gap is the
      * dialog's own surface, so it reads as space rather than as a third
-     * colour. (The word for the halo is kept off Tailwind's utility names:
-     * the content scan reads specs, and a bare utility name here would ship
-     * its CSS in the initial bundle.)
+     * colour.
      */
     it('marks the chosen swatch with an edge and a halo in --text-primary at 3:1 or better on the dialog, with a gap of the dialog surface, in both themes', () => {
       const chosen = el().querySelector('.color-btn.selected') as HTMLElement;
