@@ -3423,7 +3423,7 @@ describe('TransactionPreviewTableComponent, the offer chip through its own templ
     const pinned = {
       en: [['Split', 'Merge…', 'Remove'], ['Split Coffee Shop into two rows', 'Merge Coffee Shop into another row', 'Remove Coffee Shop']],
       ja: [['分割', '結合…', '削除'], ['Coffee Shopを2つの行に分割', 'Coffee Shopを別の行に結合', 'Coffee Shopを削除']],
-      tc: [['分割', '合併…', '移除'], ['分割「Coffee Shop」成兩列', '將「Coffee Shop」合併到其他列', '移除「Coffee Shop」']],
+      tc: [['分割', '合併…', '移除'], ['將「Coffee Shop」分割成兩列', '將「Coffee Shop」合併到其他列', '移除「Coffee Shop」']],
     } as const;
 
     /** What a control shows: its text, its icons' ligatures left out. */

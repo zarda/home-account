@@ -1412,7 +1412,7 @@
     "addAmount": "新增金額",
     "bulkCurrencyBlanked": "有 {{count}} 筆金額在 {{currency}} 下四捨五入為零，請重新輸入",
     "splitRow": "分割",
-    "splitRowLabel": "分割「{{description}}」成兩列",
+    "splitRowLabel": "將「{{description}}」分割成兩列",
     "splitAmountRefused": "請輸入至少 {{minimum}}，小於此列金額的數字",
     "splitAmount": "分出的金額",
     "splitAmountLabel": "要從{{description}}分出的金額",
