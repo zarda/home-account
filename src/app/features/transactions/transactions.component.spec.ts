@@ -34,6 +34,7 @@ import { Category, Transaction, TransactionFilters, User } from '../../models';
 import { TypeTotals } from '../../core/utils/transaction-aggregation.utils';
 import {
   FakeNotice,
+  catalogTranslationStub,
   createTransaction,
   createCategory,
   createTranslationStub,
@@ -1216,6 +1217,185 @@ describe('TransactionsComponent, through its own template', () => {
     mobile(true);
 
     expect(el().querySelector('.period-totals-line')).toBeNull();
+  });
+
+  /**
+   * The phone's line wraps between its parts, and a dot separates each part
+   * from the next. Each dot was a part of its own, so a wrap could fall
+   * before it: at 320px the second line read "· Net Balance". The line is
+   * read here as a reader sees it: a dot that shows stands after a part on
+   * its own line, never first on one, and nothing runs past the line's end.
+   * A dot drawn outside the line's box, where the line clips it, shows
+   * nowhere. The face is pinned, as Karma serves none.
+   *
+   * What the clip cuts is read by hit testing, which Chrome clips where it
+   * clips painting: a clip margin the browser does not apply still reads
+   * back from getComputedStyle, so a declared value proves nothing.
+   */
+  describe("the phone's totals line, wrapped", () => {
+    const RANGES = { en: 'Mar 1 – 31, 2026', ja: '2026年3月1日～31日', tc: '2026年3月1日至31日' } as const;
+    /** A 320px screen's page: less the main container's 8px scrollbar and the layout's 16px gutter a side. */
+    const PHONE_PAGE_PX = 320 - 8 - 2 * 16;
+    /** The app's focus outline at its widest, under high contrast: 2px out and 3px wide. */
+    const OUTLINE_OFFSET_PX = 2;
+    const OUTLINE_WIDTH_PX = 3;
+
+    /** The page laid out as on a phone, its gutter kept, so the room before the line is inside the window. */
+    function phonePage(): HTMLElement {
+      const host = el();
+      host.style.display = 'block';
+      host.style.width = `${PHONE_PAGE_PX}px`;
+      host.style.marginInlineStart = '16px';
+      host.style.fontFamily = "Verdana, 'DejaVu Sans', sans-serif";
+      return host;
+    }
+
+    /** The element a pointer reaches at a point inside the window. */
+    function reached(x: number, y: number): Element | null {
+      expect(x >= 0 && y >= 0 && x < window.innerWidth && y < window.innerHeight)
+        .withContext(`the point (${Math.round(x)}, ${Math.round(y)}), inside the window`)
+        .toBeTrue();
+      return document.elementFromPoint(x, y);
+    }
+
+    function renderLine(l: 'en' | 'ja' | 'tc', captioned: boolean): HTMLElement {
+      TestBed.overrideProvider(TranslationService, { useValue: catalogTranslationStub(l) });
+      render();
+      phonePage();
+      totals.totals.set({ expense: 1234.56, income: 4000, balance: 2765.44 } as TypeTotals);
+      totals.status.set({ kind: 'ready' });
+      if (captioned) {
+        (TestBed.inject(LocaleFormatService).formatRange as jasmine.Spy).and.returnValue(RANGES[l]);
+        component.onFiltersChanged({ startDate: new Date('2026-03-01'), endDate: new Date('2026-03-31') } as never);
+      }
+      mobile(true);
+      const line = el().querySelector('.period-totals-line') as HTMLElement;
+      expect(line).withContext('the subtitle line').not.toBeNull();
+      return line;
+    }
+
+    /** Whether two boxes stand on one line: they share most of their height. */
+    const oneLine = (a: DOMRect, b: DOMRect) => Math.min(a.bottom, b.bottom) - Math.max(a.top, b.top) > Math.min(a.height, b.height) / 2;
+
+    function expectNoDotLeads(line: HTMLElement, where: string): void {
+      const edges = line.getBoundingClientRect();
+      const parts = Array.from(line.querySelectorAll<HTMLElement>('.period-caption, .period-figure')).map(part => part.getBoundingClientRect());
+      const dotEls = Array.from(line.querySelectorAll<HTMLElement>('.period-sep'));
+      const dots = dotEls.map(dot => dot.getBoundingClientRect());
+      expect(dots.length).withContext(`${where}: dots, one between each two parts at least`).toBeGreaterThanOrEqual(parts.length - 1);
+
+      const lineTops = parts.map(part => part.top).sort((a, b) => a - b).filter((top, i, all) => i === 0 || top - all[i - 1] > 4);
+      expect(lineTops.length).withContext(`${where}: the lines the parts stand on, so the line does wrap`).toBeGreaterThan(1);
+
+      for (const [i, part] of parts.entries()) {
+        expect(part.right).withContext(`${where}: part ${i + 1}'s end against the line's`).toBeLessThanOrEqual(edges.right + 0.5);
+        expect(part.left).withContext(`${where}: part ${i + 1}'s start against the line's`).toBeGreaterThanOrEqual(edges.left - 0.5);
+      }
+      for (const [i, dot] of dots.entries()) {
+        const middle = (dot.top + dot.bottom) / 2;
+        const shown = dot.right > edges.left + 0.5 && dot.left < edges.right - 0.5;
+        if (!shown) {
+          // Its edge nearest the line, where a clip that let any of it show would.
+          const nearest = dot.right <= edges.left + 0.5 ? dot.right - 0.5 : dot.left + 0.5;
+          const hit = reached(nearest, middle);
+          expect(hit !== null && dotEls[i].contains(hit))
+            .withContext(`${where}: dot ${i + 1}, outside the line, reached at its edge nearest the line`)
+            .toBeFalse();
+          continue;
+        }
+        const hit = reached((dot.left + dot.right) / 2, middle);
+        expect(hit !== null && dotEls[i].contains(hit)).withContext(`${where}: dot ${i + 1}, shown, reached at its middle`).toBeTrue();
+        expect(dot.right).withContext(`${where}: dot ${i + 1}'s end against the line's`).toBeLessThanOrEqual(edges.right + 0.5);
+        expect(parts.some(part => oneLine(part, dot) && part.right <= dot.left + 0.5))
+          .withContext(`${where}: dot ${i + 1}, shown at [${Math.round(dot.left)}, ${Math.round(dot.top)}], after a part on its line`)
+          .toBeTrue();
+      }
+    }
+
+    for (const l of ['en', 'ja', 'tc'] as const) {
+      it(`starts no line with a dot at a 320px page, the range before the figures, in ${l}`, () => {
+        const line = renderLine(l, true);
+        // Narrow enough at 320px that the range and the figures take more than one line.
+        expectNoDotLeads(line, `${l} at 320px`);
+      });
+
+      // The width at which a part fits its line and the dot after it does
+      // not: the line is the first figure's width and 6px more, under the
+      // 8px gap and the dot that follow it.
+      it(`starts no line with a dot where the first figure fills its line, in ${l}`, () => {
+        const line = renderLine(l, false);
+        const first = line.querySelector('.period-figure') as HTMLElement;
+        line.style.width = `${first.getBoundingClientRect().width + 6}px`;
+        expectNoDotLeads(line, `${l}, the line as wide as the first figure`);
+      });
+    }
+
+    /**
+     * A line clips what stands outside it, so an action at either end of a
+     * line must keep the app's focus outline inside the clip. An outline is
+     * not hit-tested, so a probe laid over the band it is drawn in stands in
+     * for it: reached at the band's outer edge, the outline is painted whole
+     * on that side.
+     */
+    function expectOutlineBandReached(action: HTMLElement, side: 'start' | 'end', where: string): void {
+      const band = document.createElement('span');
+      band.style.position = 'absolute';
+      band.style.insetBlock = '0';
+      band.style.setProperty(`inset-inline-${side}`, `-${OUTLINE_OFFSET_PX + OUTLINE_WIDTH_PX}px`);
+      band.style.inlineSize = `${OUTLINE_WIDTH_PX}px`;
+      band.style.zIndex = '1';
+      action.appendChild(band);
+      const box = action.getBoundingClientRect();
+      const outer = side === 'start'
+        ? box.left - OUTLINE_OFFSET_PX - OUTLINE_WIDTH_PX + 0.5
+        : box.right + OUTLINE_OFFSET_PX + OUTLINE_WIDTH_PX - 0.5;
+      expect(reached(outer, (box.top + box.bottom) / 2))
+        .withContext(`${where}: the outline's ${side} side, reached at its outer edge`)
+        .toBe(band);
+      band.remove();
+    }
+
+    // With no range, Calculate is the line's one part, so it starts the line.
+    it("keeps the whole focus outline of an action that starts the line, and its tap overhang", () => {
+      TestBed.overrideProvider(TranslationService, { useValue: catalogTranslationStub('en') });
+      render();
+      phonePage();
+      totals.status.set({ kind: 'over-cap', serverCount: 1200 } as PeriodTotalsStatus);
+      mobile(true);
+
+      const line = el().querySelector('.period-totals-line') as HTMLElement;
+      const action = line.querySelector('.period-totals-calc-link') as HTMLElement;
+      const box = action.getBoundingClientRect();
+      expect(box.left).withContext('Calculate, first on the line').toBeCloseTo(line.getBoundingClientRect().left, 0);
+      expectOutlineBandReached(action, 'start', 'Calculate, first on the line');
+
+      // The 40px tap target overhangs the line above and below: the clip
+      // leaves it whole.
+      const overhang = (40 - box.height) / 2;
+      const middle = (box.left + box.right) / 2;
+      for (const [what, y] of [['above', box.top - overhang + 0.5], ['below', box.bottom + overhang - 0.5]] as const) {
+        const hit = reached(middle, y);
+        expect(hit !== null && action.contains(hit)).withContext(`Calculate's tap target, reached ${what} the line`).toBeTrue();
+      }
+    });
+
+    // Retry ends the unavailable part, and a line as wide as that part ends with it.
+    it('keeps the whole focus outline of an action that ends the line', () => {
+      TestBed.overrideProvider(TranslationService, { useValue: catalogTranslationStub('en') });
+      render();
+      phonePage();
+      totals.status.set({ kind: 'unavailable' });
+      mobile(true);
+
+      const line = el().querySelector('.period-totals-line') as HTMLElement;
+      const action = line.querySelector('.period-totals-retry-link') as HTMLElement;
+      line.style.width = `${Math.ceil(action.getBoundingClientRect().right - line.getBoundingClientRect().left)}px`;
+      const box = action.getBoundingClientRect();
+      const edges = line.getBoundingClientRect();
+      expect(edges.right - box.right).withContext('Retry, last on the line, px before its end').toBeLessThan(1);
+      expect(box.top).withContext('Retry, still on the first line').toBeLessThan(edges.top + box.height / 2);
+      expectOutlineBandReached(action, 'end', 'Retry, last on the line');
+    });
   });
 
   // The phone's two actions read as words in the subtitle line, so their box
