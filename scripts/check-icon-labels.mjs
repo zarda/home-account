@@ -2407,8 +2407,9 @@ function run() {
           `closes or which key it removes. Name each by what it acts on: the\n` +
           `transaction form's two dismissals have a key each, and the AI page's three\n` +
           `removes name their provider. Two controls in different arms of one\n` +
-          `@if…@else, or in different cases of one @switch, never show together and\n` +
-          `may share a name.\n` +
+          `@if…@else, or in different cases of one @switch that is not on its @for's\n` +
+          `own item, never show together and may share a name; each item of an @for\n` +
+          `renders its own case of a switch on it, so two cards show two cases at once.\n` +
           `Reference: ${DOC}.\n`
       );
     }
