@@ -4,7 +4,7 @@ import { MatSnackBar, MatSnackBarRef, TextOnlySnackBar } from '@angular/material
 import { NotificationService } from './notification.service';
 import { AnnouncerService } from './announcer.service';
 import { TranslationService } from './translation.service';
-import { provideNoMotion } from './testing';
+import { provideNoMotion, styleRules } from './testing';
 
 describe('NotificationService', () => {
   let service: NotificationService;
@@ -291,5 +291,17 @@ describe('NotificationService: a notice with an action', () => {
       document.body.classList.remove('bottom-nav-shown');
       document.documentElement.style.removeProperty('--safe-bottom');
     }
+  });
+
+  // iOS 15's WebView before 15.4 does not parse :has(), and drops the whole
+  // rule that holds it, so a lift keyed on one left the notice over the tabs
+  // there. Every rule that moves the notice is keyed on what it reads.
+  it("keys its lift over the bottom nav on a class, not on :has(), which iOS 15's first WebViews drop", () => {
+    const lifts = styleRules()
+      .map(({ rule }) => rule)
+      .filter(rule => rule.selectorText.includes('.mat-mdc-snack-bar-container') && rule.style.marginBottom !== '');
+    expect(lifts.map(rule => rule.selectorText))
+      .withContext('the rules that lift the notice')
+      .toEqual(['body.bottom-nav-shown .mat-mdc-snack-bar-container']);
   });
 });

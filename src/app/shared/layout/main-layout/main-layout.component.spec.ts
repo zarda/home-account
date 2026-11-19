@@ -458,6 +458,23 @@ describe('MainLayoutComponent, through its own template', () => {
     expect(el().querySelector('.bottom-nav-container')?.classList).toContain('visible');
   });
 
+  // A notice lifts itself over the bottom nav by this mark (styles.scss).
+  it('marks the body while the bottom nav is shown, and takes the mark away with the shell', () => {
+    const marked = () => document.body.classList.contains('bottom-nav-shown');
+    fixture.detectChanges();
+    expect(marked()).withContext('on desktop').toBeFalse();
+
+    at([MOBILE]);
+    expect(marked()).withContext('on a phone').toBeTrue();
+
+    at([DESKTOP]);
+    expect(marked()).withContext('back on desktop').toBeFalse();
+
+    at([MOBILE]);
+    fixture.destroy();
+    expect(marked()).withContext('once the shell is gone').toBeFalse();
+  });
+
   it('takes the docked sidebar out of the layout when it is collapsed', () => {
     fixture.detectChanges();
     component.toggleSidebar();
