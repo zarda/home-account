@@ -327,15 +327,25 @@ function normalizer(context) {
   return node => ts.visitNode(node, visit);
 }
 
-/** The printed text's tokens, a string literal by its value, so layout and quote style drop out. */
+/**
+ * The printed text's tokens, a string literal by its value, so layout and quote style drop out. They
+ * are the leaves of the text's parse tree rather than a bare scan, which cannot tell a template
+ * literal's text after a substitution, or a regular expression, from code: each part of a template
+ * literal and each pattern is one token.
+ */
 function tokensOf(text) {
-  const scanner = ts.createScanner(ts.ScriptTarget.Latest, true, ts.LanguageVariant.Standard, text);
+  const sourceFile = ts.createSourceFile('statement.ts', text, ts.ScriptTarget.Latest, true, ts.ScriptKind.TS);
   const tokens = [];
-  for (let kind = scanner.scan(); kind !== ts.SyntaxKind.EndOfFileToken; kind = scanner.scan()) {
-    tokens.push(
-      kind === ts.SyntaxKind.StringLiteral ? JSON.stringify(scanner.getTokenValue()) : scanner.getTokenText(),
-    );
-  }
+  const visit = node => {
+    const children = node.getChildren(sourceFile);
+    if (children.length > 0) {
+      children.forEach(visit);
+      return;
+    }
+    const token = ts.isStringLiteral(node) ? JSON.stringify(node.text) : node.getText(sourceFile);
+    if (token !== '') tokens.push(token);
+  };
+  visit(sourceFile);
   return tokens.join(' ');
 }
 
@@ -863,6 +873,32 @@ getTestBed().initTestEnvironment([BrowserTestingModule, TestModule,], platformBr
 
   const unparsable = evaluate({ copy: COPY.replace('export class TestModule {}', 'export class TestModule {') });
   check('fails a copy that does not parse', unparsable.kind, 'copy');
+
+  // A template literal with a substitution, and a regular expression: the text after a `${…}` is
+  // the template's own, `//` in it included, and a pattern is one token.
+  const LITERALS = ['getTestBed().x(`a${y} // b`, 1);', 'const pattern = /a  b/;'];
+  const literalsIn = (statements) => `${COPY}${statements.join('\n')}\n`;
+  const literalLines = statements => [...BUILDER_LINES, ...statements.map(statement => JSON.stringify(statement))];
+  const literalsAlike = evaluate({
+    lines: literalLines(LITERALS),
+    copy: literalsIn(['getTestBed().x(\n  `a${y} // b`,\n  1,\n);', 'const pattern = /a  b/']),
+  });
+  check('accepts a template literal and a pattern laid out over other lines', literalsAlike.kind, 'match');
+  const afterSubstitution = evaluate({
+    lines: literalLines(LITERALS),
+    copy: literalsIn(['getTestBed().x(`a${y} // b`, 2);', LITERALS[1]]),
+  });
+  check("fails a copy that differs only after a template literal's substitution, past a `//` there", afterSubstitution.kind, 'drift');
+  const inTheTemplate = evaluate({
+    lines: literalLines(LITERALS),
+    copy: literalsIn(["getTestBed().x(`a${y} // 'b'`, 1);", LITERALS[1]]),
+  });
+  check("fails a copy that differs only in a template literal's text after its substitution", inTheTemplate.kind, 'drift');
+  const inThePattern = evaluate({
+    lines: literalLines(LITERALS),
+    copy: literalsIn([LITERALS[0], 'const pattern = /a b/;']),
+  });
+  check('fails a copy that differs only inside a regular expression', inThePattern.kind, 'drift');
 
   const failed = cases.filter(c => !c.ok);
   for (const c of cases) {
