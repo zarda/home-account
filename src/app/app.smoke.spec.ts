@@ -690,14 +690,16 @@ describe('App routes (emulator smoke test)', () => {
         expect((fromInput.nativeElement as HTMLInputElement).value)
           .withContext("the From date, in the account's YYYY-MM-DD")
           .toMatch(/^\d{4}-\d{2}-\d{2}$/);
-        // Each toggle is named from the catalog for its own field, the key
-        // here...
+        // Each toggle is named from the catalog by the one slotted name,
+        // filled with its own field's label. With no catalog served both read
+        // the slotted key; the unit spec reads the filled words in each
+        // language...
         const toggleNames = Array.from(
           harness.routeNativeElement?.querySelectorAll('.filter-grid mat-datepicker-toggle button') ?? []
         ).map(toggle => toggle.getAttribute('aria-label'));
         expect(toggleNames)
           .withContext('the From and To toggles')
-          .toEqual(['transactions.openCalendarFrom', 'transactions.openCalendarTo']);
+          .toEqual(['datepicker.openCalendarFor', 'datepicker.openCalendarFor']);
         // ...and the labels its calendar reads are still the root's, where
         // Material's English default stood: an intl a routed parent provided
         // would put the calendar's previous, next and close back in English.

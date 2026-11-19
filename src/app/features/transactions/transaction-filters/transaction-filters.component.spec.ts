@@ -2664,7 +2664,11 @@ describe('TransactionFiltersComponent', () => {
         expect(names[0]).withContext('the two names, apart').not.toBe(names[1]);
         expect(names).withContext('pinned').toEqual([...pinned[l]]);
         const strict = catalogTranslator(l, { strict: true });
-        expect(names).toEqual([strict('transactions.openCalendarFrom'), strict('transactions.openCalendarTo')]);
+        expect(names)
+          .withContext("the one slotted name, filled with each field's label")
+          .toEqual(
+            ['transactions.from', 'transactions.to'].map(field => strict('datepicker.openCalendarFor', { field: strict(field) }))
+          );
       });
     }
   });
