@@ -176,11 +176,12 @@
  * interpolated (`aria-label="{{ 'key' | translate }}"`), either is bare. A
  * ternary with parameters on either branch passes.
  *
- *   - **Only a control.** A button, a link, a form field, a Material toggle
- *     or an element with a control's literal `role`: what a user acts on, so
- *     what the name has to tell apart. A repeated status — the split
- *     indicator's icon, a row's spinner — says the same thing of every item
- *     and may say it in the same words.
+ *   - **Only a control.** A button, a link, a form field, a Material toggle,
+ *     a datepicker's toggle (whose `aria-label` input names the button it
+ *     renders) or an element with a control's literal `role`: what a user
+ *     acts on, so what the name has to tell apart. A repeated status — the
+ *     split indicator's icon, a row's spinner — says the same thing of every
+ *     item and may say it in the same words.
  *   - **Only a key with nothing beside it.** A key given parameters has a
  *     slot for the item, and a key computed from the item
  *     (`iconNameKeys[icon] | translate`) names it through the key. Whether a
@@ -913,10 +914,15 @@ export function scanMenuTriggers(source, componentRepeated = false) {
   return hits;
 }
 
-/** The elements the sixth rule counts as controls by their tag alone. */
+/**
+ * The elements the sixth and ninth rules count as controls by their tag alone.
+ * A datepicker's toggle renders the button a screen reader lands on, and its
+ * `aria-label` input names that button, so a bare key there is the button's
+ * whole name; it takes no name from what it holds (TEXT_NAMED_TAGS).
+ */
 const CONTROL_TAGS = new Set([
   'a', 'button', 'input', 'select', 'textarea',
-  'mat-select', 'mat-checkbox', 'mat-slide-toggle', 'mat-radio-button',
+  'mat-select', 'mat-checkbox', 'mat-slide-toggle', 'mat-radio-button', 'mat-datepicker-toggle',
 ]);
 
 /** A literal `role` that makes any element a control. */
@@ -4629,6 +4635,21 @@ function selfTest() {
     siblingLines(`<button aria-label="{{ 'common.close' | translate }}">x</button>\n${SIBLING('common.close')}`),
     [1, 2]
   );
+  // The filters' From and To fields, each with its calendar's toggle.
+  const CALENDAR = (field, label) =>
+    `<mat-form-field>\n  <input matInput [matDatepicker]="${field}Picker">\n` +
+    `  <mat-datepicker-toggle\n    matIconSuffix\n    [for]="${field}Picker"\n    [aria-label]="${label}"\n  />\n` +
+    `  <mat-datepicker #${field}Picker />\n</mat-form-field>`;
+  check(
+    'two datepicker toggles under one bare key: the filters\' two calendar buttons before they named their field',
+    scanSiblingLabels(
+      `${CALENDAR('from', "'datepicker.openCalendar' | translate")}\n${CALENDAR('to', "'datepicker.openCalendar' | translate")}`
+    ).map(({ line, tag, beside }) => [line, tag, beside]),
+    [
+      [6, 'mat-datepicker-toggle', [15]],
+      [15, 'mat-datepicker-toggle', [6]],
+    ]
+  );
   check(
     'cases of two switches on the @for\'s own item, which the per-item tally counts apart, render on two cards at once',
     (() => {
@@ -4750,6 +4771,15 @@ function selfTest() {
     'a key of its own on each: the form\'s two dismissals, fixed',
     siblingLines(
       `@if (a) {\n  ${SIBLING('transactions.dismissCurrencySuggestion')}\n}\n@if (b) {\n  ${SIBLING('transactions.dismissPositionSuggestion')}\n}`
+    ),
+    []
+  );
+  check(
+    'two datepicker toggles each naming its field through a slot: the filters\' calendar buttons, fixed',
+    siblingLines(
+      CALENDAR('from', "'datepicker.openCalendarFor' | translate: { field: ('transactions.from' | translate) }") +
+        '\n' +
+        CALENDAR('to', "'datepicker.openCalendarFor' | translate: { field: ('transactions.to' | translate) }")
     ),
     []
   );
