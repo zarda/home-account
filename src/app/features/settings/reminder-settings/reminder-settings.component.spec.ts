@@ -9,7 +9,15 @@ import { NotificationService } from '../../../core/services/notification.service
 import { ReminderService } from '../../../core/services/reminder.service';
 import { TranslationService } from '../../../core/services/translation.service';
 import { User, UserPreferences, remindersEnabled } from '../../../models';
-import { provideNoMotion } from '../../../core/services/testing';
+import {
+  Translator,
+  accessibleName,
+  catalogTranslator,
+  holdsShownWords,
+  provideNoMotion,
+  runAxe,
+  summarizeViolations,
+} from '../../../core/services/testing';
 
 describe('ReminderSettingsComponent', () => {
   let fixture: ComponentFixture<ReminderSettingsComponent>;
@@ -18,6 +26,8 @@ describe('ReminderSettingsComponent', () => {
   let mockAuthService: jasmine.SpyObj<AuthService>;
   let reminders: jasmine.SpyObj<ReminderService>;
   let notifications: jasmine.SpyObj<NotificationService>;
+  /** The words the template is rendered in: the keys themselves, unless a case reads a catalog. */
+  let translate: Translator;
 
   const userWith = (preferences: Partial<UserPreferences>): User =>
     ({ id: 'user-1', preferences }) as User;
@@ -47,6 +57,7 @@ describe('ReminderSettingsComponent', () => {
 
   beforeEach(async () => {
     currentUser = signal<User | null>(userWith({ baseCurrency: 'USD' }));
+    translate = (key: string) => key;
 
     mockAuthService = jasmine.createSpyObj('AuthService', ['updateUserPreferences'], {
       currentUser,
@@ -74,7 +85,7 @@ describe('ReminderSettingsComponent', () => {
         { provide: AuthService, useValue: mockAuthService },
         { provide: NotificationService, useValue: notifications },
         { provide: ReminderService, useValue: reminders },
-        { provide: TranslationService, useValue: { t: (key: string) => key } },
+        { provide: TranslationService, useValue: { t: (key: string, params?: Record<string, string | number>) => translate(key, params) } },
         provideNoMotion(),
       ],
       schemas: [NO_ERRORS_SCHEMA],
@@ -239,5 +250,41 @@ describe('ReminderSettingsComponent', () => {
     await fixture.whenStable();
 
     expect(reminders.requestPermission).toHaveBeenCalledTimes(1);
+  });
+
+  /**
+   * Material hands a toggle's aria-labelledby to its role="switch" button in
+   * place of its own label, which holds the words shown beside the switch.
+   * Pointed at the section's label, the switch was named by the section and
+   * not by what it shows, so a voice user saying those words reached nothing
+   * (WCAG 2.5.3). The section names the group the switch stands in instead.
+   * Read with the real words, in a component of its own: the ids are the
+   * template's own, so the echo-worded one goes first.
+   */
+  describe("the switch's name (real template)", () => {
+    for (const l of ['en', 'ja', 'tc'] as const) {
+      it(`names the switch by the words it shows, in a group named by the section, in ${l}`, async () => {
+        const t = catalogTranslator(l, { strict: true });
+        fixture.destroy();
+        (fixture.nativeElement as HTMLElement).remove();
+        translate = catalogTranslator(l);
+        fixture = TestBed.createComponent(ReminderSettingsComponent);
+        fixture.detectChanges();
+        const root = fixture.nativeElement as HTMLElement;
+        const control = switchEl();
+        const shown = root.querySelector('mat-slide-toggle label')?.textContent?.trim() ?? '';
+
+        expect(shown).withContext('the words beside the switch').toBe(t('settings.reminderNotificationsEnable'));
+        expect(accessibleName(control)).withContext("the switch's name").toBe(t('settings.reminderNotificationsEnable'));
+        expect(holdsShownWords(accessibleName(control), shown, l)).withContext('the name holds the shown words').toBeTrue();
+        const group = control.closest('[role="group"]');
+        expect(group).withContext('the group the switch stands in').not.toBeNull();
+        expect(accessibleName(group!)).withContext("the group's name").toBe(t('settings.reminderNotifications'));
+
+        const names = summarizeViolations(await runAxe(root))
+          .filter(line => line.startsWith('button-name') || line.startsWith('aria-toggle-field-name'));
+        expect(names).withContext('the name rules of the shared pass').toEqual([]);
+      });
+    }
   });
 });
