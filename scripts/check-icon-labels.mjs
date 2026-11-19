@@ -1822,8 +1822,8 @@ export const UNNAMED_FROZEN = [];
 /** The tags the tenth rule reads as a single-choice group (readGroups). */
 const GROUP_TAGS = new Set(['mat-button-toggle-group', 'mat-radio-group']);
 
-/** A literal `role="radiogroup"` on any other element. */
-const RADIOGROUP_ROLE = /(?<![\w.[-])role\s*=\s*"radiogroup"/;
+/** A literal `role="radiogroup"` on any other element, its value in either quote. */
+const RADIOGROUP_ROLE = /(?<![\w.[-])role\s*=\s*(["'])radiogroup\1/;
 
 /**
  * True when a toggle group lets more than one choice stand: a literal
@@ -4886,6 +4886,11 @@ function selfTest() {
     ['1 mat-radio-group']
   );
   check('an element with a literal radiogroup role and no name', groupTags('<div role="radiogroup"><span role="radio">A</span></div>'), ['1 div']);
+  check(
+    'a radiogroup role in single quotes is read as in double quotes',
+    groupTags("<div role='radiogroup'><span role=\"radio\">A</span></div>"),
+    ['1 div']
+  );
   check(
     'a blank aria-label or aria-labelledby names nothing',
     groupTags('<mat-button-toggle-group aria-label="">\n</mat-button-toggle-group>\n<mat-radio-group [attr.aria-labelledby]=" "></mat-radio-group>'),
