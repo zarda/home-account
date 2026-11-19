@@ -834,8 +834,11 @@ export class TransactionListComponent {
    * A row whose delete was confirmed is listed again: the page hid it the
    * moment the confirm closed, and it is back. It is followed no more; it is
    * scrolled to, and focus goes to its menu button if focus dropped, or was
-   * left in the Undo notice, which keeps it while it plays its way out and
-   * then drops it. Focus the reader has put anywhere else stays there.
+   * left in a notice on its way out, such as the Undo notice just pressed,
+   * which keeps focus while it plays its way out and then drops it. Focus the
+   * reader has put anywhere else stays there, a notice still up included: a
+   * failure arrives late, when the notice up is the next row's, whose Undo
+   * the reader may be about to press.
    *
    * While another row's delete, confirmed since, waits to hand focus on, that
    * hand-off, the reader's latest, decides where focus goes, and the view is
@@ -846,8 +849,10 @@ export class TransactionListComponent {
     if (followed && followed.id !== id) return;
     this.deletedRow.set(null);
     this.windowSource.requestScrollTo(id);
-    const notice = this.host.nativeElement.ownerDocument.activeElement?.closest('.mat-mdc-snack-bar-container');
-    focusWhenRendered(this.focus, this.menuButtonsOf(id), { onlyIfDropped: true, from: notice ?? null });
+    // Material marks a notice that has started to leave with mat-exit.
+    const leaving = this.host.nativeElement.ownerDocument.activeElement
+      ?.closest('.mat-mdc-snack-bar-container[mat-exit]');
+    focusWhenRendered(this.focus, this.menuButtonsOf(id), { onlyIfDropped: true, from: leaving ?? null });
   }
 
   /**

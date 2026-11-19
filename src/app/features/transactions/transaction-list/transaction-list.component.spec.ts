@@ -1502,9 +1502,11 @@ describe('TransactionListComponent focus after a dialog a row menu opened (real 
         it('after Undo pressed in the notice, moves focus off the notice as it leaves', async () => {
           await confirmAndHide('b');
           // The notice lives outside the list, in the overlay, and its Undo
-          // keeps focus while the notice plays its way out.
+          // keeps focus while the notice plays its way out, which Material
+          // marks on the container as the notice starts to leave.
           const notice = document.createElement('div');
           notice.className = 'mat-mdc-snack-bar-container';
+          notice.setAttribute('mat-exit', '');
           const undo = document.createElement('button');
           notice.append(undo);
           document.body.append(notice);
