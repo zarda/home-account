@@ -248,7 +248,9 @@
  *     that reaches one of those cases renders a copy, so the page holds one
  *     copy per such card. The card menu is a selector the cases write, into
  *     all five cards; the empty state is one they reach, through four of the
- *     cards they stamp. The tally is per switch and per selector or key
+ *     cards they stamp. The tally is per switch and per selector or key, a
+ *     ternary's either branch counting as its key, so a card whose ternary
+ *     holds a key another card gives plainly reads that key too
  *     (heldApartAcross). An `@default`, an `@switch` on something the item
  *     holds (`c.kind`) and an outer `@for` around the switch's own still
  *     repeat. The fourth rule reads every `@for` as repeating, as before.
@@ -1191,7 +1193,9 @@ function selectorIndex(templates) {
  * selectors, and the bare keys their controls are named by. A selector or key
  * that two or more cases of one switch reach renders once per item reaching
  * any of them, whichever template holds it, so it stays repeated. The tally is
- * per switch and per selector or key. `templates` is a list of
+ * per switch and per selector or key, a ternary's two keys tallied each on its
+ * own (keysOf), so a plain key in one case and a ternary holding it in another
+ * are one key reached twice. `templates` is a list of
  * `{ key, selector, source }`. Returns `{ selectors, keys, slots }`: the
  * selectors so reached; by template, the keys so reached that its own
  * controls carry; and, by the template holding the switch, each
@@ -1209,8 +1213,10 @@ export function heldApartAcross(templates) {
   for (const { key } of templates) {
     const found = { selectors: new Set(), keys: new Map() };
     for (const control of reads.get(key).controls) {
-      if (!found.keys.has(control.key)) found.keys.set(control.key, new Set());
-      found.keys.get(control.key).add(key);
+      for (const label of keysOf(control.key)) {
+        if (!found.keys.has(label)) found.keys.set(label, new Set());
+        found.keys.get(label).add(key);
+      }
     }
     reachOf.set(key, found);
   }
@@ -1254,7 +1260,9 @@ export function heldApartAcross(templates) {
       for (const holder of holders) tally.get(slot).holders.add(holder);
     };
     for (const control of controls) {
-      for (const { switchAt, caseAt } of control.cases) reached(switchAt, caseAt, 'key', control.key);
+      for (const { switchAt, caseAt } of control.cases) {
+        for (const label of keysOf(control.key)) reached(switchAt, caseAt, 'key', label);
+      }
     }
     for (const stamp of stamps) {
       for (const { switchAt, caseAt } of stamp.cases) {
@@ -1284,7 +1292,8 @@ export function heldApartAcross(templates) {
  * with no parameters, or a ternary between two (see bareKeyLabel): inside a
  * repeat in this template, an `@case` on the `@for`'s own item held apart
  * (walkTemplate's `casesApart`) unless two or more cases of that switch reach
- * the same key (heldApartAcross), or anywhere in it when `componentRepeated`
+ * one of its keys, a ternary's either branch (heldApartAcross, keysOf), or
+ * anywhere in it when `componentRepeated`
  * says another template stamps the component it belongs to once per item.
  * `across` is heldApartAcross's verdict for this template, read over every
  * template by the run: `keys`, the keys of its controls that two cases of a
@@ -1315,7 +1324,9 @@ function readPerItem(source, componentRepeated, across) {
     slots: heldApartAcross([{ key: '', selector: null, source }]).slots.get('') ?? new Set(),
   };
   const reachedApart = (control) =>
-    apart.keys.has(control.key) || control.cases.some(({ switchAt }) => apart.slots.has(`${switchAt} ${control.key}`));
+    keysOf(control.key).some(
+      (key) => apart.keys.has(key) || control.cases.some(({ switchAt }) => apart.slots.has(`${switchAt} ${key}`))
+    );
   return controls.map((control) => ({
     ...control,
     perItem: control.repeated || componentRepeated || reachedApart(control),
@@ -4243,6 +4254,35 @@ function selfTest() {
     itemlessLines(twoCases(RETRY_TEXT, RETRY_TEXT)),
     [4, 7]
   );
+  // A ternary holding the key a plain control in another case is named by:
+  // both cards read the key's words, one of them in one of two states.
+  const RETRY_OR_LABEL = "<button [attr.aria-label]=\"(failed ? 'common.retry' : 'common.refresh') | translate\">x</button>";
+  const RETRY_OR_TEXT = "<button mat-button>{{ (failed ? 'common.retry' : 'common.refresh') | translate }}</button>";
+  check(
+    'a key one case gives plain and another holds in a ternary still repeats, by label and by text',
+    [itemlessLines(twoCases(RETRY, RETRY_OR_LABEL)), itemlessLines(twoCases(RETRY_TEXT, RETRY_OR_TEXT))],
+    [
+      [4, 7],
+      [4, 7],
+    ]
+  );
+  check(
+    'a key one card gives plain and another holds in a ternary is reported in each card, by label and by text, through the run\'s path',
+    [
+      [RETRY, RETRY_OR_LABEL],
+      [RETRY_TEXT, RETRY_OR_TEXT],
+    ].map(([plain, ternary]) =>
+      itemlessSites([
+        ['dashboard', 'app-dashboard', twoCases('<app-a />', '<app-b />')],
+        ['a', 'app-a', `<mat-card>\n  ${plain}\n</mat-card>`],
+        ['b', 'app-b', `<mat-card>\n  ${ternary}\n</mat-card>`],
+      ])
+    ),
+    [
+      ['a:2', 'b:2'],
+      ['a:2', 'b:2'],
+    ]
+  );
 
   // --- the per-item rule, a control's own text: must not hit (the load-bearing half) ---
   check(
@@ -4590,15 +4630,15 @@ function selfTest() {
     [1, 2]
   );
   check(
-    'two cases of a switch on the @for\'s own item, whose keys the per-item tally keeps apart, render on two cards at once',
+    'cases of two switches on the @for\'s own item, which the per-item tally counts apart, render on two cards at once',
     (() => {
       const source =
         "@for (card of cards(); track card) {\n  @switch (card) {\n    @case ('a') {\n      " + SIBLING('common.close') +
-        "\n    }\n    @case ('b') {\n      <button [attr.aria-label]=\"(x ? 'common.close' : 'common.open') | translate\">x</button>\n" +
-        '    }\n  }\n}';
+        "\n    }\n  }\n  @switch (card) {\n    @case ('b') {\n" +
+        "      <button [attr.aria-label]=\"(x ? 'common.close' : 'common.open') | translate\">x</button>\n    }\n  }\n}";
       return [siblingLines(source), itemlessLines(source)];
     })(),
-    [[4, 7], []]
+    [[4, 9], []]
   );
 
   // --- the sibling rule: must not hit ---
@@ -4661,6 +4701,17 @@ function selfTest() {
       const source =
         "@for (card of cards(); track card) {\n  @switch (card) {\n    @case ('a') {\n      " + SIBLING('common.viewAll') +
         "\n    }\n    @case ('b') {\n      " + SIBLING('common.viewAll') + '\n    }\n  }\n}';
+      return [siblingLines(source), itemlessLines(source)];
+    })(),
+    [[], [4, 7]]
+  );
+  check(
+    'a key one case of a switch on the @for\'s own item gives plain and another inside a ternary is the per-item rule\'s',
+    (() => {
+      const source =
+        "@for (card of cards(); track card) {\n  @switch (card) {\n    @case ('a') {\n      " + SIBLING('common.close') +
+        "\n    }\n    @case ('b') {\n      <button [attr.aria-label]=\"(x ? 'common.close' : 'common.open') | translate\">x</button>\n" +
+        '    }\n  }\n}';
       return [siblingLines(source), itemlessLines(source)];
     })(),
     [[], [4, 7]]
