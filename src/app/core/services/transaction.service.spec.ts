@@ -1266,7 +1266,7 @@ describe('TransactionService', () => {
   });
 
   describe('removeAllReceipts', () => {
-    it('sweeps every slot and clears the receipt fields', async () => {
+    it('sweeps every slot still holding an image and clears the receipt fields', async () => {
       mockFirestore.setMockDocument(
         'users/test-user-123/transactions/txn-1',
         createTransaction({
@@ -1279,9 +1279,11 @@ describe('TransactionService', () => {
 
       await service.removeAllReceipts('txn-1');
 
-      // The sweep spans the whole array, tombstones included.
+      // Slot 1's image was removed before, its object with it, so storage is
+      // asked only for the two slots that still hold one: a request for slot 1
+      // would answer not-found.
       expect(mockStorage.deleteReceiptSlotsSpy.mostRecent()?.args).toEqual([
-        'test-user-123', 'txn-1', [0, 1, 2]
+        'test-user-123', 'txn-1', [0, 2]
       ]);
 
       const updateArgs = mockFirestore.txUpdateSpy.mostRecent()?.args ?? [];
@@ -1379,7 +1381,7 @@ describe('TransactionService', () => {
       expect(mockQuota.noteImagesRemoved).toHaveBeenCalledWith(1);
     });
 
-    it('sweeps every slot of a multi-image transaction, gaps included', async () => {
+    it('sweeps only the slots of a multi-image transaction that still hold an image, gaps skipped', async () => {
       mockFirestore.setMockDocument(
         'users/test-user-123/transactions/txn-1',
         createTransaction({
@@ -1392,8 +1394,10 @@ describe('TransactionService', () => {
 
       await service.deleteTransaction('txn-1');
 
+      // The gap at slot 1 is an image removed earlier, whose object went with
+      // it, so storage is asked for slots 0 and 2 and nothing for slot 1.
       expect(mockStorage.deleteReceiptSlotsSpy.mostRecent()?.args).toEqual([
-        'test-user-123', 'txn-1', [0, 1, 2]
+        'test-user-123', 'txn-1', [0, 2]
       ]);
       // Only the live images count against the quota.
       expect(mockQuota.noteImagesRemoved).toHaveBeenCalledWith(2);
