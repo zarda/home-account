@@ -120,7 +120,7 @@
           [class.row-selected]="inSelectMode() && isSelected(transaction)"
           (activate)="onRowActivate(transaction)"
           (edit)="edit.emit(transaction)"
-          (delete)="confirmDelete(transaction)"
+          (delete)="confirmDelete(transaction, 'drawer')"
         >
           @if (inSelectMode()) {
             <!-- In the menu's corner while choosing. Its click stops here:

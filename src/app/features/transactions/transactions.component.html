@@ -133,12 +133,13 @@
     <app-loading-spinner [message]="'transactions.loading' | translate" />
   } @else {
     <app-transaction-list
+      #list
       [transactions]="transactions()"
       [categories]="categoriesMap()"
       [dateSortDirection]="sortDirection()"
       (dateSortChange)="onDateSortChange($event)"
       (edit)="openEditDialog($event)"
-      (delete)="onDeleteTransaction($event)"
+      (delete)="onDeleteTransaction($event, list)"
     />
   }
 </div>

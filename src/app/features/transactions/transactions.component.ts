@@ -493,15 +493,17 @@ export class TransactionsComponent implements OnInit, OnDestroy {
     });
   }
 
-  async onDeleteTransaction(transaction: Transaction): Promise<void> {
+  async onDeleteTransaction(transaction: Transaction, list: Pick<TransactionListComponent, 'deleteFailed'>): Promise<void> {
     try {
       await this.transactionService.deleteTransaction(transaction.id);
       // The lastMutation effect refreshes the window.
     } catch (error) {
       // The row never left the list — no rollback needed, but the user has
-      // to be told the delete did not happen.
+      // to be told the delete did not happen, and the list, which follows
+      // the row to hand focus on once it leaves, has to stop.
       console.error('[Transactions] Delete failed:', error);
       this.notifications.error(this.translationService.t('common.error'));
+      list.deleteFailed(transaction.id);
     }
   }
 
