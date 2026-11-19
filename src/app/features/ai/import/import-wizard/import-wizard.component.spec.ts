@@ -52,6 +52,7 @@ import {
   createTranslationStub,
   echoKey,
   echoTranslation,
+  type TranslationStub,
   type Translator,
 } from '../../../../core/services/testing';
 import { ThemeService } from '../../../../core/services/theme.service';
@@ -4739,6 +4740,100 @@ describe('ImportWizardComponent', () => {
             expectPicked(`after ${how}`);
           });
         }
+      }
+    });
+
+    // The four things the import can do, over the steps. They were chips,
+    // outlined pills with a glyph each: the shape of the step's own
+    // receipt-or-statement chips, which are pressed, where these never were.
+    // And at a 320px phone they stood a row each in en, 168px of them, which
+    // with the header and the stepper put the upload area under the first
+    // screen. Now they are a list of words, which wrap as words do.
+    describe('what the import can do, over the steps', () => {
+      const FEATURES = [
+        'import.featureReceipts',
+        'import.featureBankStatements',
+        'import.featureAutoCategory',
+        'import.featureDuplicateDetection',
+      ] as const;
+      const host = () => realFixture.nativeElement as HTMLElement;
+      const list = () => host().querySelector<HTMLElement>('.features-list');
+      const items = () => [...(list()?.querySelectorAll<HTMLElement>(':scope > li') ?? [])];
+      const words = (item: HTMLElement) => item.querySelector<HTMLElement>(':scope > span');
+
+      it('lists them as words, with nothing about them that a chip has', () => {
+        expect(host().querySelectorAll('.mat-mdc-chip').length).withContext('no chip on the empty step').toBe(0);
+        expect(list()?.tagName).withContext('a list').toBe('UL');
+        // WebKit drops the list role from a list drawn without markers, so
+        // it is given back.
+        expect(list()?.getAttribute('role')).withContext('a list to VoiceOver as well').toBe('list');
+        expect(items().map(item => words(item)?.textContent?.trim())).withContext('the words, in order').toEqual([...FEATURES]);
+        for (const [i, node] of [list(), ...items()].entries()) {
+          if (!node) continue;
+          const where = i === 0 ? 'the list' : `item ${i}`;
+          const style = getComputedStyle(node);
+          expect(style.backgroundColor).withContext(`${where}: no fill`).toBe('rgba(0, 0, 0, 0)');
+          expect([style.borderTopWidth, style.borderRightWidth, style.borderBottomWidth, style.borderLeftWidth])
+            .withContext(`${where}: no outline`)
+            .toEqual(['0px', '0px', '0px', '0px']);
+          expect(style.cursor).withContext(`${where}: no pointer`).toBe('auto');
+        }
+        for (const [i, item] of items().entries()) {
+          expect(item.querySelector('mat-icon')?.getAttribute('aria-hidden')).withContext(`item ${i + 1}'s glyph`).toBe('true');
+        }
+      });
+
+      // A pin. Mutation: the words painted in --text-disabled, under AA on
+      // the page in every palette.
+      it('paints the words in --text-muted at AA on the page, in the four palettes', () => {
+        standOnThePage(host());
+        expect(items().length).withContext('the four items').toBe(FEATURES.length);
+        for (const { name, classes } of PALETTES) {
+          inPalette(classes, () => {
+            for (const [i, item] of items().entries()) {
+              expectPainted(words(item), '--text-muted', `${name}: feature ${i + 1}`);
+            }
+          });
+        }
+      });
+
+      // A 320px-wide phone is 568px tall. Above the page stand the app bar
+      // (64px) and the page's own top gutter (16px), and the bottom nav takes
+      // the last 64px, so the wizard's first screen is the 424px under its
+      // top. The page is 288px wide there, inside the shell's 16px gutters.
+      // Karma's 756px window is under the wizard's 768px rule, as a phone is;
+      // the 600px rule it is not under hides the step labels and trims side
+      // padding, which leaves every height above the upload area as it is.
+      // The upload area has to start on that screen with its frame and the
+      // 40px of padding over its contents in view. With the chips, en's
+      // stood 480px under the wizard's top and ja's 434.
+      const FIRST_SCREEN = 568 - 64 - 16 - 64;
+      const ZONE_PADDING = 40;
+      for (const locale of ['en', 'ja', 'tc'] as const) {
+        it(`starts the upload area on a 320 x 568 phone's first screen, in ${locale}`, () => {
+          const face = "Verdana, 'DejaVu Sans', sans-serif";
+          host().style.cssText = `display: block; width: 288px; font-family: ${face}`;
+          for (const token of ['--mat-sys-body-large-font', '--mat-sys-body-medium-font', '--mat-sys-label-large-font']) {
+            host().style.setProperty(token, face);
+          }
+          const translations = TestBed.inject(TranslationService) as unknown as TranslationStub;
+          mockTranslationService.t.and.callFake(catalogTranslator(locale));
+          translations.currentLocale.set(locale);
+          translations.translationsVersion.update(version => version + 1);
+          realFixture.detectChanges();
+
+          const wizard = host().querySelector('.import-wizard');
+          const zone = host().querySelector('app-file-dropzone .dropzone');
+          expect(wizard && zone).withContext('the wizard and its upload area').toBeTruthy();
+          if (!wizard || !zone) return;
+          expect(wizard.querySelector('h1')?.textContent?.trim())
+            .withContext('the words are the catalog\'s')
+            .toBe(catalogTranslator(locale)('import.title'));
+          const top = zone.getBoundingClientRect().top - wizard.getBoundingClientRect().top;
+          expect(top + ZONE_PADDING)
+            .withContext(`the upload area's top, ${top}px under the wizard's, and its padding, against the first screen`)
+            .toBeLessThanOrEqual(FIRST_SCREEN);
+        });
       }
     });
 
