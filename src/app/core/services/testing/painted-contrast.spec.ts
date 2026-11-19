@@ -307,6 +307,7 @@ describe('painted-contrast', () => {
     it('reads a token as its property computes it, and holds a node painted in it to the floor', () => {
       const card = box('background-color: #ffffff');
       const text = box('color: var(--text-primary)', card);
+      text.textContent = 'Words';
       const fill = box('background-color: var(--surface-card)');
 
       inPalette(['light-theme'], () => {
@@ -322,6 +323,7 @@ describe('painted-contrast', () => {
       const otherToken = box('color: var(--text-muted)', card);
       const slate = box('background-color: #1f2937');
       const belowFloor = box('color: var(--text-primary)', slate);
+      for (const node of [inToken, otherToken, belowFloor]) node.textContent = 'Words';
 
       inPalette(['light-theme'], () => {
         const primary = tokenValue('--text-primary');
@@ -345,9 +347,28 @@ describe('painted-contrast', () => {
       });
     });
 
+    // A node the page does not draw still computes a colour and a background,
+    // so its words would read as painted in the token, at AA.
+    it('refuses a node the page does not draw, rather than giving it a verdict', () => {
+      const card = box('background-color: #ffffff');
+      const unrendered = box('color: var(--text-primary); display: none', card);
+      const hidden = box('color: var(--text-primary); visibility: hidden', card);
+      const empty = box('color: var(--text-primary); width: 0; height: 0; overflow: hidden', card);
+      const drawn = box('color: var(--text-primary)', card);
+      for (const node of [unrendered, hidden, empty, drawn]) node.textContent = 'Words';
+
+      inPalette(['light-theme'], () => {
+        expect(() => paintedVerdict(unrendered, '--text-primary')).withContext('display: none').toThrowError(/not drawn/);
+        expect(() => paintedVerdict(hidden, '--text-primary')).withContext('visibility: hidden').toThrowError(/not drawn/);
+        expect(() => paintedVerdict(empty, '--text-primary')).withContext('no size').toThrowError(/not drawn/);
+        expect(paintedVerdict(drawn, '--text-primary').colourMatches).withContext('drawn').toBeTrue();
+      });
+    });
+
     it('reads the colour a running transition will rest on before it compares it with the token', () => {
       const card = box('background-color: #ffffff');
       const text = box('color: #ffffff; transition: color 60s linear', card);
+      text.textContent = 'Words';
 
       inPalette(['light-theme'], () => {
         expect(getComputedStyle(text).color)
