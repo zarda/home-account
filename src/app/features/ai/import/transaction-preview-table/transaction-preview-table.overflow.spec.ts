@@ -462,8 +462,8 @@ describe('overflow guard: the import review card', () => {
     // The repo has been here before: .type-toggle carries a comment recording
     // that it shipped at 26px, below the accessible minimum. The two menu
     // triggers reach the minimum with their own height. The remove button
-    // cannot — the chip has to stay chip-sized — so it lays a 40x32 hit area
-    // over its 20px glyph instead, and that is the thing worth pinning.
+    // cannot — the chip has to stay chip-sized — so it lays a 40x40 hit area
+    // over its 20px-tall box instead, and that is the thing worth pinning.
     expect(el('.currency-chip').getBoundingClientRect().height)
       .withContext('currency chip tap target')
       .toBeGreaterThanOrEqual(40);
@@ -475,21 +475,29 @@ describe('overflow guard: the import review card', () => {
       .withContext('keep all dates button tap target')
       .toBeGreaterThanOrEqual(40);
 
-    // The first `.extra-remove` in the strip is the date question's change
-    // button now; it carries both classes, so it wears exactly this box.
-    const remove = el('.extra-remove');
-    const box = remove.getBoundingClientRect();
-    const hit = getComputedStyle(remove, '::after');
-    expect(box.height - parseFloat(hit.top) - parseFloat(hit.bottom))
-      .withContext('remove button hit area, glyph plus overhang')
-      .toBeGreaterThanOrEqual(40);
-    // 32 wide, not 40, and that is a decision rather than a lowered bar: the
-    // button sits 4px inside the chip's own right edge, so the 6px of overhang
-    // reaches only 2px into `.card-extras`'s 6px column gap and stops short of
-    // the neighbouring chip. Widening it further would not.
-    expect(box.width - parseFloat(hit.left) - parseFloat(hit.right))
-      .withContext('remove button hit area is wider than the glyph')
-      .toBeGreaterThanOrEqual(32);
+    // Every `.extra-remove` on the strip: the tags', the location's and the
+    // currency offer's removals, and the date question's change button,
+    // which carries both classes and so wears exactly this box. Each takes
+    // 40 both ways. The height is the overhang's; the width is the box's own
+    // 28px with the same 6px overhang a side, because the overhang cannot
+    // grow sideways: it would reach into the control before it on the chip,
+    // and past `.card-extras`'s 6px column gap into the next chip. The 32px
+    // this was is what the audit found under the 40px floor.
+    const removes = Array.from(host.querySelectorAll<HTMLElement>('.extra-remove'));
+    expect(removes.length)
+      .withContext('two date questions, two currency offers, the location and the receipt country, and three tags')
+      .toBe(9);
+    for (const [i, remove] of removes.entries()) {
+      const box = remove.getBoundingClientRect();
+      const hit = getComputedStyle(remove, '::after');
+      const where = `${remove.getAttribute('aria-label')} (${i + 1})`;
+      expect(box.height - parseFloat(hit.top) - parseFloat(hit.bottom))
+        .withContext(`${where}: hit area height, glyph plus overhang`)
+        .toBeGreaterThanOrEqual(40);
+      expect(box.width - parseFloat(hit.left) - parseFloat(hit.right))
+        .withContext(`${where}: hit area width, box plus overhang`)
+        .toBeGreaterThanOrEqual(40);
+    }
 
     // And the tag chip is still one line of --text-xs: the hit area grew
     // outside the box precisely so this number would not move. By class, not
