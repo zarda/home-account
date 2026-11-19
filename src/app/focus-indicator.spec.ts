@@ -400,3 +400,84 @@ describe('the focus indicator of a Material button', () => {
     });
   });
 });
+
+/**
+ * Stroked buttons 100px wide, each in a box 4px narrower that cuts it off
+ * one way, and one in a box with room to spare: what `readIndicator` names
+ * as cutting the indicator off.
+ */
+@Component({
+  selector: 'app-focus-cut-host',
+  changeDetection: ChangeDetectionStrategy.OnPush,
+  imports: [MatButtonModule],
+  template: `
+    <div class="narrow by-overflow"><button mat-stroked-button type="button" data-case="overflow">Cut</button></div>
+    <div class="narrow by-clip-path"><button mat-stroked-button type="button" data-case="clip-path">Cut</button></div>
+    <div class="narrow by-paint"><button mat-stroked-button type="button" data-case="paint">Cut</button></div>
+    <div class="roomy"><button mat-stroked-button type="button" data-case="roomy">Whole</button></div>
+  `,
+  styles: `
+    div {
+      display: block;
+      padding: 0;
+      margin-block-end: 16px;
+    }
+
+    button {
+      width: 100px;
+    }
+
+    .narrow {
+      width: 96px;
+    }
+
+    .by-overflow,
+    .roomy {
+      overflow: hidden;
+    }
+
+    .by-clip-path {
+      clip-path: inset(0);
+    }
+
+    .by-paint {
+      contain: paint;
+    }
+
+    .roomy {
+      width: 200px;
+    }
+  `,
+})
+class FocusCutHostComponent {}
+
+describe('what readIndicator reads', () => {
+  let fixture: ComponentFixture<FocusCutHostComponent>;
+  let host: HTMLElement;
+  const button = (dataCase: string) => host.querySelector(`[data-case="${dataCase}"]`) as HTMLElement;
+
+  beforeEach(() => {
+    TestBed.configureTestingModule({ imports: [FocusCutHostComponent], providers: [provideNoMotion()] });
+    fixture = TestBed.createComponent(FocusCutHostComponent);
+    fixture.detectChanges();
+    host = fixture.nativeElement as HTMLElement;
+  });
+
+  afterEach(() => fixture.destroy());
+
+  it('names a box whose overflow cuts the indicator off', () => {
+    expect(readIndicator(button('overflow')).clippedBy).toEqual(['div.narrow.by-overflow']);
+  });
+
+  it('names a box whose clip-path cuts the indicator off', () => {
+    expect(readIndicator(button('clip-path')).clippedBy).toEqual(['div.narrow.by-clip-path']);
+  });
+
+  it('names a box whose paint containment cuts the indicator off', () => {
+    expect(readIndicator(button('paint')).clippedBy).toEqual(['div.narrow.by-paint']);
+  });
+
+  it('names nothing where the box that clips its overflow holds the indicator', () => {
+    expect(readIndicator(button('roomy')).clippedBy).toEqual([]);
+  });
+});

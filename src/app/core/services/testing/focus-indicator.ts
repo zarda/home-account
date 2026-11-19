@@ -38,7 +38,7 @@ export interface IndicatorReading {
   readonly layerOpacity: number;
   /** The indicator on what it is drawn over, the worse side where it straddles the button's edge. */
   readonly ratio: number;
-  /** The ancestors whose overflow cuts the indicator off, by class. */
+  /** The ancestors whose overflow, clip-path or paint containment cuts the indicator off, by class. */
   readonly clippedBy: string[];
 }
 
@@ -86,9 +86,12 @@ export function readIndicator(button: HTMLElement): IndicatorReading {
 
 /**
  * The ancestors between the indicator and the body, the button included,
- * whose overflow is not visible and whose padding box does not hold the
- * indicator's box: the span's box, which its `::before` fills, grown by a
- * negative margin.
+ * that cut the indicator's box off: the span's box, which its `::before`
+ * fills, grown by a negative margin. An ancestor cuts it when its overflow
+ * is not visible or it contains its paint, and its padding box does not
+ * hold that box; or when it has a clip-path and its border box does not
+ * hold it. A clip-path's own shape is not read: one that keeps less than
+ * the border box is held to the border box.
  */
 function clippersOf(indicator: Element, margin: number): string[] {
   const span = indicator.getBoundingClientRect();
@@ -101,15 +104,25 @@ function clippersOf(indicator: Element, margin: number): string[] {
   const cut: string[] = [];
   for (let node = indicator.parentElement; node && node !== document.body; node = node.parentElement) {
     const style = getComputedStyle(node);
-    if (style.overflowX === 'visible' && style.overflowY === 'visible') continue;
+    const byPaddingBox =
+      !(style.overflowX === 'visible' && style.overflowY === 'visible') ||
+      /\b(paint|strict|content)\b/.test(style.contain);
+    const byBorderBox = style.clipPath !== 'none';
+    if (!byPaddingBox && !byBorderBox) continue;
     const rect = node.getBoundingClientRect();
-    const left = rect.left + node.clientLeft;
-    const top = rect.top + node.clientTop;
+    const edge = byPaddingBox
+      ? {
+          left: rect.left + node.clientLeft,
+          top: rect.top + node.clientTop,
+          right: rect.left + node.clientLeft + node.clientWidth,
+          bottom: rect.top + node.clientTop + node.clientHeight,
+        }
+      : rect;
     const holds =
-      box.left >= left - 0.5 &&
-      box.top >= top - 0.5 &&
-      box.right <= left + node.clientWidth + 0.5 &&
-      box.bottom <= top + node.clientHeight + 0.5;
+      box.left >= edge.left - 0.5 &&
+      box.top >= edge.top - 0.5 &&
+      box.right <= edge.right + 0.5 &&
+      box.bottom <= edge.bottom + 0.5;
     if (!holds) cut.push(`${node.tagName.toLowerCase()}.${Array.from(node.classList).join('.')}`);
   }
   return cut;
