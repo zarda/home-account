@@ -18,6 +18,7 @@ export * from './style-rules';
 export * from './no-motion';
 export * from './app-datepicker.testing';
 export * from './frames';
+export * from './page-scroll';
 export * from './drag-by-handle';
 export * from './menu-dialog';
 export * from './fake-notice';

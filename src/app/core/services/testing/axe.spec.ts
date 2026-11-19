@@ -24,6 +24,7 @@ import {
   unexpectedViolations,
   withScheme,
 } from './axe';
+import { keepThePageWhereFound } from './page-scroll';
 
 /**
  * The axe harness itself, proven against a component that is wrong on
@@ -541,10 +542,7 @@ describe('the axe harness', () => {
   });
 
   describe('below the fold', () => {
-    // The tall fixture scrolls the document itself.
-    afterEach(() => {
-      document.scrollingElement?.scrollTo(0, 0);
-    });
+    keepThePageWhereFound();
 
     it('scores a node below the fold once it is scrolled into view, and not before', async () => {
       TestBed.configureTestingModule({ imports: [FoldFixtureComponent] });
@@ -580,10 +578,7 @@ describe('the axe harness', () => {
   });
 
   describe('below body\'s box', () => {
-    // The tall fixture scrolls the document itself.
-    afterEach(() => {
-      document.scrollingElement?.scrollTo(0, 0);
-    });
+    keepThePageWhereFound();
 
     // Body paints the page's fill only as far down as its own box, so axe
     // finds no background it can trust behind words further down, and
