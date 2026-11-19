@@ -1285,6 +1285,7 @@ describe('TransactionService', () => {
       expect(mockStorage.deleteReceiptSlotsSpy.mostRecent()?.args).toEqual([
         'test-user-123', 'txn-1', [0, 2]
       ]);
+      expect(mockStorage.deleteReceiptSpy.calls.map(call => call.args[2])).toEqual([0, 2]);
 
       const updateArgs = mockFirestore.txUpdateSpy.mostRecent()?.args ?? [];
       expect(updateArgs[0]).toBe('users/test-user-123/transactions/txn-1');
@@ -1347,6 +1348,46 @@ describe('TransactionService', () => {
       // Only what this call actually tombstoned is decremented.
       expect(mockQuota.noteImagesRemoved).toHaveBeenCalledWith(2);
     });
+
+    it('leaves an image another device appended into a slot that was empty at read time', async () => {
+      mockFirestore.setMockDocument(
+        'users/test-user-123/transactions/txn-1',
+        createTransaction({
+          id: 'txn-1',
+          receiptUrl: 'u0',
+          receiptUrls: ['u0', '', 'u2'],
+          receiptCount: 2
+        })
+      );
+      // After our read, another device removed slot 2, which truncated the
+      // array to ['u0'], then appended a new image at slot 1.
+      mockFirestore.beforeTransaction = () => {
+        mockFirestore.setMockDocument(
+          'users/test-user-123/transactions/txn-1',
+          createTransaction({
+            id: 'txn-1',
+            receiptUrl: 'u0',
+            receiptUrls: ['u0', 'n1'],
+            receiptCount: 2
+          })
+        );
+      };
+
+      await service.removeAllReceipts('txn-1');
+
+      // Slot 1 was empty when this call read the row, so its new object was
+      // never asked for...
+      expect(mockStorage.deleteReceiptSlotsSpy.mostRecent()?.args).toEqual([
+        'test-user-123', 'txn-1', [0, 2]
+      ]);
+      // ...and its entry is not tombstoned either, so the image keeps its
+      // object instead of leaving the row while the object stays in storage.
+      const updateData = (mockFirestore.txUpdateSpy.mostRecent()?.args ?? [])[1] as Record<string, unknown>;
+      expect(updateData['receiptUrls']).toEqual(['', 'n1']);
+      expect(updateData['receiptUrl']).toBe('n1');
+      expect(updateData['receiptCount']).toBe(1);
+      expect(mockQuota.noteImagesRemoved).toHaveBeenCalledWith(1);
+    });
   });
 
   describe('deleteTransaction', () => {
@@ -1399,6 +1440,7 @@ describe('TransactionService', () => {
       expect(mockStorage.deleteReceiptSlotsSpy.mostRecent()?.args).toEqual([
         'test-user-123', 'txn-1', [0, 2]
       ]);
+      expect(mockStorage.deleteReceiptSpy.calls.map(call => call.args[2])).toEqual([0, 2]);
       // Only the live images count against the quota.
       expect(mockQuota.noteImagesRemoved).toHaveBeenCalledWith(2);
     });
@@ -1489,6 +1531,26 @@ describe('TransactionService', () => {
       expect(mockStorage.deleteReceiptSlotsSpy.mostRecent()?.args).toEqual([
         'test-user-123', 'txn-1', [0, 1]
       ]);
+    });
+
+    it('skips a receipt slot whose image was removed before the wipe', async () => {
+      mockFirestore.setMockCollection(path, [
+        createTransaction({
+          id: 'txn-0',
+          receiptUrl: 'u0',
+          receiptUrls: ['u0', '', 'u2'],
+          receiptCount: 2
+        })
+      ]);
+
+      await service.deleteAllTransactions();
+
+      // The empty slot's object went with its image, so it is not asked for.
+      expect(mockStorage.deleteReceiptSlotsSpy.calls.length).toBe(1);
+      expect(mockStorage.deleteReceiptSlotsSpy.mostRecent()?.args).toEqual([
+        'test-user-123', 'txn-0', [0, 2]
+      ]);
+      expect(mockStorage.deleteReceiptSpy.calls.map(call => call.args[2])).toEqual([0, 2]);
     });
 
     // One refresh for the whole wipe, not one per row: the transactions page
