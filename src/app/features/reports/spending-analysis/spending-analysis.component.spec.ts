@@ -14,6 +14,7 @@ import { ThemeService } from '../../../core/services/theme.service';
 import {
   AUDIT_SCHEMES,
   expectPainted,
+  headingOutline,
   provideNoMotion,
   withScheme,
   withTheme,
@@ -741,8 +742,7 @@ describe('SpendingAnalysisComponent', () => {
       instance.dateRange = { start: new Date(2024, 5, 1), end: new Date(2024, 5, 30) };
       renderFixture.detectChanges();
 
-      const outline = (Array.from(renderFixture.nativeElement.querySelectorAll('h1, h2, h3, h4, h5, h6')) as HTMLElement[])
-        .map(heading => `${heading.tagName.toLowerCase()} ${heading.textContent?.trim()}`);
+      const outline = headingOutline(renderFixture.nativeElement);
       expect(outline).toEqual(['h2 reports.noDataAvailable']);
     });
   });

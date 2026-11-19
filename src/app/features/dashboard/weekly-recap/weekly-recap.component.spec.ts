@@ -17,6 +17,7 @@ import { RecapFigures } from '../../../core/utils/weekly-recap.utils';
 import { DateWindow, addDays } from '../../../core/utils/transaction-date.utils';
 import { BudgetAlert, Category, RecurringOccurrence } from '../../../models';
 import {
+  headingOutline,
   paintedBackground,
   paintedColor,
   provideNoMotion,
@@ -190,8 +191,7 @@ describe('WeeklyRecapComponent', () => {
   it('titles the card one level under the page', () => {
     render();
 
-    const outline = (Array.from(fixture.nativeElement.querySelectorAll('h1, h2, h3, h4, h5, h6')) as HTMLElement[])
-      .map(heading => `${heading.tagName.toLowerCase()} ${heading.textContent?.trim()}`);
+    const outline = headingOutline(fixture.nativeElement);
     expect(outline).toEqual(['h2 recap.title']);
   });
 

@@ -16,6 +16,7 @@ import { EmptyStateComponent } from '../../../shared/components/empty-state/empt
 import {
   accessibleName,
   expectPainted,
+  headingOutline,
   provideNoMotion,
   tokenValue,
   withTheme,
@@ -532,9 +533,7 @@ describe('CategoryBreakdownComponent', () => {
   // level the panels sit under.
   describe('its headings (real template, with the real donut)', () => {
     let realFixture: ComponentFixture<CategoryBreakdownComponent>;
-    const outline = () =>
-      (Array.from((realFixture.nativeElement as HTMLElement).querySelectorAll('h1, h2, h3, h4, h5, h6')) as HTMLElement[])
-        .map(heading => `${heading.tagName.toLowerCase()} ${heading.textContent?.trim()}`);
+    const outline = () => headingOutline(realFixture.nativeElement);
 
     beforeEach(async () => {
       TestBed.resetTestingModule();

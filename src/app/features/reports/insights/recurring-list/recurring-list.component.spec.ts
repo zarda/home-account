@@ -16,6 +16,7 @@ import {
   StorableRecurringSummary
 } from '../../../../models';
 import {
+  headingOutline,
   type TranslationStub,
   accessibleName,
   catalogTranslator,
@@ -285,8 +286,7 @@ describe('RecurringListComponent, through its own template', () => {
       groupFor({ key: 'b', source: 'declared', label: 'Rent' }),
     ]);
 
-    const outline = (Array.from(el().querySelectorAll('h1, h2, h3, h4, h5, h6')) as HTMLElement[])
-      .map(heading => `${heading.tagName.toLowerCase()} ${heading.textContent?.trim()}`);
+    const outline = headingOutline(el());
     expect(outline).toEqual([
       'h2 insights.recurringListTitle',
       'h3 insights.recurringDeclared',

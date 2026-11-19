@@ -10,6 +10,7 @@ import { DateFormatService } from '../../../core/services/date-format.service';
 import { LocaleFormatService } from '../../../core/services/locale-format.service';
 import { TranslationService } from '../../../core/services/translation.service';
 import { SecurityEvent } from '../../../models';
+import { headingOutline } from '../../../core/services/testing';
 
 describe('SecurityActivityComponent', () => {
   let component: SecurityActivityComponent;
@@ -163,8 +164,7 @@ describe('SecurityActivityComponent', () => {
       await setup();
       fixture.detectChanges();
 
-      const outline = (Array.from((fixture.nativeElement as HTMLElement).querySelectorAll('h1, h2, h3, h4, h5, h6')) as HTMLElement[])
-        .map(heading => `${heading.tagName.toLowerCase()} ${heading.textContent?.trim()}`);
+      const outline = headingOutline(fixture.nativeElement);
       expect(outline).toEqual(['h2 settings.securityActivityEmpty']);
     });
   });

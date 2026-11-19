@@ -1,6 +1,7 @@
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { EmptyStateComponent } from './empty-state.component';
 import {
+  headingOutline,
   iconBox,
   iconSquare,
   paintedBackground,
@@ -43,15 +44,13 @@ describe('EmptyStateComponent', () => {
   });
 
   it('titles itself with a third-level heading unless told another level', () => {
-    const headings = (): string[] =>
-      Array.from(fixture.nativeElement.querySelectorAll('h1, h2, h3, h4, h5, h6') as NodeListOf<Element>)
-        .map(heading => `${heading.tagName}:${heading.textContent?.trim()}`);
-    expect(headings()).toEqual(['H3:No data']);
+    const headings = (): string[] => headingOutline(fixture.nativeElement);
+    expect(headings()).toEqual(['h3 No data']);
 
     for (const level of [2, 4] as const) {
       fixture.componentRef.setInput('headingLevel', level);
       fixture.detectChanges();
-      expect(headings()).toEqual([`H${level}:No data`]);
+      expect(headings()).toEqual([`h${level} No data`]);
     }
   });
 

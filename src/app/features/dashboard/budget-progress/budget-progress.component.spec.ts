@@ -12,6 +12,7 @@ import {
   AUDIT_SCHEMES,
   GLYPH_PROBE_COLOURS,
   channels,
+  headingOutline,
   iconBox,
   iconSquare,
   paintedBackground,
@@ -578,8 +579,7 @@ describe('BudgetProgressComponent', () => {
     // The dashboard's h1 heads the page, so the card's title is an h2, as every
     // other card's is; a budget's name is a line of the card, not a heading.
     it('titles the card one level under the page', () => {
-      const outline = (Array.from(fixture.nativeElement.querySelectorAll('h1, h2, h3, h4, h5, h6')) as HTMLElement[])
-        .map(heading => `${heading.tagName.toLowerCase()} ${heading.textContent?.trim()}`);
+      const outline = headingOutline(fixture.nativeElement);
       expect(outline).toEqual(['h2 dashboard.budgetProgress']);
     });
 

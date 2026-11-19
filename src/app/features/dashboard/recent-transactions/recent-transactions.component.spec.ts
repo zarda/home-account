@@ -19,6 +19,7 @@ import {
   accessibleName,
   catalogTranslator,
   createUser,
+  headingOutline,
   holdsShownWords,
   hoverValue,
   paintedBackground,
@@ -154,9 +155,7 @@ describe('RecentTransactionsComponent', () => {
   // The dashboard's h1 heads the page, so the card's title is an h2 and the
   // empty state under it an h3.
   it('titles the card one level under the page, and its empty state one under the title', () => {
-    const outline = () =>
-      (Array.from(fixture.nativeElement.querySelectorAll('h1, h2, h3, h4, h5, h6')) as HTMLElement[])
-        .map(heading => `${heading.tagName.toLowerCase()} ${heading.textContent?.trim()}`);
+    const outline = () => headingOutline(fixture.nativeElement);
     expect(outline()).toEqual(['h2 dashboard.recentTransactions', 'h3 transactions.noTransactions']);
 
     fixture.componentRef.setInput('transactions', [

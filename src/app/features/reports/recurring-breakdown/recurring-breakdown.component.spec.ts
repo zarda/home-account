@@ -11,6 +11,7 @@ import {
   createTranslationStub,
   createLocaleFormatStub,
   expectPainted,
+  headingOutline,
   withTheme,
   provideNoMotion,
 } from '../../../core/services/testing';
@@ -290,8 +291,7 @@ describe('RecurringBreakdownComponent, through its own template', () => {
   it("titles the card one level under the page's own heading, and its empty state one under the title", () => {
     render([expenseTxn({ id: 'b', amount: 100 })]);
 
-    const outline = (Array.from(el().querySelectorAll('h1, h2, h3, h4, h5, h6')) as HTMLElement[])
-      .map(heading => `${heading.tagName.toLowerCase()} ${heading.textContent?.trim()}`);
+    const outline = headingOutline(el());
     expect(outline).toEqual(['h2 reports.recurringVsOneOff', 'h3 reports.noRecurringExpenses']);
   });
 

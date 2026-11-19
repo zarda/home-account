@@ -26,6 +26,7 @@ import {
   AUDIT_SCHEMES,
   accessibleName,
   catalogTranslator,
+  headingOutline,
   holdsShownWords,
   hoverValue,
   paintedBackground,
@@ -132,9 +133,7 @@ describe('UpcomingBillsComponent', () => {
   // The dashboard's h1 heads the page, so the card's title is an h2, and each
   // day, or the empty state, an h3 under it.
   it('titles the card one level under the page, and each day or its empty state one under the title', () => {
-    const outline = () =>
-      (Array.from(fixture.nativeElement.querySelectorAll('h1, h2, h3, h4, h5, h6')) as HTMLElement[])
-        .map(heading => `${heading.tagName.toLowerCase()} ${heading.textContent?.trim()}`);
+    const outline = () => headingOutline(fixture.nativeElement);
     render([]);
     expect(outline()).toEqual(['h2 dashboard.upcomingBills', 'h3 dashboard.noUpcomingBills']);
 

@@ -5,6 +5,7 @@ import {
   createTranslationStub,
   createLocaleFormatStub,
   expectPainted,
+  headingOutline,
   hoverValue,
   paintedBackground,
   paintedColor,
@@ -1098,8 +1099,7 @@ describe('DataManagementComponent, through its own template', () => {
   it("heads each of its five sections one level under the page's own heading", () => {
     fixture.detectChanges();
 
-    const outline = (Array.from(el().querySelectorAll('h1, h2, h3, h4, h5, h6')) as HTMLElement[])
-      .map(heading => `${heading.tagName.toLowerCase()} ${heading.textContent?.trim()}`);
+    const outline = headingOutline(el());
     expect(outline).toEqual([
       'h2 settings.exportData',
       'h2 import.smartImport',

@@ -21,6 +21,7 @@ import {
   accessibleName,
   catalogTranslator,
   expectIndicatorInEveryPalette,
+  headingOutline,
   holdsShownWords,
   paintedBackground,
   paintedColor,
@@ -150,8 +151,7 @@ describe('SearchAnswerHistoryComponent', () => {
   });
 
   it("heads the empty state one level under the page's own heading", () => {
-    const outline = (Array.from(fixture.nativeElement.querySelectorAll('h1, h2, h3, h4, h5, h6')) as HTMLElement[])
-      .map(heading => `${heading.tagName.toLowerCase()} ${heading.textContent?.trim()}`);
+    const outline = headingOutline(fixture.nativeElement);
     expect(outline).toEqual(['h1 aiSearch.historyPageTitle', 'h2 aiSearch.historyEmpty']);
   });
 

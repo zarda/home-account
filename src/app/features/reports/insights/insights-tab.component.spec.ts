@@ -24,7 +24,7 @@ import { MatIconModule } from '@angular/material/icon';
 import { EmptyStateComponent } from '../../../shared/components/empty-state/empty-state.component';
 import { LoadingSpinnerComponent } from '../../../shared/components/loading-spinner/loading-spinner.component';
 import { TranslatePipe } from '../../../shared/pipes/translate.pipe';
-import { createTranslationStub, provideNoMotion } from '../../../core/services/testing';
+import { createTranslationStub, headingOutline, provideNoMotion } from '../../../core/services/testing';
 
 function expenseRow(date: Date, amount: number, overrides: Partial<Transaction> = {}): Transaction {
   return createTransaction({
@@ -589,9 +589,7 @@ describe('InsightsTabComponent, through its own template', () => {
   // between, so whichever empty state it shows is an h2. The cards, the
   // narrative and the recurring list are not rendered here.
   describe('its headings', () => {
-    const outline = () =>
-      (Array.from(el().querySelectorAll('h1, h2, h3, h4, h5, h6')) as HTMLElement[])
-        .map(heading => `${heading.tagName.toLowerCase()} ${heading.textContent?.trim()}`);
+    const outline = () => headingOutline(el());
 
     it("heads the failed, offline, young-account and empty-archive states one level under the page's own heading", () => {
       transactions.getTransactionsInRange.and.returnValue(throwError(() => new Error('offline')));

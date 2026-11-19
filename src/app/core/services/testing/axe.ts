@@ -570,6 +570,17 @@ export async function expectHeadingsInOrder(root: Element, where = 'the root'): 
   expect(await headingsOutOfOrder(root)).withContext(`heading-order on ${where}`).toEqual([]);
 }
 
+/**
+ * The headings under `root`, in document order, each as its level's tag and
+ * its trimmed text: `h2 Budget Progress`. What a reader moving by heading
+ * hears, for a spec to hold the outline whole.
+ */
+export function headingOutline(root: Element): string[] {
+  return Array.from(root.querySelectorAll('h1, h2, h3, h4, h5, h6'), heading =>
+    `${heading.tagName.toLowerCase()} ${heading.textContent?.trim()}`
+  );
+}
+
 /** The same lines, with every violation this route already carried dropped. */
 export function unexpectedViolations(
   results: AxeResults,

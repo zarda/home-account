@@ -8,6 +8,7 @@ import { CurrencyService } from '../../../core/services/currency.service';
 import { TranslationService } from '../../../core/services/translation.service';
 import {
   expectPainted,
+  headingOutline,
   provideNoMotion,
   withTheme,
 } from '../../../core/services/testing';
@@ -212,8 +213,7 @@ describe('CountryBreakdownComponent, through its own template', () => {
     component.transactions = [inCountry(10), inCountry(5)];
     fixture.detectChanges();
 
-    const outline = (Array.from(fixture.nativeElement.querySelectorAll('h1, h2, h3, h4, h5, h6')) as HTMLElement[])
-      .map(heading => `${heading.tagName.toLowerCase()} ${heading.textContent?.trim()}`);
+    const outline = headingOutline(fixture.nativeElement);
     expect(outline).toEqual(['h2 reports.spendingByCountry', 'h3 reports.noCountriesRecorded']);
   });
 

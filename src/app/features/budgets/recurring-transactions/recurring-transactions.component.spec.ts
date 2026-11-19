@@ -27,6 +27,7 @@ import {
   AUDIT_SCHEMES,
   channels,
   expectPainted,
+  headingOutline,
   hoverValue,
   paintedBackground,
   paintedColor,
@@ -541,8 +542,7 @@ describe('RecurringTransactionsComponent', () => {
     it("heads the empty state one level under the page's own heading", () => {
       const host = renderRules([]);
 
-      const outline = (Array.from(host.querySelectorAll('h1, h2, h3, h4, h5, h6')) as HTMLElement[])
-        .map(heading => `${heading.tagName.toLowerCase()} ${heading.textContent?.trim()}`);
+      const outline = headingOutline(host);
       expect(outline).toEqual(['h2 settings.noRecurring']);
     });
 

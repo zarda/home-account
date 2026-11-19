@@ -39,6 +39,7 @@ import {
   createTranslationStub,
   createUser,
   echoTranslation,
+  headingOutline,
   hoverValue,
   paintedBackground,
   paintedColor,
@@ -267,8 +268,7 @@ describe('TransactionListComponent', () => {
       fixture.componentRef.setInput('transactions', []);
       fixture.detectChanges();
 
-      const outline = (Array.from(fixture.nativeElement.querySelectorAll('h1, h2, h3, h4, h5, h6')) as HTMLElement[])
-        .map(heading => `${heading.tagName.toLowerCase()} ${heading.textContent?.trim()}`);
+      const outline = headingOutline(fixture.nativeElement);
       expect(outline).toEqual(['h2 transactions.noTransactions']);
     });
   });

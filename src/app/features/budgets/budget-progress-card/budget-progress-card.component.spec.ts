@@ -9,6 +9,7 @@ import { FitTextRegistry } from '../../../shared/directives/fit-text.registry';
 import {
   channels,
   expectPainted,
+  headingOutline,
   iconBox,
   iconSquare,
   paintedBackground,
@@ -594,8 +595,7 @@ describe('BudgetProgressCardComponent', () => {
     it('names the budget in an h2, one level under the page', () => {
       fixture.detectChanges();
 
-      const outline = (Array.from(fixture.nativeElement.querySelectorAll('h1, h2, h3, h4, h5, h6')) as HTMLElement[])
-        .map(heading => `${heading.tagName.toLowerCase()} ${heading.textContent?.trim()}`);
+      const outline = headingOutline(fixture.nativeElement);
       expect(outline).toEqual(['h2 Food Budget']);
       expect(fixture.nativeElement.querySelector('.budget-name')?.tagName).toBe('H2');
     });

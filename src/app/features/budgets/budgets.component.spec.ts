@@ -25,6 +25,7 @@ import {
   createBudget,
   createCategory,
   createTranslationStub,
+  headingOutline,
   paintedBackground,
   paintedColor,
   provideNoMotion,
@@ -479,8 +480,7 @@ describe('BudgetsComponent, through its own template', () => {
     budgets.set([]);
     fixture.detectChanges();
 
-    const outline = (Array.from(el().querySelectorAll('h1, h2, h3, h4, h5, h6')) as HTMLElement[])
-      .map(heading => `${heading.tagName.toLowerCase()} ${heading.textContent?.trim()}`);
+    const outline = headingOutline(el());
     expect(outline).toEqual(['h1 budget.title', 'h2 budget.noBudgets']);
   });
 

@@ -15,6 +15,7 @@ import {
   catalogTranslationStub,
   createTranslationStub,
   expectPainted,
+  headingOutline,
   hoverValue,
   provideNoMotion,
   runAxe,
@@ -565,8 +566,7 @@ describe('CategoryManagerComponent, through its own template', () => {
   it("heads the empty state one level under the page's own heading", () => {
     setUp([]);
 
-    const outline = (Array.from(el().querySelectorAll('h1, h2, h3, h4, h5, h6')) as HTMLElement[])
-      .map(heading => `${heading.tagName.toLowerCase()} ${heading.textContent?.trim()}`);
+    const outline = headingOutline(el());
     expect(outline).toEqual(['h2 settings.noCategoriesFound']);
   });
 

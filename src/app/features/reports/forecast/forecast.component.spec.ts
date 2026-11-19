@@ -14,6 +14,7 @@ import {
   accessibleName,
   createTranslationStub,
   expectPainted,
+  headingOutline,
   inPalette,
   PALETTES,
   provideNoMotion,
@@ -321,8 +322,7 @@ describe('ForecastComponent, through its own template', () => {
     rules.set([]);
     fixture.detectChanges();
 
-    const outline = (Array.from(el().querySelectorAll('h1, h2, h3, h4, h5, h6')) as HTMLElement[])
-      .map(heading => `${heading.tagName.toLowerCase()} ${heading.textContent?.trim()}`);
+    const outline = headingOutline(el());
     expect(outline).toEqual(['h2 reports.forecastNoRulesTitle']);
   });
 

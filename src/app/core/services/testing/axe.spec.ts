@@ -16,6 +16,7 @@ import {
   expectContrastScored,
   expectEachContrastScored,
   expectHeadingsInOrder,
+  headingOutline,
   headingsOutOfOrder,
   holdsShownWords,
   runAxe,
@@ -499,6 +500,11 @@ describe('the axe harness', () => {
 
     it('passes a heading one level under the one before it', async () => {
       await expectHeadingsInOrder(render(NestedHeadingFixtureComponent));
+    });
+
+    it("reads the outline as each heading's level and words, in order", () => {
+      expect(headingOutline(render(SkippedHeadingFixtureComponent))).toEqual(['h1 Data', 'h3 Export']);
+      expect(headingOutline(document.createElement('div'))).withContext('no heading').toEqual([]);
     });
   });
 

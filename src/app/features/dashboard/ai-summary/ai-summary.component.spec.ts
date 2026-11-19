@@ -12,7 +12,7 @@ import { AnalyticsService } from '../../../core/services/analytics.service';
 import { Category, Goal, RAG_TIER_CONFIGS, Transaction, User } from '../../../models';
 import {
   channels, createCategory, createTimestamp, createTransaction, createUser, createTranslationStub,
-  hoverValue, paintedBackground, paintedColor, ratio, tokenValue, withTheme,
+  headingOutline, hoverValue, paintedBackground, paintedColor, ratio, tokenValue, withTheme,
   provideNoMotion,
 } from '../../../core/services/testing';
 
@@ -600,9 +600,7 @@ describe('AiSummaryComponent, through its own template', () => {
   // other card's is, and the empty state under it an h3. Headings inside the
   // summary's own text arrive with the provider's answer, and are not held here.
   it('titles the card one level under the page, and its empty state one under the title', () => {
-    const outline = () =>
-      (Array.from(el().querySelectorAll('h1, h2, h3, h4, h5, h6')) as HTMLElement[])
-        .map(heading => `${heading.tagName.toLowerCase()} ${heading.textContent?.trim()}`);
+    const outline = () => headingOutline(el());
     render(rows(2));
     expect(outline()).toEqual(['h2 ai.insights', 'h3 ai.noInsights']);
 
