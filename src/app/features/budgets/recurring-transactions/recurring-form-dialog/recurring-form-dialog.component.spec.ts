@@ -1087,6 +1087,15 @@ describe('RecurringFormDialogComponent, the day-of-month select through its own 
     expect(component.dayOfMonth).toBeNull();
   }));
 
+  // A radio group is entered by its name, so a reader hears that the two
+  // choices are the rule's transaction type before the first of them.
+  it('names its Expense / Income group', () => {
+    const group = (fixture.nativeElement as HTMLElement).querySelector('.type-section mat-button-toggle-group') as HTMLElement;
+
+    expect(group.getAttribute('role')).toBe('radiogroup');
+    expect(accessibleName(group)).toBe('transactions.type');
+  });
+
   describe('its category select', () => {
     // The panel renders into the CDK overlay, outside the fixture.
     afterEach(() => {

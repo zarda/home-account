@@ -423,6 +423,25 @@
  * conditions keep apart without an `@else`, such as two `@if`s on one signal
  * and on its negation, read as rendering together.
  *
+ * A tenth rule keeps a single-choice group from being entered with no name.
+ * A `mat-button-toggle-group` that is not `multiple` renders
+ * `role="radiogroup"` on its own host, as a `mat-radio-group` does, and a
+ * screen reader entering one says the group's name before its first choice.
+ * The category manager's Expenses / Income group had none, nor had seven more
+ * toggle groups (the transaction form's type, the period selector's quick
+ * ranges, the forecast's horizon among them): each announced its first
+ * choice and its place among the others, and nothing that said what was
+ * being chosen. The axe pass the specs run reads no radiogroup's name, so
+ * nothing failed. The rule: each such group, and any element with a literal
+ * `role="radiogroup"`, carries `aria-label` or `aria-labelledby` in any
+ * spelling, with a value that is not blank (readGroups). A `multiple` group
+ * renders `role="group"` and is not read.
+ *
+ * What it cannot see: a name or a role set in TypeScript or by a directive's
+ * host binding, or bound through `[attr.role]`; a `[multiple]` bound to an
+ * expression, read as multiple whatever it holds; and whether the name says
+ * what is chosen.
+ *
  * Reference documentation lives in docs/accessibility.md.
  */
 
@@ -1739,6 +1758,65 @@ function unnamedAmong(controls) {
  */
 export const UNNAMED_FROZEN = [];
 
+/** The tags the tenth rule reads as a single-choice group (readGroups). */
+const GROUP_TAGS = new Set(['mat-button-toggle-group', 'mat-radio-group']);
+
+/** A literal `role="radiogroup"` on any other element. */
+const RADIOGROUP_ROLE = /(?<![\w.[-])role\s*=\s*"radiogroup"/;
+
+/**
+ * True when a toggle group lets more than one choice stand: a literal
+ * `multiple`, or `[multiple]` bound to anything but `false`. Such a group
+ * renders `role="group"`, which a reader enters without needing its name.
+ * A literal `multiple="false"` is read as Material's boolean input reads it.
+ */
+function isMultiple(attrs) {
+  return attributesOf(attrs).some(
+    ({ name, value }) =>
+      (name === 'multiple' && value?.trim() !== 'false') || (name === '[multiple]' && value?.trim() !== 'false')
+  );
+}
+
+/**
+ * Every single-choice group in a template: a `mat-button-toggle-group` that is
+ * not `multiple` (isMultiple), a `mat-radio-group`, and any element with a
+ * literal `role="radiogroup"`. Each carries its role on its own host, so every
+ * spelling of `aria-label` or `aria-labelledby` lands where the role is, as on
+ * a slider's thumb (THUMB_NAMES), each with a value that is not blank.
+ * Returns `{ line, tag, named }` for each, `line` being the opening tag's.
+ */
+function readGroups(source) {
+  const found = [];
+  walkTemplate(source, ({ name, attrs, line }) => {
+    const single =
+      name === 'mat-button-toggle-group' ? !isMultiple(attrs) : GROUP_TAGS.has(name) || RADIOGROUP_ROLE.test(attrs);
+    if (single) found.push({ line, tag: name, named: thumbNamed(attrs) });
+  });
+  return found;
+}
+
+/** The single-choice groups readGroups finds with no name, as `{ line, tag }`. */
+export function scanUnnamedGroups(source) {
+  return readGroups(source)
+    .filter((group) => !group.named)
+    .map(({ line, tag }) => ({ line, tag }));
+}
+
+/**
+ * The binding the tenth rule's hint shows, as the category manager's type
+ * group carries it. The self-test holds the hint to that template, so the
+ * model cannot drift from the code it quotes.
+ */
+const GROUP_MODEL = `[attr.aria-label]="'settings.categoryType' | translate"`;
+
+/** What the tenth rule asks of an unnamed group. */
+export function groupHint() {
+  return (
+    `name the group with a key that says what it chooses, ${GROUP_MODEL}, or with ` +
+    `aria-labelledby on a visible label beside it, as the theme group does`
+  );
+}
+
 /**
  * Which templates belong to a component rendered once per item somewhere.
  * `templates` is a list of `{ key, selector, source }`, `selector` being the
@@ -2044,6 +2122,17 @@ function run() {
   }
   for (const row of unnamedVerdict.drift) findings.push({ rule: 'unnamed-drift', site: row.file, ...row });
 
+  // The group rule reads each single-choice group's own tag.
+  let groups = 0;
+  let unnamedGroups = 0;
+  for (const template of sources) {
+    groups += readGroups(template.source).length;
+    for (const hit of scanUnnamedGroups(template.source)) {
+      unnamedGroups++;
+      findings.push({ rule: 'group', site: `${template.key}:${hit.line + template.offset}`, tag: hit.tag });
+    }
+  }
+
   const templates = files.filter((file) => file.endsWith('.html')).length;
   console.log(
     `Checked ${icons} mat-icon tag(s) across ${templates} template(s) and ` +
@@ -2088,6 +2177,10 @@ function run() {
       `nothing in some state of their blocks or in all, ` +
       `${UNNAMED_FROZEN.reduce((sum, row) => sum + row.count, 0)} frozen by name.`
   );
+  console.log(
+    `Checked ${groups} single-choice group(s), toggle groups that are not multiple, radio groups and ` +
+      `elements with role="radiogroup", across ${sources.length} template(s): ${unnamedGroups} carry no name.`
+  );
 
   if (findings.length > 0) {
     findings.sort((a, b) => a.site.localeCompare(b.site));
@@ -2102,6 +2195,7 @@ function run() {
     const idrefFindings = findings.filter((f) => f.rule === 'idref');
     const unnamedFindings = findings.filter((f) => f.rule === 'unnamed');
     const unnamedDriftFindings = findings.filter((f) => f.rule === 'unnamed-drift');
+    const groupFindings = findings.filter((f) => f.rule === 'group');
 
     if (iconFindings.length > 0) {
       console.error(`\n${iconFindings.length} icon(s) carry a name nothing can read:\n`);
@@ -2340,6 +2434,23 @@ function run() {
       );
     }
 
+    if (groupFindings.length > 0) {
+      console.error(`\n${groupFindings.length} single-choice group(s) carry no name:\n`);
+      for (const finding of groupFindings) {
+        console.error(`  ${finding.site}  <${finding.tag}> with no aria-label or aria-labelledby`);
+        console.error(`    → ${groupHint()}\n`);
+      }
+      console.error(
+        `A toggle group that is not multiple and a radio group render\n` +
+          `role="radiogroup" on their own host, and a screen reader entering one\n` +
+          `says the group's name before its first choice. With none, it hears the\n` +
+          `first choice and its place among the others, and nothing that says what\n` +
+          `is being chosen. axe reads no radiogroup's name, so no spec fails for it.\n` +
+          `Name the group on its host, in any spelling: the role is there.\n` +
+          `Reference: ${DOC}.\n`
+      );
+    }
+
     process.exit(1);
   }
 
@@ -2354,7 +2465,7 @@ function run() {
       `a literal reference names is declared in its own template, and every ` +
       `button, link, control by role, checkbox, slide toggle and radio button ` +
       `is named in every state of its blocks, and every slider on each of its ` +
-      `thumbs, or is frozen by name.`
+      `thumbs, or is frozen by name, and every single-choice group carries a name.`
   );
 }
 
@@ -4544,6 +4655,73 @@ function selfTest() {
   check(
     'the sibling hint names each control by what it acts on and quotes its model',
     [siblingHint().startsWith('name each by what it acts on'), siblingHint().includes(SIBLING_MODEL)],
+    [true, true]
+  );
+
+  // --- the group rule: must hit ---
+  const groupTags = (source) => scanUnnamedGroups(source).map((hit) => `${hit.line} ${hit.tag}`);
+  check(
+    'a single-choice toggle group with no name, its tag over several lines',
+    groupTags('<div>\n  <mat-button-toggle-group\n    [(ngModel)]="selectedType"\n  >\n    <mat-button-toggle value="a">A</mat-button-toggle>\n  </mat-button-toggle-group>\n</div>'),
+    ['2 mat-button-toggle-group']
+  );
+  check(
+    'a radio group with no name',
+    groupTags('<mat-radio-group [(ngModel)]="format">\n  <mat-radio-button value="csv">CSV</mat-radio-button>\n</mat-radio-group>'),
+    ['1 mat-radio-group']
+  );
+  check('an element with a literal radiogroup role and no name', groupTags('<div role="radiogroup"><span role="radio">A</span></div>'), ['1 div']);
+  check(
+    'a blank aria-label or aria-labelledby names nothing',
+    groupTags('<mat-button-toggle-group aria-label="">\n</mat-button-toggle-group>\n<mat-radio-group [attr.aria-labelledby]=" "></mat-radio-group>'),
+    ['1 mat-button-toggle-group', '3 mat-radio-group']
+  );
+  check(
+    'a literal multiple="false" or a [multiple] bound to false is single-choice',
+    groupTags('<mat-button-toggle-group multiple="false"></mat-button-toggle-group>\n<mat-button-toggle-group [multiple]="false"></mat-button-toggle-group>'),
+    ['1 mat-button-toggle-group', '2 mat-button-toggle-group']
+  );
+  check(
+    'a group inside a block that may not render is read all the same',
+    groupTags('@if (open()) {\n  <mat-button-toggle-group [value]="v()"></mat-button-toggle-group>\n}'),
+    ['2 mat-button-toggle-group']
+  );
+
+  // --- the group rule: must not hit ---
+  check(
+    'a group named in any spelling, each landing on the host the role is on',
+    groupTags(
+      `<mat-button-toggle-group ${GROUP_MODEL}></mat-button-toggle-group>\n` +
+        '<mat-button-toggle-group aria-labelledby="theme-label"></mat-button-toggle-group>\n' +
+        '<mat-radio-group aria-label="Format"></mat-radio-group>\n' +
+        `<mat-radio-group aria-label="{{ 'reports.format' | translate }}"></mat-radio-group>\n` +
+        `<div role="radiogroup" [aria-label]="'dashboard.period' | translate"></div>\n` +
+        '<div role="radiogroup" [attr.aria-labelledby]="labelId"></div>'
+    ),
+    []
+  );
+  check(
+    'a multiple toggle group renders role="group" and is not read',
+    groupTags('<mat-button-toggle-group multiple></mat-button-toggle-group>\n<mat-button-toggle-group [multiple]="many()"></mat-button-toggle-group>'),
+    []
+  );
+  check(
+    'a toggle, a radio button and other roles are not groups',
+    groupTags('<mat-button-toggle value="a">A</mat-button-toggle>\n<mat-radio-button value="b">B</mat-radio-button>\n<div role="group"></div>'),
+    []
+  );
+  check('a commented-out group is no group', groupTags('<!-- <mat-button-toggle-group></mat-button-toggle-group> -->'), []);
+
+  // --- the group rule: its hint ---
+  const CATEGORY_MANAGER_TEMPLATE = join(SOURCE_DIR, 'features/settings/category-manager/category-manager.component.html');
+  check(
+    'the group hint\'s model is a binding the category manager carries; if it left the category manager, update GROUP_MODEL',
+    existsSync(CATEGORY_MANAGER_TEMPLATE) && readFileSync(CATEGORY_MANAGER_TEMPLATE, 'utf8').includes(GROUP_MODEL),
+    true
+  );
+  check(
+    'the group hint asks for a name that says what is chosen and quotes its model',
+    [groupHint().startsWith('name the group with a key that says what it chooses'), groupHint().includes(GROUP_MODEL)],
     [true, true]
   );
 

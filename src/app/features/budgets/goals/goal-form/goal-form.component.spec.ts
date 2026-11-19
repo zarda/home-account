@@ -292,6 +292,16 @@ describe('GoalFormComponent, through its own template', () => {
     expect(action('common.save')).toBeUndefined();
   });
 
+  // A radio group is entered by its name, so a reader hears that the two
+  // choices are the goal's type before the first of them.
+  it('names its Saving goal / Project group', async () => {
+    await render({ mode: 'add' });
+
+    const group = el().querySelector('mat-button-toggle-group') as HTMLElement;
+    expect(group.getAttribute('role')).toBe('radiogroup');
+    expect(accessibleName(group)).toBe('goal.kindLabel');
+  });
+
   it('titles and labels itself for an edit', async () => {
     await render({ mode: 'edit', goal: savedGoalFixture });
 

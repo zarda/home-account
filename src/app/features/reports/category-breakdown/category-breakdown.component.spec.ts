@@ -14,6 +14,7 @@ import { AmountDisplayComponent } from '../../../shared/components/amount-displa
 import { CategoryChipComponent } from '../../../shared/components/category-chip/category-chip.component';
 import { EmptyStateComponent } from '../../../shared/components/empty-state/empty-state.component';
 import {
+  accessibleName,
   expectPainted,
   provideNoMotion,
   tokenValue,
@@ -436,6 +437,15 @@ describe('CategoryBreakdownComponent', () => {
       innerChart().categoryActivated.emit('cat3');
 
       expect(activated).toEqual([{ categoryId: 'cat3', type: 'income' }]);
+    });
+
+    // A radio group is entered by its name, so a reader hears that the two
+    // choices are a transaction type before the first of them.
+    it('names its Expenses / Income group', () => {
+      const group = (realFixture.nativeElement as HTMLElement).querySelector('mat-button-toggle-group') as HTMLElement;
+
+      expect(group.getAttribute('role')).toBe('radiogroup');
+      expect(accessibleName(group)).toBe('transactions.type');
     });
 
     // #488: the panels and the donut both render a tie in category id order,

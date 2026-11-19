@@ -55,6 +55,15 @@ describe('PeriodSelectorComponent', () => {
     expect(emitted).toEqual([]);
   });
 
+  // A radio group is entered by its name, so a reader hears that the quick
+  // ranges choose a period before the first of them.
+  it('names its quick-range group (real template)', () => {
+    const group = (fixture.nativeElement as HTMLElement).querySelector('.period-toggle') as HTMLElement;
+
+    expect(group.getAttribute('role')).toBe('radiogroup');
+    expect(accessibleName(group)).toBe('dashboard.period');
+  });
+
   it('emits calendar bounds when a quick range is chosen', () => {
     component.onToggleChange('lastMonth');
 

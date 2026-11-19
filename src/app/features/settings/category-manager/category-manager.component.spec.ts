@@ -11,11 +11,16 @@ import { AnnouncerService } from '../../../core/services/announcer.service';
 import { Category } from '../../../models';
 import { NotificationService } from '../../../core/services/notification.service';
 import {
+  accessibleName,
+  catalogTranslationStub,
   createTranslationStub,
   expectPainted,
   hoverValue,
   provideNoMotion,
+  runAxe,
   settleAnimations,
+  standOnThePage,
+  summarizeViolations,
   tokenValue,
   withTheme,
 } from '../../../core/services/testing';
@@ -421,6 +426,7 @@ describe('CategoryManagerComponent, through its own template', () => {
   let fixture: ComponentFixture<CategoryManagerComponent>;
   let categories: jasmine.SpyObj<CategoryService>;
   let dialog: jasmine.SpyObj<MatDialog>;
+  let translation: ReturnType<typeof createTranslationStub>;
 
   const el = () => fixture.nativeElement as HTMLElement;
   const rows = () => Array.from(el().querySelectorAll('.category-item')) as HTMLElement[];
@@ -462,6 +468,7 @@ describe('CategoryManagerComponent, through its own template', () => {
     categories.deleteCategory.and.resolveTo();
     categories.reorderCategories.and.resolveTo();
     dialog = jasmine.createSpyObj('MatDialog', ['open']);
+    translation = createTranslationStub();
 
     await TestBed.configureTestingModule({
       imports: [CategoryManagerComponent],
@@ -470,7 +477,7 @@ describe('CategoryManagerComponent, through its own template', () => {
         { provide: CategoryService, useValue: categories },
         { provide: MatDialog, useValue: dialog },
         { provide: MatSnackBar, useValue: jasmine.createSpyObj('MatSnackBar', ['open']) },
-        { provide: TranslationService, useValue: createTranslationStub() },
+        { provide: TranslationService, useValue: translation },
         { provide: AnnouncerService, useValue: jasmine.createSpyObj('AnnouncerService', ['announce']) },
         provideNoMotion(),
       ],
@@ -491,6 +498,39 @@ describe('CategoryManagerComponent, through its own template', () => {
     fixture.detectChanges();
 
     expect(names()).toEqual(['Salary']);
+  });
+
+  /**
+   * A single-select toggle group is a radiogroup, and a reader moving into one
+   * hears its name before its first choice. The Theme and Font size groups on
+   * the same page are named; without a name of its own, this one announced
+   * only "Total Expenses, 1 of 2" with nothing to say what is being chosen.
+   */
+  describe('its Expenses / Income group', () => {
+    const pinned = { en: 'Category type', ja: 'カテゴリの種類', tc: '類別類型' } as const;
+    const group = () => el().querySelector('.manager-header mat-button-toggle-group') as HTMLElement;
+
+    for (const locale of ['en', 'ja', 'tc'] as const) {
+      it(`is a radiogroup named for the category type, in ${locale}`, () => {
+        Object.assign(translation, catalogTranslationStub(locale));
+        setUp(mockCategoryList);
+
+        expect(group().getAttribute('role')).toBe('radiogroup');
+        expect(accessibleName(group())).withContext('the group\'s name').toBe(pinned[locale]);
+      });
+    }
+
+    // A general check of the header, not the guard for the group's name: axe
+    // reads no radiogroup's name, and passes with this one unnamed. The cases
+    // above hold this group's name, and icon-labels:check every group's.
+    it('leaves the header with nothing for axe to report', async () => {
+      Object.assign(translation, catalogTranslationStub('en'));
+      setUp(mockCategoryList);
+      standOnThePage(el());
+
+      const header = el().querySelector('.manager-header') as HTMLElement;
+      expect(summarizeViolations(await runAxe(header))).toEqual([]);
+    });
   });
 
   it('shows the spinner only while the first load is open', () => {

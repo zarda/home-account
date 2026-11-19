@@ -11,6 +11,7 @@ import { RecurringOccurrence, RecurringTransaction } from '../../../models';
 import { MAX_FORECAST_POINTS } from '../../../core/utils/forecast-series.utils';
 import {
   AUDIT_SCHEMES,
+  accessibleName,
   createTranslationStub,
   expectPainted,
   inPalette,
@@ -323,6 +324,16 @@ describe('ForecastComponent, through its own template', () => {
     const outline = (Array.from(el().querySelectorAll('h1, h2, h3, h4, h5, h6')) as HTMLElement[])
       .map(heading => `${heading.tagName.toLowerCase()} ${heading.textContent?.trim()}`);
     expect(outline).toEqual(['h2 reports.forecastNoRulesTitle']);
+  });
+
+  // A radio group is entered by its name, so a reader hears that 30, 60 and
+  // 90 days are the forecast's reach before the first of them.
+  it('names its horizon group', () => {
+    render();
+
+    const group = el().querySelector('.horizon-toggle') as HTMLElement;
+    expect(group.getAttribute('role')).toBe('radiogroup');
+    expect(accessibleName(group)).toBe('reports.forecastPeriod');
   });
 
   it('draws the projection on a real canvas, with its note and summary', () => {

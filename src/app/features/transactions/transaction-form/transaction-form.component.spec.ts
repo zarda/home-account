@@ -3585,6 +3585,17 @@ describe('TransactionFormComponent, through its own template', () => {
     expect(toggle('expense').querySelector('mat-icon')?.textContent?.trim()).toBe('trending_down');
   });
 
+  // A radio group is entered by its name, so a reader hears that the two
+  // segments are the transaction's type before the first of them; each
+  // segment keeps its own name, the flag's sentence included.
+  it('names its Expense / Income group', () => {
+    render();
+
+    const group = el().querySelector('.type-toggle-container mat-button-toggle-group') as HTMLElement;
+    expect(group.getAttribute('role')).toBe('radiogroup');
+    expect(accessibleName(group)).toBe('transactions.type');
+  });
+
   it('tells a part it is one', () => {
     render({
       mode: 'edit',

@@ -6,7 +6,7 @@ import { Timestamp } from '@angular/fire/firestore';
 import { GoalContributeDialogComponent } from './goal-contribute-dialog.component';
 import { Goal } from '../../../../models';
 import { TranslationService } from '../../../../core/services/translation.service';
-import { createTranslationStub, provideNoMotion } from '../../../../core/services/testing';
+import { accessibleName, createTranslationStub, provideNoMotion } from '../../../../core/services/testing';
 
 const goal: Goal = {
   id: 'g1',
@@ -167,6 +167,16 @@ describe('GoalContributeDialogComponent, through its own template', () => {
     // reader reads is aria-checked, not aria-pressed.
     expect(toggle('add').getAttribute('aria-checked')).toBe('true');
     expect(toggle('withdraw').getAttribute('aria-checked')).toBe('false');
+  });
+
+  // A radio group is entered by its name, so a reader hears what the two
+  // choices decide before the first of them.
+  it('names its Add / Take back group', () => {
+    fixture.detectChanges();
+
+    const group = el().querySelector('mat-button-toggle-group') as HTMLElement;
+    expect(group.getAttribute('role')).toBe('radiogroup');
+    expect(accessibleName(group)).toBe('goal.directionLabel');
   });
 
   it('closes with nothing from cancel and from the header close', () => {
