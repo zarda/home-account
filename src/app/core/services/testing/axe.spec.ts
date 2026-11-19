@@ -846,7 +846,7 @@ describe('the axe harness', () => {
       expect(accessibleDescription(node('inline'))).withContext('aria-description').toBe('Opens the picker.');
     });
 
-    it('holds the words a control shows when its name has them whole, read without regard to case', () => {
+    it('holds the words a control shows when its name has them whole, as words, read without regard to case', () => {
       expect(holdsShownWords('Add location to Coffee Shop', 'Add location', 'en')).withContext('at the start').toBeTrue();
       expect(holdsShownWords('View Transactions for Japan trip', 'view transactions', 'en'))
         .withContext('in another case').toBeTrue();
@@ -856,6 +856,13 @@ describe('the axe harness', () => {
       expect(holdsShownWords('檢視「Japan trip」的交易', '檢視交易', 'tc'))
         .withContext('tc, split round the name').toBeFalse();
       expect(holdsShownWords('Add tag to Coffee Shop', 'Add location', 'en')).withContext('other words').toBeFalse();
+      expect(holdsShownWords('Credit card', 'Edit', 'en')).withContext('only inside a longer word').toBeFalse();
+      expect(holdsShownWords('Address of Cafe', 'Add', 'en')).withContext('only at the start of a longer word').toBeFalse();
+      expect(holdsShownWords('Edit credit card', 'Edit', 'en'))
+        .withContext('whole once, though also inside a longer word').toBeTrue();
+      expect(holdsShownWords('Delete Cafe (2)', 'Delete', 'en')).withContext('beside a space').toBeTrue();
+      expect(holdsShownWords('目標を追加', '追加', 'ja')).withContext('ja, beside kana').toBeTrue();
+      expect(holdsShownWords('新增目標', '目標', 'tc')).withContext('tc, beside Han').toBeTrue();
       expect(() => holdsShownWords('Receipt image 1 of 2 for Cafe', ' ', 'en'))
         .withContext('a control that shows no words').toThrowError(/shows no words/);
     });

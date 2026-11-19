@@ -335,17 +335,49 @@ export function accessibleDescription(el: Element): string {
  * Whether a control's accessible `name` holds the words it `shows` whole, so
  * a voice user can say what they see (WCAG 2.5.3, Label in Name). Both are
  * read without regard to case in the reader's own locale, and a run of white
- * space reads as one space, as it does in a computed name. A control that
- * shows no words has nothing to hold, and every name would pass, so that
- * throws.
+ * space reads as one space, as it does in a computed name. The words must
+ * stand as words in the name: "Edit" inside "Credit" is not held, since a
+ * voice user saying "Edit" would not reach that control. Japanese and
+ * Chinese put no space between words, so beside a Han or kana character the
+ * edge is not read. A control that shows no words has nothing to hold, and
+ * every name would pass, so that throws.
  */
 export function holdsShownWords(name: string, shown: string, locale: SupportedLocale): boolean {
   const intl = INTL_LOCALES[locale];
   const read = (text: string) => text.replace(/\s+/g, ' ').trim().toLocaleLowerCase(intl);
-  if (!read(shown)) {
+  const words = read(shown);
+  if (!words) {
     throw new Error(`holdsShownWords: the control shows no words, so "${name}" has nothing to hold`);
   }
-  return read(name).includes(read(shown));
+  const whole = read(name);
+  const first = /^[\s\S]/u.exec(words)?.[0] ?? '';
+  const last = /[\s\S]$/u.exec(words)?.[0] ?? '';
+  for (let at = whole.indexOf(words); at !== -1; at = whole.indexOf(words, at + 1)) {
+    const before = /[\s\S]$/u.exec(whole.slice(0, at))?.[0];
+    const after = /^[\s\S]/u.exec(whole.slice(at + words.length))?.[0];
+    if (standsApart(first, before) && standsApart(last, after)) return true;
+  }
+  return false;
+}
+
+/** A letter or a digit, in any script. */
+const WORD_CHARACTER = /[\p{L}\p{N}]/u;
+/** A script written without spaces between its words. */
+const UNSPACED_CHARACTER = /[\p{Script_Extensions=Han}\p{Script_Extensions=Hiragana}\p{Script_Extensions=Katakana}]/u;
+
+/**
+ * Whether shown words ending in `edge` stand apart from the name's
+ * `beside` character: nothing is there, either is not a letter or digit,
+ * or either is from a script with no spaces between its words.
+ */
+function standsApart(edge: string, beside: string | undefined): boolean {
+  return (
+    beside === undefined ||
+    !WORD_CHARACTER.test(edge) ||
+    !WORD_CHARACTER.test(beside) ||
+    UNSPACED_CHARACTER.test(edge) ||
+    UNSPACED_CHARACTER.test(beside)
+  );
 }
 
 /** header.component.scss's toolbar height; the header is fixed over the viewport's top. */
