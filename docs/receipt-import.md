@@ -924,7 +924,8 @@ row* and *Remove {description}* in en. On a row with no description, Split and
 Remove are named by the words they show, and Merge is not offered. In en
 Merge shows *Merge…*, as ja shows *結合…* and tc *合併…*: the name holds
 *Merge*, and the ellipsis says only that a menu follows. tc's Split is named
-*分割「{description}」成兩列*, which holds the *分割* it shows
+*將「{description}」分割成兩列*, which holds the *分割* it shows, in the
+將… order of Merge's *將「{description}」合併到其他列*
 ([ADR 0196](ADR/0196-sibling-controls-say-what-they-act-on-a-name-holds-its-shown-words-a-focused-button-shows-an-indicator-inside-it-focus-stays-in-the-list-after-a-delete-and-a-failed-dashboard-read-is-quiet.md)).
 None of them edits the note, and a merge cannot be undone except by splitting
 an amount back off, which makes a new part with the survivor's identity rather

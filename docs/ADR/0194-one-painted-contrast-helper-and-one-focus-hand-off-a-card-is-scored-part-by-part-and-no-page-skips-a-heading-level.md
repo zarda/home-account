@@ -104,11 +104,24 @@ import that only the copies used is dropped; `computedAs` stays in the About
 and Data management specs, and the chart theme spec's `computed`, since each
 has other readers.
 
-`paintedVerdict` reads `getComputedStyle(settled(node)).color`: the settle,
+`paintedVerdict` settles the node before it reads its colour: the settle,
 and the check that the node is in the document, come before the colour is
 read, so a node caught mid-transition is read at the colour it rests on. A
 case in `painted-contrast.spec.ts`, modelled on the running-transition case,
 holds it.
+
+**A node the page does not draw has no verdict.** Under `display: none`,
+hidden, or of no size, a node still computes a colour and a background, so
+the verdict read its words as painted in their token at AA, and a
+regression that hid them passed. `paintedVerdict`, and `expectPainted`
+through it, now throw for such a node; a case in `painted-contrast.spec.ts`
+holds each of the three to the throw, and the helper's own cases give their
+boxes words, since an empty box has no height. Eight of the import wizard's
+colour cases read the processing, review and confirm steps' words while the
+stepper stood on the upload step, where Material lays another step's
+content out without drawing it, so they passed on words nobody sees; each
+now shows the step it reads, with the stepper free to jump to it, as the
+camera's hand-off has it.
 
 **The fold settles only the token probe.** A node is read settled only where
 the case goes through `expectPainted` or `paintedVerdict` (or
@@ -243,14 +256,19 @@ one stop (five in Karma's frame). The helper has its own spec,
 
 Each site has an outline case in its spec's real-template block; the budget
 card's pinned *names the budget in an h3* now reads the outline and expects
-an `h2`. The recurring list's title rule targets `.mat-mdc-card-title`,
-where an element rule on `mat-card-title` no longer matched the `h2`;
-Material's class matches the element and the attribute form alike. Budget
-Progress's stylesheet gives the same class the other cards' title look:
-`--text-lg`, weight 600, a line one and a half times the size, normal
-tracking and `--text-primary`. Material's own rule keeps the title's margin
-at 0, and its case pins that with the rest. Its two utility classes are
-gone.
+an `h2`. Every outline case reads through one helper, `headingOutline(root)`
+in `core/services/testing/axe.ts`, beside `expectHeadingsInOrder`: the
+headings under the root, in order, each as its tag and its trimmed words,
+`h2 Budget Progress`. The heading work had first pasted a reader of its own
+into 25 spec files, beside the empty state's, which wrote its outline
+another way and now reads `h3 No data` where it read `H3:No data`. The
+recurring list's title rule targets `.mat-mdc-card-title`, where an element
+rule on `mat-card-title` no longer matched the `h2`; Material's class matches
+the element and the attribute form alike. Budget Progress's stylesheet gives
+the same class the other cards' title look: `--text-lg`, weight 600, a line
+one and a half times the size, normal tracking and `--text-primary`.
+Material's own rule keeps the title's margin at 0, and its case pins that with
+the rest. Its two utility classes are gone.
 
 ### The walkthrough runs `heading-order` once per page
 
@@ -382,7 +400,8 @@ not move in either order.
 
 - Thirty-seven spec files read painted contrast through one helper, and a
   case that goes through `expectPainted` or `paintedVerdict` reads a node at
-  the colour it rests on. Elsewhere the fold settles only the token probe.
+  the colour it rests on, and fails on a node the page does not draw.
+  Elsewhere the fold settles only the token probe.
 - One focus hand-off serves thirteen components. A held Enter or Space
   presses nothing where focus lands, on the household sections, the
   dashboard layout's arrows, the split parts, the receipt viewer and the note
@@ -401,8 +420,9 @@ not move in either order.
   goal, each Data section and the first empty state of a page one level
   under the page's `h1`, and the sign-in page has one.
 - The walkthrough fails a page whose headings skip a level, once per page.
-- Three spec helpers more: `keepThePageWhereFound()`, the plan dialogs'
-  `fromThePageTop` and the totals line's `intoTheWindow()`.
+- Four spec helpers more: `keepThePageWhereFound()`, the plan dialogs'
+  `fromThePageTop`, the totals line's `intoTheWindow()` and the shared
+  `headingOutline(root)`.
 - **The fold has no emulator surface.** It changes spec helpers only, no app
   code, so there is nothing for an emulator case to read. The heading run is
   the walkthrough's own, and the focus hand-off is read by the wizard's
@@ -705,6 +725,13 @@ the run's reading of the stylesheet is in
   `chevron_right`.
 - **Budget Progress keeps its own padding**, 12px above its header and 12px
   around its content, where the other cards have 16px 16px 12px.
+- **The AI insights card keeps an eyebrow title.** Its `h2` reads
+  `--text-sm`, weight 600, upper case and spaced, in `--color-primary-text`
+  beside its glyph, where the other cards' titles read `--text-lg`, weight
+  600, in `--text-primary`; so the dashboard holds two card-title looks.
+  Budget Progress moved onto the others' look. Whether the insights card
+  follows them, or keeps its eyebrow as the mark of what a model wrote, is
+  not decided.
 - **The Data page's note reads singular in English.** *Count unavailable —
   this needs a connection.* stands over the list for every unavailable count,
   and offline all of them are; a number-neutral key would close it.

@@ -110,6 +110,11 @@ fade between the two was read as comment:
   parsed; each statement is printed by TypeScript's printer with its
   comments removed, its trailing commas dropped and an import's named
   imports sorted, then reduced to tokens, string literals by their value.
+  The tokens are the leaves of the printed statement's parse tree, so each
+  part of a template literal and each regular expression is one token; a
+  bare scan read the text after a substitution as code and a pattern as a
+  slash and words, so a `//` there hid the rest of the line, and a copy
+  could differ there and still match.
   Layout, quote style and the order of named imports do not count; anything
   else does. The builder's own module is written
   `@NgModule({ providers: [provideZoneChangeDetection(), ], })`, so a
@@ -136,14 +141,17 @@ Where 0145's gates walk their sources by hand, this one reads with the
 TypeScript compiler the project already installs, as
 `scripts/measure-receipt-parser.mjs` does. Otherwise it has 0145's shape, a
 header that states the defect and what the gate allows, and a self-test. Its
-28 cases accept the tree as it stands and copies that differ only in
-comments, trailing commas, layout or quote style; fail on a builder's init
-that gains a teardown option, a provider or a statement, and on a copy that
-drops an option, adds a statement or a second jasmine configuration, stands
-in another order, or leaves the localize import out once the polyfills no
-longer load it; and flag ten builders it cannot read as shape failures. The
-first sixteen were written before the gate, against an evaluator that always
-answered *match*, and twelve of them failed: `12 self-test failure(s)`.
+32 cases accept the tree as it stands and copies that differ only in
+comments, trailing commas, layout or quote style, a template literal and a
+pattern laid over other lines among them; fail on a builder's init that
+gains a teardown option, a provider or a statement, and on a copy that drops
+an option, adds a statement or a second jasmine configuration, stands in
+another order, leaves the localize import out once the polyfills no longer
+load it, or differs only after a template literal's substitution or inside a
+regular expression; and flag ten builders it cannot read as shape failures.
+The first sixteen were written before the gate, against an evaluator that
+always answered *match*, and twelve of them failed:
+`12 self-test failure(s)`.
 
 On today's tree it reads `@angular/build 22.1.6` and
 `5 top-level statements`, with `zone.js` in the test polyfills and
@@ -214,6 +222,16 @@ and their disabled states) and two by *feat: a deleted transaction can be
 brought back for ten seconds* (`.bottom-nav-container`,
 `.mat-mdc-snack-bar-container`).
 
+A word in product code still ships a utility, and one more came in that
+way after the change: the transactions page filtered its rows with
+`!hidden.has(row.id)`, and Tailwind reads `!` before a utility's name as
+that utility made important, in code as in a template, so the sheet shipped
+a `.!hidden` rule of 33 bytes that no template asks for. The set is named
+`hiddenRows` now (*fix: a tombstone set no longer names a utility the
+stylesheet then ships*), and `theme-aliases.spec.ts`'s *ships no important
+rule that only a negation in code names* holds the sheet free of it, after
+the same safelisted alias that shows the sheet was read.
+
 ### A lone date run is silent
 
 Each of the twenty-six lines is spied **and expected** in the case that
@@ -250,10 +268,23 @@ that caused one, with the context
 
 `console-quiet.spec.ts` runs for both methods: a held line is read and not
 passed on, any other line is passed on whole, a read marks only the calls it
-returned, and `unreadLines` refuses a spy `quietConsole` did not make. It
-prints nothing. A drop of the pass-through failed it with
-`Expected $.length = 0 to equal 2`, and the original method read after
-`spyOn` overflowed the call stack with a `RangeError`.
+returned, and `unreadLines` refuses a spy `quietConsole` did not make. Two
+cases stand in for the global `expect` while `expectEveryHeldLineRead`
+runs, so its expectation is read rather than made: with a line left unread
+it expects that line against none, which fails, naming the line; with every
+line read it expects an empty list against none. It prints nothing. A drop
+of the pass-through failed it with `Expected $.length = 0 to equal 2`, and
+the original method read after `spyOn` overflowed the call stack with a
+`RangeError`.
+
+Off the date list, the receipt smoke's *writes nothing when one upload in a
+batch fails* printed the service's `[Transactions] Receipt upload failed:`
+twice, once per path, and expected neither; its comment laid the failure at
+a size guard, though the file, over the ceiling and no image, is refused
+first by the decoder that would shrink it. The case now expects each path's
+line with its `RECEIPT_IMAGE_UNREADABLE` cause and passes any other line on,
+and the comment names the decoder. It has not been run against the
+emulators since.
 
 Karma's three font 404 lines are left as they are, by 0187's decision.
 
@@ -293,7 +324,8 @@ Three self-test cases were added beside the three url cases already there:
   the source's line breaks in array and object literals and the source's
   quote style, so a copy wrapped differently or quoted with double quotes
   would have differed from the builder's one-line strings. The tokens of the
-  printed statement are compared instead.
+  printed statement are compared instead, the leaves of its parse tree
+  rather than a bare scan of its text.
 - **Allowing any jasmine configuration.** The allowance is the copy's one
   reason to exist, and it is keyed on one statement.
 - **Dropping the nineteen aliases,** as the criterion's wording would. They
@@ -326,7 +358,7 @@ Three self-test cases were added beside the three url cases already there:
   hand. An upgrade that changes how the builder works out its arms, or where
   it keeps its init, fails as a shape failure. Neither needs a Karma run to
   show.
-- **The gate costs** `scripts/check-test-main.mjs`, 886 lines with its 28
+- **The gate costs** `scripts/check-test-main.mjs`, 922 lines with its 32
   cases, a package script, a CI step, a row in the root README's scripts
   table and a place in its CI-order paragraph, and the paragraph of
   `docs/testing.md` that asked for a re-read, which now describes the gate.
@@ -349,9 +381,10 @@ Three self-test cases were added beside the three url cases already there:
   made with the change printed 35 WARN and 42 ERROR lines, halved, where the
   base printed 60 and 43: the twenty-five and the one.
 - **A held line must be read.** A case that stops expecting the line it
-  causes fails, and a warning nobody expects, under any other prefix, still
-  prints. The console work costs eight files, 243 lines in and 32 out, the
-  helper's 73 lines and its spec's 77 among them.
+  causes fails, as `console-quiet.spec.ts` shows on a line left unread, and
+  a warning nobody expects, under any other prefix, still prints. The console
+  work costs eight files, 243 lines in and 32 out, the helper's 73 lines and
+  its spec's 77 among them.
 - **The opacity gate reads the comment shape as code** and every real source
   as before. Its self-test has 153 cases, three more, and the real run reads
   as it did: `Checked 105 stylesheets and 104 templates, inline ones
@@ -506,12 +539,13 @@ development server used.
   no word that shipped a rule, so only the `*.spec.ts` exclusion is
   exercised, by `.ring`. A case per pattern, a word only a file of that kind
   holds read back absent from the sheet, would pin each.
-- **Only `.ring` is read.** The unit case and the smoke look for `.ring`
-  alone. A comment in a non-spec file that names any other utility ships it,
-  and nothing fails; that no non-spec file names *sr-only*, comments
-  included, is still kept by hand. The selector diff that proves this change
-  was taken once; a step that compared the built sheet's class selectors with
-  a recorded list would hold every utility.
+- **Only `.ring` and `.!hidden` are read.** The unit cases look for those
+  two, the smoke for `.ring` alone. A comment in a non-spec file that names
+  any other utility ships it, and so does a negation in code of a variable
+  named after one, and nothing fails; that no non-spec file names *sr-only*,
+  comments included, is still kept by hand. The selector diff that proves this
+  change was taken once; a step that compared the built sheet's class
+  selectors with a recorded list would hold every utility.
 
 ### The date run's console
 

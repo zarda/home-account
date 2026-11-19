@@ -467,7 +467,8 @@ so an untitled row reads its stand-in; on such a row Split and Remove are
 named by the words they show, and Merge is not offered. In en Merge shows
 **Merge…**, as ja shows *結合…* and tc *合併…*: its name holds *Merge*, and
 the ellipsis says only that a menu follows. tc's Split is named
-*分割「{description}」成兩列*, which holds the *分割* it shows. The label
+*將「{description}」分割成兩列*, which holds the *分割* it shows, in the
+將… order of Merge's *將「{description}」合併到其他列*. The label
 gate's sixth rule fails a control stamped once per item whose whole name, its
 own text included, is one key with no parameters, and the card's spec holds
 each name to its control's shown words in en, ja and tc

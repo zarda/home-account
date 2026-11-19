@@ -129,10 +129,14 @@ shown again.
 The three sign-out doors (the header's, the Settings page's after its own
 confirm, and the lock screen's) await `flushBeforeSignOut()` before
 `signOut()`. It makes the waiting delete real and waits for every running
-delete to settle, for `SIGN_OUT_WAIT_MS`, five seconds, at most. A delete made
-offline settles only once the connection returns, and a sign-out must never
-wait on that: on the lock screen sign-out is the one way off the screen. The
-lock screen still clears the credential first.
+delete to settle, for `SIGN_OUT_WAIT_MS`, five seconds, at most. The page
+stays in use meanwhile, so a delete confirmed during the wait is made real
+and waited for too, within the same five seconds, counted from the
+sign-out: left waiting, it would meet nobody signed in once the sign-out
+landed, and never run. A delete made offline settles only once the
+connection returns, and a sign-out must never wait on that: on the lock
+screen sign-out is the one way off the screen. The lock screen still clears
+the credential first.
 
 A flush deletes only for the account that asked. With nobody signed in, or
 someone else, it settles `'signed-out'`, deletes nothing and says nothing.
@@ -155,9 +159,14 @@ available for a few seconds.*, with the translated `common.undo` in
 shown is `transactions.deleted`, *Deleted {{description}}*, beside **Undo**.
 
 While the phone's bottom nav is shown, every notice opens above it:
-`body:has(.bottom-nav-container.visible) .mat-mdc-snack-bar-container` takes
+`body.bottom-nav-shown .mat-mdc-snack-bar-container` takes
 `margin-bottom: calc(64px + var(--safe-bottom) + 8px)`, so the Undo does not
-sit where a thumb reaches for the tabs.
+sit where a thumb reaches for the tabs. The notice opens outside the shell,
+so the shell marks the body: `MainLayoutComponent` sets `bottom-nav-shown`
+while the bottom nav is shown and takes it away when the shell goes. The
+rule was first keyed on `body:has(.bottom-nav-container.visible)`, which
+iOS 15's WebView before 15.4 does not parse; it drops the whole rule there,
+and the notice sat over the tabs.
 
 ### Focus goes on as the confirm returns, and comes back with the row
 
@@ -169,9 +178,14 @@ empty state's button.
 When Undo or a failed delete brings the row back, the page tells the list
 (`deleteUndone`, `deleteFailed`). Both scroll to the row and offer
 focus to its menu button through `focusWhenRendered` with `onlyIfDropped`,
-and with `from` set to the snack bar when focus is inside it: the Undo button
-keeps focus while the notice plays its way out and then drops it. Focus the
-reader has put anywhere else stays there. While another row's delete, confirmed
+and with `from` set to the snack bar when focus is inside one Material has
+started to take down (`mat-exit` on its container): the Undo button keeps
+focus while the notice plays its way out and then drops it. Focus in a
+notice still up stays where it is: a failure arrives late, when the notice
+up is the next row's, whose Undo the reader may be about to press. Focus the
+reader has put anywhere else stays there too. On a phone while rows are
+being chosen, the row shows its checkbox in place of its menu button, so the
+checkbox is offered focus last. While another row's delete, confirmed
 since, waits to hand focus on, that hand-off decides.
 
 ### A delete that fails brings the row back, named, once no Undo is up
@@ -246,8 +260,10 @@ Undo.
 - A delete that fails after the reader has left the page is still named in
   the error notice wherever the reader is, unless the account that asked is no
   longer the one signed in.
-- A sign-out inside the window waits for the delete, five seconds at most.
-- Every notice, not only Undo's, opens above the phone's bottom nav.
+- A sign-out inside the window waits for the delete, and for any delete
+  confirmed while it waits, five seconds at most in all.
+- Every notice, not only Undo's, opens above the phone's bottom nav, on
+  iOS 15's first WebViews as everywhere else.
 - When the page was wired, `pending-delete.service.ts` measured 2,670 B of
   `main`, initial because the header injects it. The build's initial-bundle
   warning stood 175 B over before these commits and 3.96 kB over after them;
@@ -265,9 +281,12 @@ Undo.
 
 What holds it, besides the cases of
 `src/app/core/services/pending-delete.service.spec.ts` (among them `'deletes
-once when two flush triggers land together'` and `'signs out after
-SIGN_OUT_WAIT_MS at most, when the delete does not settle (offline)'`), the
-page's, the list's, the notice's and the three doors':
+once when two flush triggers land together'`, `'signs out after
+SIGN_OUT_WAIT_MS at most, when the delete does not settle (offline)'`,
+`'makes real a delete confirmed while it waits, and waits for that one
+too'` and, per catalog, `'names the Undo and the row in what a screen reader
+hears'`), the page's, the list's, the notice's, the shell's and the three
+doors':
 
 - The page announcing the restore a second time:
   `Expected 2 to be 1`.
@@ -376,6 +395,23 @@ were elsewhere and are recorded in 0196 and
   delete waits under the filters it was deleted under.
 - **The Undo button keeps focus as its notice leaves**, then drops it to the
   document. Hence `from`.
+- **A notice up when a failure lands is the next row's.** By the time a
+  failed delete brings its row back, the row's own notice has long gone.
+  The list first took focus from any notice that held it, which moved a
+  reader on the next row's Undo to the failed row and let that notice's
+  paused window run on. Only a notice Material has started to take down
+  (`mat-exit`) gives focus up now.
+- **Choosing rows on a phone hides the menu button.** The row's checkbox
+  stands in its place, so a row its Undo brought back while rows were being
+  chosen offered focus to nothing, and focus left on the Undo notice fell to
+  the document as the notice went.
+- **The page stays in use while a sign-out waits.** A row deleted during the
+  wait was still waiting when the sign-out landed, met nobody signed in and
+  was never deleted, though the reader never pressed its Undo.
+- **iOS 15's WebView before 15.4 drops a rule that holds `:has()`.** The
+  notice's lift was first keyed on the bottom nav through `:has()`, so on
+  those WebViews the notice sat over the tabs; the shell's class on the body
+  replaced it.
 - **An offline delete settles only when the connection returns**, which
   turned a plain await at the sign-out doors into the five-second cap.
 - **The confirm's last sentence became false** the moment Undo existed.
@@ -385,7 +421,10 @@ were elsewhere and are recorded in 0196 and
   5 s, saying what holds focus or which rows show (only the list's first
   load keeps 15 s). The case's `afterEach` makes any waiting delete
   real before it deletes the case's app, since a timer firing into a deleted
-  app would fail a later case.
+  app would fail a later case. It waits as a sign-out does
+  (`flushBeforeSignOut`), five seconds at most, since a delete made with no
+  connection never settles and the app must still be deleted, and the hook
+  has 20 s.
 - **The case could not live in `src/app/app.smoke.spec.ts`.** Its two seeded
   rows share one `Timestamp.now()`, so no row can be dated between them, and
   the walkthrough deletes its shared app at its end. The case seeds its own
@@ -404,6 +443,14 @@ were elsewhere and are recorded in 0196 and
   one round trip after the confirm; it now lasts up to ten seconds more.
   Closing it would need the waiting id kept where the next start can find it
   and make the delete then.
+- **A page suspended or killed after its hide-time flush can half-delete
+  the row.** When the flush's commit is queued but the page goes before the
+  steps after it, the queued write deletes the row and its household copies
+  on the next start, while the steps that follow the commit never run: the
+  row's receipt objects are left with nothing naming them, and its
+  category budget's stored spent stays stale until it is next recalculated.
+  Keeping what those steps need where the next start can find it, and
+  running them then, would close it.
 - **The ten-second limit itself** (WCAG 2.2.1). The window stands still while
   the notice is hovered or focused, but nothing lets a reader lengthen it or
   turn it off beforehand. A setting for its length, or none, would close it.

@@ -120,11 +120,16 @@ it was.
 
 The dropzone spec drives the drag as a mouse makes one, through
 `dragByHandle` (`test: a CSV's row holds still while a photo is dragged over
-it`): a press on the photo's handle with a button held and a click count, or
-CDK takes it for a screen reader's; a first move past CDK's 5px start
-threshold; a second onto the target row, where the pointer is held 250ms, past
-the 200ms glide of the rows the drag slides aside; then the release, and a
-wait until the lifted row has glided into its slot. In *a pick that mixes
+it`): the handle scrolled into view, and a press on what a pointer at its
+middle hits, which must be the handle or inside it, with a button held and
+a click count, or CDK takes it for a screen reader's; a first move past CDK's
+5px start threshold; a second onto the target row, where the pointer is held
+250ms, past the 200ms glide of the rows the drag slides aside; then the
+release, and a wait until the lifted row has glided into its slot. A handle
+covered, cut off or deaf to the pointer throws rather than starting a drag a
+mouse could not, and so does a drag that lifted no preview, before the reading
+mid-drag runs; two cases, *refuses to drag by a handle the pointer cannot
+press* and *refuses a drag that never started*, hold both. In *a pick that mixes
 photos and a CSV*, *holds a CSV's row still while a photo is dragged past it*
 reads, mid-drag, the CSV's `style.transform` as `''` and its offset from
 `.file-list` unchanged, with a slot standing and photo a slid aside and drawn
@@ -149,7 +154,11 @@ Then `expectPainted` holds the picked label to
 `--mat-sys-on-secondary-container` and the other to
 `--mat-sys-on-surface-variant` at 4.5:1, and the checkmark, a graphic, to
 `--mat-sys-on-secondary-container` at 3:1. A real click on Statement's
-primary action flips the pick, and everything is read again.
+primary action flips the pick, and everything is read again. It is the
+chips' only contrast reading, so it expects each label and the selected
+chip's focus overlay before it reads the palettes: a part a Material rename
+stops matching fails it, where it once returned early and skipped every
+palette.
 
 Both readings are at rest. The click focuses the chip, and a focused chip
 paints a state layer over its fill, a sibling of the label that the painted
@@ -183,7 +192,12 @@ every palette: 6.30:1 at rest and 6.58:1 hovered in light, 11.60:1 and 6.72:1
 in dark, high contrast as its base. `contrast:check` now scores
 `--color-primary-text` on `--surface-background` at 3:1, the zone's resting
 fill under a finger, where it held that pair exempt; its `--surface-hover`
-row names the slot under a mouse.
+row names the slot under a mouse. The spec reads the edge as painted: for
+the reading the slot takes the edge's colour as its text colour, so the
+colour's alpha, the slot's own opacity and every ancestor's are composited
+over the zone. Read from the computed border colour alone, a slot faded to
+0.3 on the clear fill read about 6.3:1 and passed; as painted it reads
+1.6:1 to 2.1:1 and fails, alone or on the `--surface-hover` fill.
 
 The lifted row, `.cdk-drag-preview`, is drawn at full strength (its 0.95
 opacity is gone), over `--shadow-overlay`, edged in the slot's colour. CDK
@@ -256,10 +270,12 @@ from a screen reader and its words in a span: `--text-xs` in `--text-muted`,
 the subtitle's colour, with no fill, outline or pointer, wrapping as words do.
 `role="list"` because WebKit drops the role from a list drawn without
 markers. The header's margin over the list is 16px where it was 24; the list
-keeps the 24 over the stepper. A 320 by 568 phone shows 424px under the
-wizard's top, between the app bar, the page's gutter and the bottom nav; at a
-288px page the upload area and its 40px of padding now start within it in
-en, ja and tc
+keeps the 24 over the stepper. The list sets its margins, its items' floor
+and its glyphs' size in logical properties, as the upload area's rules
+beside it do, so they compute the same in either reading direction. A 320 by
+568 phone shows 424px under the wizard's top, between the app bar, the page's
+gutter and the bottom nav; at a 288px page the upload area and its 40px of
+padding now start within it in en, ja and tc
 (`fix: the import's feature list reads as words, and the upload area starts on a phone's first screen`,
 `test: the import's features as a list of words, and the upload area on a 320 x 568 first screen`).
 

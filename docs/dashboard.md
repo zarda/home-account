@@ -526,7 +526,12 @@ stylesheet's `.mat-mdc-card-title` rule: `--text-lg`, weight 600, a line one
 and a half times its size, normal tracking, in `--text-primary`. It read
 16px / 400 in the app before, beside the others' 18px / 600. The rule names
 Material's class, not the element, so it holds whichever tag carries the
-title, and with the component's attribute it outranks Material's.
+title, and with the component's attribute it outranks Material's. AI
+Insights' title keeps a look of its own, an eyebrow beside its glyph:
+`--text-sm`, weight 600, upper case and spaced, in `--color-primary-text`.
+So the dashboard holds two card-title looks; whether that one follows the
+others is not decided
+([ADR 0194](ADR/0194-one-painted-contrast-helper-and-one-focus-hand-off-a-card-is-scored-part-by-part-and-no-page-skips-a-heading-level.md), Known gaps).
 
 **The two View All links name their card.** Each shows *View All* and is
 named `dashboard.viewAllNamed` with the card's title: *View All Recent

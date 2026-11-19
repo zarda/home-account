@@ -183,9 +183,17 @@ counting as its key), fail when both can render at once.
   rendering together.
 - **Only what the sixth rule leaves.** A control stamped once per item, or
   reached by two cases of one held-apart switch, is the sixth rule's and is
-  reported there, once (`readPerItem`).
+  reported there, once (`readPerItem`). The sixth rule's tally counts each
+  of a ternary's keys on its own, so a plain key in one case of a switch on
+  the `@for`'s own item and a ternary holding it in another are its, both
+  reported there; the ninth no longer reports that shape in one template.
 - **Only a control named by its `aria-label`.** Two controls named by their
   own text read the words a sighted user sees too.
+- **A datepicker's toggle is a control by its tag**, as a button is, for
+  this rule and the sixth. `mat-datepicker-toggle` carries no role, and its
+  `aria-label` input names the button it renders, so a bare key there is
+  that button's whole name: a pair of calendar toggles back on one bare key
+  fails. A control's literal `role` is read in single or double quotes.
 - **One template.** Which templates share a page is decided at run time.
 
 The rule has no freeze list; every hit was fixed. Run over the tree before the
@@ -195,21 +203,30 @@ that can show beside it. Its self-test runs it as the run does, across
 templates with the sixth rule's verdict handed on, and nine mutants of the
 rule (an `@else` not handed its chain, the case arms dropped, the shallowest
 shared chain taken, a ternary not split, the per-item controls not left out,
-text-named controls read too, among them) each failed it.
+text-named controls read too, among them) each failed it. The text it prints
+under a hit says that only the cases of a switch that is not on its `@for`'s
+own item keep two controls apart, and why the others do not.
 
 ### A name holds the words its control shows
 
 A name **contains** the words its control shows, whole, both read without
 regard to case in the reader's locale (`holdsShownWords`, in
-`core/services/testing/axe.ts`). It need not open with them. The review
-card's cases leave the icon's ligature out of the shown words and fold a
-trailing ellipsis away.
+`core/services/testing/axe.ts`). It need not open with them. The words must
+stand as words in the name, with no letter or digit beside them: *Edit*
+inside *Credit card* or *Add* inside *Address* is not held, since a voice
+user saying the shown word would not reach the control. Beside a Han or
+kana character the edge is not read, since Japanese and Chinese put no
+space between words. The review card's cases leave the icon's ligature out
+of the shown words and fold a trailing ellipsis away.
 
 - **Merge** shows *Merge…* in en, as ja *結合…* and tc *合併…* already did, and
   its name is unchanged: *Merge {{description}} into another row* holds
   *Merge*.
-- **Split** in tc is named *分割「{{description}}」成兩列*, which holds the
-  shown *分割*. `QUOTES_A_REAL_DESCRIPTION` is unchanged.
+- **Split** in tc is named *將「{{description}}」分割成兩列*, which holds the
+  shown *分割* and follows the 將… order of Merge's
+  *將「{{description}}」合併到其他列*; it first read
+  *分割「{{description}}」成兩列*, a word-for-word order beside Merge's.
+  `QUOTES_A_REAL_DESCRIPTION` is unchanged.
 - The describe *a row action's name holds the words it shows* in
   `transaction-preview-table.component.spec.ts` holds Split, Merge and Remove
   on a titled row, and Split and Remove on a blank one, which is offered no
@@ -231,13 +248,15 @@ counter, so each panel's label names its own box. The caption is the panel's
 muted hint text, `--text-muted` at `--text-xs`, and it wraps rather than being
 cut. It shows whenever the box does, holding the query or emptied, and it is
 the box's name. The placeholder goes, and `transactions.searchLabelPlaceholder`
-leaves the three catalogs. The pill grows from 48 to 60px (8px of padding, an
-18px caption, a 2px gap and a 24px box); at a 336px host in Karma the pill is
-312 × 60, the caption whole and Save and Cancel 40 × 40 inside it. The
-caption reads AA on the pill in all four palettes. A mutation that faded and
-clipped the caption failed four cases: the 336px case in en, ja and tc
-(scroll widths 126, 84 and 72 against 40) and the plain palette's AA, at
-2.75.
+leaves the three catalogs. The pill's padding is written as block and inline
+padding, 12px at the start beside the caption and 4px at the end beside Save
+and Cancel, so it follows the reading direction. The pill grows from 48 to
+60px (8px of padding, an 18px caption, a 2px gap and a 24px box); at a
+336px host in Karma the pill is 312 × 60, the caption whole and Save and
+Cancel 40 × 40 inside it. The caption reads AA on the pill in all four
+palettes. A mutation that faded and clipped the caption failed four cases:
+the 336px case in en, ja and tc (scroll widths 126, 84 and 72 against 40)
+and the plain palette's AA, at 2.75.
 
 ### A focused Material button shows an indicator inside it
 
@@ -294,18 +313,28 @@ cleared outside forced colours alone, each kind's margin and the FAB's and
 mini FAB's corners outranking Material's own) and measures the rendered
 indicator through `readIndicator` and `expectIndicatorInEveryPalette` in
 `core/services/testing/focus-indicator.ts`, in all four palettes, with
-Material's focus state layer laid under it. The filters' spec measures Save
-and Cancel on the save-search pill and each suggestion's remove on their real
-template, and the answer history's spec an open row's pinned pin. Measured in
-Karma, plain and dark, high contrast equal to its scheme: an icon button on a
-card 9.33 and 12.92, on the page 8.56 and 14.52, on the save pill 8.48 and
-10.67, in a field's suffix and in the suggestions 9.33 and 12.92, the pinned
-pin 6.24 and 3.99, the period chip's clear 8.34 and 6.96, the filled picker
-button 6.29 and 5.95, a dialog header's close 8.87 and 14.36; on their own
-fill, flat 4.97 and 6.32, text 5.45 and 7.50, stroked 5.45 and 7.50, raised
-5.18 and 8.58, the FAB 5.96 and 5.50. Without the margin rules the flat case
-falls to 1.00 (1.27 in dark); without the state-layer rule the pinned pin in
-dark reads 2.86. A copy of the outline rule under another query fails:
+Material's focus state layer laid under it. `readIndicator` names each
+ancestor that cuts the indicator off (`clippedBy`): one whose overflow is not
+visible, or that contains its paint, when its padding box does not hold the
+indicator, and one with a clip-path when its border box does not; a
+clip-path's own shape is not read. The describe *what readIndicator reads*
+puts a 100px stroked button in a 96px box that cuts it each of the three
+ways and expects the box named, and in a roomy box that clips its overflow
+and expects nothing named. The reading leaves Material's
+`cdk-keyboard-focused` class as it found it, so a button a case had
+keyboard-focused still shows its focus state after it. The filters' spec
+measures Save and Cancel on the save-search pill and each suggestion's remove
+on their real template, and the answer history's spec an open row's pinned
+pin. Measured in Karma, plain and dark, high contrast equal to its scheme: an
+icon button on a card 9.33 and 12.92, on the page 8.56 and 14.52, on the save
+pill 8.48 and 10.67, in a field's suffix and in the suggestions 9.33 and
+12.92, the pinned pin 6.24 and 3.99, the period chip's clear 8.34 and 6.96,
+the filled picker button 6.29 and 5.95, a dialog header's close 8.87 and
+14.36; on their own fill, flat 4.97 and 6.32, text 5.45 and 7.50, stroked
+5.45 and 7.50, raised 5.18 and 8.58, the FAB 5.96 and 5.50. Without the
+margin rules the flat case falls to 1.00 (1.27 in dark); without the
+state-layer rule the pinned pin in dark reads 2.86. A copy of the outline
+rule under another query fails:
 `Unexpected $[0] = 'screen: .mat-mdc-button-base:focus-visible { outline: none; }'`.
 
 ### Focus stays in the list after a confirmed delete
@@ -320,10 +349,14 @@ through `focusWhenRendered` with `onlyIfDropped`, so focus the reader has
 moved meanwhile stays where it is.
 
 - **The list follows the row.** A confirm that closes on Delete arms
-  `deletedRow`, `{ id, index }`. The index is read as the confirm opens, so a
-  row that goes while it is open still has a place, and is kept current while
-  the row is listed, so rows that load above it move its place with it. An
-  effect on the sorted rows hands focus on once the id has gone, and disarms.
+  `deletedRow`, `{ id, index }`. The index is read again as the confirm
+  closes, so rows loaded above the row, or trimmed from above it, while the
+  confirm was open move its place; the index read as the confirm opened
+  stands only for a row that went while it was open. The page hides the row
+  in the same task as the confirm closes, so the index read then is the one
+  the hand-off uses; a row still listed after that is followed, its index
+  kept current. An effect on the sorted rows hands focus on once the id has
+  gone, and disarms.
 - **The row leaves at once.** The page hides a confirmed row while its delete
   waits out the Undo window
   ([0197](0197-a-deleted-transaction-can-be-brought-back-for-ten-seconds-because-the-delete-waits.md)),
@@ -339,14 +372,19 @@ moved meanwhile stays where it is.
   read as the confirm closes).
 - **A row that comes back** (its Undo, or a delete that failed) is followed no
   more; the page tells the list (`deleteUndone`, `deleteFailed`), which
-  scrolls to it and offers focus to its menu button (0197).
+  scrolls to it and offers focus to its menu button, or on a phone while
+  rows are being chosen to its checkbox (0197).
 
 The describe *focus after a dialog a row menu opened* in
 `transaction-list.component.spec.ts` deletes from the desktop menu, the
 phone's menu and the swipe drawer. Red before the fix, 12 cases failed, each
-`Expected <body>...</body> to be <button ...>`. The emulator smoke
-`delete-undo.smoke.spec.ts` deletes by keyboard through the real menu and
-confirm; with the hand-off made to prefer the row before, it read
+`Expected <body>...</body> to be <button ...>`. Each door also loads a row
+above the row, and trims one from above it, while its confirm is open, with
+the row hidden as the confirm closes, as the page does, and finds focus on
+the row that followed it; with the place read only as the confirm opened,
+focus went to the row before it or to the one after the next. The emulator
+smoke `delete-undo.smoke.spec.ts` deletes by keyboard through the real menu
+and confirm; with the hand-off made to prefer the row before, it read
 `Timed out waiting for: focus on the menu button of the row now in the place of the one deleted; found focus on button…row-menu-btn… in row <newer>`.
 
 ### A failed dashboard read is quiet and touches nothing
@@ -378,9 +416,9 @@ marked as arrived on a failure, the bill cases read
 `removeAllReceipts`, `deleteTransaction` and `wipeTransactions` hand
 `deleteReceiptSlots` the slots of `receiptImageSlots(transaction)`, the slots
 that held an image when the row was read, rather than every slot of the
-array. `removeAllReceipts` keeps `slotSpan` for its tombstones and tombstones
-only a slot it swept, inside that span. Another device can append past the
-span seen at read time or, once its own removal has truncated trailing
+array. `removeAllReceipts` tombstones only the slots it swept, with no span:
+each comes from the array read for the sweep. Another device can append past
+the array seen at read time or, once its own removal has truncated trailing
 tombstones, into a slot that was empty then; either way that image is neither
 swept nor tombstoned, and it survives the clear with its object.
 
@@ -418,7 +456,11 @@ The first run met two more sets of siblings.
   Material hands to its inner button in place of the shared label; every
   other date field of the app stands alone and keeps *Open calendar*. The
   filters first read two keys of their own and moved onto the slotted one
-  afterwards, with the same words in all three languages.
+  afterwards, with the same words in all three languages. No gate had read
+  the pair: the toggle was no control to the ninth rule, by tag or by role.
+  It is one by its tag now, for the ninth rule and the sixth, and the
+  self-test holds the filters' pair under one bare key, which fails, and
+  named by their field, which passes.
 
 ### The period chip's clear says what it clears, and hands focus on
 
@@ -451,7 +493,8 @@ because tc's `settings.period` is *週期*, a recurrence cycle, not a span of
 time.
 
 The tenth rule of `icon-labels:check`: a single-select toggle group, a
-`mat-radio-group` and any element with a literal `role="radiogroup"` carry
+`mat-radio-group` and any element with a literal `role="radiogroup"`, the
+role in single or double quotes, carry
 `aria-label` or `aria-labelledby`, in any spelling, with a value that is not
 blank (`readGroups`, `scanUnnamedGroups`). A `multiple` group renders
 `role="group"` and is not read. It reads 12 groups today, all named, and its
@@ -479,7 +522,10 @@ manager's name taken off, the gate fails at that template.
   and on a line of its own where they do not. The title block is capped at the
   room beside Material's 40px avatar, so the row breaks before the chip and
   never before the title. The chip ends at the header's padding, and the
-  file's direction ratchet drops by the right offset it no longer sets.
+  file's direction ratchet drops by the right offset it no longer sets. The
+  row keeps Material's own alignment, so each provider's avatar stands at the
+  top of its header beside its title's first line; only the chip is centred
+  in its row.
 
 ## What was rejected
 
@@ -550,7 +596,7 @@ manager's name taken off, the gate fails at that template.
   receipt count but no URL, which is inconsistent data, used to be swept at
   slot 0 and now sends an empty slot list, since no URL names an object there.
 - `icon-labels:check` gains its ninth and tenth rules; its self-test passes
-  323 cases today. The eighth rule's account of what it cannot see no longer
+  336 cases today. The eighth rule's account of what it cannot see no longer
   cites the AI page's test buttons, which are named in both states now.
 - New catalog keys, in en, ja and tc: the two dismissals, the four AI page
   keys with a provider slot and `settings.modelFor`, `searchBoxLabel`,
@@ -651,7 +697,13 @@ and 123 hold this record's parts.
   chip x 167 to 279 over title x 89 to 260 in one row, reading *Google
   [RECOMMENDED]*. It stands at y 556 under the title (y 503 to 532), no
   overlap, and the three titles stand beside their avatars. Fixed by `fix: the
-  AI page's Recommended chip stands clear of the provider's title`.
+  AI page's Recommended chip stands clear of the provider's title`. That fix
+  centred the whole header row, which moved every provider's avatar from the
+  top, beside its title's first line, to beside a wrapped title's second
+  line: at 320px, 8px lower at the default text size and 31px at Extra
+  large. `fix: each AI provider's avatar stands at the top of its header
+  again` centres the chip alone, and `ai-settings-page.overflow.spec.ts`
+  holds each avatar at the header's top at both sizes.
 - **The filter panel's *Clear all*** was 94 × 33; it read 94 × 40. Fixed by
   `fix: the filter panel's Clear all is a 40px target`.
 - **The phone's period totals** at 320px wrapped with a separator leading the
@@ -804,7 +856,9 @@ grey block in dark.
   and turned up beside the removes once those were named.
 - **The audit's first fixes on two of these screens did not hold.** The
   *Recommended* chip's first wrap dropped each provider's title under its
-  avatar at 320px; the title block's cap keeps it beside. The totals line's
+  avatar at 320px; the title block's cap keeps it beside. Its row, centred
+  for the chip, then moved each avatar off the top of its header; only the
+  chip is centred now. The totals line's
   first clip was a margin on `overflow-x: clip`, which Chrome applies only
   where both axes clip, and which the iOS 15 WebView, with no clip value at
   all, would have shown as a dot before every line; `clip-path` is drawn on
@@ -867,8 +921,9 @@ grey block in dark.
   never retried, the hand-off waits until the next confirm or until the list
   is destroyed.
 - **A prefetch in the same change can still shift the place.** The index is
-  followed while the row is listed, so only rows that land in the same list
-  change as the row's leaving can move the landing.
+  read as the confirm closes and followed while the row is listed, so only
+  rows that land in the same list change as the row's leaving can move the
+  landing.
 - **Two 32px boxes.** The run read the desktop row menu's `.action-btn` and
   the form's two `.suggestion-dismiss` buttons at 32 × 32. The figure is the
   box, not the target: `.action-btn` carries an `::after` overhang that

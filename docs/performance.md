@@ -74,7 +74,13 @@ holds *ring* standing alone, and `theme-aliases.spec.ts`'s case *ships no
 rule for a utility that only a spec names* fails when the sheet Karma builds
 from the same config holds a `.ring` selector. It first finds
 `.text-fg-disabled`, which only the safelist ships, so that the absence is
-read from a sheet that was read
+read from a sheet that was read. Tailwind also reads `!` before a utility's
+name as that utility made important, in code as in a template, so a
+negation of a variable that shares a utility's name ships one:
+`!hidden.has(row.id)` on the transactions page shipped a `.!hidden` rule
+until the set was named `hiddenRows`, and the case beside it, *ships no
+important rule that only a negation in code names*, now holds the sheet
+free of it
 ([ADR 0195](ADR/0195-a-gate-holds-the-test-main-to-the-builders-init-specs-stay-out-of-the-stylesheet-a-lone-date-run-is-silent-and-the-opacity-gate-reads-a-url-in-a-comment-as-a-comment.md)).
 
 The config's `safelist` holds the nineteen role aliases of
@@ -276,7 +282,7 @@ accepted and has not been measured.
 |---|---|---|
 | Initial bundle | 2.428 MB | 2.7 MB |
 
-Against 2,427,861 bytes (JavaScript 2,396,117, stylesheet 31,744, in 64
+Against 2,427,920 bytes (JavaScript 2,396,227, stylesheet 31,693, in 64
 initial files), measured by `npm run build:analyze` from a production build
 of `26.11.186` on 2026-11-20.
 
@@ -289,21 +295,22 @@ delete waits, and the notice that offers it;
 an indicator drawn inside a focused button; and
 [ADR 0194](ADR/0194-one-painted-contrast-helper-and-one-focus-hand-off-a-card-is-scored-part-by-part-and-no-page-skips-a-heading-level.md):
 one focus hand-off for thirteen components) put the initial bundle at
-2,427,861 bytes, 2,861 over the 2.425 MB it stood at. Of the 3,568 bytes of
-the growth, 3,191 are JavaScript, in code the first page already holds: the
+2,427,920 bytes, 2,920 over the 2.425 MB it stood at. Of the 3,627 bytes of
+the growth, 3,301 are JavaScript, in code the first page already holds: the
 pending delete, which the header injects so that a waiting delete is made
-real before a sign-out; the notice that carries its Undo; the answer card's
-*View matching transactions*, which names its answer; and the transaction
-form's named dismissals and type group. The shared focus hand-off is one
-initial file more and gave back more than it brought. The other 377 are the
-stylesheet's: the rules that draw Material's focus indicator inside every
-Material button, the one that opens every notice above the phone's bottom
-bar and one no template asks for, less the utilities only specs named and
-the `!text-base` Budget Progress's title no longer asks for (the parts are
+real before a sign-out; the notice that carries its Undo; the shell's mark
+on the body that lifts every notice over the phone's bottom nav; the answer
+card's *View matching transactions*, which names its answer; and the
+transaction form's named dismissals and type group. The shared focus
+hand-off is one initial file more and gave back more than it brought. The
+other 326 are the stylesheet's: the rules that draw Material's focus
+indicator inside every Material button and the one that opens every notice
+above the phone's bottom bar, less the utilities only specs named and the
+`!text-base` Budget Progress's title no longer asks for (the parts are
 below). The transactions page and its list, the dashboard and the import
 wizard are lazy and are not in the figure. The warning moved to the whole
-kilobyte above the figure and no more, which leaves 139 bytes of headroom
-(2,428,000 less 2,427,861). Before it, `26.11.185` read 2,424,293 bytes
+kilobyte above the figure and no more, which leaves 80 bytes of headroom
+(2,428,000 less 2,427,920). Before it, `26.11.185` read 2,424,293 bytes
 (JavaScript 2,392,926, stylesheet 31,367, in 63 initial files) on
 2026-11-17.
 
@@ -311,17 +318,21 @@ The growth input by input, measured against the stats of a clean build of
 `16f0ddca`, the merge of #553, whose source is `26.11.185`'s (summed over the
 initial outputs and matched by input path): `pending-delete.service.ts`, the
 root `PendingDeleteService` that holds a deleted transaction's delete
-through its ten-second Undo window, brought 3,262 bytes, and
+through its ten-second Undo window, and makes real a delete confirmed
+while a sign-out waits, brought 3,357 bytes, and
 `header.component.ts`, which injects it and waits for it before a sign-out,
-took 76 (9,871 to 9,947). `notification.service.ts` took 1,016 (628 to
-1,644) for `withAction`, a notice with one action in place of Close; it is
-in the initial chunk that holds Firestore, which took 863 on disk.
+took 76 (9,871 to 9,947). `notification.service.ts` took 964 (628 to
+1,592) for `withAction`, a notice with one action in place of Close; it is
+in the initial chunk that holds Firestore, which took 821 on disk.
+`main-layout.component.ts` took 134 (6,973 to 7,107) for the class it puts
+on the body while the bottom nav is shown, which the notice's lift reads.
 `nl-answer-card.component.ts` took 402 (5,051 to 5,453)
 ([ADR 0192](ADR/0192-a-control-repeated-per-item-names-its-item-in-its-own-text-too-a-button-is-named-in-every-branch-and-an-unlabelled-switch-fails-the-axe-pass.md)),
 `transaction-form.component.ts` 149 (69,157 to 69,306), and
-`login.component.ts`, whose title is now the page's `h1`, 8 (9,730 to
-9,738). `transaction.service.ts` gave back 90 (32,035 to 31,945): a delete
-asks storage only for the slots that still hold an image. The shared focus
+`login.component.ts`, whose title is now the page's `h1`, 9 (9,730 to
+9,739). `transaction.service.ts` gave back 159 (32,035 to 31,876): a delete
+asks storage only for the slots that still hold an image, and a clear
+tombstones only the slots it swept, with no span. The shared focus
 hand-off, `shared/utils/focus-when-rendered.ts`, brought 1,074 into an
 initial chunk of its own, 935 bytes on disk, which also holds
 `focus.utils.ts`, out of `main` (136 to 104). It is initial because the
@@ -332,27 +343,30 @@ The private copies it replaced gave back 1,717:
 chunk 772 on disk), `note-translation.component.ts` 649 (6,960 to 6,311)
 and `split-parts.component.ts` 145 (5,967 to 5,822). At its commit the
 initial bundle fell 582 bytes, from 2,424,691 to 2,424,109, with one initial
-file more. `main`, which holds the pending delete, the header, the answer
-card, the form, the sign-in page, the note lens and the split parts, took
-2,429 on disk. Material's chips, which nothing here edited, gave back 445
-(94,175 to 93,730; their initial chunk 321 on disk): the import's feature
-list reads as words
+file more. `main`, which holds the pending delete, the header, the shell,
+the answer card, the form, the sign-in page, the note lens and the split
+parts, took 2,636 on disk. Material's chips, which nothing here edited, gave
+back 445 (94,175 to 93,730; their initial chunk 321 on disk): the import's
+feature list reads as words
 ([ADR 0193](ADR/0193-a-row-that-is-no-photo-is-no-drag-item-the-receipt-or-statement-chips-are-measured-and-the-upload-area-shows-where-a-photo-will-land.md)),
 and the chip avatar, which only that list used, left the build.
-`styles.scss`, the global stylesheet, took 377 (31,349 to 31,726); its
-parts are below. Sixty-four other inputs moved and none was edited: 32 under
-`node_modules` by 1 to 92 bytes, 211 more between them, Firestore's 92 the
-most, and 32 under `src` by 1 to 7 bytes, 2 less between them. Summed over
-the initial outputs the inputs come to 2,901,245 bytes (2,896,956 at the
-base), 4,289 more, against 3,569 on disk, where the clean build read
-2,424,292, one byte under the figure recorded for `26.11.185`; the 720
-between the two measures is not attributed.
+`styles.scss`, the global stylesheet, took 326 (31,349 to 31,675); its
+parts are below. Fifty-seven other inputs moved and none was edited: 29
+under `node_modules` by 1 to 91 bytes, 223 more between them, Firestore's 91
+the most, and 28 under `src` by 1 to 12 bytes, 14 more between them.
+Summed over the initial outputs the inputs come to 2,901,331 bytes
+(2,896,956 at the base), 4,375 more, against 3,628 on disk, where the clean
+build read 2,424,292, one byte under the figure recorded for `26.11.185`;
+the 747 between the two measures is not attributed.
 
-The stylesheet's 377 bytes are 1,262 in and 885 out. The focus indicator's
-rules took 1,108 (ADR 0196), the notice's 121 (ADR 0197), and `.!hidden`
-33, a rule no template asks for: Tailwind reads `!hidden` standing alone in
-`transactions.component.ts`'s `!hidden.has(row.id)`, a line of the pending
-delete's. Leaving specs out of `content` took out 844
+The stylesheet's 326 bytes are 1,211 in and 885 out. The focus indicator's
+rules took 1,108 (ADR 0196) and the notice's 103 (ADR 0197), keyed on the
+shell's class on the body; keyed first on `:has()`, it was 121. A `.!hidden`
+rule of 33 bytes, which no template asks for, came and went on the way:
+Tailwind read `!hidden` standing alone in `transactions.component.ts`'s
+`!hidden.has(row.id)`, a line of the pending delete's, and the set is named
+`hiddenRows` now, with `theme-aliases.spec.ts` holding the sheet free of the
+rule. Leaving specs out of `content` took out 844
 ([Tailwind's utilities in the stylesheet](#tailwinds-utilities-in-the-stylesheet)),
 818 of them in six utilities the sheet already held at `26.11.185` and 26 in
 `.flex-wrap`, which a spec's inline style had brought in on the way. Budget

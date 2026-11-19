@@ -124,13 +124,19 @@ control holds, its descendants' included, outside a `mat-icon` (MatIcon
 hides its ligature) and outside an element with a literal
 `aria-hidden="true"`, with control-flow syntax taken out. It is bare when
 what is left is one interpolation of one key with no parameters, or of a
-ternary between two such keys, and nothing else.
+ternary between two such keys, and nothing else. An `<img>` whose alt is not
+empty and a component add to the name, as the eighth rule reads them, so a
+key beside one is not bare.
 
 Each control records where its name comes from, `via: 'label'` or
 `via: 'text'`, and both feed one tally across templates
 (`heldApartAcross`) and one freeze, `ITEMLESS_FROZEN`: a key is one name
 however a control comes by it, so the dashboard's two *View All* links, one
-in each of two cards, are two cases of one switch reaching one key.
+in each of two cards, are two cases of one switch reaching one key. The
+tally counts each of a ternary's two keys on its own, so a plain key in one
+case of a switch on the `@for`'s own item and a ternary holding it in
+another are one key reached twice: both controls are reported, in one
+template and across templates, by label and by text.
 `walkTemplate` reports opening tags only, so the text pass keeps its own
 stack of open elements. A text hit is reported at the control's opening tag,
 since its text may run over several lines, and its hint begins *keep the
@@ -140,8 +146,12 @@ Two text-named controls are exempt:
 
 - **One inside a `<mat-menu>`.** A menu's panel is open for the one trigger
   that opened it, and that trigger is already held to name its item, by the
-  fourth rule and this one. A control inside a menu that is named by its
-  `aria-label` is read there as anywhere.
+  fourth rule and this one. That holds for a menu stamped once per item, and
+  not for an item a repeat inside the open menu stamps, an `@for` or a
+  `*ngFor` there: its copies share the one panel under one name, so it is
+  read and reported. `walkTemplate` says whether a repeat inside the
+  innermost open menu stamps an element (`repeatedInMenu`). A control inside
+  a menu that is named by its `aria-label` is read there as anywhere.
 - **One with a bound `aria-describedby`**: `[attr.aria-describedby]`,
   `[aria-describedby]`, or a literal that interpolates. The household's six
   buttons are named by what they do, *Remove*, *Try again*, *Revoke*, *Add
@@ -195,7 +205,8 @@ are read one after the other so that they cannot share a name.
 ### A control is named in every state of its blocks
 
 The eighth rule widens from toggles to every control named by what it
-holds: a button, a link, an element with a control's literal role, and the
+holds: a button, a link, an element with a control's literal role (its
+value in single or double quotes), and the
 three Material toggles, read through a tree of each template (`readTree`,
 `heldBy`); slider thumbs are read as before. A control fails when no
 `aria-label` or `aria-labelledby` with a value that is not blank names it,
@@ -240,14 +251,14 @@ the filter toggle's badge as text is gone.
   scan, the new cases failed with `13 self-test failure(s)`, every one a
   must-hit.
 
-The real tree has 17 controls named through a block, and every one is
-complete. Seven hold words only inside blocks: one button each in the
-feedback dialog, the sign-in page, the export dialog, the share dialog (an
-`@switch` with an `@default`) and the transaction list (its select toggle),
-and two on the Data page, one of them its upload area, a role button. The
-other ten hold words outside a block as well, among them the transaction
-form's stored-receipt thumbnail, whose `<img [alt]>` sits beside an `@if`
-holding a spinner.
+The real tree has 17 controls named by what they hold that hold a
+control-flow block, and every one is complete. Seven hold words only inside
+blocks: one button each in the feedback dialog, the sign-in page, the export
+dialog, the share dialog (an `@switch` with an `@default`) and the transaction
+list (its select toggle), and two on the Data page, one of them its upload
+area, a role button. The other ten hold words outside a block as well, among
+them the transaction form's stored-receipt thumbnail, whose `<img [alt]>` sits
+beside an `@if` holding a spinner.
 
 ### The shared axe pass fails a switch nobody named
 
@@ -321,11 +332,13 @@ const buttonName = { enabled: true, checks: { 'explicit-label': { enabled: false
 - **An insight card about one category shows that category**, a change a
   sighted reader sees.
 - `icon-labels:check` reads a repeated control's own text and every branch
-  of every control's blocks. Run on 19 November 2026, it reads, of the
+  of every control's blocks. Run on 20 November 2026, it reads, of the
   controls stamped once per item, `0 take their name from a key with no parameters (0 by their aria-label, 0 by their own text), 0 frozen by name`,
   and of the controls named by what they hold,
-  `231 take their name from what they hold, 17 of them through a control-flow block; 0 name nothing in some state of their blocks or in all, 0 frozen by name`.
-  Its self-test reads `check-icon-labels self-test: 323 passed`.
+  `231 take their name from what they hold, 17 of them hold a control-flow block; 0 name nothing in some state of their blocks or in all, 0 frozen by name`.
+  The 17 are every such control that holds a block at any depth, named by
+  words outside every block or not. Its self-test reads
+  `check-icon-labels self-test: 336 passed`.
 - A control whose words sit in a block needs that block closed, words
   outside it, or a name: a new `@if` around a button's only words fails the
   gate until it has an `@else`.
@@ -345,8 +358,11 @@ const buttonName = { enabled: true, checks: { 'explicit-label': { enabled: false
   note (*What the browser runs found*).
 - The goal card spaces *Edit* from *Delete*, wraps its foot and sizes its
   text on the type scale, so its 13px text becomes 14px at the default size;
-  the goals grid fits a 320px page; the review card's *Notes* and its chip
-  removals reach 40px, and a chip with a removal is 8px wider.
+  the goals grid fits a 320px page, and so, since *fix: the Goals tab's Add
+  Goal keeps its label on one line on a phone*, does the tab's header, which
+  puts *Add Goal* on a line under the hint where the two do not fit; the
+  review card's *Notes* and its chip removals reach 40px, and a chip with a
+  removal is 8px wider.
 
 ## What the browser runs found
 
@@ -420,7 +436,11 @@ card, the Settings switches read from their templates, and what changed:**
   stylesheet, since no chip with a removal rendered in that walk's data.
   After *fix: the review card's chip removals are 40px wide targets*, a
   removal's box is 28 by 20px with a 40 by 40px hit area, hit-tested 19px
-  each way.
+  each way. The overflow case reads that area from the `::after` insets,
+  which read back from the rule even when no box is drawn, so it first holds
+  the overhang to be generated and absolutely placed against a positioned
+  button: with either taken off, the target fell to the 28 by 20 box and the
+  case still read 40 by 40.
 - **The review card at 320px.** Nested gutters left the card 218 of 320px,
   and one row ran to about 610px with every control on a line of its own.
   Read again, the card was 218 of 320px, and at 375px 281 of 375px with
@@ -485,7 +505,7 @@ and the sign-in page with no heading, recorded in
 - **A slot is not a name.** The import record's menu had a slot for its
   count and passed the gate, and two records of one count still read alike.
   The gate does not judge what fills a slot.
-- **Of 17 controls named through a block, seven hold words only inside
+- **Of the 17 controls that hold a block, seven hold words only inside
   blocks.** The stored-receipt thumbnail, which looked like one of them,
   holds an `<img [alt]>` beside its `@if`, outside the block.
 - **Angular's `@default never;` has no body.** It opens no block, so an
@@ -573,7 +593,10 @@ and the sign-in page with no heading, recorded in
   15 controls on 18 lines. The rest of the width goes to the wizard's own
   16px gutter inside the shell's and to the 40px checkbox column with its
   10px gap. Closing it takes the wizard and the card together and a new
-  place for the checkbox column.
+  place for the checkbox column. The card's overflow spec measures it in a
+  288px box, a 320px phone less the layout's gutters but not the wizard's,
+  so every containment reading there gives the card 32px more than such a
+  phone does; the spec's header says so.
 - **Two more small targets on the review card's location chip**, read from
   the stylesheet and not measured: the country picker, when it shows only its
   glyph (`.extra-country`), is 20px wide with a hit area 32px wide, and the

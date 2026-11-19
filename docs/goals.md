@@ -157,12 +157,24 @@ account, and no household the account belongs to sees it.
   (`--text-xs`, `--text-sm`, `--text-lg`), as is the Goals tab's hint, so all
   of it scales with `--app-font-scale`; the 13px text it held before is
   `--text-sm`, 14px at the default size.
+- **The tab's header wraps.** The hint and *Add Goal* share a line where
+  both fit whole, *Add Goal* at its end. Where they do not, as in the 248px
+  a 320px phone leaves the tab, the hint takes its own line and *Add Goal*
+  the next, at its start, as the sibling tabs put their button under their
+  description. The wrap reads the tab's own width, not the viewport's.
+  Before, the two shrank side by side, and *Add Goal*'s label broke a word a
+  line in en and a character a line in ja, in a pill grown tall round it.
 
 [ADR 0192](ADR/0192-a-control-repeated-per-item-names-its-item-in-its-own-text-too-a-button-is-named-in-every-branch-and-an-unlabelled-switch-fails-the-axe-pass.md)
-records the last four. `goal-progress-card.component.spec.ts` holds the
-heading, the names in en, ja and tc, the targets, the foot and the type
-scale, and `goals.component.spec.ts` the grid at a phone width and the
-hint's scale.
+records the four before the last; the header's wrap came with *fix: the
+Goals tab's Add Goal keeps its label on one line on a phone*.
+`goal-progress-card.component.spec.ts` holds the heading, the names in en,
+ja and tc, the targets, the foot and the type scale, and
+`goals.component.spec.ts` the grid and the header at a phone width and the
+hint's scale: its describe *GoalsComponent, its header at a phone width*
+renders the header at 248px in en, ja and tc, at text sizes 1 and 1.3, and
+holds *Add Goal* at Material's 40px with its label on one line, inside the
+tab, and at 640px the hint and *Add Goal* on one line.
 
 ## Household goals
 

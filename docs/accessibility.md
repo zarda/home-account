@@ -279,7 +279,11 @@ stop after the question's mark
 so a speech-input user reaches it by what they see (WCAG 2.5.3). The name
 *contains* them; it need not open with them, since a ja sentence ends in its
 verb. Both are read without regard to case in the reader's own locale
-(`holdsShownWords`, in `core/services/testing/axe.ts`), and the cases that
+(`holdsShownWords`, in `core/services/testing/axe.ts`), and the shown words
+must stand as words, with no letter or digit beside them: *Edit* inside
+*Credit card* would not reach a voice user saying *Edit*. Beside a Han or
+kana character the edge is not read, since Japanese and Chinese put no
+space between words. The cases that
 call it leave a hidden glyph's ligature out of the shown words and fold a
 trailing ellipsis away. So tc reads
 *檢視交易：「{name}」* for the goal card's *檢視交易*, not a sentence that
@@ -287,7 +291,8 @@ splits the shown words round the goal. Two of the review card's buttons used
 to miss: in en *Merge* showed *Merge into* and an ellipsis, two words its
 name, *Merge {description} into another row*, did not hold together, and in
 tc *Split* showed 分割 while its name said 分成. en now shows *Merge…*, as ja
-*結合…* and tc *合併…* did, and tc's Split is named *分割「{description}」成兩列*.
+*結合…* and tc *合併…* did, and tc's Split is named *將「{description}」分割成兩列*,
+in the 將… order of Merge's *將「{description}」合併到其他列*.
 The describe *a row action's name holds the words it shows* in
 `transaction-preview-table.component.spec.ts` holds Split, Merge and Remove
 on a titled row, and Split and Remove on a blank one, which is offered no
@@ -373,7 +378,7 @@ npm run icon-labels:check
 ```
 
 `scripts/check-icon-labels.mjs` holds ten rules over every template, and
-its self-test has 323 cases:
+its self-test has 336 cases:
 
 - a `mat-icon` carrying `role="img"` or a label also carries a literal
   `aria-hidden` ([ADR 0146](ADR/0146-an-icon-that-carries-a-label-is-not-hidden-and-a-category-id-is-never-empty.md));
@@ -428,16 +433,20 @@ its self-test has 323 cases:
   item as such a label does: every transaction row's swipe drawer read
   *Edit* and *Delete*. The text is every run the control holds outside a
   `mat-icon` and outside an element with a literal `aria-hidden="true"`,
-  with control-flow syntax taken out. Each control records where its name
+  with control-flow syntax taken out; an `<img>` whose alt is not empty and
+  a component add to the name, as the eighth rule reads them, so a key
+  beside one is not bare. Each control records where its name
   comes from, `via: 'label'` or `via: 'text'`, and both feed the same tally
   across templates and the same freeze, since a key is one name however a
   control comes by it. A text hit is reported at the control's opening tag,
   and its hint asks for the words it shows kept and the item added, in an
   `aria-label` whose sentence holds them (WCAG 2.5.3). Two text-named
   controls are exempt: one inside a `<mat-menu>`, whose panel opens for the
-  one trigger that is already held to name its item; and one with a bound
-  `aria-describedby`, as the household's six buttons are, named by what they
-  do and described by their item. That second exemption is a Known gap, not
+  one trigger that is already held to name its item, unless a repeat inside
+  the open menu stamps it (an `@for` or a `*ngFor` there), since its copies
+  then share the one panel under one name, and it is reported; and one with a
+  bound `aria-describedby`, as the household's six buttons are, named by what
+  they do and described by their item. That second exemption is a Known gap, not
   a pattern to copy
   ([ADR 0192](ADR/0192-a-control-repeated-per-item-names-its-item-in-its-own-text-too-a-button-is-named-in-every-branch-and-an-unlabelled-switch-fails-the-axe-pass.md)).
   "Once per item" is read two ways, as the fourth rule reads a menu
@@ -454,10 +463,13 @@ its self-test has 323 cases:
   alike, whether a case writes it or reaches it through a component it
   stamps, at any depth (`heldApartAcross`): the card menu, written into all
   five cards, stays repeated, and so does the empty state, which four of
-  the cards stamp. An `@default`, an `@switch` on something the item holds and
-  an outer `@for` around the switch still repeat. Only this rule holds cases
-  apart; the fourth, fifth, seventh and eighth read as before. Its freeze,
-  `ITEMLESS_FROZEN`, is empty and stays so, as
+  the cards stamp. The tally counts each of a ternary's two keys on its
+  own, so a plain key in one case and a ternary holding it in another are
+  one key reached twice, and both controls are reported, in one template
+  and across templates. An `@default`, an `@switch` on something the item
+  holds and an outer `@for` around the switch still repeat. Only this rule
+  holds cases apart; the fourth, fifth, seventh and eighth read as before. Its
+  freeze, `ITEMLESS_FROZEN`, is empty and stays so, as
   [ADR 0151](ADR/0151-the-frozen-accessibility-findings-are-fixed-and-the-freezes-stay-empty.md)
   keeps an emptied freeze: the 28 controls it froze when it landed all name
   their item now, and so do the ten more the text pass found when it
@@ -489,7 +501,8 @@ its self-test has 323 cases:
   value, as a literal, an interpolation or a binding, `[attr.aria-label]` and
   `[attr.aria-labelledby]` included, since a thumb is the input itself
   ([ADR 0187](ADR/0187-repeated-controls-name-their-item-the-upload-area-has-one-button-and-numbers-photos-among-photos-resting-text-is-a-token-sentences-end-in-the-readers-stop-and-a-spec-that-expects-nothing-fails.md)).
-  A button, a link and an element with a control's literal role are named
+  A button, a link and an element with a control's literal role, read in
+  single or double quotes as every other attribute is, are named
   the same way, by an `aria-label` or `aria-labelledby` in any spelling with
   a value that is not blank, or by what they hold. And what a control holds
   names it only in the states that render it: the transaction filters'
@@ -510,9 +523,10 @@ its self-test has 323 cases:
   slider and the switch it froze are named. The run reads *Checked 19
   checkbox, slide toggle and radio button tag(s), 349 button(s), link(s) and
   element(s) with a control's role, and 1 slider(s) across 103 template(s):
-  231 take their name from what they hold, 17 of them through a
-  control-flow block; 0 name nothing in some state of their blocks or in
-  all, 0 frozen by name*
+  231 take their name from what they hold, 17 of them hold a control-flow
+  block; 0 name nothing in some state of their blocks or in all, 0 frozen
+  by name*, the 17 being every such control that holds a block at any
+  depth, whether or not words outside every block name it
   ([ADR 0192](ADR/0192-a-control-repeated-per-item-names-its-item-in-its-own-text-too-a-button-is-named-in-every-branch-and-an-unlabelled-switch-fails-the-axe-pass.md));
 - two controls of one template, each named by an `aria-label` that is a
   bare key, do not share that key when both can render at once. Each `@if`,
@@ -523,27 +537,33 @@ its self-test has 323 cases:
   not. The cases of a switch on the nearest `@for`'s own item are no arms,
   since two cards show two of them at once; an `@defer` and the blocks after
   it, and an `@for` and its `@empty`, are read as rendering together. A
-  control stamped once per item is the sixth rule's and is reported there.
-  Only a control named by its `aria-label` is read: two named by their own
-  text read the words a sighted user sees too. It has no freeze. The run
+  control stamped once per item is the sixth rule's and is reported there,
+  and so is a plain key in one case of a switch on the `@for`'s own item
+  beside a ternary holding it in another, which the sixth rule's tally
+  counts as one key reached twice. Only a control named by its `aria-label`
+  is read: two named by their own text read the words a sighted user sees
+  too. A `mat-datepicker-toggle` is a control by its tag here and in the
+  sixth rule: it carries no role, and its `aria-label` input names the
+  button it renders, so a pair of calendar toggles back on one bare key
+  fails. It has no freeze. The run
   reads *Checked 35 control(s) rendered once and named by an aria-label with
   a key with no parameters across 103 template(s): 0 share a key with a
   control of their template that can show beside them*
   ([ADR 0196](ADR/0196-sibling-controls-say-what-they-act-on-a-name-holds-its-shown-words-a-focused-button-shows-an-indicator-inside-it-focus-stays-in-the-list-after-a-delete-and-a-failed-dashboard-read-is-quiet.md));
 - each single-choice group, a `mat-button-toggle-group` that is not
   `multiple`, a `mat-radio-group` and any element with a literal
-  `role="radiogroup"`, carries `aria-label` or `aria-labelledby` in any
-  spelling, with a value that is not blank (`readGroups`). A screen reader
-  entering such a group says its name before its first choice. The category
-  manager's Expenses / Income group had none, nor had seven more toggle
-  groups, the transaction form's type, the period selector's quick ranges
-  and the forecast's horizon among them: each announced its first choice and
-  its place among the others, and nothing that said what was being chosen.
-  The axe pass the specs run reads no radiogroup's name, so nothing failed.
-  A `multiple` group renders `role="group"` and is not read. The run reads
-  *Checked 12 single-choice group(s), toggle groups that are not multiple,
-  radio groups and elements with role="radiogroup", across 103 template(s):
-  0 carry no name*
+  `role="radiogroup"`, in either quote, carries `aria-label` or
+  `aria-labelledby` in any spelling, with a value that is not blank
+  (`readGroups`). A screen reader entering such a group says its name before
+  its first choice. The category manager's Expenses / Income group had none,
+  nor had seven more toggle groups, the transaction form's type, the period
+  selector's quick ranges and the forecast's horizon among them: each
+  announced its first choice and its place among the others, and nothing that
+  said what was being chosen. The axe pass the specs run reads no radiogroup's
+  name, so nothing failed. A `multiple` group renders `role="group"` and is
+  not read. The run reads *Checked 12 single-choice group(s), toggle groups
+  that are not multiple, radio groups and elements with role="radiogroup",
+  across 103 template(s): 0 carry no name*
   ([ADR 0196](ADR/0196-sibling-controls-say-what-they-act-on-a-name-holds-its-shown-words-a-focused-button-shows-an-indicator-inside-it-focus-stays-in-the-list-after-a-delete-and-a-failed-dashboard-read-is-quiet.md)).
 
 It reads the markup, so it cannot tell a useful label from a useless one, nor
@@ -746,7 +766,11 @@ keep their own focus look, and hand-rolled controls the app's outline.
 measures the rendered line through `readIndicator` and
 `expectIndicatorInEveryPalette` (`core/services/testing/focus-indicator.ts`)
 in the four palettes, with Material's focus state layer laid under it, at
-3:1 or better on what it is drawn over. On their own fill, in Karma, plain
+3:1 or better on what it is drawn over and cut off by nothing: no ancestor
+whose overflow, paint containment or clip-path cuts the line off
+(`clippedBy`, [testing.md](testing.md#a-focus-indicator-from-the-cssom)).
+The reading leaves Material's `cdk-keyboard-focused` class on a button as it
+found it. On their own fill, in Karma, plain
 and dark, a flat button's line reads 4.97 and 6.32, a text or stroked
 button's 5.45 and 7.50, a raised button's 5.18 and 8.58 and the FAB's 5.96
 and 5.50. Four specs read it on their real templates, through the same
@@ -886,9 +910,11 @@ heading to fall back on, and its select toggle shows only for an account in
 a household, so neither is a landing
 ([ADR 0196](ADR/0196-sibling-controls-say-what-they-act-on-a-name-holds-its-shown-words-a-focused-button-shows-an-indicator-inside-it-focus-stays-in-the-list-after-a-delete-and-a-failed-dashboard-read-is-quiet.md)).
 
-- **The row's place is followed.** It is read as the confirm opens, so a
-  row that goes while it is open still has a place, and kept current while
-  the row is listed, so rows that load above it move it along.
+- **The row's place is followed.** It is read again as the confirm closes,
+  so rows loaded above the row, or trimmed from above it, while the confirm
+  was open move it; the place read as the confirm opened stands only for a
+  row that went while it was open. A row still listed after that is
+  followed, so rows that load above it move it along.
 - **The row leaves at once.** The page hides a confirmed row while its
   delete waits out the Undo window
   ([ADR 0197](ADR/0197-a-deleted-transaction-can-be-brought-back-for-ten-seconds-because-the-delete-waits.md)),
@@ -900,10 +926,15 @@ a household, so neither is a landing
   `.row-menu-btn`.
 - **A row that comes back is offered focus.** Undo, or a delete that
   failed, lists the row again; the list scrolls to it and puts focus on its
-  menu button if focus fell to the document or was left in the Undo notice,
-  which keeps it while it plays its way out and then drops it. Focus the
-  reader has put anywhere else stays there, and a later delete still waiting
-  to hand focus on decides instead
+  menu button if focus fell to the document or was left in a notice
+  Material has started to take down (`mat-exit` on its container), as the
+  Undo notice just pressed is: it keeps focus while it plays its way out
+  and then drops it. On a phone while rows are being chosen, the row shows
+  its checkbox in place of its menu button, and the checkbox is offered
+  focus last. Focus in a notice still up stays there: a failure lands late,
+  when the notice up is the next row's, whose Undo the reader may be about
+  to press. Focus the reader has put anywhere else stays there too, and a
+  later delete still waiting to hand focus on decides instead
   ([ADR 0197](ADR/0197-a-deleted-transaction-can-be-brought-back-for-ten-seconds-because-the-delete-waits.md)).
 
 Every hand-off here goes through `focusWhenRendered` with `onlyIfDropped`.
@@ -969,11 +1000,13 @@ its own live region, so that region is off for this notice
 announced once, politely, through the queue, in words that name the action:
 *Deleted {description}. Undo is available for a few seconds.*
 (`transactions.deletedWithUndo`, with the translated `common.undo` in its
-`{{action}}` slot, so every language names the button it shows). What it
-shows is *Deleted {description}* beside **Undo**. Undo announces *Restored
-{description}* (`transactions.restored`) once, from the service that
-restores it, and focus comes back with the row (*Focus stays in the list
-after a delete*). A delete that fails brings the row back and opens an
+`{{action}}` slot, so every language names the button it shows; a case
+per catalog in `pending-delete.service.spec.ts` opens the notice through
+en's, ja's and tc's own words and holds what is heard to name the button
+and the row). What it shows is *Deleted {description}* beside **Undo**. Undo
+announces *Restored {description}* (`transactions.restored`) once, from the
+service that restores it, and focus comes back with the row (*Focus stays in
+the list after a delete*). A delete that fails brings the row back and opens an
 error notice, *Couldn't delete {description}* (`transactions.deleteFailed`),
 only once no Undo notice is up, since one opened over the next row's notice
 would take that Undo away. The single-row confirm no longer says the delete

@@ -249,3 +249,10 @@ Two checks worth running with it, both quick:
   image, so an object a failed earlier sweep left in a slot already emptied
   is never asked for again
   ([ADR 0196](ADR/0196-sibling-controls-say-what-they-act-on-a-name-holds-its-shown-words-a-focused-button-shows-an-indicator-inside-it-focus-stays-in-the-list-after-a-delete-and-a-failed-dashboard-read-is-quiet.md)).
+  Another: a page suspended or killed inside the Undo window, after the
+  flush made as it was hidden has queued the delete's commit. The queued
+  write deletes the row and its household copies on the next start, but the
+  sweep that follows the commit never runs, so the row's receipt objects stay
+  with nothing naming them, counted by the recount and by nothing else; the
+  category budget's stored spent stays stale too
+  ([ADR 0197](ADR/0197-a-deleted-transaction-can-be-brought-back-for-ten-seconds-because-the-delete-waits.md)).

@@ -61,14 +61,17 @@ detection runs in a real `NgZone`.
 project's two arms (`zone.js` in the test polyfills, `@angular/localize`
 installed), and compares every top-level statement with the copy's, in
 order. Comments, trailing commas, layout, quote style and the order of an
-import's named imports do not count. Two differences are allowed: one
+import's named imports do not count. A statement is compared as the leaves
+of its parse tree, so each part of a template literal and each regular
+expression is one token: a `//` after a substitution or inside a pattern
+hides nothing. Two differences are allowed: one
 `jasmine.getEnv().configure(...)` statement, the copy's reason to exist, and
 the missing `import '@angular/localize/init'`, only while the test polyfills
 load it. Anything else an upgrade adds to or takes from the builder's init
 is a drift failure that lists both sides; carry it over into the copy. A
 builder whose init the script can no longer find or read, or whose arms it
 works out another way, is a shape failure: fix the extraction in the script
-before trusting the check. Its `--self-test`, 28 cases, runs first, and CI
+before trusting the check. Its `--self-test`, 32 cases, runs first, and CI
 runs both after the firebase-tools check
 ([ADR 0195](ADR/0195-a-gate-holds-the-test-main-to-the-builders-init-specs-stay-out-of-the-stylesheet-a-lone-date-run-is-silent-and-the-opacity-gate-reads-a-url-in-a-comment-as-a-comment.md)).
 `tsconfig.app.json` excludes the file, which uses jasmine's global, and the
@@ -489,8 +492,8 @@ uses them; a local copy is a second copy.
 |---|---|---|
 | `catalogTranslator(locale, { strict })`, `catalogTranslationStub(locale)`, `CATALOGS` | `catalog-translator.ts` | The words a reader sees. `CATALOGS` holds en, ja and tc, imported, since Karma serves no `/assets/i18n`. The translator reads a catalog through the app's own `translateFrom`, plurals and params included, and gives a missing key back as the key, or throws with `strict: true`. The stub is the translation stub with those words and `currentLocale` set to match, for a spec that reads or measures text. A spec that checks a key's raw leaf still reads the JSON, since the translator picks one plural member and gives an empty leaf back as `''`. |
 | `accessibleName(el)`, `accessibleDescription(el)` | `axe.ts` | A control's name and description as axe computes them for its own rules: a `display:none` label gives none, a clipped one keeps its words, `aria-labelledby` and `aria-label` win over the content, and a description is the text of the nodes `aria-describedby` names, in order, hidden or not. Each read builds axe's tree for itself, and refuses while a pass is still running. A spec that checks a name reads it this way, never off `textContent`. |
-| `holdsShownWords(name, shown, locale)` | `axe.ts` | Whether a name holds the words its control shows whole, so a voice user can say what they see (WCAG 2.5.3, Label in Name): both read without regard to case in the reader's locale, by `INTL_LOCALES`, with a run of white space read as one space. It throws for a control that shows no words, which every name would hold. Fifteen component specs read it: the review card's and the goal card's, the four Settings switches', the AI page's, the dashboard's Recent Transactions and Upcoming Bills, the import and search histories, the insight card, the transaction row, the answer card and the period selector. |
-| `headingsOutOfOrder(root)`, `expectHeadingsInOrder(root, where?)` | `axe.ts` | `heading-order` alone over `root`, with a line that says so when it found no heading to order (*What the shared axe pass runs*, below). The walkthrough, the import wizard's upload step and the sign-in page read it. |
+| `holdsShownWords(name, shown, locale)` | `axe.ts` | Whether a name holds the words its control shows whole, so a voice user can say what they see (WCAG 2.5.3, Label in Name): both read without regard to case in the reader's locale, by `INTL_LOCALES`, with a run of white space read as one space. The words must stand as words in the name, with no letter or digit beside them: *Edit* inside *Credit card* is not held. Beside a Han or kana character the edge is not read, since Japanese and Chinese put no space between words. It throws for a control that shows no words, which every name would hold. Fifteen component specs read it: the review card's and the goal card's, the four Settings switches', the AI page's, the dashboard's Recent Transactions and Upcoming Bills, the import and search histories, the insight card, the transaction row, the answer card and the period selector. |
+| `headingsOutOfOrder(root)`, `expectHeadingsInOrder(root, where?)`, `headingOutline(root)` | `axe.ts` | `heading-order` alone over `root`, with a line that says so when it found no heading to order (*What the shared axe pass runs*, below). The walkthrough, the import wizard's upload step and the sign-in page read it. `headingOutline` is what a reader moving by heading hears: the headings under `root`, in order, each as its tag and its trimmed words, `h2 Budget Progress`, so a spec holds the outline whole; every outline case reads it, the empty state's (`h3 No data`) among them, and none keeps a reader of its own. |
 | `standOnThePage(host)`, `expectEachContrastScored(parts)`, `expectContrastScored(el, label)`, `contrastUnscored(parts)` | `axe.ts` | Contrast that was really scored (*Karma's frame is 413 px tall*, below). |
 | `tokenValue`, `paintedVerdict`, `expectPainted`, `PALETTES`, `inPalette`, `selectorsOf(list)` | `painted-contrast.ts` | A node held to a token as painted, in each palette (*Colour, as painted*, below). `selectorsOf` splits a selector list at its top-level commas and leaves `:is(a, b)` whole, for a case that looks a rule up in the CSSOM; the focus indicator's and the upload area's specs read it. |
 | `readIndicator(button)`, `expectIndicatorInEveryPalette(button, label, colourToken?)` | `focus-indicator.ts` | A Material button's focus indicator, read off the CSSOM without focusing the button, and held in each palette to the design (*A focus indicator, from the CSSOM*, below). |
@@ -499,10 +502,10 @@ uses them; a local copy is a second copy.
 | `afterTwoFrames()` | `frames.ts` | A wait for work that lands in a frame's rendering steps, after that frame's animation callbacks have run: a `ResizeObserver`'s report, and a render hook's focus fix-up. One `requestAnimationFrame` callback runs ahead of both and finds neither; the second frame's runs after the first frame has finished. The tab strip's spec, `budgets.overflow.spec.ts`, and the household plans section's spec and its budget dialog's read it. |
 | `keepThePageWhereFound()` | `page-scroll.ts` | Called in a describe's body: a `beforeEach` records the page's scroll and an `afterEach` puts it back, both ways, so a case that scrolls the page leaves it where it found it rather than at its top (*The page a spec starts on*, below). `page-scroll.spec.ts` holds it. |
 | `pressKey(target, key, { repeat, legacyKeyCode })` | `key-press.ts` | A key as the browser delivers it to a focused control: a keydown that bubbles and can be cancelled, then the button's own click for the press its keypress or keyup makes, unless the keydown was cancelled, since a synthetic keydown presses nothing. `key` is Enter, Space or End; End only moves, a key manager to its last item, and presses nothing. `repeat` is a held key's auto-repeat: a repeated Enter presses as the first one did, and a repeated Space presses nothing by itself, but arms the button it reaches for the keyup that ends the hold. It stops at the keydown, so it presses nothing for a repeated Space; a case that lets the key go sends its own keyup. `legacyKeyCode` puts on the keydown the `keyCode` Chrome sends with it (Enter 13, Space 32, End 35), which Material and the CDK still read in places: a key manager moves on it, and a menu trigger notes from it that the keyboard opened its menu. It is off unless asked for, so a case written without it reads the keydown it always did. `key-press.spec.ts` pins all three keys both ways. The upload area's, the filter panel's, the review card's, the dashboard layout settings', the household members' and the focus hand-off's specs read it, and `delete-undo.smoke.spec.ts` deletes a row through its menu and the real confirm with it, `legacyKeyCode` on. |
-| `dragByHandle(fixture, dragged, over, during)`, `fileRowOf(root, name)`, `mouse(target, type, x, y)` | `drag-by-handle.ts` | A real drag of a photo by its handle onto the row that shows another file, the way a mouse makes one, on the upload area a fixture drew, alone or inside the wizard. The press lands on the handle with a button held and a click count, or CDK takes it for a screen reader's; the first move goes past CDK's 5px start threshold and the second holds the pointer in the middle of the row it is dragged over, where one render runs. `during` runs once the pointer has been held past the 200ms glide of the rows CDK slides aside, so a row's drawn place is the one a user sees. The release always follows, and no render runs until the preview has gone, since the drop lands only once the dragged row has glided into its slot, a transition `provideNoMotion` does not reach. `fileRowOf` finds a listed row by its file name, never the slot or the preview a drag leaves; `mouse` is one mouse event with the left button held from its press until its release. The upload area's spec and `import-wizard.smoke.spec.ts` read it. |
+| `dragByHandle(fixture, dragged, over, during)`, `fileRowOf(root, name)`, `mouse(target, type, x, y)` | `drag-by-handle.ts` | A real drag of a photo by its handle onto the row that shows another file, the way a mouse makes one, on the upload area a fixture drew, alone or inside the wizard. The handle is scrolled into view, and the press lands on what a pointer at its middle hits, which must be the handle or inside it: a handle covered, cut off or deaf to the pointer throws, naming what the pointer would press. The press carries a button held and a click count, or CDK takes it for a screen reader's; the first move goes past CDK's 5px start threshold and the second holds the pointer in the middle of the row it is dragged over, where one render runs. A drag that did not start, with no preview lifted, throws before `during` runs. `during` runs once the pointer has been held past the 200ms glide of the rows CDK slides aside, so a row's drawn place is the one a user sees. The release always follows, and no render runs until the preview has gone, since the drop lands only once the dragged row has glided into its slot, a transition `provideNoMotion` does not reach. `fileRowOf` finds a listed row by its file name, never the slot or the preview a drag leaves; `mouse` is one mouse event with the left button held from its press until its release. The upload area's spec and `import-wizard.smoke.spec.ts` read it. |
 | `pressMenuEntry(fixture, trigger, entry)`, `closeEveryDialog()` | `menu-dialog.ts` | A dialog opened from a menu's entry, as a press opens it, given back once the menu has left the page, and every dialog closed after a case. A synthetic click moves no focus, so the trigger and the entry are focused before each is clicked, as a press focuses them, and the entry is what the dialog records as where focus goes back. What keeps a case about that return honest is the `TestBed.tick()` after the entry's click, which runs the dialog's focus trap (zone-mode `detectChanges` runs no render hook), and the check that focus is then inside the dialog: without them, focus stays on the trigger the menu's close focused, the dialog skips its restore, and the case passes whatever the app does. `dialog.config.spec.ts` and `transaction-list.component.spec.ts` read them. |
 | `FakeNotice`, `provideNoPendingDelete()` | `fake-notice.ts`, `no-pending-delete.ts` | A notice with an action as its caller sees one, driven by the spec: `press()` presses its action, `left()` is the dismissal Material reports once the notice has gone, which may come after the next notice has opened, and `hold()` is the pointer or focus holding it. `pending-delete.service.spec.ts` and `transactions.component.spec.ts` read it. And a `PendingDeleteService` with no delete waiting or running, for a component with a sign-out door whose spec is not about that door: the real one would bring the transaction write path, and Firestore, with it. The header's specs and the settings page's read it ([ADR 0197](ADR/0197-a-deleted-transaction-can-be-brought-back-for-ten-seconds-because-the-delete-waits.md)). |
-| `quietConsole(method, prefixes)`, `consoleLines(spy, prefix)`, `unreadLines(spy)`, `expectEveryHeldLineRead(spy)` | `console-quiet.ts` | A spy on `console.warn` or `console.error` for a spec whose cases make the code under test warn on purpose. It holds back every line whose first argument starts with one of `prefixes`, expected or not, and hands any other line to the method the console had before the spy, so a line nobody expected still prints: a bare spy would hide it, and `callThrough` would print the expected lines into the run. `consoleLines` gives the held lines that start with one prefix, each as its arguments, and marks them read. A held line prints nothing, so a spec that holds lines calls `expectEveryHeldLineRead` in its `afterEach`, and a held line no case read fails the case that caused it. `console-quiet.spec.ts` holds both methods. The household ledger's and plans' specs and the export spec read it (*The noise floor*, below). |
+| `quietConsole(method, prefixes)`, `consoleLines(spy, prefix)`, `unreadLines(spy)`, `expectEveryHeldLineRead(spy)` | `console-quiet.ts` | A spy on `console.warn` or `console.error` for a spec whose cases make the code under test warn on purpose. It holds back every line whose first argument starts with one of `prefixes`, expected or not, and hands any other line to the method the console had before the spy, so a line nobody expected still prints: a bare spy would hide it, and `callThrough` would print the expected lines into the run. `consoleLines` gives the held lines that start with one prefix, each as its arguments, and marks them read. A held line prints nothing, so a spec that holds lines calls `expectEveryHeldLineRead` in its `afterEach`, and a held line no case read fails the case that caused it. `console-quiet.spec.ts` holds both methods, and shows `expectEveryHeldLineRead` fail on a line left unread and pass once every line was read, with the global `expect` stood in for while it runs so that its expectation is read rather than made. The household ledger's and plans' specs and the export spec read it (*The noise floor*, below). |
 | `silenceFirebaseWarnings()` | `silence-firebase-warnings.ts` | AngularFire's injection-context lines, called at module scope by each file that prints them (*The noise floor*, below). |
 | `withEveryCardShown(root, pass)` | `features/ai/import/transaction-preview-table/transaction-preview-table.testing.ts`, beside the review card | A pass over the whole review list. The list clips at its `70dvh` cap, about two cards in Karma's frame, and axe takes a clipped card as off screen; this lets the list out to its full height for the pass, checks that every card then sits inside the container, and puts the cap back. It throws when there is no review list under `root`. |
 | `focusWhenRendered(context, selectors, { onlyIfDropped, from })` | `shared/utils/focus-when-rendered.ts`, app code | Focus on the first of `selectors`, one selector or a list of fallbacks, found under the host once the next render has settled. Without options it moves focus wherever focus is by then: the review card, the upload area's photo move and file remove, the filter panel's Clear all, keyboard-applied suggestion and save-search box, the dashboard layout settings and the split parts call it so. With `onlyIfDropped` it moves focus only when focus has fallen to the page (`focusDropped`) or was left inside `from`, and leaves it wherever else the reader has put it: the household page, with the switcher as `from` after a switch, and its sections, the plans section with the control an action was taken from as `from`; the receipt viewer and the note translation lens, each with its own host as `from`; and the transaction list after a delete, and after Undo with the notice as `from` when focus is in it. Every caller drops the repeats of Enter and Space held down across the hand-off until a keyup or a fresh keydown of either, so a held Enter presses once. Its guard listens on the window in the capture phase: zone.js runs every capture listener of one event on one target from a single native listener, registered with the first one's options, and the CDK's `InputModalityDetector` registers the document's keydown as passive before any control renders, so a `preventDefault` in a capture listener on the document does nothing. `focus-when-rendered.spec.ts` holds where focus lands, `onlyIfDropped`, the held key and the hand-off a destroyed component takes with it. It is the only copy: `household-focus.ts` and the four components that kept their own no longer do ([ADR 0194](ADR/0194-one-painted-contrast-helper-and-one-focus-hand-off-a-card-is-scored-part-by-part-and-no-page-skips-a-heading-level.md)). |
@@ -921,6 +924,21 @@ keeps the close button in the row*, which turns red when the title's
 with the row the title used to be, is held by neither: no case turns red
 without it.
 
+## Chrome's `toBlob` waits for an idle moment
+
+Chrome's `canvas.toBlob` encodes in an idle moment of the main thread and,
+when none comes, starts anyway after about a second. A full run can leave
+the main thread no idle moment for a while, and then every `toBlob` costs
+about a second, whatever the size of the image; `toDataURL` encodes on the
+spot. `receipt-image.utils.spec.ts` makes its photos with `toDataURL`
+(`jpegNow`), since the photo is not what it tests, and its give-up case,
+*gives up by name when nothing fits the ceiling, after the whole ladder*,
+stands `toBlob` in with an encode through `toDataURL` on a 1200 by 8 strip
+and reads all eight encodes: four qualities at the capped edge, then four at
+half of it. Through `toBlob` those encodes, nine with the photo, outlasted
+the case's five seconds on a starved run. A spec that encodes a canvas does
+the same, or leaves room for a second a call.
+
 ## Colour, as painted
 
 A spec that holds a colour pair to WCAG renders the real template and
@@ -972,7 +990,13 @@ that token, and does it read on what is painted behind it.
 - `paintedVerdict(node, token)` reads both without asserting, once the
   node's motion has settled, since a colour read mid-transition is one the
   text only passes through: whether the node is painted in the token, and
-  its ratio on its painted background.
+  its ratio on its painted background. It throws for a node the page does
+  not draw, under `display: none`, hidden, or of no size: such a node still
+  computes a colour and a background, and would read as painted in its
+  token at AA. A case that reads a part of a stepper or a tab shows that
+  part first; the import wizard's colour cases show the processing, review
+  or confirm step they read, since Material lays another step's content out
+  without drawing it.
 - `expectPainted(node, token, label, floor = 4.5)` asserts on that verdict,
   naming the node by `label`. The verdict's own case checks it both ways: a
   node in its token on white reads as painted in it at 4.5:1 or better, a
@@ -995,7 +1019,10 @@ So are the upload step's receipt-or-statement chips, which axe leaves
 receipt-or-statement chip's label at AA and the checkmark at 3:1 in the
 four palettes, in both states* reads the picked chip's label and checkmark
 on its fill and the other chip's label on the page, with each chip picked
-in turn, at rest
+in turn, at rest. It is the chips' only contrast reading, so it expects
+each label and the selected chip's focus overlay before it reads the
+palettes, and a part a Material rename stops matching fails it rather than
+skipping every palette
 ([ADR 0193](ADR/0193-a-row-that-is-no-photo-is-no-drag-item-the-receipt-or-statement-chips-are-measured-and-the-upload-area-shows-where-a-photo-will-land.md)).
 
 No spec keeps a copy of its own. This grep names `painted-contrast.ts`
@@ -1074,11 +1101,18 @@ and focuses nothing:
   colour, margin and corner, the button's own text colour, and the opacity
   of the state layer Material lays under a keyboard-focused button, read
   with Material's `cdk-keyboard-focused` class put on the button for the
-  read and taken off after. Its ratio is the line on what it is drawn over:
-  inside, the button's own fill with that layer laid on it; past a negative
-  margin, what the button stands on; the worse of the two where it
-  straddles the button's edge. It names, by class, each ancestor whose
-  overflow cuts the line off.
+  read and taken off after, unless the button carried it already: the
+  reading leaves the button as it found it. Its ratio is the line on what it
+  is drawn over: inside, the button's own fill with that layer laid on it;
+  past a negative margin, what the button stands on; the worse of the two
+  where it straddles the button's edge. It names, by class, each ancestor
+  that cuts the line off (`clippedBy`): one whose overflow is not visible,
+  or that contains its paint, when its padding box does not hold the line,
+  and one with a clip-path when its border box does not; a clip-path's own
+  shape is not read. `focus-indicator.spec.ts`'s *what readIndicator reads*
+  puts a 100px stroked button in a 96px box that cuts it each of the three
+  ways, and in a roomy box, and holds what it names and the focus class it
+  leaves.
 - `expectIndicatorInEveryPalette(button, label, colourToken?)` holds it, in
   each of `PALETTES`, to the design: shown, a solid line 2px wide (3px under
   high contrast), in the button's own text colour, or in `colourToken`
