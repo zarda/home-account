@@ -75,3 +75,58 @@ describe('unreadLines', () => {
     expect(() => unreadLines(jasmine.createSpy('another spy'))).toThrowError(/quietConsole/);
   });
 });
+
+/**
+ * A held line prints nothing, so a case that stops expecting the line it
+ * causes is caught only by expectEveryHeldLineRead. The global `expect` is
+ * stood in for while it runs, so its expectation is read rather than made.
+ */
+describe('expectEveryHeldLineRead', () => {
+  interface Asked {
+    readonly actual: unknown;
+    readonly context: string;
+    readonly expected: unknown;
+  }
+
+  function askedBy(spy: jasmine.Spy): Asked[] {
+    const asked: Asked[] = [];
+    const standIn = spyOn(globalThis, 'expect').and.callFake(((actual: unknown) => ({
+      withContext: (context: string) => ({
+        toEqual: (expected: unknown) => {
+          asked.push({ actual, context, expected });
+        },
+      }),
+    })) as never);
+    try {
+      expectEveryHeldLineRead(spy);
+    } finally {
+      standIn.and.callThrough();
+    }
+    return asked;
+  }
+
+  it('fails a case that left a held line unread, naming the line', () => {
+    const spy = quietConsole('warn', ['[Held]']);
+    console.warn('[Held] a', 1);
+    console.warn('[Held] b');
+    consoleLines(spy, '[Held] b');
+
+    const asked = askedBy(spy);
+
+    expect(asked.length).withContext('one expectation').toBe(1);
+    if (asked.length !== 1) return;
+    expect(asked[0].actual).withContext('the line no case read').toEqual([['[Held] a', 1]]);
+    expect(asked[0].expected).withContext('held against no line at all').toEqual([]);
+    expect(asked[0].actual).withContext('so the expectation fails').not.toEqual(asked[0].expected);
+    expect(asked[0].context).toMatch(/never read with consoleLines/);
+    consoleLines(spy, '[Held] a');
+  });
+
+  it('passes a case that read every line it held', () => {
+    const spy = quietConsole('warn', ['[Held]']);
+    console.warn('[Held] a');
+    consoleLines(spy, '[Held]');
+
+    expect(askedBy(spy).map(({ actual, expected }) => [actual, expected])).toEqual([[[], []]]);
+  });
+});
