@@ -38,8 +38,6 @@ export interface ActionNoticeOptions {
  * down.
  */
 export interface ActionNotice {
-  /** This notice's own number, never reused. */
-  readonly id: number;
   /** Runs when the reader presses the notice's action. */
   onAction(handler: () => void): void;
   /**
@@ -79,7 +77,6 @@ export class NotificationService {
   private announcer = inject(AnnouncerService);
   private translation = inject(TranslationService);
   private zone = inject(NgZone);
-  private lastNoticeId = 0;
 
   /** Confirmation of a completed action (polite announce, 3s by default). */
   success(message: string, options?: NotificationOptions): void {
@@ -106,7 +103,6 @@ export class NotificationService {
    * second time as it is shown.
    */
   withAction(message: string, action: string, options?: ActionNoticeOptions): ActionNotice {
-    const id = ++this.lastNoticeId;
     const ref = this.snackBar.open(message, action, {
       panelClass: 'snackbar-info',
       politeness: 'off',
@@ -146,7 +142,6 @@ export class NotificationService {
     });
 
     return {
-      id,
       onAction: handler => {
         ref.onAction().subscribe(() => handler());
       },

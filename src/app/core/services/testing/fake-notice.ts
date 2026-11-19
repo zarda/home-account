@@ -7,8 +7,6 @@ import { ActionNotice } from '../notification.service';
  * focus holding it.
  */
 export class FakeNotice implements ActionNotice {
-  private static opened = 0;
-  readonly id = ++FakeNotice.opened;
   dismissCalls = 0;
   private actionHandlers: (() => void)[] = [];
   private dismissHandlers: ((byAction: boolean) => void)[] = [];

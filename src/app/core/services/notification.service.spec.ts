@@ -239,7 +239,6 @@ describe('NotificationService: a notice with an action', () => {
     second.afterDismissed(secondLeft);
     await shown();
 
-    expect(second.id).not.toBe(first.id);
     // The second took the first one's place, which reports its own leaving.
     expect(firstLeft).toHaveBeenCalledOnceWith(false);
     expect(containers().length).toBe(1);
