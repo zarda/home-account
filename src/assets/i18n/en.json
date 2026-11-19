@@ -38,6 +38,7 @@
     "save": "Save",
     "cancel": "Cancel",
     "delete": "Delete",
+    "undo": "Undo",
     "edit": "Edit",
     "add": "Add",
     "search": "Search",
@@ -269,6 +270,10 @@
     "splitPart": "Part of a split purchase",
     "rowLabel": "{{description}}, {{amount}}, {{date}}",
     "untitledRow": "an untitled transaction",
+    "deleted": "Deleted {{description}}",
+    "deletedWithUndo": "Deleted {{description}}. {{action}} is available for a few seconds.",
+    "deleteFailed": "Couldn't delete {{description}}",
+    "restored": "Restored {{description}}",
     "deleteSplitPartMessage": "Delete this part of \"{{description}}\"? Its other parts stay.",
     "deleteUntitledSplitPartMessage": "Delete this untitled part of a split purchase? Its other parts stay.",
     "share": {

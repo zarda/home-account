@@ -38,6 +38,7 @@
     "save": "儲存",
     "cancel": "取消",
     "delete": "刪除",
+    "undo": "復原",
     "edit": "編輯",
     "add": "新增",
     "search": "搜尋",
@@ -260,6 +261,10 @@
     "splitPart": "分拆消費的一部分",
     "rowLabel": "{{description}}，{{amount}}，{{date}}",
     "untitledRow": "未命名的交易",
+    "deleted": "已刪除{{description}}。",
+    "deletedWithUndo": "已刪除{{description}}。幾秒內仍可按「{{action}}」取消刪除。",
+    "deleteFailed": "無法刪除{{description}}。",
+    "restored": "已還原{{description}}。",
     "deleteSplitPartMessage": "要刪除「{{description}}」的這個部分嗎？其他部分會保留。",
     "deleteUntitledSplitPartMessage": "要刪除分拆消費中這個未命名的部分嗎？其他部分會保留。",
     "share": {

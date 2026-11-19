@@ -38,6 +38,7 @@
     "save": "保存",
     "cancel": "キャンセル",
     "delete": "削除",
+    "undo": "元に戻す",
     "edit": "編集",
     "add": "追加",
     "search": "検索",
@@ -260,6 +261,10 @@
     "splitPart": "分割した支出の一部",
     "rowLabel": "{{description}}、{{amount}}、{{date}}",
     "untitledRow": "名前のない取引",
+    "deleted": "{{description}}を削除しました。",
+    "deletedWithUndo": "{{description}}を削除しました。数秒間は「{{action}}」で削除を取り消せます。",
+    "deleteFailed": "{{description}}を削除できませんでした。",
+    "restored": "{{description}}を元に戻しました。",
     "deleteSplitPartMessage": "「{{description}}」のこの部分を削除しますか？他の部分はそのまま残ります。",
     "deleteUntitledSplitPartMessage": "分割した買い物のこの名前のない部分を削除しますか？他の部分はそのまま残ります。",
     "share": {
