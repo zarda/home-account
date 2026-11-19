@@ -624,4 +624,23 @@ describe("overflow guard: the AI settings Recommended chip beside the provider's
     const { header, chip, parts } = geminiHeader('en');
     expectChipClear(header, chip, parts, 'en at 320 px, scale 1.3');
   });
+
+  // Material stands the avatar at the top of its header, beside the title's
+  // first line. Centring the row for the chip's sake moved every provider's
+  // avatar down beside a wrapped title's second line.
+  for (const scale of ['1', '1.3'] as const) {
+    it(`keeps each provider's avatar at the top of its header at 320 px and scale ${scale}, in English`, async () => {
+      document.documentElement.style.setProperty('--app-font-scale', scale);
+      await render('en', PHONE_PAGE_PX);
+      for (const provider of PROVIDERS) {
+        const header = host.querySelector(`.provider-avatar.${provider}`)!.closest('mat-card-header') as HTMLElement;
+        const avatar = header.querySelector('.provider-avatar')!.getBoundingClientRect();
+        const title = header.querySelector('mat-card-title')!.getBoundingClientRect();
+        const top = header.getBoundingClientRect().top + parseFloat(getComputedStyle(header).paddingTop);
+        const where = `${provider} at 320 px, scale ${scale}`;
+        expect(avatar.top).withContext(`${where}: the avatar's top at the header's padding, px`).toBeCloseTo(top, 0);
+        expect(avatar.top).withContext(`${where}: the avatar's top against the title's, px`).toBeLessThanOrEqual(title.top + 0.5);
+      }
+    });
+  }
 });
