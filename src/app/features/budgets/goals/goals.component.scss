@@ -1,6 +1,13 @@
 .goals-tab {
+  // The hint and Add Goal share a line where both fit whole. Where they do
+  // not, as on a 320px phone's 248px tab, the hint takes its own line and
+  // Add Goal the next, at its start, as the sibling tabs' header puts its
+  // button under its description. Without the wrap the two shrank side by
+  // side and Add Goal's label broke a word, or in ja a character, a line.
+  // Keyed on the tab's own width, not the viewport's.
   .goals-header {
     display: flex;
+    flex-wrap: wrap;
     align-items: center;
     justify-content: space-between;
     gap: 12px;
