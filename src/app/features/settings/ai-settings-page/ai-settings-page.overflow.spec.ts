@@ -480,3 +480,148 @@ describe('overflow guard: the AI settings provider field labels at 320 px', () =
     });
   }
 });
+
+/**
+ * The Gemini card's Recommended chip, shown while no Gemini key is set. It
+ * was laid over the header's right end, out of the row, and at 320 px the
+ * title reaches that far: the chip sat on "Google Gemini". In the row, it
+ * stands beside the title where the two fit and on a line of its own where
+ * they do not, never over the avatar, the title or the status under it.
+ * The page and face are the provider field labels' guard's above.
+ */
+describe("overflow guard: the AI settings Recommended chip beside the provider's title", () => {
+  const FACE = "Verdana, 'DejaVu Sans', sans-serif";
+  /** A 320 px screen less the main container's 8 px scrollbar and the layout's 16 px gutter a side. */
+  const PHONE_PAGE_PX = 320 - 8 - 2 * 16;
+  /** As wide as `.ai-settings-page` grows, its 800 px cap. */
+  const WIDE_PAGE_PX = 800;
+  let host: HTMLElement;
+
+  async function render(locale: 'en' | 'ja' | 'tc', width: number): Promise<void> {
+    // No provider configured, so the Gemini card recommends itself.
+    const cloudLLMProviderMock = jasmine.createSpyObj('CloudLLMProviderService', [
+      'isProviderAvailable',
+      'updateProviderApiKey',
+    ]);
+    cloudLLMProviderMock.isProviderAvailable.and.returnValue(false);
+    await TestBed.configureTestingModule({
+      imports: [PageProbeComponent, RouterTestingModule, HttpClientTestingModule],
+      providers: [
+        ...pageProviders(),
+        { provide: TranslationService, useValue: catalogTranslationStub(locale) },
+        { provide: CloudLLMProviderService, useValue: cloudLLMProviderMock },
+      ],
+      schemas: [NO_ERRORS_SCHEMA],
+    }).compileComponents();
+
+    const fixture = TestBed.createComponent(PageProbeComponent);
+    fixture.componentInstance.width = width;
+    host = fixture.nativeElement as HTMLElement;
+    host.style.fontFamily = FACE;
+    for (const token of ['--mat-sys-body-large-font', '--mat-sys-body-small-font', '--mat-sys-title-large-font']) {
+      host.style.setProperty(token, FACE);
+    }
+    document.body.appendChild(host);
+    fixture.detectChanges();
+    await fixture.whenStable();
+    fixture.detectChanges();
+  }
+
+  afterEach(() => {
+    document.documentElement.style.removeProperty('--app-font-scale');
+    host?.remove();
+  });
+
+  /** The Gemini card's header and the parts the chip must stay clear of. */
+  function geminiHeader(locale: 'en' | 'ja' | 'tc'): { header: HTMLElement; chip: HTMLElement; parts: [string, HTMLElement][] } {
+    const header = host.querySelector('.provider-avatar.gemini')!.closest('mat-card-header') as HTMLElement;
+    const chip = header.querySelector('.recommended-chip') as HTMLElement;
+    expect(chip).withContext(`${locale}: the chip, shown with no Gemini key`).not.toBeNull();
+    expect(chip.textContent?.trim())
+      .withContext(`${locale}: the chip's words`)
+      .toBe(catalogTranslator(locale, { strict: true })('aiPage.recommended'));
+    const parts: [string, HTMLElement][] = [
+      ['the avatar', header.querySelector('.provider-avatar') as HTMLElement],
+      ['the title', header.querySelector('mat-card-title') as HTMLElement],
+      ['the status', header.querySelector('mat-card-subtitle') as HTMLElement],
+    ];
+    return { header, chip, parts };
+  }
+
+  function overlaps(a: DOMRect, b: DOMRect): boolean {
+    return a.left < b.right - 0.5 && b.left < a.right - 0.5 && a.top < b.bottom - 0.5 && b.top < a.bottom - 0.5;
+  }
+
+  /** The chip clear of every part, on one line, inside the header's padding. */
+  function expectChipClear(header: HTMLElement, chip: HTMLElement, parts: [string, HTMLElement][], where: string): void {
+    const box = chip.getBoundingClientRect();
+    for (const [what, part] of parts) {
+      const rect = part.getBoundingClientRect();
+      expect(overlaps(box, rect))
+        .withContext(`${where}: the chip [${Math.round(box.left)}, ${Math.round(box.right)}] x [${Math.round(box.top)}, ` +
+          `${Math.round(box.bottom)}] against ${what} [${Math.round(rect.left)}, ${Math.round(rect.right)}] x ` +
+          `[${Math.round(rect.top)}, ${Math.round(rect.bottom)}]`)
+        .toBeFalse();
+    }
+    expect(textLines(chip)).withContext(`${where}: the chip's lines`).toBe(1);
+    const edges = header.getBoundingClientRect();
+    const style = getComputedStyle(header);
+    expect(box.left).withContext(`${where}: the chip's start inside the header`).toBeGreaterThanOrEqual(edges.left + parseFloat(style.paddingLeft) - 0.5);
+    expect(box.right).withContext(`${where}: the chip's end inside the header`).toBeLessThanOrEqual(edges.right - parseFloat(style.paddingRight) + 0.5);
+  }
+
+  for (const locale of ['en', 'ja', 'tc'] as const) {
+    it(`keeps the chip off the avatar, the title and the status at 320 px, in ${locale}`, async () => {
+      await render(locale, PHONE_PAGE_PX);
+      const { header, chip, parts } = geminiHeader(locale);
+      expectChipClear(header, chip, parts, `${locale} at 320 px`);
+    });
+  }
+
+  // Where the title and the chip fit one row, the chip keeps its place at the
+  // row's end, level with the avatar, and now inside the header's padding,
+  // where the content under it ends, not flush with the card's edge.
+  it('stands the chip at the end of the title row, inside the padding, where the two fit, in English', async () => {
+    await render('en', WIDE_PAGE_PX);
+    const { header, chip, parts } = geminiHeader('en');
+    expectChipClear(header, chip, parts, 'en, wide');
+    const box = chip.getBoundingClientRect();
+    const avatar = parts[0][1].getBoundingClientRect();
+    expect((box.top + box.bottom) / 2)
+      .withContext("the chip's middle against the avatar's, px")
+      .toBeCloseTo((avatar.top + avatar.bottom) / 2, 0);
+    const edges = header.getBoundingClientRect();
+    expect(box.right).withContext("the chip's end at the header's padding, px")
+      .toBeCloseTo(edges.right - parseFloat(getComputedStyle(header).paddingRight), 0);
+  });
+
+  // Every provider's header row wraps, for the chip's sake, and a title block
+  // wider than the room beside the avatar went onto a line of its own under
+  // it: at 320 px "OpenAI (ChatGPT)" and "Anthropic Claude" did, in every
+  // locale, as the titles are not translated, and Gemini's did at the largest
+  // text size. Whatever the chip does, each title stays beside its avatar.
+  const PROVIDERS = ['gemini', 'openai', 'claude'] as const;
+
+  function expectTitleBesideAvatar(provider: (typeof PROVIDERS)[number], where: string): void {
+    const header = host.querySelector(`.provider-avatar.${provider}`)!.closest('mat-card-header') as HTMLElement;
+    const avatar = header.querySelector('.provider-avatar')!.getBoundingClientRect();
+    const title = header.querySelector('mat-card-title')!.getBoundingClientRect();
+    expect(title.left).withContext(`${where}: the title's start against the avatar's end, px`).toBeCloseTo(avatar.right, 0);
+    expect(title.top).withContext(`${where}: the title's top above the avatar's bottom`).toBeLessThan(avatar.bottom);
+  }
+
+  for (const provider of PROVIDERS) {
+    it(`keeps the ${provider} card's title beside its avatar at 320 px, in English`, async () => {
+      await render('en', PHONE_PAGE_PX);
+      expectTitleBesideAvatar(provider, `${provider} at 320 px`);
+    });
+  }
+
+  it("keeps the gemini card's title beside its avatar at 320 px and the largest text size, in English", async () => {
+    document.documentElement.style.setProperty('--app-font-scale', '1.3');
+    await render('en', PHONE_PAGE_PX);
+    expectTitleBesideAvatar('gemini', 'gemini at 320 px, scale 1.3');
+    const { header, chip, parts } = geminiHeader('en');
+    expectChipClear(header, chip, parts, 'en at 320 px, scale 1.3');
+  });
+});
