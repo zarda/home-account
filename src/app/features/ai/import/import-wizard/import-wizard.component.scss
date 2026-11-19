@@ -43,7 +43,8 @@
   display: flex;
   flex-wrap: wrap;
   gap: 4px 16px;
-  margin: 0 0 24px;
+  margin-block: 0 24px;
+  margin-inline: 0;
   padding: 0;
   list-style: none;
   font-size: var(--text-xs);
@@ -55,13 +56,13 @@
   display: inline-flex;
   align-items: center;
   gap: 4px;
-  min-width: 0;
+  min-inline-size: 0;
 }
 
 .features-list mat-icon {
   font-size: var(--text-sm);
-  width: 1em;
-  height: 1em;
+  inline-size: 1em;
+  block-size: 1em;
   flex-shrink: 0;
 }
 
