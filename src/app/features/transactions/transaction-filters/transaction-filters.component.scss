@@ -113,7 +113,8 @@
   margin-top: 8px;
   background: var(--surface-muted);
   border-radius: var(--radius-sm);
-  padding: 8px 4px 8px 12px;
+  padding-block: 8px;
+  padding-inline: 12px 4px;
 }
 
 // The caption over the box, one column beside Save and Cancel. A tap on the
