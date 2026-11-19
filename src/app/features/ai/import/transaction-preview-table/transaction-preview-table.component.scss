@@ -848,11 +848,12 @@
   padding-top: 0;
 }
 
+// The 40px the strip's add triggers and Add row take, in its own box.
 .add-notes-btn {
   display: inline-flex;
   align-items: center;
   gap: 4px;
-  min-height: 36px;
+  min-height: 40px;
   font-size: var(--text-xs);
   color: var(--text-muted);
   background: none;
