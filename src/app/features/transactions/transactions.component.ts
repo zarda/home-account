@@ -128,8 +128,10 @@ export class TransactionsComponent implements OnInit, OnDestroy {
 
   transactions = computed(() => {
     const rows = this.windowSource.visibleWindow();
-    const hidden = this.hidden();
-    return hidden.size === 0 ? rows : rows.filter(row => !hidden.has(row.id));
+    // Not `hidden`: Tailwind would read its negation as a utility made
+    // important, and ship the rule.
+    const hiddenRows = this.hidden();
+    return hiddenRows.size === 0 ? rows : rows.filter(row => !hiddenRows.has(row.id));
   });
   isInitialLoading = this.windowSource.isInitialLoading;
 
