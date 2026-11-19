@@ -766,9 +766,10 @@ export class TransactionListComponent {
    * actions menu, the phone's trailing menu and the swipe drawer. Once
    * confirmed, the row is followed until it leaves the list, which the page
    * makes it do at once, so focus can be handed on then (focusAfterDelete);
-   * where it stood is read as the confirm opens, in case the row goes while
-   * it is open. If it comes back (its Undo, or a delete that failed), the
-   * page says so (deleteUndone, deleteFailed).
+   * where it stands is read as the confirm closes, and where it stood as the
+   * confirm opened stands in for a row that went while it was open. If it
+   * comes back (its Undo, or a delete that failed), the page says so
+   * (deleteUndone, deleteFailed).
    *
    * The drawer shuts as its Delete is pressed, which hides that button and
    * moves it off-canvas, so a confirm the drawer opened, cancelled or not,
@@ -807,7 +808,11 @@ export class TransactionListComponent {
 
     dialogRef.afterClosed().subscribe(confirmed => {
       if (!confirmed) return;
-      this.deletedRow.set({ id: transaction.id, index });
+      // Rows can load above the row, or be trimmed from above it, while the
+      // confirm is open: its place is read again now, and the place it had
+      // as the confirm opened stands only for a row gone by then.
+      const now = this.sortedTransactions().findIndex(row => row.id === transaction.id);
+      this.deletedRow.set({ id: transaction.id, index: now >= 0 ? now : index });
       this.delete.emit(transaction);
     });
   }
