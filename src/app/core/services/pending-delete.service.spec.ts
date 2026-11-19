@@ -425,6 +425,54 @@ describe('PendingDeleteService', () => {
       expect(done).toBe(true);
       expect(deleteTransaction).not.toHaveBeenCalled();
     });
+
+    // The page stays in use while the sign-out waits: a row deleted then
+    // would otherwise still wait when the sign-out lands, and be dropped
+    // with nobody signed in, never deleted.
+    it('makes real a delete confirmed while it waits, and waits for that one too', async () => {
+      const finishes = new Map<string, () => void>();
+      deleteTransaction.and.callFake(id => new Promise<void>(resolve => finishes.set(id, resolve)));
+      deferred(coffee);
+
+      let done = false;
+      void service.flushBeforeSignOut().then(() => (done = true));
+      await settle();
+      expect(deleteTransaction).toHaveBeenCalledOnceWith(coffee.id);
+
+      const { outcome } = deferred(rent);
+      finishes.get(coffee.id)!();
+      await settle();
+      expect(deleteTransaction).withContext('the row deleted during the wait').toHaveBeenCalledWith(rent.id);
+      expect(done).withContext('while that delete runs').toBe(false);
+
+      finishes.get(rent.id)!();
+      await settle();
+      expect(done).toBe(true);
+      await expectAsync(outcome).toBeResolvedTo('deleted');
+    });
+
+    it('waits SIGN_OUT_WAIT_MS at most in all, for a delete confirmed while it waits too', async () => {
+      const finishes = new Map<string, () => void>();
+      deleteTransaction.and.callFake(id => new Promise<void>(resolve => finishes.set(id, resolve)));
+      deferred(coffee);
+
+      let done = false;
+      void service.flushBeforeSignOut().then(() => (done = true));
+      await settle();
+      jasmine.clock().tick(1000);
+      deferred(rent);
+      finishes.get(coffee.id)!();
+      await settle();
+      expect(deleteTransaction).toHaveBeenCalledWith(rent.id);
+
+      jasmine.clock().tick(SIGN_OUT_WAIT_MS - 1000 - 1);
+      await settle();
+      expect(done).withContext('just before the wait runs out').toBe(false);
+
+      jasmine.clock().tick(1);
+      await settle();
+      expect(done).withContext('the wait counted from the sign-out, not from the later delete').toBe(true);
+    });
   });
 
   it('opens no second notice for a row already on its way, and hands back the same outcome', async () => {
