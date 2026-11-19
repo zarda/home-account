@@ -11,6 +11,7 @@
         [(ngModel)]="type"
         (change)="onTypeChange()"
         class="type-toggle"
+        [attr.aria-label]="'transactions.type' | translate"
       >
         <mat-button-toggle value="expense">
           <mat-icon>trending_down</mat-icon>

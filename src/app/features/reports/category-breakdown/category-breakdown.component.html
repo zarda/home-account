@@ -4,6 +4,7 @@
     <mat-button-toggle-group
       [value]="selectedType()"
       (change)="selectedType.set($event.value)"
+      [attr.aria-label]="'transactions.type' | translate"
     >
       <mat-button-toggle value="expense">
         <mat-icon>trending_down</mat-icon>

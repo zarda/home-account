@@ -4,7 +4,11 @@
   <mat-dialog-content class="!px-6 !py-4">
     <p class="goal-name">{{ data.goal.name }}</p>
 
-    <mat-button-toggle-group [(ngModel)]="direction" class="direction-toggle w-full mb-4">
+    <mat-button-toggle-group
+      [(ngModel)]="direction"
+      class="direction-toggle w-full mb-4"
+      [attr.aria-label]="'goal.directionLabel' | translate"
+    >
       <mat-button-toggle value="add" class="flex-1">
         <mat-icon>add</mat-icon>
         {{ 'goal.directionAdd' | translate }}

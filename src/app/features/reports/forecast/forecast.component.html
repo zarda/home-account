@@ -14,6 +14,7 @@
           class="horizon-toggle"
           [value]="horizon()"
           (change)="setHorizon($event.value)"
+          [attr.aria-label]="'reports.forecastPeriod' | translate"
         >
           @for (days of horizons; track days) {
             <mat-button-toggle [value]="days">
