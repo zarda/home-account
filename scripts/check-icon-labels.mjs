@@ -1743,7 +1743,8 @@ const FIELD_TAGS = new Set(['select', 'textarea', 'mat-select']);
  * `aria-label` or `aria-labelledby` with a value that is not blank, since each
  * lands on a plain element, as on a slider's thumb (thumbNamed); for a slider,
  * every thumb carrying one. `ever` and `always` say what it holds (heldBy),
- * and `blocks` whether that is read through a control-flow block.
+ * and `blocks` whether it holds a control-flow block at any depth, whether or
+ * not words outside every block already name it.
  */
 function readControls(source) {
   const found = [];
@@ -2162,7 +2163,7 @@ function run() {
   // against the rows frozen when it landed.
   const controlKinds = { toggle: 0, plain: 0, slider: 0 };
   let byContent = 0;
-  let throughBlocks = 0;
+  let holdingBlocks = 0;
   const unnamed = [];
   for (const template of sources) {
     const controls = readControls(template.source);
@@ -2170,7 +2171,7 @@ function run() {
       controlKinds[control.kind]++;
       if (control.kind === 'slider' || control.named) continue;
       byContent++;
-      if (control.blocks) throughBlocks++;
+      if (control.blocks) holdingBlocks++;
     }
     for (const hit of unnamedAmong(controls)) {
       unnamed.push({ site: `${template.key}:${hit.line + template.offset}`, tag: hit.tag, key: hit.tag, sometimes: hit.sometimes });
@@ -2233,7 +2234,7 @@ function run() {
     `Checked ${controlKinds.toggle} checkbox, slide toggle and radio button tag(s), ` +
       `${controlKinds.plain} button(s), link(s) and element(s) with a control's role, and ` +
       `${controlKinds.slider} slider(s) across ${sources.length} template(s): ${byContent} take their name ` +
-      `from what they hold, ${throughBlocks} of them through a control-flow block; ${unnamed.length} name ` +
+      `from what they hold, ${holdingBlocks} of them hold a control-flow block; ${unnamed.length} name ` +
       `nothing in some state of their blocks or in all, ` +
       `${UNNAMED_FROZEN.reduce((sum, row) => sum + row.count, 0)} frozen by name.`
   );
