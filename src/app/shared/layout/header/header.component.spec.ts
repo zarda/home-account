@@ -16,6 +16,7 @@ import { APP_BREAKPOINTS, AppBreakpointName } from '../../../core/layout/breakpo
 import {
   AUDIT_SCHEMES,
   createTranslationStub,
+  expectIndicatorInEveryPalette,
   provideNoMotion,
   provideNoPendingDelete,
   runAxe,
@@ -587,6 +588,26 @@ describe('HeaderComponent, the palette button and the ? hint (#446)', () => {
     expect(localStorage.getItem(HINT_KEY)).toBe('true');
     recreate();
     expect(hint()).withContext('after a re-create').toBeNull();
+  });
+
+  // The hint shows at desktop widths, which a touch screen reaches too: its
+  // dismiss is a 40px target, the floor every target in the app keeps, not
+  // 32px. The hint grows round it and still sits inside the toolbar's band,
+  // and the indicator a keyboard focus draws inside the button is whole.
+  it("gives the hint's dismiss a 40px target inside the toolbar, its focus indicator whole in every palette", () => {
+    create();
+    const dismiss = dismissButton();
+    expect(dismiss).withContext('the dismiss renders').not.toBeNull();
+    if (!dismiss) return;
+
+    const box = dismiss.getBoundingClientRect();
+    expect(box.width).withContext('width vs the 40px floor').toBeGreaterThanOrEqual(40);
+    expect(box.height).withContext('height vs the 40px floor').toBeGreaterThanOrEqual(40);
+    const band = el().querySelector('.header-toolbar')!.getBoundingClientRect();
+    const tip = hint()!.getBoundingClientRect();
+    expect(tip.top).withContext('the hint inside the toolbar, top').toBeGreaterThanOrEqual(band.top);
+    expect(tip.bottom).withContext('the hint inside the toolbar, bottom').toBeLessThanOrEqual(band.bottom);
+    expectIndicatorInEveryPalette(dismiss, "the hint's dismiss");
   });
 
   it('hands focus to the palette button when the hint is dismissed, so a keyboard keeps its place', () => {
