@@ -10,6 +10,7 @@ import { MatInputModule } from '@angular/material/input';
 
 import { AppLockService } from '../../../core/services/app-lock.service';
 import { AuthService } from '../../../core/services/auth.service';
+import { PendingDeleteService } from '../../../core/services/pending-delete.service';
 import { BiometricAuthService } from '../../../core/services/biometric-auth.service';
 import { TranslationService } from '../../../core/services/translation.service';
 import { PIN_LENGTH, isValidPin } from '../../../core/utils/pin-hash.utils';
@@ -34,6 +35,7 @@ import { TranslatePipe } from '../../../shared/pipes/translate.pipe';
 export class AppLockComponent implements OnInit, OnDestroy {
   private appLock = inject(AppLockService);
   private authService = inject(AuthService);
+  private pendingDelete = inject(PendingDeleteService);
   private biometric = inject(BiometricAuthService);
   private translation = inject(TranslationService);
   private router = inject(Router);
@@ -161,8 +163,11 @@ export class AppLockComponent implements OnInit, OnDestroy {
   async signOut(): Promise<void> {
     // Order matters: clearing first means a sign-out that fails still leaves
     // the device recoverable. Navigation runs either way, so a rejected
-    // sign-out cannot strand the user on this screen.
+    // sign-out cannot strand the user on this screen. A transaction delete
+    // still inside its Undo window is made real before the sign-out, which
+    // waits for it only so long (flushBeforeSignOut), never for good.
     this.appLock.clearCredential();
+    await this.pendingDelete.flushBeforeSignOut();
     try {
       await this.authService.signOut();
     } catch (error) {

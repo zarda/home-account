@@ -10,6 +10,9 @@ import { quotedTransactionName } from '../utils/transaction-display.utils';
 /** How long a deleted transaction's Undo is offered, not counting the time the notice is held. */
 export const UNDO_WINDOW_MS = 10_000;
 
+/** The longest a sign-out waits for the deletes it makes real (flushBeforeSignOut). */
+export const SIGN_OUT_WAIT_MS = 5_000;
+
 /**
  * How a deferred delete ended: taken back by Undo, carried out, failed, or
  * dropped because the account it was asked for is no longer the one signed
@@ -59,9 +62,10 @@ interface Pending {
  * reason than its Undo (another notice took its place) makes the delete
  * real, since its Undo can no longer be reached.
  *
- * The caller flushes on leaving the page, when the page is hidden and before
- * signing out. A flush finds the account the delete was asked for still
- * signed in or deletes nothing, quietly.
+ * The caller flushes on leaving the page and when the page is hidden; the
+ * three sign-out doors flush too, and wait (flushBeforeSignOut). A flush
+ * finds the account the delete was asked for still signed in or deletes
+ * nothing, quietly.
  */
 @Injectable({ providedIn: 'root' })
 export class PendingDeleteService {
@@ -154,6 +158,19 @@ export class PendingDeleteService {
   flush(): Promise<void> {
     if (this.pending) this.finish(this.pending);
     return Promise.all(this.running).then(() => undefined);
+  }
+
+  /**
+   * flush(), for a door that signs out: the delete waiting is made real and
+   * the sign-out waits for the deletes running to settle, so none is cut off
+   * half done, but for SIGN_OUT_WAIT_MS at most. A delete made offline
+   * settles only once the connection returns, and a sign-out must never wait
+   * on that: on the lock screen it is the one way off the screen.
+   */
+  flushBeforeSignOut(): Promise<void> {
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const waitedEnough = new Promise<void>(resolve => (timer = setTimeout(resolve, SIGN_OUT_WAIT_MS)));
+    return Promise.race([this.flush(), waitedEnough]).finally(() => clearTimeout(timer));
   }
 
   private takeBack(record: Pending): void {

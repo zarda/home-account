@@ -721,6 +721,15 @@ textarea::placeholder {
   border-inline-start: 4px solid var(--color-info);
 }
 
+/* While the phone's bottom nav is shown, a notice opens above it rather than
+   over it: over it, the notice covers the tabs, and the Undo a deleted
+   transaction's notice carries sits where a thumb reaches for them. The bar
+   is 64px over the home-indicator inset (main-layout.component.scss), and
+   the notice keeps its own 8px gap above that. */
+body:has(.bottom-nav-container.visible) .mat-mdc-snack-bar-container {
+  margin-bottom: calc(64px + var(--safe-bottom) + 8px);
+}
+
 /* Scrollbar styling */
 ::-webkit-scrollbar {
   width: 8px;

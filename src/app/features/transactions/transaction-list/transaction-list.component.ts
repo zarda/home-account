@@ -338,12 +338,13 @@ export class TransactionListComponent {
       untracked(() => this.scrollToTarget(target.id));
     });
 
-    // A confirmed delete's row leaves when the page's refresh lands, several
-    // renders after the confirm, and takes the control that held focus with
-    // it. Until then the row's place is followed; once it has gone, focus
-    // goes to the row now in that place (focusAfterDelete). A list left with
-    // no row and no empty state is still loading past a filter only the
-    // loaded rows are matched against: the hand-off waits for either.
+    // A confirmed delete's row leaves the moment the confirm closes, since
+    // the page hides it while its delete waits out the Undo window, and takes
+    // the control that held focus with it. Until it has gone the row's place
+    // is followed; then focus goes to the row now in that place
+    // (focusAfterDelete). A list left with no row and no empty state is still
+    // loading past a filter only the loaded rows are matched against: the
+    // hand-off waits for either.
     effect(() => {
       const deleted = this.deletedRow();
       if (!deleted) return;
@@ -763,9 +764,11 @@ export class TransactionListComponent {
   /**
    * Asks before a row is deleted, from any of its three doors: the desktop
    * actions menu, the phone's trailing menu and the swipe drawer. Once
-   * confirmed, the row is followed until it leaves the list, so focus can be
-   * handed on then (focusAfterDelete); where it stood is read as the confirm
-   * opens, in case the row goes while it is open.
+   * confirmed, the row is followed until it leaves the list, which the page
+   * makes it do at once, so focus can be handed on then (focusAfterDelete);
+   * where it stood is read as the confirm opens, in case the row goes while
+   * it is open. If it comes back (its Undo, or a delete that failed), the
+   * page says so (deleteUndone, deleteFailed).
    *
    * The drawer shuts as its Delete is pressed, which hides that button and
    * moves it off-canvas, so a confirm the drawer opened, cancelled or not,
@@ -791,7 +794,7 @@ export class TransactionListComponent {
         });
     const dialogRef = this.dialog.open(ConfirmDialogComponent, {
       width: '400px',
-      ...(from === 'drawer' ? { restoreFocus: this.menuButtonsOf(transaction).join(', ') } : {}),
+      ...(from === 'drawer' ? { restoreFocus: this.menuButtonsOf(transaction.id).join(', ') } : {}),
       data: {
         title: this.translationService.t('transactions.deleteTransaction'),
         message,
@@ -810,13 +813,41 @@ export class TransactionListComponent {
   }
 
   /**
-   * The page's word that the delete of row `id` did not happen. The row
-   * stays, and if it is the one being followed it is followed no more, so a
-   * later reason for it to leave, such as a filter or the window trimming it
-   * as the reader scrolls, hands no focus on.
+   * The page's word that the delete of row `id` did not happen: the page
+   * lists the row again (rowBack). If it is the one being followed it is
+   * followed no more, so a later reason for it to leave, such as a filter or
+   * the window trimming it as the reader scrolls, hands no focus on.
    */
   deleteFailed(id: string): void {
-    if (this.deletedRow()?.id === id) this.deletedRow.set(null);
+    this.rowBack(id);
+  }
+
+  /**
+   * The page's word that row `id`'s delete was taken back by its Undo: the
+   * page lists the row again (rowBack).
+   */
+  deleteUndone(id: string): void {
+    this.rowBack(id);
+  }
+
+  /**
+   * A row whose delete was confirmed is listed again: the page hid it the
+   * moment the confirm closed, and it is back. It is followed no more; it is
+   * scrolled to, and focus goes to its menu button if focus dropped, or was
+   * left in the Undo notice, which keeps it while it plays its way out and
+   * then drops it. Focus the reader has put anywhere else stays there.
+   *
+   * While another row's delete, confirmed since, waits to hand focus on, that
+   * hand-off, the reader's latest, decides where focus goes, and the view is
+   * left where it is.
+   */
+  private rowBack(id: string): void {
+    const followed = this.deletedRow();
+    if (followed && followed.id !== id) return;
+    this.deletedRow.set(null);
+    this.windowSource.requestScrollTo(id);
+    const notice = this.host.nativeElement.ownerDocument.activeElement?.closest('.mat-mdc-snack-bar-container');
+    focusWhenRendered(this.focus, this.menuButtonsOf(id), { onlyIfDropped: true, from: notice ?? null });
   }
 
   /**
@@ -839,15 +870,15 @@ export class TransactionListComponent {
     const before = rows[Math.min(index, rows.length) - 1];
     focusWhenRendered(
       this.focus,
-      [...this.menuButtonsOf(after), ...this.menuButtonsOf(before), 'app-empty-state button'],
+      [...this.menuButtonsOf(after?.id), ...this.menuButtonsOf(before?.id), 'app-empty-state button'],
       { onlyIfDropped: true }
     );
   }
 
-  /** A row's menu button, in the desktop table and in the phone list. */
-  private menuButtonsOf(row: Transaction | undefined): string[] {
-    if (!row) return [];
-    const scope = `[data-tx-id="${CSS.escape(row.id)}"]`;
+  /** The menu button of the row with this id, in the desktop table and in the phone list. */
+  private menuButtonsOf(id: string | undefined): string[] {
+    if (id === undefined) return [];
+    const scope = `[data-tx-id="${CSS.escape(id)}"]`;
     return [`${scope} .action-btn`, `${scope} .row-menu-btn`];
   }
 
