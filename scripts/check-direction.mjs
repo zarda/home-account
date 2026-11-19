@@ -123,7 +123,7 @@ const BASELINE = {
   'src/app/features/reports/monthly-comparison/monthly-comparison.component.scss': 2,
   'src/app/features/reports/reports.component.scss': 3,
   'src/app/features/reports/spending-analysis/spending-analysis.component.scss': 1,
-  'src/app/features/settings/ai-settings-page/ai-settings-page.component.scss': 2,
+  'src/app/features/settings/ai-settings-page/ai-settings-page.component.scss': 1,
   'src/app/features/settings/category-manager/category-manager.component.scss': 2,
   'src/app/features/settings/profile-settings/profile-settings.component.scss': 2,
   'src/app/features/settings/settings.component.scss': 3,
