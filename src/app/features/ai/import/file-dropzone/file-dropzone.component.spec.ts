@@ -2211,7 +2211,8 @@ describe('FileDropzoneComponent, through its own template', () => {
      * shows through: at rest, as under a finger, and hovered, as under a
      * mouse. The lifted row carries the overlay shadow and the same edge.
      * Mutations: the slot back to a faded copy of the row (0.3 opacity on
-     * --surface-hover); the preview's edge left --border-primary.
+     * --surface-hover); the 0.3 opacity alone, on the clear fill; the
+     * preview's edge left --border-primary.
      */
     it('outlines a dragged photo\'s slot, empty and dashed, in --color-primary-text at 3:1 on the zone, and edges the lifted row alike over the overlay shadow, in the four palettes', async () => {
       fixture.detectChanges();
@@ -2236,16 +2237,25 @@ describe('FileDropzoneComponent, through its own template', () => {
             expect(outline.borderColor).withContext(`${name}: the slot's edge colour`).toBe(edge);
             expect(getComputedStyle(slot.querySelector('.file-name') as HTMLElement).visibility)
               .withContext(`${name}: the slot's file name`).toBe('hidden');
+            // The edge is read as painted: for the reading the slot takes the
+            // edge's colour as its text colour, so paintedColor composites
+            // that colour's alpha, the slot's own opacity and every
+            // ancestor's over the zone. A faded slot on a clear fill still
+            // shows the zone through, so what is under it cannot catch the
+            // fade; only the edge's own reading can.
+            const drawn = outline.borderColor;
             for (const [state, fill] of [['at rest', ''], ['hovered', hovered]] as const) {
               zone.style.background = fill;
+              slot.style.color = drawn;
               try {
                 const under = paintedBackground(slot);
                 expect(under).withContext(`${name}, ${state}: what shows through the slot`).toEqual(paintedBackground(zone));
-                expect(ratio(channels(outline.borderColor).rgb, under))
+                expect(ratio(paintedColor(slot), under))
                   .withContext(`${name}, ${state}: the slot's edge on the zone`)
                   .toBeGreaterThanOrEqual(3);
               } finally {
                 zone.style.background = '';
+                slot.style.color = '';
               }
             }
 
