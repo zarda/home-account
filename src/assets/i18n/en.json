@@ -9,6 +9,7 @@
   },
   "datepicker": {
     "openCalendar": "Open calendar",
+    "openCalendarFor": "Open calendar: {{field}}",
     "closeCalendar": "Close calendar",
     "previousMonth": "Previous month",
     "nextMonth": "Next month",
@@ -178,6 +179,8 @@
     "all": "All",
     "from": "From",
     "to": "To",
+    "openCalendarFrom": "Open calendar: From",
+    "openCalendarTo": "Open calendar: To",
     "minAmount": "Min $",
     "maxAmount": "Max $",
     "clearAll": "Clear all",

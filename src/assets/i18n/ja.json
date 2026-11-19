@@ -9,6 +9,7 @@
   },
   "datepicker": {
     "openCalendar": "カレンダーを開く",
+    "openCalendarFor": "カレンダーを開く：{{field}}",
     "closeCalendar": "カレンダーを閉じる",
     "previousMonth": "前の月",
     "nextMonth": "次の月",
@@ -175,6 +176,8 @@
     "all": "すべて",
     "from": "開始",
     "to": "終了",
+    "openCalendarFrom": "カレンダーを開く：開始",
+    "openCalendarTo": "カレンダーを開く：終了",
     "minAmount": "最小額",
     "maxAmount": "最大額",
     "clearAll": "すべてクリア",

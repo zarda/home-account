@@ -30,6 +30,7 @@ import { RouterTestingHarness } from '@angular/router/testing';
 import { By } from '@angular/platform-browser';
 import { provideHttpClient } from '@angular/common/http';
 import { DateAdapter } from '@angular/material/core';
+import { MatDatepickerIntl } from '@angular/material/datepicker';
 import { MatSelect } from '@angular/material/select';
 import { provideAppCharts } from './core/config/chart.config';
 import { provideAppDatepicker } from './core/config/datepicker.config';
@@ -689,14 +690,24 @@ describe('App routes (emulator smoke test)', () => {
         expect((fromInput.nativeElement as HTMLInputElement).value)
           .withContext("the From date, in the account's YYYY-MM-DD")
           .toMatch(/^\d{4}-\d{2}-\d{2}$/);
-        // ...and the root's labels: each toggle is named from the catalog,
-        // the key here, where Material's English default stood.
+        // Each toggle is named from the catalog for its own field, the key
+        // here...
         const toggleNames = Array.from(
           harness.routeNativeElement?.querySelectorAll('.filter-grid mat-datepicker-toggle button') ?? []
         ).map(toggle => toggle.getAttribute('aria-label'));
         expect(toggleNames)
           .withContext('the From and To toggles')
-          .toEqual(['datepicker.openCalendar', 'datepicker.openCalendar']);
+          .toEqual(['transactions.openCalendarFrom', 'transactions.openCalendarTo']);
+        // ...and the labels its calendar reads are still the root's, where
+        // Material's English default stood: an intl a routed parent provided
+        // would put the calendar's previous, next and close back in English.
+        const fromToggle = harness.fixture.debugElement.query(By.css('.filter-grid mat-datepicker-toggle'));
+        expect(fromToggle).withContext('the From toggle').not.toBeNull();
+        const toggleIntl = fromToggle.injector.get(MatDatepickerIntl);
+        expect(toggleIntl === TestBed.inject(MatDatepickerIntl))
+          .withContext("the From toggle's labels are the root's")
+          .toBeTrue();
+        expect(toggleIntl.openCalendarLabel).withContext("the root's label, the key here").toBe('datepicker.openCalendar');
         await expectNoAxeViolationsInView('/transactions', '.filter-grid');
         // #505: the grid hides Material's subscript, so text that is no date
         // in From showed the error outline and told a screen reader nothing.

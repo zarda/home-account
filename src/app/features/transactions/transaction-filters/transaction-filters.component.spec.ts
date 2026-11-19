@@ -2613,14 +2613,15 @@ describe('TransactionFiltersComponent', () => {
         .withContext("the From input's adapter is the root's")
         .toBeTrue();
 
-      const toggles = Array.from(
-        (fixture.nativeElement as HTMLElement).querySelectorAll<HTMLButtonElement>('.filter-grid mat-datepicker-toggle button')
-      );
+      // Each calendar button is named for its own field in place of the
+      // shared label, so the labels it reads are checked by where they come
+      // from: the root's, as the calendar it opens reads them.
+      const toggles = fixture.debugElement.queryAll(By.css('.filter-grid mat-datepicker-toggle'));
       expect(toggles.length).withContext('the From and To calendar buttons').toBe(2);
       toggles.forEach((toggle, index) =>
-        expect(toggle.getAttribute('aria-label'))
-          .withContext(`the ${index === 0 ? 'From' : 'To'} calendar button's name`)
-          .toBe('root')
+        expect(toggle.injector.get(MatDatepickerIntl) === TestBed.inject(MatDatepickerIntl))
+          .withContext(`the ${index === 0 ? 'From' : 'To'} calendar button's labels are the root's`)
+          .toBeTrue()
       );
     });
   });

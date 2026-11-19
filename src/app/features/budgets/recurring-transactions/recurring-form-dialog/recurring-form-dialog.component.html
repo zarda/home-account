@@ -136,7 +136,14 @@
     <mat-form-field appearance="outline">
       <mat-label>{{ 'settings.startDate' | translate }}</mat-label>
       <input matInput [matDatepicker]="startPicker" [(ngModel)]="startDate" #startModel="ngModel" />
-      <mat-datepicker-toggle matSuffix [for]="startPicker"></mat-datepicker-toggle>
+      <!-- Start and End date each end in a calendar button, and the two show
+           together once the rule has an end date, so each is named for its
+           own field in place of the calendar's shared label. -->
+      <mat-datepicker-toggle
+        matSuffix
+        [for]="startPicker"
+        [aria-label]="'datepicker.openCalendarFor' | translate: { field: ('settings.startDate' | translate) }"
+      ></mat-datepicker-toggle>
       <mat-datepicker #startPicker></mat-datepicker>
       <mat-icon matPrefix>calendar_today</mat-icon>
       @if (startModel.hasError('matDatepickerParse')) {
@@ -157,7 +164,11 @@
       <mat-form-field appearance="outline">
         <mat-label>{{ 'settings.endDate' | translate }}</mat-label>
         <input matInput [matDatepicker]="endPicker" [(ngModel)]="endDate" [min]="startDate" #endModel="ngModel" />
-        <mat-datepicker-toggle matSuffix [for]="endPicker"></mat-datepicker-toggle>
+        <mat-datepicker-toggle
+          matSuffix
+          [for]="endPicker"
+          [aria-label]="'datepicker.openCalendarFor' | translate: { field: ('settings.endDate' | translate) }"
+        ></mat-datepicker-toggle>
         <mat-datepicker #endPicker></mat-datepicker>
         <mat-icon matPrefix>event_busy</mat-icon>
         @if (endModel.hasError('matDatepickerParse')) {
