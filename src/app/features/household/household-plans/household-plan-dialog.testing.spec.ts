@@ -4,7 +4,7 @@ import { MatButtonModule } from '@angular/material/button';
 import { MatDialogModule } from '@angular/material/dialog';
 import axe, { type AxeResults, type IncompleteResult, type RunOptions } from 'axe-core';
 
-import { provideNoMotion } from '../../../core/services/testing';
+import { keepThePageWhereFound, provideNoMotion } from '../../../core/services/testing';
 import { auditPlanDialog } from './household-plan-dialog.testing';
 
 /**
@@ -45,6 +45,7 @@ describe('auditPlanDialog', () => {
   beforeEach(() => {
     TestBed.configureTestingModule({ providers: [provideNoMotion()] });
   });
+  keepThePageWhereFound();
 
   it('scores a line that only a scroll through the content brings into view', async () => {
     const audit = await auditPlanDialog(TallPlanDialog, {}, 'light-theme');
@@ -59,7 +60,6 @@ describe('auditPlanDialog', () => {
     // Jasmine's report outgrows Karma's frame, and a focus() on a fixture
     // appended below it scrolls the page; the audit then runs wherever that left it.
     const page = document.scrollingElement!;
-    const before = page.scrollTop;
     const tall = document.body.appendChild(document.createElement('div'));
     tall.style.height = '3000px';
     try {
@@ -75,7 +75,6 @@ describe('auditPlanDialog', () => {
       expect(page.scrollTop).withContext('the page is left where the audit found it').toBe(1700);
     } finally {
       tall.remove();
-      window.scrollTo({ top: before, behavior: 'instant' });
     }
   });
 
@@ -109,7 +108,9 @@ describe('auditPlanDialog', () => {
     // The CDK will not pin a page it finds already pinned, and the page-top
     // reset cannot scroll a pinned page, so <html> stays fixed 1700px up with
     // body wholly above the viewport: what the CDK made of a page left
-    // scrolled before the reset.
+    // scrolled before the reset. A pinned page loses its own scroll, and the
+    // audit cannot put back a page it found pinned, so the describe puts the
+    // page back where the case found it once the case has unpinned it.
     const root = document.documentElement;
     const tall = document.body.appendChild(document.createElement('div'));
     tall.style.height = '3000px';
