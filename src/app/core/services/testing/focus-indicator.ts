@@ -52,6 +52,9 @@ export function readIndicator(button: HTMLElement): IndicatorReading {
   const indicator = button.querySelector(':scope > .mat-focus-indicator');
   const ripple = button.querySelector(':scope > .mat-mdc-button-persistent-ripple');
   if (!indicator || !ripple) throw new Error('focus-indicator: the button holds no focus indicator or state layer');
+  // A button already keyboard-focused keeps the class: the reading leaves
+  // the button as it found it.
+  const hadFocusClass = button.classList.contains('cdk-keyboard-focused');
   button.classList.add('cdk-keyboard-focused');
   try {
     settleAnimations(document);
@@ -80,7 +83,7 @@ export function readIndicator(button: HTMLElement): IndicatorReading {
       clippedBy: clippersOf(indicator, margin),
     };
   } finally {
-    button.classList.remove('cdk-keyboard-focused');
+    if (!hadFocusClass) button.classList.remove('cdk-keyboard-focused');
   }
 }
 

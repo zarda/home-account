@@ -480,4 +480,17 @@ describe('what readIndicator reads', () => {
   it('names nothing where the box that clips its overflow holds the indicator', () => {
     expect(readIndicator(button('roomy')).clippedBy).toEqual([]);
   });
+
+  it("leaves a button that already showed Material's keyboard focus showing it", () => {
+    const focused = button('roomy');
+    focused.classList.add('cdk-keyboard-focused');
+    readIndicator(focused);
+    expect(focused.classList.contains('cdk-keyboard-focused')).withContext('after the reading').toBeTrue();
+  });
+
+  it("leaves a button that did not show Material's keyboard focus without it", () => {
+    const plain = button('roomy');
+    readIndicator(plain);
+    expect(plain.classList.contains('cdk-keyboard-focused')).withContext('after the reading').toBeFalse();
+  });
 });
