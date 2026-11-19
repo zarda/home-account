@@ -857,7 +857,10 @@ export class TransactionListComponent {
     // Material marks a notice that has started to leave with mat-exit.
     const leaving = this.host.nativeElement.ownerDocument.activeElement
       ?.closest('.mat-mdc-snack-bar-container[mat-exit]');
-    focusWhenRendered(this.focus, this.menuButtonsOf(id), { onlyIfDropped: true, from: leaving ?? null });
+    // While rows are being chosen, the phone's row shows its checkbox in
+    // place of its menu button.
+    const checkbox = `[data-tx-id="${CSS.escape(id)}"] .row-select input`;
+    focusWhenRendered(this.focus, [...this.menuButtonsOf(id), checkbox], { onlyIfDropped: true, from: leaving ?? null });
   }
 
   /**
