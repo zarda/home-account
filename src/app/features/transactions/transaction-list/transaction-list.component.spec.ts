@@ -1127,12 +1127,14 @@ describe('TransactionListComponent desktop receipt doors', () => {
  * the one whose menu was opened, not merely the first on the page, and a row
  * that leaves has one row after it and one before it.
  *
- * A confirmed delete gives focus back to the row's menu button too, and the
- * row leaves only when the page's refresh lands, several renders later; each
- * case stands that in with the list it would hand over (setInput). Once the
- * row has gone, taking that button with it, focus goes to the menu button of
- * the row now in its place, else the row before it, else the empty state's
- * button. The swipe drawer's Delete is the third door: the drawer shuts on
+ * A confirmed delete gives focus back to the row's menu button too. The page
+ * hides the row as the confirm closes, in the same task (the cases under
+ * 'when the page hides the row the moment its delete is confirmed'); the
+ * cases before those hand the list its rows a render or more later
+ * (setInput), which the list allows for though the page never does it, so
+ * each step of the hand-off can be seen on its own. Once the row has gone,
+ * taking that button with it, focus goes to the menu button of the row now
+ * in its place, else the row before it, else the empty state's button. The swipe drawer's Delete is the third door: the drawer shuts on
  * the press, which hides that button, so the confirm, cancelled or not, gives
  * focus to the row's menu button instead, as from the menus.
  */
@@ -1377,9 +1379,10 @@ describe('TransactionListComponent focus after a dialog a row menu opened (real 
           .toBe(menuButton('c'));
       });
 
-      it('follows the row as rows load above it before it leaves', async () => {
-        // A scroll prefetch between the confirm and the refresh moves the row
-        // down; the row in its place is the one that followed it, not the
+      it('follows a row still listed once its confirm has closed as rows load above it', async () => {
+        // The page never leaves a confirmed row listed (the rows loaded while
+        // the confirm is open are held below), but the list follows one that
+        // stays: the row in its place is the one that followed it, not the
         // one now at the index it was confirmed at.
         const own = await confirmDeleteOf('b');
         const earlier = createTransaction({ id: 'z', amount: 5, description: 'Date' });
@@ -1470,6 +1473,40 @@ describe('TransactionListComponent focus after a dialog a row menu opened (real 
 
           expect(document.activeElement)
             .withContext('focus, on the menu button of the row that followed, now second')
+            .toBe(menuButton('c'));
+        });
+
+        it('lands on the row that followed when rows loaded above it while its confirm was open', async () => {
+          const earlier = createTransaction({ id: 'z', amount: 5, description: 'Date' });
+          const ref = await openConfirmOf('b');
+          // A scroll prefetch lands while the confirm is open: the row moves
+          // down a place.
+          show([earlier, ...txns]);
+          deleted.and.callFake(() => fixture.componentRef.setInput('transactions', [earlier, banana, cherry]));
+
+          await answerConfirm(ref, 'delete');
+
+          expect(deleted).toHaveBeenCalledOnceWith(jasmine.objectContaining({ id: 'b' }));
+          expect(document.activeElement)
+            .withContext('focus, on the menu button of the row that followed, now third, not the row before')
+            .toBe(menuButton('c'));
+        });
+
+        it('lands on the row that followed when the window trimmed rows above it while its confirm was open', async () => {
+          const earlier = createTransaction({ id: 'z', amount: 5, description: 'Date' });
+          const later = createTransaction({ id: 'd', amount: 40, description: 'Elderberry' });
+          show([earlier, ...txns, later]);
+          const ref = await openConfirmOf('b');
+          // A scroll down trims the window's top while the confirm is open:
+          // the row moves up a place.
+          show([...txns, later]);
+          deleted.and.callFake(() => fixture.componentRef.setInput('transactions', [banana, cherry, later]));
+
+          await answerConfirm(ref, 'delete');
+
+          expect(deleted).toHaveBeenCalledOnceWith(jasmine.objectContaining({ id: 'b' }));
+          expect(document.activeElement)
+            .withContext('focus, on the menu button of the row that followed, now second, not the one after it')
             .toBe(menuButton('c'));
         });
 
