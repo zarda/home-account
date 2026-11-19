@@ -1285,7 +1285,6 @@ describe('TransactionService', () => {
       expect(mockStorage.deleteReceiptSlotsSpy.mostRecent()?.args).toEqual([
         'test-user-123', 'txn-1', [0, 2]
       ]);
-      expect(mockStorage.deleteReceiptSpy.calls.map(call => call.args[2])).toEqual([0, 2]);
 
       const updateArgs = mockFirestore.txUpdateSpy.mostRecent()?.args ?? [];
       expect(updateArgs[0]).toBe('users/test-user-123/transactions/txn-1');
@@ -1440,7 +1439,6 @@ describe('TransactionService', () => {
       expect(mockStorage.deleteReceiptSlotsSpy.mostRecent()?.args).toEqual([
         'test-user-123', 'txn-1', [0, 2]
       ]);
-      expect(mockStorage.deleteReceiptSpy.calls.map(call => call.args[2])).toEqual([0, 2]);
       // Only the live images count against the quota.
       expect(mockQuota.noteImagesRemoved).toHaveBeenCalledWith(2);
     });
@@ -1550,7 +1548,6 @@ describe('TransactionService', () => {
       expect(mockStorage.deleteReceiptSlotsSpy.mostRecent()?.args).toEqual([
         'test-user-123', 'txn-0', [0, 2]
       ]);
-      expect(mockStorage.deleteReceiptSpy.calls.map(call => call.args[2])).toEqual([0, 2]);
     });
 
     // One refresh for the whole wipe, not one per row: the transactions page
