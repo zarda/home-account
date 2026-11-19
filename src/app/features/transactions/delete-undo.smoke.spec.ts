@@ -182,8 +182,10 @@ describe('Delete, Undo and focus on the transactions page (emulator smoke test)'
     try {
       // A delete a failed case left waiting is made real here, while the
       // client it writes through is still online: its window's timer must
-      // not outlive the client.
-      await deletes?.flush();
+      // not outlive the client. Waited for as a sign-out waits, for
+      // SIGN_OUT_WAIT_MS at most: a delete made with no connection never
+      // settles, and the client must still be deleted.
+      await deletes?.flushBeforeSignOut();
       if (page) {
         // Teardown order: settle the rate load, then the view, whose
         // listeners close with it, then the app — see app.smoke.spec.ts.
@@ -196,7 +198,9 @@ describe('Delete, Undo and focus on the transactions page (emulator smoke test)'
       if (app) await deleteApp(app).catch(() => undefined);
       await new Promise(resolve => setTimeout(resolve));
     }
-  });
+    // Room for the capped flush, the rate load, the two pauses and the
+    // client's delete, past Jasmine's 5 s default.
+  }, 20000);
 
   it(
     "hides a deleted row with focus on the row now in its place, brings both back on Undo, and deletes the row and its household copy once the delete is real",
