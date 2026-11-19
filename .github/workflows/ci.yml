@@ -142,6 +142,14 @@ jobs:
       - name: Check firebase-tools major version
         run: npm run firebase-tools:check
 
+      # angular.json names src/test-main.ts as the test target's main, which
+      # replaces the Karma builder's own test-bed init with that copy of it. An
+      # upgrade that changes the original would leave the copy as it was, and
+      # no spec would notice, so this compares the two statement by statement
+      # for this project's polyfills. Its self-test runs first.
+      - name: Check the test main against the builder's init
+        run: npm run test-main:check
+
       # The "Create local environment stubs" step above writes a ci-stub
       # placeholder to the same path the real digest was taken from, so the
       # compare half of prod-env:check would fail here by construction, on

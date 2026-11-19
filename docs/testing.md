@@ -55,14 +55,24 @@ nothing imports throws as the component is created, a binding to a property
 its element does not have throws at the first change detection, and change
 detection runs in a real `NgZone`.
 
-**Re-read the copy on every Angular CLI upgrade.** Nothing compares it with
-the builder's own init, so an upgrade that adds an option or a provider
-there leaves the copy without it, and no spec turns red. Open
-`application_builder.js` beside `test-main.ts` and carry over whatever the
-generated init gained. `tsconfig.app.json` excludes the file, which uses
-jasmine's global, and the test options' `codeCoverageExclude` leaves it out
-of coverage, so the report keeps its root and its denominator (*Coverage,
-and the one named exemption*).
+**A gate holds the copy to the builder's init.** `npm run test-main:check`
+(`scripts/check-test-main.mjs`) reads the builder's `contents` array out of
+`application_builder.js` with TypeScript's parser, evaluates it for this
+project's two arms (`zone.js` in the test polyfills, `@angular/localize`
+installed), and compares every top-level statement with the copy's, in
+order. Comments, trailing commas, layout, quote style and the order of an
+import's named imports do not count. Two differences are allowed: one
+`jasmine.getEnv().configure(...)` statement, the copy's reason to exist, and
+the missing `import '@angular/localize/init'`, only while the test polyfills
+load it. Anything else an upgrade adds to or takes from the builder's init
+is a drift failure that lists both sides; carry it over into the copy. A
+builder whose init the script can no longer find or read, or whose arms it
+works out another way, is a shape failure: fix the extraction in the script
+before trusting the check. Its `--self-test` runs first, and CI runs both
+after the firebase-tools check. `tsconfig.app.json` excludes the file, which
+uses jasmine's global, and the test options' `codeCoverageExclude` leaves it
+out of coverage, so the report keeps its root and its denominator
+(*Coverage, and the one named exemption*).
 
 ## More than one account at once
 
