@@ -274,47 +274,90 @@ accepted and has not been measured.
 
 | | Warning | Error |
 |---|---|---|
-| Initial bundle | 2.425 MB | 2.7 MB |
+| Initial bundle | 2.428 MB | 2.7 MB |
 
-Against 2,424,293 bytes (JavaScript 2,392,926, stylesheet 31,367, in 63
+Against 2,427,861 bytes (JavaScript 2,396,117, stylesheet 31,744, in 64
 initial files), measured by `npm run build:analyze` from a production build
-of `26.11.185` on 2026-11-17.
+of `26.11.186` on 2026-11-20.
 
-The work of #542, #543, #544, #545, #546 and #555
-([ADR 0192](ADR/0192-a-control-repeated-per-item-names-its-item-in-its-own-text-too-a-button-is-named-in-every-branch-and-an-unlabelled-switch-fails-the-axe-pass.md)
-to
-[ADR 0197](ADR/0197-a-deleted-transaction-can-be-brought-back-for-ten-seconds-because-the-delete-waits.md))
-puts the initial bundle over that warning, and the warning has not moved
-for it. A production build on 2026-11-19, after the fixes for what that
-work's first browser run found, prints the initial bundle `2.86 kB` over
-the 2.42 MB the build rounds the warning to; a warning stops nothing, and
-the build completes. The last exact figure, from `npm run build:analyze` on
-2026-11-19 once specs had left the stylesheet's `content`, is 2,428,119
-bytes (JavaScript 2,396,308, stylesheet 31,811), 3,119 over 2,425,000.
+The warning went up, to 2.428 MB, when the work of #542, #543, #544, #545,
+#546 and #555
+([ADR 0197](ADR/0197-a-deleted-transaction-can-be-brought-back-for-ten-seconds-because-the-delete-waits.md):
+a deleted transaction that can be brought back for ten seconds, because its
+delete waits, and the notice that offers it;
+[ADR 0196](ADR/0196-sibling-controls-say-what-they-act-on-a-name-holds-its-shown-words-a-focused-button-shows-an-indicator-inside-it-focus-stays-in-the-list-after-a-delete-and-a-failed-dashboard-read-is-quiet.md):
+an indicator drawn inside a focused button; and
+[ADR 0194](ADR/0194-one-painted-contrast-helper-and-one-focus-hand-off-a-card-is-scored-part-by-part-and-no-page-skips-a-heading-level.md):
+one focus hand-off for thirteen components) put the initial bundle at
+2,427,861 bytes, 2,861 over the 2.425 MB it stood at. Of the 3,568 bytes of
+the growth, 3,191 are JavaScript, in code the first page already holds: the
+pending delete, which the header injects so that a waiting delete is made
+real before a sign-out; the notice that carries its Undo; the answer card's
+*View matching transactions*, which names its answer; and the transaction
+form's named dismissals and type group. The shared focus hand-off is one
+initial file more and gave back more than it brought. The other 377 are the
+stylesheet's: the rules that draw Material's focus indicator inside every
+Material button, the one that opens every notice above the phone's bottom
+bar and one no template asks for, less the utilities only specs named and
+the `!text-base` Budget Progress's title no longer asks for (the parts are
+below). The transactions page and its list, the dashboard and the import
+wizard are lazy and are not in the figure. The warning moved to the whole
+kilobyte above the figure and no more, which leaves 139 bytes of headroom
+(2,428,000 less 2,427,861). Before it, `26.11.185` read 2,424,293 bytes
+(JavaScript 2,392,926, stylesheet 31,367, in 63 initial files) on
+2026-11-17.
 
-Three parts of it are known by name. `pending-delete.service.ts`, the root
-`PendingDeleteService` that holds a deleted transaction's delete through its
-ten-second Undo window, measured 2,670 bytes of `main` when the transactions
-page was wired to it: it is initial because the header injects it, to make a
-waiting delete real before its sign-out
-([ADR 0197](ADR/0197-a-deleted-transaction-can-be-brought-back-for-ten-seconds-because-the-delete-waits.md)).
-The shared focus hand-off, `shared/utils/focus-when-rendered.ts`, is an
-initial chunk of its own, 935 bytes, which holds `focus.utils.ts` beside it.
-It is initial because the transaction form's split parts import it and
-`quick-add.service.ts` imports the form, and it is a chunk of its own
-because lazy chunks import it too. At its commit the private copies it
-replaced went with `import-focus.ts`, and the initial bundle fell 582 bytes,
-from 2,424,691 to 2,424,109, with one initial file more
-([ADR 0194](ADR/0194-one-painted-contrast-helper-and-one-focus-hand-off-a-card-is-scored-part-by-part-and-no-page-skips-a-heading-level.md)).
-The stylesheet stood at 32,655 bytes before specs left `content`, 1,288 more
-than the 31,367 above: the rules that draw Material's focus indicator inside
-every Material button
-([ADR 0196](ADR/0196-sibling-controls-say-what-they-act-on-a-name-holds-its-shown-words-a-focused-button-shows-an-indicator-inside-it-focus-stays-in-the-list-after-a-delete-and-a-failed-dashboard-read-is-quiet.md)),
-the one that opens every notice above the phone's bottom bar (ADR 0197),
-and `.flex-wrap`, which a spec's inline style had brought in. Leaving the
-specs out took 844 bytes off it
-([Tailwind's utilities in the stylesheet](#tailwinds-utilities-in-the-stylesheet)).
-The rest of the JavaScript's growth has not been measured input by input.
+The growth input by input, measured against the stats of a clean build of
+`16f0ddca`, the merge of #553, whose source is `26.11.185`'s (summed over the
+initial outputs and matched by input path): `pending-delete.service.ts`, the
+root `PendingDeleteService` that holds a deleted transaction's delete
+through its ten-second Undo window, brought 3,262 bytes, and
+`header.component.ts`, which injects it and waits for it before a sign-out,
+took 76 (9,871 to 9,947). `notification.service.ts` took 1,016 (628 to
+1,644) for `withAction`, a notice with one action in place of Close; it is
+in the initial chunk that holds Firestore, which took 863 on disk.
+`nl-answer-card.component.ts` took 402 (5,051 to 5,453)
+([ADR 0192](ADR/0192-a-control-repeated-per-item-names-its-item-in-its-own-text-too-a-button-is-named-in-every-branch-and-an-unlabelled-switch-fails-the-axe-pass.md)),
+`transaction-form.component.ts` 149 (69,157 to 69,306), and
+`login.component.ts`, whose title is now the page's `h1`, 8 (9,730 to
+9,738). `transaction.service.ts` gave back 90 (32,035 to 31,945): a delete
+asks storage only for the slots that still hold an image. The shared focus
+hand-off, `shared/utils/focus-when-rendered.ts`, brought 1,074 into an
+initial chunk of its own, 935 bytes on disk, which also holds
+`focus.utils.ts`, out of `main` (136 to 104). It is initial because the
+transaction form's split parts import it and `quick-add.service.ts` imports
+the form, and it is a chunk of its own because lazy chunks import it too.
+The private copies it replaced gave back 1,717:
+`receipt-viewer-dialog.component.ts` 923 (10,415 to 9,492; its initial
+chunk 772 on disk), `note-translation.component.ts` 649 (6,960 to 6,311)
+and `split-parts.component.ts` 145 (5,967 to 5,822). At its commit the
+initial bundle fell 582 bytes, from 2,424,691 to 2,424,109, with one initial
+file more. `main`, which holds the pending delete, the header, the answer
+card, the form, the sign-in page, the note lens and the split parts, took
+2,429 on disk. Material's chips, which nothing here edited, gave back 445
+(94,175 to 93,730; their initial chunk 321 on disk): the import's feature
+list reads as words
+([ADR 0193](ADR/0193-a-row-that-is-no-photo-is-no-drag-item-the-receipt-or-statement-chips-are-measured-and-the-upload-area-shows-where-a-photo-will-land.md)),
+and the chip avatar, which only that list used, left the build.
+`styles.scss`, the global stylesheet, took 377 (31,349 to 31,726); its
+parts are below. Sixty-four other inputs moved and none was edited: 32 under
+`node_modules` by 1 to 92 bytes, 211 more between them, Firestore's 92 the
+most, and 32 under `src` by 1 to 7 bytes, 2 less between them. Summed over
+the initial outputs the inputs come to 2,901,245 bytes (2,896,956 at the
+base), 4,289 more, against 3,569 on disk, where the clean build read
+2,424,292, one byte under the figure recorded for `26.11.185`; the 720
+between the two measures is not attributed.
+
+The stylesheet's 377 bytes are 1,262 in and 885 out. The focus indicator's
+rules took 1,108 (ADR 0196), the notice's 121 (ADR 0197), and `.!hidden`
+33, a rule no template asks for: Tailwind reads `!hidden` standing alone in
+`transactions.component.ts`'s `!hidden.has(row.id)`, a line of the pending
+delete's. Leaving specs out of `content` took out 844
+([Tailwind's utilities in the stylesheet](#tailwinds-utilities-in-the-stylesheet)),
+818 of them in six utilities the sheet already held at `26.11.185` and 26 in
+`.flex-wrap`, which a spec's inline style had brought in on the way. Budget
+Progress's title, which now wears the other dashboard cards' title look, no
+longer asks for `!text-base`, 67 (ADR 0194).
 
 The warning went up, to 2.425 MB, when the work of #535, #505, #517 and the
 last cheap gap of #446
@@ -1081,8 +1124,8 @@ CI. The real run needs a production build, so it is local only
   catches growth past a threshold, not a steady creep beneath it, and
   `build:analyze` runs only when someone runs it.
 - The warning stops nothing. A build over it completes, as the builds of
-  the work of #542 to #546 and #555 do ([the budget](#the-budget)); only
-  the 2.7 MB error fails one.
+  the work of #542 to #546 and #555 did until the warning moved
+  ([the budget](#the-budget)); only the 2.7 MB error fails one.
 - Only `.ring` is read back from the stylesheet. A word in an app template
   or `.ts` that names any other Tailwind utility, a comment included, ships
   it, and nothing fails; three of the four `content` exclusions
