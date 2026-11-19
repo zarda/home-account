@@ -583,6 +583,23 @@ describe('BudgetProgressComponent', () => {
       expect(outline).toEqual(['h2 dashboard.budgetProgress']);
     });
 
+    // Every other dashboard card sets its title in --text-lg, semibold, on a
+    // line one and a half times its size, in the primary text colour; Budget
+    // Progress's was 16px on a 24px line. Its title is Material's card title,
+    // whose own rule sets the font from the theme's title tokens, so what
+    // shows is read as computed.
+    it("sets its title in the look of every other card's title", () => {
+      const title = fixture.nativeElement.querySelector('h2') as HTMLElement;
+      const style = getComputedStyle(title);
+      const size = tokenValue('--text-lg', 'font-size');
+      expect(style.fontSize).withContext('size').toBe(size);
+      expect(style.fontWeight).withContext('weight').toBe('600');
+      expect(style.lineHeight).withContext('line height').toBe(`${parseFloat(size) * 1.5}px`);
+      expect(style.letterSpacing).withContext('tracking').toBe('normal');
+      expect(style.color).withContext('colour').toBe(tokenValue('--text-primary'));
+      expect(style.margin).withContext('margin').toBe('0px');
+    });
+
     it('should display manage link', () => {
       const compiled = fixture.nativeElement as HTMLElement;
       // Check for translation key or translated text
