@@ -8,9 +8,10 @@ import {
   paintedBackground,
   paintedColor,
   ratio,
+  tokenValue,
   withTheme,
 } from '../../../core/services/testing/painted-contrast';
-import { provideNoMotion } from '../../../core/services/testing';
+import { expectHeadingsInOrder, provideNoMotion } from '../../../core/services/testing';
 
 describe('LoginComponent', () => {
   let component: LoginComponent;
@@ -199,6 +200,74 @@ describe('LoginComponent', () => {
       const errorDiv = fixture.nativeElement.querySelector('.error-message');
       expect(errorDiv).toBeTruthy();
       expect(errorDiv.textContent).toContain('Sign-in was cancelled');
+    });
+  });
+
+  /**
+   * /login is a page of its own, outside the shell, and its title is the only
+   * words that say where the reader is. A reader who moves by headings found
+   * none there: the title was a plain mat-card-title.
+   */
+  describe('its heading (real template)', () => {
+    const host = () => fixture.nativeElement as HTMLElement;
+    const title = () => host().querySelector('.mat-mdc-card-title') as HTMLElement | null;
+
+    /** What a reader sees of a title: its type and its spacing, and its colour. */
+    function look(el: Element) {
+      const style = getComputedStyle(el);
+      return {
+        fontSize: style.fontSize,
+        fontWeight: style.fontWeight,
+        lineHeight: style.lineHeight,
+        margin: [style.marginTop, style.marginRight, style.marginBottom, style.marginLeft].join(' '),
+        color: style.color,
+      };
+    }
+
+    it("has exactly one h1, and it is the app's title", async () => {
+      const h1s = Array.from(host().querySelectorAll('h1'));
+
+      expect(h1s.length).withContext('the h1s on the page').toBe(1);
+      // The page asked for the title's key, and its h1 reads the words it was
+      // given for it.
+      expect(mockTranslationService.t).toHaveBeenCalledWith('app.title', undefined);
+      expect(h1s[0]?.textContent?.trim()).toBe(mockTranslationService.t('app.title'));
+      expect(h1s[0]).withContext('the h1 is the card title').toBe(title() as HTMLHeadingElement);
+      await expectHeadingsInOrder(host(), 'the sign-in page');
+    });
+
+    /**
+     * The title became its heading with nothing redrawn. A pin of the look it
+     * was drawn with as a mat-card-title, read off the old tag in both themes,
+     * and the same look again from a mat-card-title twin put in its place, so a
+     * rule that reaches an h1 and not the card title (an element selector in
+     * the component's stylesheet, Tailwind's preflight, Material's own) fails
+     * here. Mutation: an `h1 { margin-bottom: 1rem }` in login.component.scss.
+     */
+    it("keeps its title's look, in both themes", () => {
+      const heading = title();
+      expect(heading).withContext('the card title').toBeTruthy();
+      if (!heading) return;
+
+      for (const theme of ['light', 'dark'] as const) {
+        withTheme(theme, () => {
+          const drawn = look(heading);
+          expect({ ...drawn, color: undefined })
+            .withContext(`${theme}: the title's type and spacing, as drawn before it was a heading`)
+            .toEqual({ fontSize: '24px', fontWeight: '700', lineHeight: '32px', margin: '16px 0px 0px 0px', color: undefined });
+          expect(drawn.color).withContext(`${theme}: the title's colour`).toBe(tokenValue('--text-primary'));
+
+          const twin = document.createElement('mat-card-title');
+          for (const attr of Array.from(heading.attributes)) twin.setAttribute(attr.name, attr.value);
+          twin.textContent = heading.textContent;
+          heading.replaceWith(twin);
+          try {
+            expect(drawn).withContext(`${theme}: the same title drawn as a mat-card-title`).toEqual(look(twin));
+          } finally {
+            twin.replaceWith(heading);
+          }
+        });
+      }
     });
   });
 
