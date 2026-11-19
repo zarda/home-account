@@ -491,6 +491,15 @@ describe('overflow guard: the import review card', () => {
       const box = remove.getBoundingClientRect();
       const hit = getComputedStyle(remove, '::after');
       const where = `${remove.getAttribute('aria-label')} (${i + 1})`;
+      // The insets read back from the rule whether or not it draws a box: a
+      // pseudo-element with no content is never generated, and a static one
+      // ignores its insets, yet both still compute -10px and -6px. So the
+      // overhang is first held to be drawn, and laid out against the button.
+      expect(hit.content).withContext(`${where}: the hit area is generated`).not.toBe('none');
+      expect(hit.position).withContext(`${where}: the hit area is placed by its insets`).toBe('absolute');
+      expect(getComputedStyle(remove).position)
+        .withContext(`${where}: the hit area is placed against the button`)
+        .not.toBe('static');
       expect(box.height - parseFloat(hit.top) - parseFloat(hit.bottom))
         .withContext(`${where}: hit area height, glyph plus overhang`)
         .toBeGreaterThanOrEqual(40);
