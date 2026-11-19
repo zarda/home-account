@@ -20,7 +20,7 @@ function t(key: string, params?: Record<string, string | number>): string {
 
 /** Lets every settled promise run its callbacks without moving the clock. */
 async function settle(): Promise<void> {
-  for (let i = 0; i < 5; i++) await Promise.resolve();
+  for (let i = 0; i < 10; i++) await Promise.resolve();
 }
 
 describe('PendingDeleteService', () => {

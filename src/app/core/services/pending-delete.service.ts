@@ -166,11 +166,21 @@ export class PendingDeleteService {
    * half done, but for SIGN_OUT_WAIT_MS at most. A delete made offline
    * settles only once the connection returns, and a sign-out must never wait
    * on that: on the lock screen it is the one way off the screen.
+   *
+   * The page stays in use meanwhile, so a delete confirmed during the wait is
+   * made real and waited for too, within the same time: left waiting, it
+   * would meet nobody signed in once the sign-out lands, and never run.
    */
   flushBeforeSignOut(): Promise<void> {
     let timer: ReturnType<typeof setTimeout> | undefined;
-    const waitedEnough = new Promise<void>(resolve => (timer = setTimeout(resolve, SIGN_OUT_WAIT_MS)));
-    return Promise.race([this.flush(), waitedEnough]).finally(() => clearTimeout(timer));
+    let waited = false;
+    const waitedEnough = new Promise<void>(resolve => (timer = setTimeout(() => {
+      waited = true;
+      resolve();
+    }, SIGN_OUT_WAIT_MS)));
+    const drain = (): Promise<void> =>
+      this.flush().then(() => (this.pending && !waited ? drain() : undefined));
+    return Promise.race([drain(), waitedEnough]).finally(() => clearTimeout(timer));
   }
 
   private takeBack(record: Pending): void {
