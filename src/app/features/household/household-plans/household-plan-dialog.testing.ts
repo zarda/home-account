@@ -301,7 +301,10 @@ export interface PlanDialogAudit {
  * time, so a line cut by the box's edge at one stop is whole at the next.
  *
  * It refuses a dialog with no content area, and one whose last stop does not
- * show the content's end, rather than read either clean unscrolled.
+ * show the content's end, rather than read either clean unscrolled. It also
+ * refuses a stop at which axe skipped a rule on an error: a rule that throws
+ * is filed under `incomplete` with its error, never under `violations`, so
+ * that stop would read clean with none of the rule's lines scored.
  */
 async function sweepScrolledThrough(container: HTMLElement): Promise<{ violations: string[]; stops: number }> {
   const content = container.querySelector<HTMLElement>('.mat-mdc-dialog-content');
@@ -315,7 +318,12 @@ async function sweepScrolledThrough(container: HTMLElement): Promise<{ violation
       // leave the content still travelling when axe reads it.
       content.scrollTo({ top, behavior: 'instant' });
       stops++;
-      for (const line of summarizeViolations(await runAxe(container))) found.add(line);
+      const results = await runAxe(container);
+      const skipped = results.incomplete.flatMap(rule => (rule.error ? [`${rule.id} (${rule.error.message})`] : []));
+      if (skipped.length) {
+        throw new Error(`auditPlanDialog: axe skipped ${skipped.join(', ')} on an error at stop ${stops} (${top}px)`);
+      }
+      for (const line of summarizeViolations(results)) found.add(line);
       if (top + content.clientHeight >= content.scrollHeight) break;
     }
     // The stops above count what was asked for; this reads where the content
@@ -335,34 +343,65 @@ async function sweepScrolledThrough(container: HTMLElement): Promise<{ violation
 }
 
 /**
+ * Runs `fn` with the page scrolled to its top, then puts the page back where
+ * it was.
+ *
+ * Karma's page is seldom at its top when a spec starts: jasmine's report
+ * outgrows the 413px frame, and a focus() on a fixture appended below it
+ * scrolls the page.
+ * While a dialog is open, the CDK's block scroll strategy pins `<html>` where
+ * the page was (`position: fixed`, `top` at minus the scroll), and scrolled
+ * past body's 413px, body sits wholly above the viewport. Jasmine's
+ * stylesheet makes body a scroll region, so axe files everything under it,
+ * the dialog's overlay included, in body's grid, yet leaves body itself out
+ * of every grid as off screen. `color-contrast` then throws on the first
+ * node it stacks, and axe skips the rule, which the sweep refuses rather than
+ * read clean. Opened from the top, body stays on screen and the rule runs.
+ */
+async function fromThePageTop<T>(fn: () => Promise<T>): Promise<T> {
+  const page = document.scrollingElement ?? document.documentElement;
+  const { scrollTop: top, scrollLeft: left } = page;
+  // `instant`, as the content's own scroll is.
+  page.scrollTo({ top: 0, left: 0, behavior: 'instant' });
+  try {
+    return await fn();
+  } finally {
+    page.scrollTo({ top, left, behavior: 'instant' });
+  }
+}
+
+/**
  * Opens `component` in a real dialog, as the plans section opens it, painted
  * on the dialog's own surface in `theme`, and reports what axe finds in it,
- * scrolled through. `prepare` sets the dialog's state before the audit.
+ * scrolled through. `prepare` sets the dialog's state before the audit. The
+ * page is at its top while the dialog is open, and back where it was after.
  */
-export async function auditPlanDialog<T>(
+export function auditPlanDialog<T>(
   component: ComponentType<T>,
   data: unknown,
   theme: (typeof PLAN_AUDIT_THEMES)[number],
   prepare?: (dialog: T) => void
 ): Promise<PlanDialogAudit> {
-  const root = document.documentElement;
-  root.classList.add(theme);
-  const ref = TestBed.inject(MatDialog).open(component, { ...PLAN_DIALOG_CONFIG, data });
-  try {
-    prepare?.(ref.componentInstance);
-    TestBed.tick();
-    await firstValueFrom(ref.afterOpened());
-    TestBed.tick();
-    const container = document.querySelector<HTMLElement>('.mat-mdc-dialog-container');
-    if (!container) throw new Error('The dialog did not open');
-    const title = container.querySelector<HTMLElement>('.mat-mdc-dialog-title');
-    return {
-      ...(await sweepScrolledThrough(container)),
-      labelledByTitle: !!title?.id && container.getAttribute('aria-labelledby') === title.id
-    };
-  } finally {
-    ref.close();
-    TestBed.tick();
-    root.classList.remove(theme);
-  }
+  return fromThePageTop(async () => {
+    const root = document.documentElement;
+    root.classList.add(theme);
+    const ref = TestBed.inject(MatDialog).open(component, { ...PLAN_DIALOG_CONFIG, data });
+    try {
+      prepare?.(ref.componentInstance);
+      TestBed.tick();
+      await firstValueFrom(ref.afterOpened());
+      TestBed.tick();
+      const container = document.querySelector<HTMLElement>('.mat-mdc-dialog-container');
+      if (!container) throw new Error('The dialog did not open');
+      const title = container.querySelector<HTMLElement>('.mat-mdc-dialog-title');
+      return {
+        ...(await sweepScrolledThrough(container)),
+        labelledByTitle: !!title?.id && container.getAttribute('aria-labelledby') === title.id
+      };
+    } finally {
+      ref.close();
+      TestBed.tick();
+      root.classList.remove(theme);
+    }
+  });
 }
