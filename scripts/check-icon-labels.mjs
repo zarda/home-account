@@ -925,8 +925,8 @@ const CONTROL_TAGS = new Set([
   'mat-select', 'mat-checkbox', 'mat-slide-toggle', 'mat-radio-button', 'mat-datepicker-toggle',
 ]);
 
-/** A literal `role` that makes any element a control. */
-const CONTROL_ROLE = /(?<![\w.[-])role\s*=\s*"(?:button|link|checkbox|switch|radio|menuitem|tab)"/;
+/** A literal `role` that makes any element a control, its value in either quote. */
+const CONTROL_ROLE = /(?<![\w.[-])role\s*=\s*(["'])(?:button|link|checkbox|switch|radio|menuitem|tab)\1/;
 
 /**
  * Each `aria-label` in a tag with its value, the first group saying how it is
@@ -3719,6 +3719,14 @@ function selfTest() {
       scanUnnamedControls('<mat-icon role="button" tabindex="0" aria-label="Close" (click)="close()">close</mat-icon>'),
     ],
     [[{ line: 1, tag: 'mat-icon', sometimes: false }], []]
+  );
+  check(
+    'a control\'s role in single quotes is read as in double quotes, by this rule and by the per-item rule',
+    [
+      unnamedTags("<div role='button' tabindex=\"0\" (click)=\"close()\">\n  <mat-icon>close</mat-icon>\n</div>"),
+      itemlessLines("@for (r of rows; track r.id) {\n  <span role='button' tabindex=\"0\">{{ 'common.remove' | translate }}</span>\n}"),
+    ],
+    [['1 div'], [2]]
   );
 
   // --- the branch rule: must not hit (the load-bearing half) ---
