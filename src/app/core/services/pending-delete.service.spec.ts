@@ -6,7 +6,8 @@ import { TransactionService } from './transaction.service';
 import { AuthService } from './auth.service';
 import { AnnouncerService } from './announcer.service';
 import { TranslationService } from './translation.service';
-import { FakeNotice, createTransaction } from './testing';
+import { FakeNotice, catalogTranslator, createTransaction } from './testing';
+import { quotedTransactionName } from '../utils/transaction-display.utils';
 
 /**
  * Echoes a key and its params, and quotes a name as tc does, so the notice
@@ -440,4 +441,41 @@ describe('PendingDeleteService', () => {
     await expectAsync(first).toBeResolvedTo('deleted');
     expect(deleteTransaction).toHaveBeenCalledTimes(1);
   });
+});
+
+/**
+ * What a screen reader hears of the notice, in each shipped catalog. The
+ * echo stub above holds only that the service hands the catalog the button's
+ * word; the sentence names it only while every catalog's
+ * transactions.deletedWithUndo keeps its {{action}}.
+ */
+describe('PendingDeleteService, in each catalog', () => {
+  beforeEach(() => jasmine.clock().install());
+  afterEach(() => jasmine.clock().uninstall());
+
+  for (const locale of ['en', 'ja', 'tc'] as const) {
+    it(`names the Undo and the row in what a screen reader hears, in ${locale}`, () => {
+      const t = catalogTranslator(locale, { strict: true });
+      const withAction = jasmine.createSpy('withAction').and.callFake(
+        (message: string, action: string) => new FakeNotice(message, action)
+      );
+      TestBed.configureTestingModule({
+        providers: [
+          { provide: NotificationService, useValue: { withAction, error: jasmine.createSpy('error') } },
+          { provide: TransactionService, useValue: { deleteTransaction: jasmine.createSpy('deleteTransaction').and.resolveTo() } },
+          { provide: AuthService, useValue: { userId: signal<string | null>('user-1') } },
+          { provide: AnnouncerService, useValue: { announce: jasmine.createSpy('announce') } },
+          { provide: TranslationService, useValue: { t } },
+        ],
+      });
+
+      TestBed.inject(PendingDeleteService).defer(createTransaction({ id: 'txn-coffee', description: 'Coffee' }));
+
+      const [message, action, { announcement }] = withAction.calls.mostRecent().args;
+      expect(action).toBe(t('common.undo'));
+      expect(announcement).withContext('the spoken text names the button').toContain(t('common.undo'));
+      expect(announcement).withContext('the spoken text names the row').toContain(quotedTransactionName('Coffee', t));
+      expect(announcement).withContext('the spoken text says more than the shown message').not.toBe(message);
+    });
+  }
 });
