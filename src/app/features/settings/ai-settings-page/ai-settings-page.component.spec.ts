@@ -1,5 +1,5 @@
 import { ComponentFixture, TestBed } from '@angular/core/testing';
-import { signal } from '@angular/core';
+import { WritableSignal, signal } from '@angular/core';
 import { RouterTestingModule } from '@angular/router/testing';
 import { HttpClientTestingModule } from '@angular/common/http/testing';
 
@@ -39,6 +39,9 @@ describe('AiSettingsPageComponent', () => {
   let providerKeysMock: jasmine.SpyObj<ProviderKeyService>;
   let categoryMemoryMock: jasmine.SpyObj<CategoryMemoryService>;
   let tagMemoryMock: jasmine.SpyObj<TagMemoryService>;
+  // How many merchants each memory holds, which a case can raise.
+  let rememberedCategories: WritableSignal<number>;
+  let rememberedTags: WritableSignal<number>;
   let providerKeysLoadFailed: ReturnType<typeof signal<boolean>>;
   let providerKeysStored: ReturnType<typeof signal<ProviderSecrets | null>>;
   let announcerMock: jasmine.SpyObj<AnnouncerService>;
@@ -100,18 +103,20 @@ describe('AiSettingsPageComponent', () => {
     providerKeysMock.getKey.and.resolveTo(undefined);
     providerKeysMock.setKey.and.resolveTo(undefined);
 
+    rememberedCategories = signal(0);
     categoryMemoryMock = jasmine.createSpyObj<CategoryMemoryService>(
       'CategoryMemoryService',
       ['ensureLoaded', 'clear'],
-      { rememberedCount: signal(0) }
+      { rememberedCount: rememberedCategories }
     );
     categoryMemoryMock.ensureLoaded.and.resolveTo(undefined);
     categoryMemoryMock.clear.and.resolveTo(undefined);
 
+    rememberedTags = signal(0);
     tagMemoryMock = jasmine.createSpyObj<TagMemoryService>(
       'TagMemoryService',
       ['ensureLoaded', 'clear'],
-      { rememberedCount: signal(0) }
+      { rememberedCount: rememberedTags }
     );
     tagMemoryMock.ensureLoaded.and.resolveTo(undefined);
     tagMemoryMock.clear.and.resolveTo(undefined);
@@ -1208,6 +1213,80 @@ describe('AiSettingsPageComponent', () => {
       expect(notifications.error).toHaveBeenCalledWith('common.error');
       expect(component.clearingCategoryMemory()).toBeFalse();
     });
+  });
+
+  /**
+   * The remembered-categories card and the remembered-tags card each end in a
+   * clear, and the two show together. Their words are the same in en and tc
+   * ("Forget all") and differ in ja only by chance, so each is named for what
+   * it forgets: its card's title, with the words it shows whole inside the
+   * name (WCAG 2.5.3), whether there is anything to forget or not.
+   */
+  describe('the two memory clears (real template)', () => {
+    const CLEARS = [
+      { title: 'aiPage.categoryMemoryTitle', shows: 'aiPage.categoryMemoryClear', label: 'aiPage.categoryMemoryClearLabel' },
+      { title: 'aiPage.tagMemoryTitle', shows: 'aiPage.tagMemoryClear', label: 'aiPage.tagMemoryClearLabel' },
+    ] as const;
+    const pinned = {
+      en: ['Forget all remembered categories', 'Forget all remembered tags'],
+      ja: ['記憶したカテゴリをすべて削除', '記憶されたタグをすべて忘れる'],
+      tc: ['將已記住的分類全部忘記', '將已記住的標籤全部忘記'],
+    } as const;
+
+    /** The words a button shows: its label's text, the icon's ligature left out. */
+    const shownBy = (button: Element) =>
+      button.querySelector('.mdc-button__label')!.textContent!.replace(/\s+/g, ' ').trim();
+
+    for (const locale of ['en', 'ja', 'tc'] as const) {
+      it(`names each clear for what it forgets, holding the words it shows, in ${locale}`, () => {
+        const translation = TestBed.inject(TranslationService);
+        spyOn(translation, 't').and.callFake(catalogTranslator(locale));
+        // The translate pipe memoises on the locale and the catalog version.
+        translation.currentLocale.set(locale);
+        translation.translationsVersion.update(version => version + 1);
+        const t = catalogTranslator(locale);
+        fixture.detectChanges();
+
+        /** The clear on the card whose title reads `titleKey`'s words. */
+        const clearOn = (titleKey: string): HTMLButtonElement => {
+          const card = Array.from((fixture.nativeElement as HTMLElement).querySelectorAll('mat-card')).find(
+            found => found.querySelector('mat-card-title')?.textContent?.trim() === t(titleKey)
+          );
+          const button = card?.querySelector<HTMLButtonElement>('mat-card-actions button') ?? null;
+          expect(button).withContext(`the clear on the card titled ${t(titleKey)}`).not.toBeNull();
+          return button!;
+        };
+
+        const read = (state: string, disabled: boolean) => {
+          const clears = CLEARS.map(clear => clearOn(clear.title));
+          const names = clears.map(clear => accessibleName(clear));
+          clears.forEach((clear, i) => {
+            const shown = shownBy(clear);
+            const title = t(CLEARS[i].title);
+            expect(clear.disabled).withContext(`${state}: clear ${i} disabled`).toBe(disabled);
+            expect(shown).withContext(`${state}: clear ${i} shows its words as before`).toBe(t(CLEARS[i].shows));
+            expect(holdsShownWords(names[i], shown, locale))
+              .withContext(`${state}: "${names[i]}" holds "${shown}" whole`)
+              .toBeTrue();
+            expect(holdsShownWords(names[i], title, locale))
+              .withContext(`${state}: "${names[i]}" says what it forgets, "${title}"`)
+              .toBeTrue();
+          });
+          expect(names[0]).withContext(`${state}: the two names, apart`).not.toBe(names[1]);
+          expect(names).withContext(`${state}, pinned`).toEqual([...pinned[locale]]);
+          const strict = catalogTranslator(locale, { strict: true });
+          expect(names).withContext(state).toEqual(CLEARS.map(clear => strict(clear.label)));
+        };
+
+        // Nothing remembered: both clears are disabled and keep their names.
+        read('nothing to forget', true);
+
+        rememberedCategories.set(4);
+        rememberedTags.set(2);
+        fixture.detectChanges();
+        read('something to forget', false);
+      });
+    }
   });
 
   describe('saving a preference', () => {
