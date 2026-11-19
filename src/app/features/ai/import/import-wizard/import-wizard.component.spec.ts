@@ -4666,6 +4666,82 @@ describe('ImportWizardComponent', () => {
       }
     });
 
+    // Material lets a press on the chip already picked take the pick away,
+    // and the listbox then reports no value at all. The question always has
+    // an answer: the wizard reads the photos by it and the hint under the
+    // chips says which. So the picked chip keeps its fill, its checkmark and
+    // aria-selected, by pointer and by either key, whichever of the two is
+    // picked. With Receipts picked the press used to leave neither chip
+    // selected while the photos were still read as receipts; with Statement
+    // picked it switched the photos to receipts without a word.
+    describe('a second press on the receipt-or-statement chip already picked', () => {
+      const chips = () => [...(uploadStep()?.querySelectorAll<HTMLElement>('mat-chip-listbox mat-chip-option') ?? [])];
+      const action = (chip: HTMLElement) => chip.querySelector<HTMLElement>('.mdc-evolution-chip__action--primary');
+
+      /**
+       * A key on the focused chip as the browser sends it. Material reads the
+       * legacy keyCode, which a constructed event leaves at 0, and takes the
+       * key itself (preventDefault), so no click follows.
+       */
+      function keyOn(target: HTMLElement, key: 'Enter' | ' ', keyCode: number): void {
+        target.focus();
+        const keydown = new KeyboardEvent('keydown', { key, bubbles: true, cancelable: true });
+        Object.defineProperty(keydown, 'keyCode', { get: () => keyCode });
+        target.dispatchEvent(keydown);
+        expect(keydown.defaultPrevented).withContext(`the chip took ${key === ' ' ? 'Space' : key} itself`).toBeTrue();
+      }
+
+      const PRESSES: readonly (readonly [string, (target: HTMLElement) => void])[] = [
+        ['a click', target => target.click()],
+        ['Space', target => keyOn(target, ' ', 32)],
+        ['Enter', target => keyOn(target, 'Enter', 13)],
+      ];
+
+      /** Photos dropped, and the listbox's value on its chips, which it writes a microtask after they render. */
+      async function photosPicked(): Promise<void> {
+        drop(photo('a.png'));
+        await Promise.resolve();
+        realFixture.detectChanges();
+      }
+
+      for (const [kind, index, hint] of [
+        ['receipt', 0, 'import.imageKindReceiptHint'],
+        ['statement', 1, 'import.imageKindStatementHint'],
+      ] as const) {
+        for (const [how, pressOn] of PRESSES) {
+          it(`keeps ${kind} picked when ${how} lands on it again`, async () => {
+            await photosPicked();
+            const options = chips();
+            expect(options.length).withContext('the two chips, receipt first').toBe(2);
+            const [picked, other] = [options[index], options[1 - index]];
+            const [pickedAction, otherAction] = [picked && action(picked), other && action(other)];
+            expect(pickedAction && otherAction).withContext('each chip\'s option').toBeTruthy();
+            if (!pickedAction || !otherAction) return;
+            if (kind === 'statement') {
+              pickedAction.click();
+              realFixture.detectChanges();
+            }
+
+            const expectPicked = (when: string) => {
+              expect(picked.classList).withContext(`${when}: the chip's fill and checkmark`).toContain('mdc-evolution-chip--selected');
+              expect(pickedAction.getAttribute('aria-selected')).withContext(`${when}: picked, as heard`).toBe('true');
+              expect(otherAction.getAttribute('aria-selected')).withContext(`${when}: the other chip`).toBe('false');
+              expect(realFixture.componentInstance.imageKind()).withContext(`${when}: what the photos are read as`).toBe(kind);
+              expect(uploadStep()?.querySelector('.image-kind-hint')?.textContent?.trim()).withContext(`${when}: the hint`).toBe(hint);
+            };
+            expectPicked('before the press');
+
+            pressOn(pickedAction);
+            realFixture.detectChanges();
+            await Promise.resolve();
+            realFixture.detectChanges();
+
+            expectPicked(`after ${how}`);
+          });
+        }
+      }
+    });
+
     // The zone's title and the previews' heading went from h3 to h2 with
     // nothing redrawn: each keeps the size, weight, line height and margins
     // it was drawn with as an h3, read off the h3s. A pin. Mutations: the
