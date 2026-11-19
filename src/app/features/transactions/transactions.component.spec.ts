@@ -38,6 +38,7 @@ import {
   createTransaction,
   createCategory,
   createTranslationStub,
+  keepThePageWhereFound,
   provideNoMotion,
 } from '../../core/services/testing';
 
@@ -1250,6 +1251,34 @@ describe('TransactionsComponent, through its own template', () => {
       return host;
     }
 
+    /**
+     * Brings the page's host to the window's top, or as near as the page
+     * scrolls, once its line is laid out. A full run stands jasmine's report
+     * above the fixture, as tall as the specs before made it, and leaves the
+     * page wherever they scrolled it; this file alone stands it near the top.
+     * Each case puts the page's scroll back where it found it.
+     */
+    function intoTheWindow(): void {
+      el().scrollIntoView({ block: 'start', inline: 'nearest', behavior: 'instant' });
+    }
+    keepThePageWhereFound();
+
+    /**
+     * Runs `body` with `px` of page standing above the fixture, as a full run
+     * stands jasmine's report there, which this file alone does not. The
+     * spacer goes on the page before `body` renders, so the fixture lands
+     * below it, and comes off when `body` ends.
+     */
+    function withPageAbove(px: number, body: () => void): void {
+      const spacer = document.body.appendChild(document.createElement('div'));
+      spacer.style.height = `${px}px`;
+      try {
+        body();
+      } finally {
+        spacer.remove();
+      }
+    }
+
     /** The element a pointer reaches at a point inside the window. */
     function reached(x: number, y: number): Element | null {
       expect(x >= 0 && y >= 0 && x < window.innerWidth && y < window.innerHeight)
@@ -1278,6 +1307,7 @@ describe('TransactionsComponent, through its own template', () => {
     const oneLine = (a: DOMRect, b: DOMRect) => Math.min(a.bottom, b.bottom) - Math.max(a.top, b.top) > Math.min(a.height, b.height) / 2;
 
     function expectNoDotLeads(line: HTMLElement, where: string): void {
+      intoTheWindow();
       const edges = line.getBoundingClientRect();
       const parts = Array.from(line.querySelectorAll<HTMLElement>('.period-caption, .period-figure')).map(part => part.getBoundingClientRect());
       const dotEls = Array.from(line.querySelectorAll<HTMLElement>('.period-sep'));
@@ -1330,6 +1360,10 @@ describe('TransactionsComponent, through its own template', () => {
       });
     }
 
+    it('reads its line inside the window with 3000px of page above the fixture', () => {
+      withPageAbove(3000, () => expectNoDotLeads(renderLine('en', true), 'en at 320px, 3000px down the page'));
+    });
+
     /**
      * A line clips what stands outside it, so an action at either end of a
      * line must keep the app's focus outline inside the clip. An outline is
@@ -1355,47 +1389,60 @@ describe('TransactionsComponent, through its own template', () => {
       band.remove();
     }
 
-    // With no range, Calculate is the line's one part, so it starts the line.
-    it("keeps the whole focus outline of an action that starts the line, and its tap overhang", () => {
-      TestBed.overrideProvider(TranslationService, { useValue: catalogTranslationStub('en') });
-      render();
-      phonePage();
-      totals.status.set({ kind: 'over-cap', serverCount: 1200 } as PeriodTotalsStatus);
-      mobile(true);
+    // Each outline case runs as this file stands its fixture, near the top,
+    // and again with 3000px of page above it, where only the case's own
+    // scroll brings its points inside the window.
+    for (const above of [0, 3000] as const) {
+      const where = above ? `, with ${above}px of page above the fixture` : '';
 
-      const line = el().querySelector('.period-totals-line') as HTMLElement;
-      const action = line.querySelector('.period-totals-calc-link') as HTMLElement;
-      const box = action.getBoundingClientRect();
-      expect(box.left).withContext('Calculate, first on the line').toBeCloseTo(line.getBoundingClientRect().left, 0);
-      expectOutlineBandReached(action, 'start', 'Calculate, first on the line');
+      // With no range, Calculate is the line's one part, so it starts the line.
+      it(`keeps the whole focus outline of an action that starts the line, and its tap overhang${where}`, () => {
+        withPageAbove(above, () => {
+          TestBed.overrideProvider(TranslationService, { useValue: catalogTranslationStub('en') });
+          render();
+          phonePage();
+          totals.status.set({ kind: 'over-cap', serverCount: 1200 } as PeriodTotalsStatus);
+          mobile(true);
 
-      // The 40px tap target overhangs the line above and below: the clip
-      // leaves it whole.
-      const overhang = (40 - box.height) / 2;
-      const middle = (box.left + box.right) / 2;
-      for (const [what, y] of [['above', box.top - overhang + 0.5], ['below', box.bottom + overhang - 0.5]] as const) {
-        const hit = reached(middle, y);
-        expect(hit !== null && action.contains(hit)).withContext(`Calculate's tap target, reached ${what} the line`).toBeTrue();
-      }
-    });
+          const line = el().querySelector('.period-totals-line') as HTMLElement;
+          const action = line.querySelector('.period-totals-calc-link') as HTMLElement;
+          intoTheWindow();
+          const box = action.getBoundingClientRect();
+          expect(box.left).withContext('Calculate, first on the line').toBeCloseTo(line.getBoundingClientRect().left, 0);
+          expectOutlineBandReached(action, 'start', 'Calculate, first on the line');
 
-    // Retry ends the unavailable part, and a line as wide as that part ends with it.
-    it('keeps the whole focus outline of an action that ends the line', () => {
-      TestBed.overrideProvider(TranslationService, { useValue: catalogTranslationStub('en') });
-      render();
-      phonePage();
-      totals.status.set({ kind: 'unavailable' });
-      mobile(true);
+          // The 40px tap target overhangs the line above and below: the clip
+          // leaves it whole.
+          const overhang = (40 - box.height) / 2;
+          const middle = (box.left + box.right) / 2;
+          for (const [what, y] of [['above', box.top - overhang + 0.5], ['below', box.bottom + overhang - 0.5]] as const) {
+            const hit = reached(middle, y);
+            expect(hit !== null && action.contains(hit)).withContext(`Calculate's tap target, reached ${what} the line`).toBeTrue();
+          }
+        });
+      });
 
-      const line = el().querySelector('.period-totals-line') as HTMLElement;
-      const action = line.querySelector('.period-totals-retry-link') as HTMLElement;
-      line.style.width = `${Math.ceil(action.getBoundingClientRect().right - line.getBoundingClientRect().left)}px`;
-      const box = action.getBoundingClientRect();
-      const edges = line.getBoundingClientRect();
-      expect(edges.right - box.right).withContext('Retry, last on the line, px before its end').toBeLessThan(1);
-      expect(box.top).withContext('Retry, still on the first line').toBeLessThan(edges.top + box.height / 2);
-      expectOutlineBandReached(action, 'end', 'Retry, last on the line');
-    });
+      // Retry ends the unavailable part, and a line as wide as that part ends with it.
+      it(`keeps the whole focus outline of an action that ends the line${where}`, () => {
+        withPageAbove(above, () => {
+          TestBed.overrideProvider(TranslationService, { useValue: catalogTranslationStub('en') });
+          render();
+          phonePage();
+          totals.status.set({ kind: 'unavailable' });
+          mobile(true);
+
+          const line = el().querySelector('.period-totals-line') as HTMLElement;
+          const action = line.querySelector('.period-totals-retry-link') as HTMLElement;
+          line.style.width = `${Math.ceil(action.getBoundingClientRect().right - line.getBoundingClientRect().left)}px`;
+          intoTheWindow();
+          const box = action.getBoundingClientRect();
+          const edges = line.getBoundingClientRect();
+          expect(edges.right - box.right).withContext('Retry, last on the line, px before its end').toBeLessThan(1);
+          expect(box.top).withContext('Retry, still on the first line').toBeLessThan(edges.top + box.height / 2);
+          expectOutlineBandReached(action, 'end', 'Retry, last on the line');
+        });
+      });
+    }
   });
 
   // The phone's two actions read as words in the subtitle line, so their box
