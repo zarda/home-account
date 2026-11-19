@@ -303,6 +303,26 @@ describe('RecentTransactionsComponent', () => {
         .toBeLessThanOrEqual(host.querySelector('mat-card')!.getBoundingClientRect().right);
     });
 
+    // Its words are a 21px line, and the link was no taller: under the 40px
+    // floor every target in the app keeps. The menu's 48px touch span reaches
+    // 4px past its trigger, and the app's focus outline sits 2px out from the
+    // link and is 2px wide, 3px under high contrast, inside a card that clips.
+    it('gives View All a 40px target, clear of the menu beside it, its focus outline inside the card', () => {
+      const link = host.querySelector('.view-all-link') as HTMLElement;
+      const box = link.getBoundingClientRect();
+      expect(box.height).withContext('height vs the 40px floor').toBeGreaterThanOrEqual(40);
+      expect(box.width).withContext('width vs the 40px floor').toBeGreaterThanOrEqual(40);
+
+      const span = host.querySelector('.card-menu-trigger .mat-mdc-button-touch-target')!.getBoundingClientRect();
+      expect(span.left).withContext("the menu's touch span begins after the link").toBeGreaterThanOrEqual(box.right - 0.5);
+
+      const card = host.querySelector('mat-card')!.getBoundingClientRect();
+      const outline = 2 + 3;
+      expect(box.top - outline).withContext('outline top inside the card').toBeGreaterThanOrEqual(card.top);
+      expect(box.left - outline).withContext('outline left inside the card').toBeGreaterThanOrEqual(card.left);
+      expect(box.right + outline).withContext('outline right inside the card').toBeLessThanOrEqual(card.right);
+    });
+
     // Three cards stack in the rail, and Budget Progress keeps its title whole
     // and drops its actions to the row below. A title broken to keep the
     // actions beside it reads as a different header, so at every width the
