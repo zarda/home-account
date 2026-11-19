@@ -10,7 +10,7 @@ import { CurrencyService } from '../../../../core/services/currency.service';
 import { CurrencyChoiceSessionService } from '../../../../core/services/currency-choice-session.service';
 import { FitTextRegistry } from '../../../../shared/directives/fit-text.registry';
 import { FitTextDirective } from '../../../../shared/directives/fit-text.directive';
-import { echoKey, provideNoMotion } from '../../../../core/services/testing';
+import { echoKey, provideNoMotion, textLines } from '../../../../core/services/testing';
 
 /**
  * The review card at the narrowest width the app supports, carrying
@@ -512,6 +512,29 @@ describe('overflow guard: the import review card', () => {
     expect(acceptText.getBoundingClientRect().height)
       .withContext('the label really did take a second line rather than spilling past the chip')
       .toBeGreaterThan(20);
+  });
+
+  it('gives Notes a 40px target, with room for its focus outline inside the card', () => {
+    // The empty notes slot is drawn dashed, as the strip's add triggers and
+    // Add row are, and takes the 40px they take in its own box; it stood
+    // 36px. Nothing around it gave way for the 4px: the outline the app
+    // draws round it, 2px off the box and 3px wide under high contrast,
+    // still lands inside the card, inside the list that clips.
+    const notes = Array.from(host.querySelectorAll<HTMLElement>('.add-notes-btn'));
+    expect(notes.length).withContext('one per row, neither row has notes').toBe(2);
+    for (const [i, button] of notes.entries()) {
+      const box = button.getBoundingClientRect();
+      expect(box.height).withContext(`row ${i + 1}: Notes tap target height`).toBeGreaterThanOrEqual(40);
+      expect(box.width).withContext(`row ${i + 1}: Notes tap target width`).toBeGreaterThanOrEqual(40);
+      expect(textLines(button.querySelector('span') as HTMLElement)).withContext(`row ${i + 1}: Notes on one line`).toBe(1);
+
+      const reach = 2 + 3;
+      const owner = button.closest('.transaction-card') as HTMLElement;
+      const card = owner.getBoundingClientRect();
+      expect(box.left - reach).withContext(`row ${i + 1}: the outline's start inside the card`).toBeGreaterThanOrEqual(card.left);
+      expect(box.right + reach).withContext(`row ${i + 1}: the outline's end inside the card`).toBeLessThanOrEqual(card.right);
+      expect(box.bottom + reach).withContext(`row ${i + 1}: the outline's foot inside the card`).toBeLessThanOrEqual(card.bottom);
+    }
   });
 
   it('keeps both of the location chip\'s controls reachable, and its editor inside the card', () => {
