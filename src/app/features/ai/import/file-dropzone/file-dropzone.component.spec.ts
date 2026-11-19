@@ -14,10 +14,13 @@ import {
   catalogTranslator,
   channels,
   createTranslationStub,
+  dragByHandle,
   expectOneRule,
   expectPainted,
+  fileRowOf,
   hoverValue,
   inPalette,
+  mouse,
   paintedBackground,
   paintedColor,
   PALETTES,
@@ -628,68 +631,7 @@ describe('FileDropzoneComponent, through its own template', () => {
   }
 
   /** The listed row that shows `name`; never the slot or the preview a drag leaves. */
-  const rowOf = (name: string) =>
-    all('.file-list > .file-item:not(.cdk-drag-placeholder):not(.cdk-drag-preview)')
-      .find(row => row.querySelector('.file-name')?.textContent?.trim() === name);
-
-  /** One mouse event as a mouse makes it: the left button held from its press until its release. */
-  function mouse(target: EventTarget, type: 'mousedown' | 'mousemove' | 'mouseup', x: number, y: number): void {
-    target.dispatchEvent(new MouseEvent(type, {
-      bubbles: true,
-      cancelable: true,
-      view: window,
-      clientX: x,
-      clientY: y,
-      button: 0,
-      buttons: type === 'mouseup' ? 0 : 1,
-      detail: 1,
-    }));
-  }
-
-  /**
-   * A real drag of the photo `dragged` by its handle onto the row that shows
-   * `over`, the way a mouse makes one. The press lands on the handle with a
-   * button held and a click count, or CDK takes it for a screen reader's;
-   * the first move goes past CDK's 5px start threshold, toward `over`, and
-   * starts the drag; the second puts the pointer in the middle of `over`'s
-   * row, where it is held; one render runs there, as the zone would run one
-   * once CDK starts the drag, so host-bound drag classes are current. Then
-   * `during` runs, once the pointer has been held past the 200ms glide of
-   * the rows CDK slides aside, so a row's drawn place is the one a user sees
-   * rather than where its glide starts. The release always follows, and the
-   * drop lands only once the dragged row has glided into its slot, a 200ms
-   * transition provideNoMotion does not reach: so after the release no
-   * render runs until no preview is left.
-   */
-  async function dragByHandle(dragged: string, over: string, during: () => void): Promise<void> {
-    const handle = rowOf(dragged)?.querySelector<HTMLElement>('.drag-handle');
-    const target = rowOf(over);
-    expect(handle).withContext(`${dragged}'s drag handle`).toBeTruthy();
-    expect(target).withContext(`${over}'s row`).toBeTruthy();
-    if (!handle || !target) return;
-
-    const grip = handle.getBoundingClientRect();
-    const onto = target.getBoundingClientRect();
-    const x = grip.left + grip.width / 2;
-    const y = grip.top + grip.height / 2;
-    const held = onto.top + onto.height / 2;
-    mouse(handle, 'mousedown', x, y);
-    try {
-      mouse(document, 'mousemove', x, y + (held < y ? -6 : 6));
-      mouse(document, 'mousemove', x, held);
-      fixture.detectChanges();
-      await new Promise(resolve => setTimeout(resolve, 250));
-      during();
-    } finally {
-      mouse(document, 'mouseup', x, held);
-      const deadline = Date.now() + 2000;
-      while (document.querySelector('.cdk-drag-preview') && Date.now() < deadline) {
-        await new Promise(resolve => setTimeout(resolve, 20));
-      }
-      expect(document.querySelector('.cdk-drag-preview')).withContext('the preview, once the drop settles').toBeNull();
-      fixture.detectChanges();
-    }
-  }
+  const rowOf = (name: string) => fileRowOf(el(), name);
 
   beforeEach(async () => {
     await TestBed.configureTestingModule({
@@ -1164,7 +1106,7 @@ describe('FileDropzoneComponent, through its own template', () => {
       const before = offsetOf('rows.csv');
       const aBefore = offsetOf('a.png');
 
-      await dragByHandle('b.png', 'a.png', () => {
+      await dragByHandle(fixture, 'b.png', 'a.png', () => {
         expect(rowOf('rows.csv')?.style.transform).withContext('the CSV\'s transform, mid-drag').toBe('');
         expect(offsetOf('rows.csv')).withContext('the CSV\'s offset from the list, mid-drag').toBe(before);
         expect(el().querySelector('.cdk-drag-placeholder')).withContext('the dragged photo\'s slot').not.toBeNull();
@@ -1188,7 +1130,7 @@ describe('FileDropzoneComponent, through its own template', () => {
       fixture.detectChanges();
       dropFiles([imageFile('a.png'), csvFile(), imageFile('b.png')]);
 
-      await dragByHandle('b.png', 'rows.csv', () => {
+      await dragByHandle(fixture, 'b.png', 'rows.csv', () => {
         expect(el().querySelector('.cdk-drag-placeholder')).withContext('the dragged photo\'s slot').not.toBeNull();
         expect(offset()).withContext('the rows offset, mid-drag').toEqual([]);
       });
@@ -1940,7 +1882,7 @@ describe('FileDropzoneComponent, through its own template', () => {
       const onto = (rowOf('e2e-109-shared.png') as HTMLElement).getBoundingClientRect();
       const left = dragged.getBoundingClientRect().left;
 
-      await dragByHandle('image.jpg', 'e2e-109-shared.png', () => {
+      await dragByHandle(fixture, 'image.jpg', 'e2e-109-shared.png', () => {
         const preview = document.querySelector<HTMLElement>('.cdk-drag-preview');
         expect(preview).withContext('the lifted row').not.toBeNull();
         if (!preview) return;
@@ -2278,7 +2220,7 @@ describe('FileDropzoneComponent, through its own template', () => {
       const hovered = hoverValue(zone, '.dropzone', 'background');
       expect(hovered).withContext('the zone\'s hover rule').toBe('var(--surface-hover)');
 
-      await dragByHandle('second.png', 'first.png', () => {
+      await dragByHandle(fixture, 'second.png', 'first.png', () => {
         const slot = el().querySelector<HTMLElement>('.file-list > .cdk-drag-placeholder');
         const preview = document.querySelector<HTMLElement>('.cdk-drag-preview');
         expect(slot).withContext('the slot').not.toBeNull();

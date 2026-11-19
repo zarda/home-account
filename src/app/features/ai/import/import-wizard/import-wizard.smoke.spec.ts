@@ -3,7 +3,9 @@
 // wizard template, real Material stepper, and real Firestore-backed
 // category loading against the emulators. No AI provider exists here; the
 // handoff payload is built directly, exactly as the capture dialog and the
-// form's multi-receipt chooser hand it over.
+// form's multi-receipt chooser hand it over. The case after it renders the
+// same hand-off in English, so each card's Add location, Add tag and Notes
+// are heard naming their own row.
 //
 // A second case stubs one seam deeper — CloudLLMProviderService, the only
 // thing with no local emulator — so the real AIImportService runs its actual
@@ -49,11 +51,13 @@
 // and the doubt it carries, from the extraction to the toggle and into the
 // document.
 //
-// The last two cases drop files on the real upload area, as a drag from the
+// The last three cases drop files on the real upload area, as a drag from the
 // desktop does. A CSV dropped on the empty zone is followed into the ledger.
 // A mixed pick has its second photo moved up past the CSV between them, so
 // the photos are read, and their bytes stored, in the order their badges
-// show.
+// show. The last makes that move with a real drag of the photo's handle, so
+// the CSV is seen held still under it and the photos are read in the order
+// they were dropped in.
 //
 // Import the Firebase SDK through @angular/fire (not the root `firebase/*`
 // packages) — see app.smoke.spec.ts for why the copies must match.
@@ -89,8 +93,13 @@ import { ImportWizardComponent } from './import-wizard.component';
 import { AuthService } from '../../../../core/services/auth.service';
 import {
   MockAuthService,
+  accessibleName,
+  catalogTranslator,
   createMockUser,
+  dragByHandle,
+  fileRowOf,
   provideNoMotion,
+  tokenValue,
 } from '../../../../core/services/testing';
 import { AIImportService, IMPORT_NOT_STARTED } from '../../../../core/services/ai-import.service';
 import { CategoryMemoryService } from '../../../../core/services/category-memory.service';
@@ -417,6 +426,80 @@ describe('ImportWizardComponent camera handoff (emulator smoke test)', () => {
       expect(text).toContain('Corner Bakery');
       const badges = (fixture.nativeElement as HTMLElement).querySelectorAll('.receipt-badge');
       expect(badges.length).toBe(2);
+
+      history.replaceState({}, '');
+      fixture.destroy();
+      await new Promise(resolve => setTimeout(resolve, 300));
+    },
+    30000
+  );
+
+  it(
+    "names each card's Add location, Add tag and Notes by its own row",
+    async () => {
+      // Karma loads no catalog, so each name would be the bare key, alike on
+      // every row; the English catalog, read as the app reads it, puts the
+      // words in. It is spied before the wizard renders: the pipe keeps the
+      // first answer it rendered for a key and its params. The card's suite
+      // reads these names against a stubbed parent; here they are read on the
+      // real wizard, over rows that came through the camera's hand-off.
+      stubReceiptSeams();
+      spyOn(TestBed.inject(TranslationService), 't').and.callFake(catalogTranslator('en'));
+
+      // Dated today, so neither row asks about its date; no location, no tag
+      // and no notes, so each card shows all three buttons.
+      const receipt = (id: string, description: string, amount: number, receiptId: number) => ({
+        id,
+        description,
+        amount,
+        currency: 'USD',
+        date: new Date(),
+        type: 'expense' as const,
+        suggestedCategoryId: 'other_expense',
+        categoryConfidence: 0.9,
+        isDuplicate: false,
+        selected: true,
+        imageMetadata: { imageIndex: 0, imageId: 'image_0', confidenceScore: 0.9, receiptId }
+      });
+      const importResult: ImportResult = {
+        source: 'image',
+        fileType: 'receipt_image',
+        fileName: 'receipts.jpg',
+        fileSize: 1234,
+        confidence: 0.9,
+        warnings: [],
+        duplicates: [],
+        transactions: [receipt('n1', 'Coffee Corner', 12.5, 1), receipt('n2', 'Corner Bakery', 8.25, 2)],
+        multiImageMetadata: { totalImages: 1 }
+      };
+
+      history.replaceState({ importResult, fromCamera: true, multiImage: false }, '');
+      const fixture = TestBed.createComponent(ImportWizardComponent);
+      fixture.detectChanges();
+      const host = fixture.nativeElement as HTMLElement;
+      const cards = () => Array.from(host.querySelectorAll<HTMLElement>('.transaction-card'));
+      // The hand-off lands a macrotask after the view.
+      await until(fixture, () => cards().length === 2);
+
+      const adds = ['.location-add', '.tag-add', '.add-notes-btn'];
+      const namesOn = (card: HTMLElement): string[] =>
+        adds.map(selector => {
+          const button = card.querySelector(selector);
+          expect(button).withContext(`${selector} on the card`).not.toBeNull();
+          return button ? accessibleName(button) : '';
+        });
+      const named = Object.fromEntries(
+        cards().map(card => [card.querySelector('.description-text')?.textContent?.trim(), namesOn(card)])
+      );
+      expect(named).toEqual({
+        'Coffee Corner': ['Add location to Coffee Corner', 'Add tag to Coffee Corner', 'Notes for Coffee Corner'],
+        'Corner Bakery': ['Add location to Corner Bakery', 'Add tag to Corner Bakery', 'Notes for Corner Bakery']
+      });
+      adds.forEach((selector, i) =>
+        expect(named['Coffee Corner']?.[i])
+          .withContext(`${selector} reads the two rows apart`)
+          .not.toBe(named['Corner Bakery']?.[i])
+      );
 
       history.replaceState({}, '');
       fixture.destroy();
@@ -5045,6 +5128,118 @@ describe('ImportWizardComponent camera handoff (emulator smoke test)', () => {
       const csvRow = storedAs('Smoke mixed pick row');
       expect(csvRow).withContext("the CSV's row").toBeDefined();
       expect('receiptUrls' in (csvRow?.data() ?? {})).withContext("the CSV's row holds no photo").toBeFalse();
+
+      history.replaceState({}, '');
+      fixture.destroy();
+      await new Promise(resolve => setTimeout(resolve, 300));
+    },
+    30000
+  );
+
+  it(
+    'a photo dragged by its handle past the CSV is read where it was dropped, the CSV held still',
+    async () => {
+      // The upload area's suite drags on the zone alone; this drag is made
+      // on the real wizard, in the layout the zone sits in there, and the
+      // order it leaves is followed to the reader. A pin written after the
+      // fix: with cdkDrag back on the CSV's row, the CSV slides down under
+      // the dragged photo, and its transform reads a translate3d mid-drag.
+      // The case stops at the reader: the case above follows the order the
+      // photos are read in into the stored objects.
+      const today = dayKey(new Date());
+      stubReceiptSeams(undefined, [
+        {
+          date: today,
+          dateConfidence: 0.95,
+          description: 'Smoke dragged photo one',
+          amount: 610,
+          type: 'expense',
+          currency: 'JPY',
+          imageIndex: 0,
+          confidence: 0.9,
+          receiptId: 1,
+          receiptTotal: 610
+        },
+        {
+          date: today,
+          dateConfidence: 0.95,
+          description: 'Smoke dragged photo two',
+          amount: 720,
+          type: 'expense',
+          currency: 'JPY',
+          imageIndex: 1,
+          confidence: 0.9,
+          receiptId: 2,
+          receiptTotal: 720
+        }
+      ]);
+      const read = spyOn(TestBed.inject(AIImportService), 'importFromMultipleImages').and.callThrough();
+
+      history.replaceState({}, '');
+      const fixture = TestBed.createComponent(ImportWizardComponent);
+      fixture.detectChanges();
+      const host = fixture.nativeElement as HTMLElement;
+      const component = fixture.componentInstance;
+
+      const a = new File([new Uint8Array([0xff, 0xd8, 0x61, 0xd9])], 'smoke-drag-a.jpg', { type: 'image/jpeg' });
+      const csv = new File(
+        ['Date,Description,Amount,Type\n2026-10-29,Smoke dragged pick row,4567,expense\n'],
+        'smoke-drag.csv',
+        { type: 'text/csv' }
+      );
+      const b = new File([new Uint8Array([0xff, 0xd8, 0x62, 0xd9])], 'smoke-drag-b.jpg', { type: 'image/jpeg' });
+      dropOnTheZone(host, [a, csv, b]);
+      fixture.detectChanges();
+
+      const list = host.querySelector<HTMLElement>('app-file-dropzone .file-list');
+      expect(list).withContext("the upload area's list").not.toBeNull();
+      const names = (): string[] =>
+        Array.from(host.querySelectorAll('app-file-dropzone .file-name'), n => n.textContent?.trim() ?? '');
+      const badges = (): string[] =>
+        Array.from(host.querySelectorAll('app-file-dropzone .image-number'), n => n.textContent?.trim() ?? '');
+      expect(names()).withContext('the rows as dropped').toEqual([a.name, csv.name, b.name]);
+      /** Where the row that shows `name` is drawn, from the list's top: what a user sees move. */
+      const offsetOf = (name: string): number =>
+        (fileRowOf(host, name)?.getBoundingClientRect().top ?? NaN) - (list?.getBoundingClientRect().top ?? NaN);
+      const csvBefore = offsetOf(csv.name);
+      const aBefore = offsetOf(a.name);
+
+      // b, photo 2, is dragged up onto a, photo 1, past the CSV between them.
+      await dragByHandle(fixture, b.name, a.name, () => {
+        expect(fileRowOf(host, csv.name)?.style.transform).withContext("the CSV's transform, mid-drag").toBe('');
+        expect(offsetOf(csv.name)).withContext("the CSV's offset from the list, mid-drag").toBe(csvBefore);
+        expect(offsetOf(a.name)).withContext('a, drawn lower where it slid aside for b').toBeGreaterThan(aBefore);
+
+        // The slot b will land in is an empty dashed outline in the primary's
+        // text step. The colour is read off the token under whichever scheme
+        // this browser renders, so it holds on a dark machine and a light CI.
+        const slot = list?.querySelector<HTMLElement>(':scope > .cdk-drag-placeholder');
+        expect(slot).withContext("the dragged photo's slot").not.toBeNull();
+        if (slot) {
+          const edge = tokenValue('--color-primary-text');
+          expect(getComputedStyle(slot).borderStyle).withContext("the slot's edge").toBe('dashed');
+          expect(getComputedStyle(slot).borderColor).withContext("the slot's edge colour").toBe(edge);
+        }
+        // The lifted row is drawn inside the list, where the list's width
+        // query lays it out as it lay.
+        expect(document.querySelector('.cdk-drag-preview')?.parentElement)
+          .withContext("the lifted row's parent")
+          .toBe(list);
+      });
+
+      expect(names()).withContext('b dropped on a, the CSV kept in its row').toEqual([b.name, csv.name, a.name]);
+      expect(badges()).toEqual(['1', '2']);
+      expect(component.selectedFiles().map(f => f.name)).toEqual([b.name, csv.name, a.name]);
+
+      await component.processFiles();
+      await until(fixture, () => component.extractedTransactions().length === 3);
+
+      // Jasmine's equality finds two Files equal whatever they hold, so the
+      // photos are told apart by name.
+      expect(read).toHaveBeenCalledTimes(1);
+      expect(read.calls.mostRecent().args[0].map(f => f.name))
+        .withContext('the photos read, in the order they were dropped in')
+        .toEqual([b.name, a.name]);
 
       history.replaceState({}, '');
       fixture.destroy();

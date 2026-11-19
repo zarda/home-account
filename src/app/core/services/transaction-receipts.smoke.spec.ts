@@ -418,11 +418,20 @@ describe('TransactionService receipts (emulator smoke test)', () => {
       markedFile(0xb2)
     ]));
     createdIds.push(id);
-    // Remove the middle image first so the sweep has to cross a gap.
+    // The middle image is removed first, which leaves slot 1 an empty entry
+    // and takes its object with it. The sweep then asks only for the slots
+    // that still hold an image, 0 and 2, so it never asks Storage for an
+    // object already gone; and every object, the removed one's too, is gone
+    // after the delete.
     await service.removeReceiptAt(id, 1);
+    const swept = spyOn(storageService, 'deleteReceipt').and.callThrough();
 
     await service.deleteTransaction(id);
 
+    expect(swept.calls.allArgs()).withContext('the slots the sweep asked for').toEqual([
+      [uid, id, 0],
+      [uid, id, 2]
+    ]);
     expect((await readDoc(id))['userId']).toBeUndefined();
     await expectAsync(storageService.downloadReceipt(uid, id, 0)).toBeRejected();
     await expectAsync(storageService.downloadReceipt(uid, id, 1)).toBeRejected();
