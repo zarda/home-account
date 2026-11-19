@@ -3230,6 +3230,26 @@ describe('TransactionListComponent select mode', () => {
         expect(analytics.trackHouseholdAction).not.toHaveBeenCalled();
       });
     });
+
+    // Choosing hides the row's menu button behind its checkbox, so a row
+    // its Undo brings back while the reader chooses has no menu button for
+    // focus to land on.
+    it("puts focus that dropped on the checkbox of a row its Undo brings back while choosing", async () => {
+      await render();
+      // Deleted, and hidden by the page while its Undo is offered.
+      fixture.componentRef.setInput('transactions', rows.filter(row => row.id !== 'b'));
+      fixture.detectChanges();
+      enter();
+      (document.activeElement as HTMLElement | null)?.blur();
+
+      fixture.componentRef.setInput('transactions', rows);
+      fixture.componentInstance.deleteUndone('b');
+      fixture.detectChanges();
+      TestBed.tick();
+
+      expect(rowOf('b').querySelector('.row-menu-btn')).withContext('no menu button while choosing').toBeNull();
+      expect(document.activeElement).withContext("focus, on the restored row's checkbox").toBe(boxOf('b'));
+    });
   });
 
   describe('under the axe sweep', () => {
