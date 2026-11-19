@@ -18,6 +18,7 @@ import { AuthService } from './auth.service';
 import { MockFirestoreService } from './testing/mock-firestore.service';
 import { MockAuthService, createMockUser } from './testing/mock-auth.service';
 import { createTransaction, createCategory, createCategoryHierarchy, createRecurring } from './testing/test-data';
+import { consoleLines, expectEveryHeldLineRead, quietConsole } from './testing/console-quiet';
 import { parseCsvRows } from '../utils/csv.utils';
 import { Timestamp } from '@angular/fire/firestore';
 import type { Transaction } from '../../models';
@@ -48,12 +49,25 @@ describe('ExportService', () => {
   let categoryService: CategoryService;
   let currencyService: CurrencyService;
   let fetchSpy: jasmine.Spy;
+  let offline: Error;
+  let consoleWarn: jasmine.Spy;
+
+  /** How the warning a PDF prints for its missing CJK font starts. */
+  const FONT_FAILED = 'Error loading font from ';
+
+  /** That warning, as a PDF prints it once the suite-wide fetch rejection keeps its CJK font away. */
+  const fontNeverArrived = () =>
+    [jasmine.stringMatching(/^Error loading font from https:\/\/fonts\.gstatic\.com\/\S+\.ttf:$/), offline];
 
   beforeEach(() => {
     // The real CurrencyService starts a rates refresh in its constructor; on
     // CI runners the fetch can succeed and write cached rates through the
     // Firestore mock mid-test. Reject it so specs stay deterministic.
-    fetchSpy = spyOn(window, 'fetch').and.rejectWith(new Error('network disabled in specs'));
+    offline = new Error('network disabled in specs');
+    fetchSpy = spyOn(window, 'fetch').and.rejectWith(offline);
+    // One spy for every describe below: each PDF case expects the warning
+    // its missing font prints, and any other line still prints.
+    consoleWarn = quietConsole('warn', [FONT_FAILED]);
 
     TestBed.configureTestingModule({
       providers: [
@@ -86,6 +100,9 @@ describe('ExportService', () => {
       ['EUR', 0.92]
     ]));
   });
+
+  // A font warning is held back in every case, so one the case never read fails it.
+  afterEach(() => expectEveryHeldLineRead(consoleWarn));
 
   describe('exportToCSV', () => {
     it('writes no share key in either format', async () => {
@@ -432,6 +449,7 @@ describe('ExportService', () => {
       expect(blob.size).toBeGreaterThan(0);
       const head = new TextDecoder().decode((await blob.arrayBuffer()).slice(0, 5));
       expect(head).toBe('%PDF-');
+      expect(consoleLines(consoleWarn, FONT_FAILED)).toEqual([fontNeverArrived()]);
     });
 
     // #438 P4: the PDF ranks a copy of the summary, so the caller's array
@@ -442,12 +460,11 @@ describe('ExportService', () => {
         { categoryId: 'smaller', total: 50 },
         { categoryId: 'larger', total: 150 },
       ];
-      // The suite-wide fetch rejection warns that the CJK font is missing.
-      spyOn(console, 'warn');
 
       await service.exportToPDF(report);
 
       expect(report.summary.byCategory.map(row => row.categoryId)).toEqual(['smaller', 'larger']);
+      expect(consoleLines(consoleWarn, FONT_FAILED)).toEqual([fontNeverArrived()]);
     });
 
     // The table promises the ten largest, so the PDF ranks a copy itself
@@ -464,7 +481,6 @@ describe('ExportService', () => {
       report.summary.byCategory = totals.map(([categoryId, total]) => ({ categoryId, total }));
       report.summary.expense = totals.reduce((sum, [, total]) => sum + total, 0);
       const given = report.summary.byCategory.map(row => row.categoryId);
-      spyOn(console, 'warn');
 
       const blob = await service.exportToPDF(report);
 
@@ -476,6 +492,7 @@ describe('ExportService', () => {
         'Row06', 'Row07', 'Row08', 'Row09', 'Row10',
       ]);
       expect(report.summary.byCategory.map(row => row.categoryId)).toEqual(given);
+      expect(consoleLines(consoleWarn, FONT_FAILED)).toEqual([fontNeverArrived()]);
     });
   });
 
@@ -650,6 +667,7 @@ describe('ExportService', () => {
         expect(fetchSpy).toHaveBeenCalledWith(jasmine.stringContaining('fonts.gstatic.com'));
         const head = new TextDecoder().decode((await blob.arrayBuffer()).slice(0, 5));
         expect(head).toBe('%PDF-');
+        expect(consoleLines(consoleWarn, FONT_FAILED)).toEqual([fontNeverArrived()]);
       });
 
       it('renders a pdf for a period with no transactions', async () => {
@@ -658,6 +676,7 @@ describe('ExportService', () => {
         // Neither table has a body and neither percentage has a denominator.
         const head = new TextDecoder().decode((await blob.arrayBuffer()).slice(0, 5));
         expect(head).toBe('%PDF-');
+        expect(consoleLines(consoleWarn, FONT_FAILED)).toEqual([fontNeverArrived()]);
       });
 
       it('leaves the caller\'s array in the order it was given', async () => {
@@ -673,6 +692,7 @@ describe('ExportService', () => {
         await service.exportCategorySummaryPDF(transactions, 'USD', 'July 2026');
 
         expect(transactions.map(t => t.id)).toEqual(order);
+        expect(consoleLines(consoleWarn, FONT_FAILED)).toEqual([fontNeverArrived()]);
       });
     });
 
@@ -742,6 +762,8 @@ describe('ExportService', () => {
 
         expect(reportBlob.size).toBeGreaterThan(0);
         expect(summaryBlob.size).toBeGreaterThan(0);
+        // Each builder asks for the font on its own, and each is told it is missing.
+        expect(consoleLines(consoleWarn, FONT_FAILED)).toEqual([fontNeverArrived(), fontNeverArrived()]);
       });
     });
   });

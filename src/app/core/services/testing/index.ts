@@ -21,3 +21,4 @@ export * from './frames';
 export * from './menu-dialog';
 export * from './fake-notice';
 export * from './no-pending-delete';
+export * from './console-quiet';

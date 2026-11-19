@@ -21,6 +21,7 @@ import { TranslationService } from './translation.service';
 import { MockFirestoreService } from './testing/mock-firestore.service';
 import { silenceFirebaseWarnings } from './testing/silence-firebase-warnings';
 import { createTranslationStub } from './testing/translation-stub';
+import { consoleLines, expectEveryHeldLineRead, quietConsole } from './testing/console-quiet';
 import {
   HOUSEHOLD_CONTRIBUTION_DELETE_CHUNK,
   HouseholdBudget,
@@ -181,7 +182,12 @@ describe('HouseholdPlansService', () => {
     plans.setNow(NOW);
   }
 
-  const planLogs = () => consoleWarn.calls.allArgs().filter(args => String(args[0]).startsWith('[HouseholdPlans]'));
+  /**
+   * The plans' own lines, and the ledger's this page also runs: the console
+   * spy holds both back for each case to expect, and passes any other line on.
+   */
+  const PLANS_PREFIX = '[HouseholdPlans]';
+  const LEDGER_PREFIX = '[HouseholdLedger]';
 
   /** Lets a chain of reads and commits the service started on its own run out. */
   async function settle(): Promise<void> {
@@ -238,7 +244,7 @@ describe('HouseholdPlansService', () => {
     }) as never);
     ids = 0;
     spyOn(firestore, 'generateId').and.callFake(() => `new-${++ids}`);
-    consoleWarn = spyOn(console, 'warn').and.callThrough();
+    consoleWarn = quietConsole('warn', [PLANS_PREFIX, LEDGER_PREFIX]);
 
     // Provided below the root, as the household page provides both.
     injector = createEnvironmentInjector(
@@ -252,6 +258,7 @@ describe('HouseholdPlansService', () => {
 
   afterEach(() => {
     if (!destroyed) injector.destroy();
+    expectEveryHeldLineRead(consoleWarn);
   });
 
   describe('its listeners', () => {
@@ -425,8 +432,12 @@ describe('HouseholdPlansService', () => {
       expect(plans.budgets()[0].incomplete).toBeFalse();
 
       plans.setNow(new Date(2026, 9, 2));
-      latest(dateListeners()).subject.error(firebaseError('unavailable'));
+      const failure = firebaseError('unavailable');
+      latest(dateListeners()).subject.error(failure);
       expect(plans.budgets()[0].incomplete).toBeTrue();
+      // The ledger's listener reads the budgets' window, so the line is the ledger's.
+      expect(consoleLines(consoleWarn, LEDGER_PREFIX)).toEqual([["[HouseholdLedger] The budgets' ledger listener stopped:", failure]]);
+      expect(consoleLines(consoleWarn, PLANS_PREFIX)).toEqual([]);
     });
 
     it("neither waits for the period's listener nor reads its cut, when the budgets' window has a listener of its own", () => {
@@ -582,7 +593,7 @@ describe('HouseholdPlansService', () => {
       follow();
       latest(listenersAt(BUDGETS)).subject.error(firebaseError('permission-denied'));
 
-      expect(planLogs()).toEqual([]);
+      expect(consoleLines(consoleWarn, PLANS_PREFIX)).toEqual([]);
       expect(plans.incomplete()).toBeFalse();
       expect(errorHandler.handleError).not.toHaveBeenCalled();
     });
@@ -595,11 +606,11 @@ describe('HouseholdPlansService', () => {
       latest(listenersAt(GOALS)).subject.error(failure);
       latest(listenersAt(BUDGETS)).subject.error(firebaseError('internal'));
 
-      expect(planLogs().map(args => args[0])).toEqual([
+      expect(consoleLines(consoleWarn, PLANS_PREFIX).map(args => args[0])).toEqual([
         '[HouseholdPlans] The goals listener stopped:',
         '[HouseholdPlans] The budgets listener stopped:'
       ]);
-      expect(planLogs()[0][1]).toBe(failure);
+      expect(consoleLines(consoleWarn, PLANS_PREFIX)[0][1]).toBe(failure);
       expect(plans.incomplete()).withContext('the goals were never heard').toBeTrue();
       expect(plans.budgets().map(line => line.budget.id)).withContext('what was shown stays').toEqual(['food']);
     });
@@ -828,7 +839,7 @@ describe('HouseholdPlansService', () => {
       await plans.deleteGoal('trip');
 
       expect(landed()).toEqual([[{ op: 'delete', path: `${GOALS}/trip` }, ...all.slice(0, 6).map(del)]]);
-      expect(planLogs()).toEqual([
+      expect(consoleLines(consoleWarn, PLANS_PREFIX)).toEqual([
         ["[HouseholdPlans] A deleted goal's contributions were not all removed; the rest go when the device is back online:", failure]
       ]);
 
@@ -862,7 +873,7 @@ describe('HouseholdPlansService', () => {
 
       await plans.deleteGoal('trip');
 
-      expect(planLogs()).toEqual([["[HouseholdPlans] A deleted goal's contributions were not all removed, and the rules refused the rest:", refused]]);
+      expect(consoleLines(consoleWarn, PLANS_PREFIX)).toEqual([["[HouseholdPlans] A deleted goal's contributions were not all removed, and the rules refused the rest:", refused]]);
       online.set(false);
       TestBed.tick();
       online.set(true);

@@ -1060,11 +1060,13 @@ describe('CloudLLMProviderBase', () => {
         text: `[${wholeRow('MILK')},${wholeRow('BREAD')},{"date":"2026-07-01","descrip`,
         truncated: true,
       };
+      const consoleWarn = spyOn(console, 'warn');
 
       const rows = await provider.extractTransactionsFromMultipleImages(['a', 'b']);
 
       expect(rows.map(r => r.description)).toEqual(['MILK', 'BREAD']);
       expect(provider.answerIncomplete()).toBeTrue();
+      expect(consoleWarn).toHaveBeenCalledOnceWith('[Stub] answer was cut short; kept 2 complete row(s)');
       // Salvage is not failure: the caller gets rows, and nothing is recorded
       // as an error for the wizard to render instead of them.
       expect(provider.lastError()).toBeNull();
@@ -1081,6 +1083,7 @@ describe('CloudLLMProviderBase', () => {
     it('clears the flag on the next clean answer', async () => {
       // The flag describes the call just awaited. A salvage on one receipt
       // must not still be reported against the next one.
+      const consoleWarn = spyOn(console, 'warn');
       provider.response = { text: `[${wholeRow('MILK')},{"date":"2026`, truncated: true };
       await provider.extractTransactionsFromMultipleImages(['a']);
       expect(provider.answerIncomplete()).toBeTrue();
@@ -1089,6 +1092,9 @@ describe('CloudLLMProviderBase', () => {
       await provider.extractTransactionsFromMultipleImages(['a']);
 
       expect(provider.answerIncomplete()).toBeFalse();
+      expect(consoleWarn).withContext('the clean answer says nothing').toHaveBeenCalledOnceWith(
+        '[Stub] answer was cut short; kept 1 complete row(s)'
+      );
     });
 
     it('salvages a statement image the same way', async () => {
@@ -1096,15 +1102,18 @@ describe('CloudLLMProviderBase', () => {
         text: `[${wholeRow('CAFE')},{"date":"2026-07-0`,
         truncated: true,
       };
+      const consoleWarn = spyOn(console, 'warn');
 
       const rows = await provider.extractStatementTransactions('img');
 
       expect(rows.length).toBe(1);
       expect(provider.answerIncomplete()).toBeTrue();
+      expect(consoleWarn).toHaveBeenCalledOnceWith('[Stub] answer was cut short; kept 1 complete row(s)');
     });
 
     it('throws a classifiable code when nothing survived', async () => {
       provider.response = { text: '[{"date":"2026-07-01","descrip', truncated: true };
+      const consoleError = spyOn(console, 'error');
 
       await expectAsync(provider.extractTransactionsFromMultipleImages(['a'])).toBeRejectedWithError(
         AI_ANSWER_INCOMPLETE
@@ -1112,6 +1121,10 @@ describe('CloudLLMProviderBase', () => {
       // A code rather than the parser's sentence, so parseAIError can name it
       // in the user's language instead of quoting the engine.
       expect(provider.lastError()).toBe(AI_ANSWER_INCOMPLETE);
+      expect(consoleError).toHaveBeenCalledOnceWith(
+        '[Stub] multi-image extraction failed:',
+        jasmine.objectContaining({ message: AI_ANSWER_INCOMPLETE })
+      );
     });
   });
 
