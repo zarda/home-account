@@ -124,6 +124,7 @@
     "thisYearShort": "年",
     "selectMonth": "選擇月份",
     "selectYear": "選擇年份",
+    "clearPeriod": "清除 {{period}}",
     "loadingData": "載入資料中...",
     "refreshing": "正在重新整理儀表板資料",
     "spendingByCategory": "各類別支出",

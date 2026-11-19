@@ -124,6 +124,7 @@
     "thisYearShort": "年",
     "selectMonth": "月を選択",
     "selectYear": "年を選択",
+    "clearPeriod": "{{period}}をクリア",
     "loadingData": "データを読み込み中...",
     "refreshing": "ダッシュボードのデータを更新中",
     "spendingByCategory": "カテゴリ別支出",

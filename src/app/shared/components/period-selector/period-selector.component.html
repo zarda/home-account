@@ -74,15 +74,18 @@
       (yearSelected)="onYearSelected($event, yearPicker)"
     ></mat-datepicker>
 
-    <!-- Selected Period Chip -->
+    <!-- Selected Period Chip. Its button clears the chosen month or year and
+         returns to the toggle, so it is named for the period it clears, the
+         chip's words whole inside the name. -->
     @if (isCustomPeriod()) {
       <div class="period-chip">
         <span>{{ customPeriodLabel() }}</span>
         <button
+          #clearButton
           mat-icon-button
           (click)="clearCustomPeriod()"
           class="clear-btn"
-          [attr.aria-label]="'common.close' | translate"
+          [attr.aria-label]="'dashboard.clearPeriod' | translate: { period: customPeriodLabel() }"
         >
           <mat-icon>close</mat-icon>
         </button>

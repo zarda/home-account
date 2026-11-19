@@ -1,6 +1,21 @@
-import { ChangeDetectionStrategy, Component, ViewChild, computed, inject, input, output, signal } from '@angular/core';
+import {
+  ChangeDetectionStrategy,
+  Component,
+  ElementRef,
+  Injector,
+  ViewChild,
+  afterNextRender,
+  computed,
+  inject,
+  input,
+  output,
+  signal,
+  viewChild,
+  viewChildren,
+} from '@angular/core';
+import { DOCUMENT } from '@angular/common';
 
-import { MatButtonToggleModule } from '@angular/material/button-toggle';
+import { MatButtonToggle, MatButtonToggleModule } from '@angular/material/button-toggle';
 import { MatDatepicker, MatDatepickerInput } from '@angular/material/datepicker';
 import { RelabelOpenCalendarDirective } from '../../directives/relabel-open-calendar.directive';
 import { MatMenuModule } from '@angular/material/menu';
@@ -54,6 +69,8 @@ export function defaultPeriodSelection(): PeriodSelection {
 })
 export class PeriodSelectorComponent {
   private translationService = inject(TranslationService);
+  private readonly document = inject(DOCUMENT);
+  private readonly injector = inject(Injector);
 
   selectionChange = output<PeriodSelection>();
 
@@ -87,6 +104,9 @@ export class PeriodSelectorComponent {
   @ViewChild('monthPicker') monthPicker!: MatDatepicker<Date>;
   @ViewChild('yearPicker') yearPicker!: MatDatepicker<Date>;
 
+  private readonly quickRanges = viewChildren(MatButtonToggle);
+  private readonly clearButton = viewChild('clearButton', { read: ElementRef<HTMLButtonElement> });
+
   onToggleChange(option: PeriodOption): void {
     this.customPeriod.set(null);
     this.selectedPeriod.set(option);
@@ -116,9 +136,17 @@ export class PeriodSelectorComponent {
   }
 
   clearCustomPeriod(): void {
+    // The chip leaves with the period, and the clear with it, so focus on the
+    // clear would fall to the page. It goes to the quick range the period
+    // returns to, once the render that removes the chip has checked it.
+    const clear = this.clearButton()?.nativeElement;
+    const held = !!clear && this.document.activeElement === clear;
     this.customPeriod.set(null);
     this.selectedPeriod.set('thisMonth');
     this.emitSelection();
+    if (held) {
+      afterNextRender(() => this.quickRanges().find(toggle => toggle.checked)?.focus(), { injector: this.injector });
+    }
   }
 
   private emitSelection(): void {

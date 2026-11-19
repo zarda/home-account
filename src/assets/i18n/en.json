@@ -124,6 +124,7 @@
     "thisYearShort": "Year",
     "selectMonth": "Select Month",
     "selectYear": "Select Year",
+    "clearPeriod": "Clear {{period}}",
     "loadingData": "Loading dashboard data...",
     "refreshing": "Refreshing dashboard data",
     "spendingByCategory": "Spending by Category",
