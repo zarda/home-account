@@ -11,14 +11,19 @@ import { GoalService } from '../../../core/services/goal.service';
 import { PendingFiltersService } from '../../../core/services/pending-filters.service';
 import { TranslationService } from '../../../core/services/translation.service';
 import { NotificationService } from '../../../core/services/notification.service';
+import { CurrencyService } from '../../../core/services/currency.service';
+import { LocaleFormatService } from '../../../core/services/locale-format.service';
 import { EmptyStateComponent } from '../../../shared/components/empty-state/empty-state.component';
 import { CreateGoalDTO, Goal } from '../../../models';
 import {
+  createLocaleFormatStub,
+  createTranslationStub,
   expectPainted,
   inPalette,
   PALETTES,
   provideNoMotion,
   standOnThePage,
+  tokenValue,
 } from '../../../core/services/testing';
 
 describe('GoalsComponent', () => {
@@ -246,5 +251,115 @@ describe('GoalsComponent empty state CTA', () => {
         expectPainted(hint, '--text-muted', label);
       });
     }
+  });
+
+  // The account's text size scales the page's root (AccessibilityService
+  // writes --app-font-scale on <html>); a size in the app's type scale
+  // follows it, a px size does not.
+  it("sets its hint in the app's type scale, so it follows the account's text size", () => {
+    const hint = (fixture.nativeElement as HTMLElement).querySelector('.goals-hint');
+    const root = document.documentElement;
+    const before = root.style.getPropertyValue('--app-font-scale');
+    try {
+      for (const scale of ['1', '1.3']) {
+        root.style.setProperty('--app-font-scale', scale);
+        expect(hint ? getComputedStyle(hint).fontSize : null)
+          .withContext(`the hint at scale ${scale}`)
+          .toBe(tokenValue('--text-sm', 'font-size'));
+      }
+    } finally {
+      if (before) root.style.setProperty('--app-font-scale', before);
+      else root.style.removeProperty('--app-font-scale');
+    }
+  });
+});
+
+/**
+ * On a 320px phone the page leaves the Goals tab 248px, under the 300px a
+ * card was given as its least width: the grid's one column ran 52px past the
+ * page, Delete off the screen and Contribute cut. A column is now at most the
+ * grid's own width, so the cards keep to the page at any width the grid is
+ * given. The real cards render, with a View Transactions in the second.
+ */
+describe('GoalsComponent, its grid at a phone width', () => {
+  let fixture: ComponentFixture<GoalsComponent>;
+
+  const goals: Goal[] = [
+    {
+      id: 'g1',
+      userId: 'user123',
+      kind: 'saving',
+      name: 'Emergency fund',
+      targetAmount: 3000,
+      contributedAmount: 750,
+      currency: 'USD',
+      isActive: true,
+      createdAt: Timestamp.now(),
+      updatedAt: Timestamp.now()
+    },
+    {
+      id: 'g2',
+      userId: 'user123',
+      kind: 'project',
+      name: 'Japan trip',
+      targetAmount: 2000,
+      contributedAmount: 100,
+      linkedAmount: 120,
+      currency: 'USD',
+      isActive: true,
+      createdAt: Timestamp.now(),
+      updatedAt: Timestamp.now()
+    }
+  ];
+
+  beforeEach(async () => {
+    const mockGoalService = jasmine.createSpyObj('GoalService', ['getGoals'], { goals: signal<Goal[]>(goals) });
+    mockGoalService.getGoals.and.returnValue(of(goals));
+    const currency = jasmine.createSpyObj('CurrencyService', ['formatCurrency']);
+    currency.formatCurrency.and.callFake((amount: number, code: string) => `${code} ${amount}`);
+
+    await TestBed.configureTestingModule({
+      imports: [GoalsComponent],
+      providers: [
+        { provide: GoalService, useValue: mockGoalService },
+        { provide: MatDialog, useValue: jasmine.createSpyObj('MatDialog', ['open']) },
+        { provide: NotificationService, useValue: jasmine.createSpyObj('NotificationService', ['success', 'error']) },
+        { provide: TranslationService, useValue: createTranslationStub() },
+        { provide: LocaleFormatService, useValue: createLocaleFormatStub() },
+        { provide: CurrencyService, useValue: currency },
+        { provide: PendingFiltersService, useValue: jasmine.createSpyObj('PendingFiltersService', ['apply']) },
+        { provide: Router, useValue: jasmine.createSpyObj('Router', ['navigate'], { events: EMPTY }) },
+        provideNoMotion()
+      ]
+    }).compileComponents();
+
+    fixture = TestBed.createComponent(GoalsComponent);
+    const host = fixture.nativeElement as HTMLElement;
+    host.style.display = 'block';
+    host.style.width = '248px';
+    fixture.detectChanges();
+  });
+
+  it('keeps every card, and every control on it, inside the 248px the tab is given', () => {
+    const host = fixture.nativeElement as HTMLElement;
+    const grid = host.querySelector<HTMLElement>('.goals-grid');
+    expect(grid).withContext('the grid renders').not.toBeNull();
+    if (!grid) return;
+    const page = host.getBoundingClientRect();
+
+    expect(grid.scrollWidth).withContext('the grid holds its cards').toBeLessThanOrEqual(grid.clientWidth);
+    const cards = Array.from(grid.querySelectorAll<HTMLElement>('.goal-card'));
+    expect(cards.length).withContext('one card per goal').toBe(2);
+    cards.forEach((card, i) => {
+      const box = card.getBoundingClientRect();
+      expect(box.left).withContext(`card ${i + 1} starts on the page`).toBeGreaterThanOrEqual(page.left - 0.5);
+      expect(box.right).withContext(`card ${i + 1} ends on the page`).toBeLessThanOrEqual(page.right + 0.5);
+      for (const button of Array.from(card.querySelectorAll<HTMLElement>('button'))) {
+        const name = button.getAttribute('aria-label') ?? button.textContent?.trim();
+        expect(button.getBoundingClientRect().right)
+          .withContext(`card ${i + 1}: "${name}" ends on the page`)
+          .toBeLessThanOrEqual(page.right + 0.5);
+      }
+    });
   });
 });
