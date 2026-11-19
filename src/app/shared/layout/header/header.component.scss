@@ -102,9 +102,11 @@
 
 .shortcuts-hint-dismiss {
   flex-shrink: 0;
-  // Compact, with no 48px touch target spilling past the hint: the hint
-  // shows only at desktop widths, and 32px clears the 24px minimum target.
-  --mat-icon-button-state-layer-size: 32px;
+  // A 40px target, the floor every target in the app keeps: the hint shows
+  // only at desktop widths, but a touch screen can be that wide. No 48px
+  // touch span spills past the hint; the hint grows round the button and
+  // still fits the toolbar's 64px band.
+  --mat-icon-button-state-layer-size: 40px;
   --mat-icon-button-touch-target-display: none;
 }
 
