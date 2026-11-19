@@ -62,6 +62,8 @@ const QUOTES = /["“”「」『』]/;
 // Signal-based stand-in for the page-provided window source.
 function createMockWindowSource() {
   const fetchingEdge = signal<'next' | 'prev' | null>(null);
+  const scrollTarget = signal<{ id: string; seq: number } | null>(null);
+  let scrollSeq = 0;
   return {
     window: signal<Transaction[]>([]),
     visibleWindow: signal<Transaction[]>([]),
@@ -72,8 +74,12 @@ function createMockWindowSource() {
     reachedEnd: signal(true),
     totalCount: signal<number | null>(null),
     loadError: signal<'initial' | 'prev' | 'next' | null>(null),
-    scrollTarget: signal<{ id: string; seq: number } | null>(null),
+    scrollTarget,
     resetSeq: signal(0),
+    // As the window does it: the list scrolls to the row and flashes it.
+    requestScrollTo: jasmine
+      .createSpy('requestScrollTo')
+      .and.callFake((id: string) => scrollTarget.set({ id, seq: ++scrollSeq })),
     fetchNext: jasmine.createSpy('fetchNext').and.resolveTo(0),
     fetchPrev: jasmine.createSpy('fetchPrev').and.resolveTo(0),
     retry: jasmine.createSpy('retry').and.resolveTo(undefined),
@@ -1433,6 +1439,96 @@ describe('TransactionListComponent focus after a dialog a row menu opened (real 
         expect(document.activeElement)
           .withContext('focus, on the menu button of the row that followed, now second')
           .toBe(menuButton('c'));
+      });
+
+      // The page hides a confirmed row at once, while its delete waits out
+      // the Undo window, so the row leaves as the confirm closes.
+      describe('when the page hides the row the moment its delete is confirmed', () => {
+        let scrolledTo: jasmine.Spy;
+
+        /** Row `id`'s delete, confirmed, with the row hidden as the page hides it. */
+        async function confirmAndHide(id: string): Promise<void> {
+          deleted.and.callFake(() => fixture.componentRef.setInput('transactions', txns.filter(row => row.id !== id)));
+          await answerConfirm(await openConfirmOf(id), 'delete');
+          expect(deleted).toHaveBeenCalledOnceWith(jasmine.objectContaining({ id }));
+        }
+
+        /** The page brings row `id` back and tells the list why. */
+        function bringBack(id: string, why: 'deleteUndone' | 'deleteFailed'): void {
+          fixture.componentRef.setInput('transactions', txns);
+          fixture.componentInstance[why](id);
+          fixture.detectChanges();
+          TestBed.tick();
+        }
+
+        beforeEach(() => {
+          scrolledTo = spyOn(HTMLElement.prototype, 'scrollIntoView');
+        });
+
+        it('hands focus on as the confirm closes', async () => {
+          await confirmAndHide('b');
+
+          expect(document.activeElement)
+            .withContext('focus, on the menu button of the row that followed, now second')
+            .toBe(menuButton('c'));
+        });
+
+        it("after Undo, puts focus that dropped back on the row's menu button and scrolls to the row", async () => {
+          await confirmAndHide('b');
+          (document.activeElement as HTMLElement).blur();
+
+          bringBack('b', 'deleteUndone');
+
+          expect(document.activeElement).withContext("focus, on the restored row's menu button").toBe(menuButton('b'));
+          expect(windowSource().requestScrollTo).toHaveBeenCalledOnceWith('b');
+          const row = (fixture.nativeElement as HTMLElement).querySelector<HTMLElement>('[data-tx-id="b"]');
+          expect(row).withContext('the restored row').not.toBeNull();
+          expect(scrolledTo.calls.mostRecent()?.object as HTMLElement | undefined)
+            .withContext('the row scrolled into view')
+            .toBe(row!);
+        });
+
+        it('after Undo, leaves focus where the reader put it, and still scrolls to the row', async () => {
+          await confirmAndHide('b');
+          const moved = menuButton('a');
+          moved.focus();
+
+          bringBack('b', 'deleteUndone');
+
+          expect(document.activeElement).withContext('focus, where the reader put it').toBe(moved);
+          expect(windowSource().requestScrollTo).toHaveBeenCalledOnceWith('b');
+        });
+
+        it('after Undo pressed in the notice, moves focus off the notice as it leaves', async () => {
+          await confirmAndHide('b');
+          // The notice lives outside the list, in the overlay, and its Undo
+          // keeps focus while the notice plays its way out.
+          const notice = document.createElement('div');
+          notice.className = 'mat-mdc-snack-bar-container';
+          const undo = document.createElement('button');
+          notice.append(undo);
+          document.body.append(notice);
+          try {
+            undo.focus();
+            expect(document.activeElement).withContext('focus, on Undo').toBe(undo);
+
+            bringBack('b', 'deleteUndone');
+
+            expect(document.activeElement).withContext("focus, on the restored row's menu button").toBe(menuButton('b'));
+          } finally {
+            notice.remove();
+          }
+        });
+
+        it('after a failed delete, offers focus to the row that came back and scrolls to it', async () => {
+          await confirmAndHide('b');
+          (document.activeElement as HTMLElement).blur();
+
+          bringBack('b', 'deleteFailed');
+
+          expect(document.activeElement).withContext("focus, on the returned row's menu button").toBe(menuButton('b'));
+          expect(windowSource().requestScrollTo).toHaveBeenCalledOnceWith('b');
+        });
       });
     });
   }

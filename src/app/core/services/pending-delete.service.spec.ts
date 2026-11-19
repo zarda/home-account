@@ -1,59 +1,12 @@
 import { TestBed } from '@angular/core/testing';
 import { signal } from '@angular/core';
-import { PendingDeleteOutcome, PendingDeleteService, UNDO_WINDOW_MS } from './pending-delete.service';
-import { ActionNotice, NotificationService } from './notification.service';
+import { PendingDeleteOutcome, PendingDeleteService, SIGN_OUT_WAIT_MS, UNDO_WINDOW_MS } from './pending-delete.service';
+import { NotificationService } from './notification.service';
 import { TransactionService } from './transaction.service';
 import { AuthService } from './auth.service';
 import { AnnouncerService } from './announcer.service';
 import { TranslationService } from './translation.service';
-import { createTransaction } from './testing';
-
-/**
- * A notice as the service sees it, driven by the spec: pressing its action,
- * the dismissal Material reports once the notice has left (which may come
- * after the next notice has opened), and the pointer or focus holding it.
- */
-class FakeNotice implements ActionNotice {
-  private static opened = 0;
-  readonly id = ++FakeNotice.opened;
-  dismissCalls = 0;
-  private actionHandlers: (() => void)[] = [];
-  private dismissHandlers: ((byAction: boolean) => void)[] = [];
-  private holdHandlers: ((held: boolean) => void)[] = [];
-
-  constructor(readonly message: string, readonly action: string) {}
-
-  onAction(handler: () => void): void {
-    this.actionHandlers.push(handler);
-  }
-
-  afterDismissed(handler: (byAction: boolean) => void): void {
-    this.dismissHandlers.push(handler);
-  }
-
-  onHold(handler: (held: boolean) => void): void {
-    this.holdHandlers.push(handler);
-  }
-
-  dismiss(): void {
-    this.dismissCalls += 1;
-  }
-
-  /** The reader presses the action; Material then reports the dismissal as by action. */
-  press(): void {
-    for (const handler of this.actionHandlers) handler();
-    this.left(true);
-  }
-
-  /** Material's report that the notice has left the screen. */
-  left(byAction = false): void {
-    for (const handler of this.dismissHandlers) handler(byAction);
-  }
-
-  hold(held: boolean): void {
-    for (const handler of this.holdHandlers) handler(held);
-  }
-}
+import { FakeNotice, createTransaction } from './testing';
 
 /**
  * Echoes a key and its params, and quotes a name as tc does, so the notice
@@ -426,6 +379,51 @@ describe('PendingDeleteService', () => {
     await settle();
     expect(notificationError).toHaveBeenCalledOnceWith(t('transactions.deleteFailed', { description: '「Coffee」' }));
     await expectAsync(service.flush()).toBeResolved();
+  });
+
+  describe('before a sign-out', () => {
+    it('makes the waiting delete real and waits for it to settle', async () => {
+      let finish!: () => void;
+      deleteTransaction.and.returnValue(new Promise<void>(resolve => (finish = resolve)));
+      const { outcome } = deferred();
+
+      let done = false;
+      void service.flushBeforeSignOut().then(() => (done = true));
+      await settle();
+      expect(deleteTransaction).toHaveBeenCalledOnceWith(coffee.id);
+      expect(done).withContext('while the delete runs').toBe(false);
+
+      finish();
+      await settle();
+      expect(done).toBe(true);
+      await expectAsync(outcome).toBeResolvedTo('deleted');
+    });
+
+    it('signs out after SIGN_OUT_WAIT_MS at most, when the delete does not settle (offline)', async () => {
+      deleteTransaction.and.returnValue(new Promise<void>(() => undefined));
+      deferred();
+
+      let done = false;
+      void service.flushBeforeSignOut().then(() => (done = true));
+      await settle();
+      jasmine.clock().tick(SIGN_OUT_WAIT_MS - 1);
+      await settle();
+      expect(done).withContext('just before the wait runs out').toBe(false);
+
+      jasmine.clock().tick(1);
+      await settle();
+      expect(done).toBe(true);
+      expect(deleteTransaction).toHaveBeenCalledTimes(1);
+    });
+
+    it('waits for nothing when no delete waits or runs', async () => {
+      let done = false;
+      void service.flushBeforeSignOut().then(() => (done = true));
+      await settle();
+
+      expect(done).toBe(true);
+      expect(deleteTransaction).not.toHaveBeenCalled();
+    });
   });
 
   it('opens no second notice for a row already on its way, and hands back the same outcome', async () => {

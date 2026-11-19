@@ -258,4 +258,36 @@ describe('NotificationService: a notice with an action', () => {
     expect(firstLeft).toHaveBeenCalledTimes(1);
     expect(firstHeld).not.toHaveBeenCalled();
   });
+
+  // The phone's bottom nav sits on the viewport's bottom edge, where the
+  // notice opens: the notice would cover its tabs, and its Undo would sit
+  // where a thumb reaches for them.
+  it('stands clear of the bottom nav while it is shown, and only then', async () => {
+    // A home indicator's inset, as an iPhone reports it: the bar grows by it,
+    // and a notice that cleared only the bar's 64 px would cover its tabs.
+    document.documentElement.style.setProperty('--safe-bottom', '34px');
+    // The bar as main-layout pins it: 64 px over the inset, on the bottom
+    // edge, shown on a phone.
+    const nav = document.createElement('div');
+    nav.className = 'bottom-nav-container';
+    nav.style.cssText = 'position: fixed; bottom: 0; left: 0; right: 0; height: calc(64px + var(--safe-bottom));';
+    document.body.append(nav);
+    try {
+      service.withAction('Deleted Coffee', 'Undo');
+      await shown();
+      const [container] = containers();
+
+      expect(container.getBoundingClientRect().bottom)
+        .withContext('the notice, with the bar not shown')
+        .toBeGreaterThan(nav.getBoundingClientRect().top);
+
+      nav.classList.add('visible');
+      expect(container.getBoundingClientRect().bottom)
+        .withContext("the notice's bottom edge, against the shown bar's top")
+        .toBeLessThanOrEqual(nav.getBoundingClientRect().top);
+    } finally {
+      nav.remove();
+      document.documentElement.style.removeProperty('--safe-bottom');
+    }
+  });
 });

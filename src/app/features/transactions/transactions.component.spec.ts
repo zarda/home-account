@@ -1,4 +1,4 @@
-import { ComponentFixture, TestBed, fakeAsync, tick } from '@angular/core/testing';
+import { ComponentFixture, TestBed, fakeAsync, flushMicrotasks, tick } from '@angular/core/testing';
 import { Component, NO_ERRORS_SCHEMA, NgZone, input, output } from '@angular/core';
 import { By } from '@angular/platform-browser';
 import { BreakpointObserver, BreakpointState } from '@angular/cdk/layout';
@@ -25,6 +25,7 @@ import { CurrencyService } from '../../core/services/currency.service';
 import { LocaleFormatService } from '../../core/services/locale-format.service';
 import { TranslationService } from '../../core/services/translation.service';
 import { NotificationService } from '../../core/services/notification.service';
+import { UNDO_WINDOW_MS } from '../../core/services/pending-delete.service';
 import { AnnouncerService } from '../../core/services/announcer.service';
 import { QuickAddService } from '../../core/services/quick-add.service';
 import { TransactionFormComponent } from './transaction-form/transaction-form.component';
@@ -32,6 +33,7 @@ import { TransactionListComponent } from './transaction-list/transaction-list.co
 import { Category, Transaction, TransactionFilters, User } from '../../models';
 import { TypeTotals } from '../../core/utils/transaction-aggregation.utils';
 import {
+  FakeNotice,
   createTransaction,
   createCategory,
   createTranslationStub,
@@ -74,6 +76,7 @@ function createMockPeriodTotals() {
   return {
     status: signal<PeriodTotalsStatus>({ kind: 'idle' }),
     totals: signal<TypeTotals | null>(null),
+    exclude: signal<ReadonlySet<string>>(new Set()),
     reset: jasmine.createSpy('reset').and.resolveTo(undefined),
     refresh: jasmine.createSpy('refresh').and.resolveTo(undefined),
     calculate: jasmine.createSpy('calculate').and.resolveTo(true),
@@ -106,6 +109,9 @@ describe('TransactionsComponent', () => {
   let queryParams$: Subject<Record<string, string>>;
   let routeSnapshotParams: Record<string, string>;
   let mutationSeq: number;
+  let notifications: jasmine.SpyObj<NotificationService>;
+  /** Every Undo notice the page's deletes opened, oldest first. */
+  let notices: FakeNotice[];
 
   function build() {
     const fixture = TestBed.createComponent(TransactionsComponent);
@@ -140,6 +146,13 @@ describe('TransactionsComponent', () => {
     const translation = jasmine.createSpyObj('TranslationService', ['t']);
     translation.t.and.callFake((k: string) => k);
     announcer = jasmine.createSpyObj('AnnouncerService', ['announce']);
+    notices = [];
+    notifications = jasmine.createSpyObj('NotificationService', ['success', 'error', 'info', 'withAction']);
+    notifications.withAction.and.callFake((message: string, action: string) => {
+      const notice = new FakeNotice(message, action);
+      notices.push(notice);
+      return notice;
+    });
     dialog = jasmine.createSpyObj('MatDialog', ['open']);
     dialog.open.and.returnValue({ afterClosed: () => of(undefined) } as never);
     quickAdd = jasmine.createSpyObj('QuickAddService', [
@@ -161,7 +174,7 @@ describe('TransactionsComponent', () => {
       providers: [
         { provide: TransactionService, useValue: transactionService },
         { provide: CategoryService, useValue: categoryService },
-        { provide: AuthService, useValue: { currentUser: authUser } },
+        { provide: AuthService, useValue: { currentUser: authUser, userId: signal<string | null>('user-1') } },
         {
           provide: CurrencyService,
           useValue: { formatCurrency: (value: number, code: string) => `${code} ${value}` }
@@ -171,10 +184,7 @@ describe('TransactionsComponent', () => {
           useValue: { formatRange: jasmine.createSpy('formatRange').and.returnValue('RANGE') }
         },
         { provide: TranslationService, useValue: translation },
-        {
-          provide: NotificationService,
-          useValue: jasmine.createSpyObj('NotificationService', ['success', 'error', 'info'])
-        },
+        { provide: NotificationService, useValue: notifications },
         { provide: AnnouncerService, useValue: announcer },
         { provide: MatDialog, useValue: dialog },
         { provide: QuickAddService, useValue: quickAdd },
@@ -347,7 +357,6 @@ describe('TransactionsComponent', () => {
       fixture.componentInstance.onFiltersChanged({});
       tick();
 
-      const notifications = TestBed.inject(NotificationService) as jasmine.SpyObj<NotificationService>;
       expect(notifications.info).toHaveBeenCalledWith('import.linkedTransactionGone');
       expect(dialog.open).not.toHaveBeenCalled();
       expect(windowSource.requestScrollTo).not.toHaveBeenCalled();
@@ -362,7 +371,6 @@ describe('TransactionsComponent', () => {
       fixture.componentInstance.onFiltersChanged({});
       tick();
 
-      const notifications = TestBed.inject(NotificationService) as jasmine.SpyObj<NotificationService>;
       expect(notifications.error).toHaveBeenCalledWith('common.error');
       expect(dialog.open).not.toHaveBeenCalled();
     }));
@@ -713,29 +721,212 @@ describe('TransactionsComponent', () => {
     }));
   });
 
-  it('onDeleteTransaction deletes via the service', async () => {
-    const component = build().componentInstance;
-    const list = jasmine.createSpyObj<Pick<TransactionListComponent, 'deleteFailed'>>('list', ['deleteFailed']);
+  /**
+   * A confirmed delete waits out its Undo window on the app's own clock
+   * (PendingDeleteService, real here), so every case runs on fake timers and
+   * ends with the window run out or the page gone: no timer outlives a case.
+   */
+  describe('a deleted row', () => {
+    const coffee = createTransaction({ id: 'coffee', description: 'Coffee' });
+    const rent = createTransaction({ id: 'rent', description: 'Rent' });
+    const tea = createTransaction({ id: 'tea', description: 'Tea' });
+    let list: jasmine.SpyObj<Pick<TransactionListComponent, 'deleteFailed' | 'deleteUndone'>>;
+    let fixture: ComponentFixture<TransactionsComponent>;
+    let component: TransactionsComponent;
 
-    await component.onDeleteTransaction(createTransaction({ id: 'x' }), list);
+    /** The rows as the window holds them, with no client-only filter between it and the list. */
+    function load(rows: Transaction[]): void {
+      windowSource.window.set(rows);
+      windowSource.visibleWindow.set(rows);
+      fixture.detectChanges();
+    }
 
-    expect(transactionService.deleteTransaction).toHaveBeenCalledWith('x');
-    expect(list.deleteFailed).not.toHaveBeenCalled();
-  });
+    const listed = (): string[] => component.transactions().map(row => row.id);
 
-  it('onDeleteTransaction reports a failed delete instead of swallowing it', async () => {
-    transactionService.deleteTransaction.and.rejectWith(new Error('nope'));
-    spyOn(console, 'error');
-    const component = build().componentInstance;
-    const list = jasmine.createSpyObj<Pick<TransactionListComponent, 'deleteFailed'>>('list', ['deleteFailed']);
+    beforeEach(() => {
+      list = jasmine.createSpyObj('list', ['deleteFailed', 'deleteUndone']);
+      fixture = build();
+      component = fixture.componentInstance;
+      windowSource.totalCount.set(3);
+      load([coffee, rent, tea]);
+    });
 
-    await expectAsync(component.onDeleteTransaction(createTransaction({ id: 'x' }), list)).toBeResolved();
+    it('leaves the list, the count and the totals the moment it is confirmed, and is not deleted yet', fakeAsync(() => {
+      expect(component.transactionCount()).withContext('the count, before').toBe('3');
 
-    const notifications = TestBed.inject(NotificationService) as jasmine.SpyObj<NotificationService>;
-    expect(notifications.error).toHaveBeenCalledWith('common.error');
-    expect(console.error).toHaveBeenCalled();
-    // The row stays, so the list stops following it for a focus hand-off.
-    expect(list.deleteFailed).withContext('the list, told the delete failed').toHaveBeenCalledOnceWith('x');
+      void component.onDeleteTransaction(rent, list);
+
+      expect(listed()).toEqual(['coffee', 'tea']);
+      expect(component.transactionCount()).withContext('the server count, less the row it still holds').toBe('2');
+      expect([...periodTotals.exclude()]).withContext('the rows the totals leave out').toEqual(['rent']);
+      expect(notices.map(notice => [notice.message, notice.action])).toEqual([['transactions.deleted', 'common.undo']]);
+      expect(transactionService.deleteTransaction).not.toHaveBeenCalled();
+
+      tick(UNDO_WINDOW_MS);
+    }));
+
+    it('comes back on Undo, heard as restored, with focus offered to it, and is never deleted', fakeAsync(() => {
+      void component.onDeleteTransaction(rent, list);
+
+      notices[0].press();
+      flushMicrotasks();
+
+      expect(listed()).toEqual(['coffee', 'rent', 'tea']);
+      expect(component.transactionCount()).toBe('3');
+      expect(periodTotals.exclude().size).withContext('the rows the totals leave out').toBe(0);
+      expect(announcer.announce).toHaveBeenCalledWith('transactions.restored', 'polite');
+      expect(announcer.announce.calls.allArgs().filter(([message]) => message === 'transactions.restored').length)
+        .withContext('heard once')
+        .toBe(1);
+      expect(list.deleteUndone).toHaveBeenCalledOnceWith('rent');
+      expect(list.deleteFailed).not.toHaveBeenCalled();
+
+      tick(UNDO_WINDOW_MS);
+      expect(transactionService.deleteTransaction).not.toHaveBeenCalled();
+    }));
+
+    it('is deleted once, as the window runs out', fakeAsync(() => {
+      void component.onDeleteTransaction(rent, list);
+
+      tick(UNDO_WINDOW_MS - 1);
+      expect(transactionService.deleteTransaction).not.toHaveBeenCalled();
+
+      tick(1);
+      flushMicrotasks();
+      expect(transactionService.deleteTransaction).toHaveBeenCalledOnceWith('rent');
+      expect(notices[0].dismissCalls).withContext('the notice, taken down').toBe(1);
+
+      tick(UNDO_WINDOW_MS);
+      expect(transactionService.deleteTransaction).toHaveBeenCalledTimes(1);
+      expect(list.deleteUndone).not.toHaveBeenCalled();
+      expect(list.deleteFailed).not.toHaveBeenCalled();
+    }));
+
+    it('leaves the count while its delete waits, even once the window has let it go', fakeAsync(() => {
+      void component.onDeleteTransaction(rent, list);
+
+      // A scroll trimmed the window past the row, or a jump re-seeded it
+      // elsewhere: the row is still on the server, under the same filters.
+      load([coffee, tea]);
+      expect(component.transactionCount()).withContext('a server count that still holds it').toBe('2');
+
+      tick(UNDO_WINDOW_MS);
+    }));
+
+    it('stays hidden while its delete waits, even through a window that left it out for a while', fakeAsync(() => {
+      void component.onDeleteTransaction(rent, list);
+
+      // Another filter, whose rows and server count do not hold the row.
+      component.onFiltersChanged({ type: 'income' });
+      windowSource.totalCount.set(2);
+      load([coffee, tea]);
+      expect(component.transactionCount()).withContext('a server count that never held it').toBe('2');
+
+      // And back.
+      component.onFiltersChanged({});
+      windowSource.totalCount.set(3);
+      load([coffee, rent, tea]);
+      expect(listed()).toEqual(['coffee', 'tea']);
+      expect([...periodTotals.exclude()]).toEqual(['rent']);
+      expect(component.transactionCount()).toBe('2');
+
+      tick(UNDO_WINDOW_MS);
+    }));
+
+    it('stays hidden after its delete through a refresh that failed, and is let go once the window lacks it', fakeAsync(() => {
+      void component.onDeleteTransaction(rent, list);
+      tick(UNDO_WINDOW_MS);
+      flushMicrotasks();
+      expect(transactionService.deleteTransaction).toHaveBeenCalledOnceWith('rent');
+
+      // The refresh that would take the row out failed: the window and the
+      // server count still hold it.
+      emitMutation({ kind: 'delete', id: 'rent' });
+      fixture.detectChanges();
+      tick();
+      expect(windowSource.refresh).toHaveBeenCalled();
+      expect(listed()).toEqual(['coffee', 'tea']);
+      expect(component.transactionCount()).toBe('2');
+      expect([...periodTotals.exclude()]).toEqual(['rent']);
+
+      // The next refresh lands without it.
+      windowSource.totalCount.set(2);
+      load([coffee, tea]);
+      expect(periodTotals.exclude().size).withContext('the rows the totals leave out').toBe(0);
+      expect(component.transactionCount()).toBe('2');
+
+      // Nothing hides it any more: a window holding it again would list it.
+      load([coffee, rent, tea]);
+      expect(listed()).toEqual(['coffee', 'rent', 'tea']);
+    }));
+
+    it('is made real at once when the page goes', fakeAsync(() => {
+      void component.onDeleteTransaction(rent, list);
+
+      fixture.destroy();
+
+      expect(transactionService.deleteTransaction).toHaveBeenCalledOnceWith('rent');
+      expect(notices[0].dismissCalls).withContext('the notice, taken down with the page').toBe(1);
+      tick(UNDO_WINDOW_MS);
+      flushMicrotasks();
+      expect(transactionService.deleteTransaction).toHaveBeenCalledTimes(1);
+      expect(list.deleteUndone).not.toHaveBeenCalled();
+      expect(list.deleteFailed).not.toHaveBeenCalled();
+    }));
+
+    it('is made real at once when the page is hidden, not when it shows', fakeAsync(() => {
+      const visibility = spyOnProperty(document, 'visibilityState').and.returnValue('visible');
+      void component.onDeleteTransaction(rent, list);
+
+      document.dispatchEvent(new Event('visibilitychange'));
+      expect(transactionService.deleteTransaction).withContext('shown').not.toHaveBeenCalled();
+
+      visibility.and.returnValue('hidden');
+      document.dispatchEvent(new Event('visibilitychange'));
+      expect(transactionService.deleteTransaction).toHaveBeenCalledOnceWith('rent');
+
+      tick(UNDO_WINDOW_MS);
+      flushMicrotasks();
+      expect(transactionService.deleteTransaction).toHaveBeenCalledTimes(1);
+    }));
+
+    it('comes back with the error notice naming it when its delete fails', fakeAsync(() => {
+      transactionService.deleteTransaction.and.rejectWith(new Error('nope'));
+      spyOn(console, 'error');
+      void component.onDeleteTransaction(rent, list);
+
+      tick(UNDO_WINDOW_MS);
+      flushMicrotasks();
+
+      expect(listed()).toEqual(['coffee', 'rent', 'tea']);
+      expect(component.transactionCount()).toBe('3');
+      expect(periodTotals.exclude().size).withContext('the rows the totals leave out').toBe(0);
+      expect(notifications.error).toHaveBeenCalledOnceWith('transactions.deleteFailed');
+      expect(console.error).toHaveBeenCalled();
+      expect(list.deleteFailed).withContext('the list, told the delete failed').toHaveBeenCalledOnceWith('rent');
+      expect(list.deleteUndone).not.toHaveBeenCalled();
+    }));
+
+    it('comes back when its delete fails under the next row\'s Undo, which stays up and keeps its own window', fakeAsync(() => {
+      transactionService.deleteTransaction.and.callFake((id: string) =>
+        id === 'coffee' ? Promise.reject(new Error('nope')) : Promise.resolve()
+      );
+      spyOn(console, 'error');
+      void component.onDeleteTransaction(coffee, list);
+      void component.onDeleteTransaction(rent, list);
+      flushMicrotasks();
+
+      expect(listed()).withContext('the row whose delete failed, back').toEqual(['coffee', 'tea']);
+      expect(list.deleteFailed).toHaveBeenCalledOnceWith('coffee');
+      expect(notifications.error).withContext('while the next Undo is up').not.toHaveBeenCalled();
+      expect(notices[1].dismissCalls).toBe(0);
+      expect(transactionService.deleteTransaction).not.toHaveBeenCalledWith('rent');
+
+      tick(UNDO_WINDOW_MS);
+      flushMicrotasks();
+      expect(transactionService.deleteTransaction).toHaveBeenCalledWith('rent');
+      expect(notifications.error).toHaveBeenCalledOnceWith('transactions.deleteFailed');
+    }));
   });
 
   it('navigateToImportFile delegates to the quick-add service', () => {

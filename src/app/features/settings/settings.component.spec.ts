@@ -12,6 +12,7 @@ import { MatDialog } from '@angular/material/dialog';
 
 import { SettingsComponent } from './settings.component';
 import { AuthService } from '../../core/services/auth.service';
+import { PendingDeleteService } from '../../core/services/pending-delete.service';
 import { ThemeService } from '../../core/services/theme.service';
 import { TranslationService } from '../../core/services/translation.service';
 import { PageHeaderComponent } from '../../shared/components/page-header/page-header.component';
@@ -25,6 +26,7 @@ import {
   paintedBackground,
   paintedColor,
   provideNoMotion,
+  provideNoPendingDelete,
   ratio,
   rulesUnder,
   runAxe,
@@ -39,6 +41,7 @@ describe('SettingsComponent', () => {
   let component: SettingsComponent;
   let fixture: ComponentFixture<SettingsComponent>;
   let mockAuthService: { currentUser: ReturnType<typeof signal>; signOut: jasmine.Spy };
+  let pendingDelete: { flushBeforeSignOut: jasmine.Spy };
   let mockDialog: jasmine.SpyObj<MatDialog>;
 
   const mockUser = {
@@ -54,6 +57,7 @@ describe('SettingsComponent', () => {
       currentUser: signal(mockUser),
       signOut: jasmine.createSpy('signOut').and.resolveTo(undefined)
     };
+    pendingDelete = { flushBeforeSignOut: jasmine.createSpy('flushBeforeSignOut').and.resolveTo(undefined) };
     mockDialog = jasmine.createSpyObj('MatDialog', ['open']);
 
     await TestBed.configureTestingModule({
@@ -61,6 +65,7 @@ describe('SettingsComponent', () => {
       providers: [
         provideRouter([]),
         { provide: AuthService, useValue: mockAuthService },
+        { provide: PendingDeleteService, useValue: pendingDelete },
         { provide: MatDialog, useValue: mockDialog },
         { provide: TranslationService, useValue: mockTranslationService },
         provideNoMotion()
@@ -115,6 +120,31 @@ describe('SettingsComponent', () => {
 
       expect(mockAuthService.signOut).toHaveBeenCalled();
     }));
+
+    it('signs out only once a waiting transaction delete is made real and has settled', fakeAsync(() => {
+      let settled!: () => void;
+      pendingDelete.flushBeforeSignOut.and.returnValue(new Promise<void>(resolve => (settled = resolve)));
+      mockDialog.open.and.returnValue({ afterClosed: () => of(true) } as never);
+
+      component.signOut();
+      tick();
+      expect(pendingDelete.flushBeforeSignOut).toHaveBeenCalledTimes(1);
+      expect(mockAuthService.signOut).withContext('while the delete settles').not.toHaveBeenCalled();
+
+      settled();
+      tick();
+      expect(mockAuthService.signOut).toHaveBeenCalledTimes(1);
+    }));
+
+    it('makes no waiting delete real when the sign-out is cancelled', fakeAsync(() => {
+      mockDialog.open.and.returnValue({ afterClosed: () => of(false) } as never);
+
+      component.signOut();
+      tick();
+
+      expect(pendingDelete.flushBeforeSignOut).not.toHaveBeenCalled();
+      expect(mockAuthService.signOut).not.toHaveBeenCalled();
+    }));
   });
 
   describe('fallback values', () => {
@@ -130,6 +160,7 @@ describe('SettingsComponent', () => {
         providers: [
           provideRouter([]),
           { provide: AuthService, useValue: mockAuthServiceNoUser },
+          provideNoPendingDelete(),
           { provide: MatDialog, useValue: jasmine.createSpyObj('MatDialog', ['open']) },
           { provide: TranslationService, useValue: mockTranslationService },
           provideNoMotion()
@@ -176,6 +207,7 @@ describe('SettingsComponent', () => {
       providers: [
         provideRouter([]),
         { provide: AuthService, useValue: mockAuthService },
+        { provide: PendingDeleteService, useValue: pendingDelete },
         { provide: MatDialog, useValue: mockDialog },
         { provide: TranslationService, useValue: translation },
         provideNoMotion()
@@ -455,6 +487,7 @@ describe('SettingsComponent', () => {
         imports: [SettingsComponent],
         providers: [
           { provide: AuthService, useValue: mockAuthService },
+          provideNoPendingDelete(),
           { provide: MatDialog, useValue: mockDialog },
           { provide: TranslationService, useValue: mockTranslationService },
           {

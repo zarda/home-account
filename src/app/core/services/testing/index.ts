@@ -19,3 +19,5 @@ export * from './no-motion';
 export * from './app-datepicker.testing';
 export * from './frames';
 export * from './menu-dialog';
+export * from './fake-notice';
+export * from './no-pending-delete';

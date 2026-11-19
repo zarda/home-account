@@ -292,6 +292,89 @@ describe('TransactionWindowService', () => {
     });
   });
 
+  // The page leaves a deleted row out of the count only while the window still
+  // holds it, so the two must describe the same moment: a count that landed
+  // ahead of its page would already lack a row the window still shows.
+  describe('the server count', () => {
+    /** Holds every page read until the spec lets them go; the count is not held. */
+    function holdPages(): () => void {
+      const realGetPage = mockFirestore.getPage.bind(mockFirestore);
+      let release!: () => void;
+      const gate = new Promise<void>(resolve => (release = resolve));
+      spyOn(mockFirestore, 'getPage').and.callFake((async (path: string, options: never) => {
+        await gate;
+        return realGetPage(path, options);
+      }) as never);
+      return release;
+    }
+
+    const nextTask = (): Promise<void> => new Promise(resolve => setTimeout(resolve));
+
+    it('lands with the page it was read beside on a refresh, not as soon as it is read', async () => {
+      const seeded = seedTransactions(300);
+      await service.reset();
+      expect(service.totalCount()).toBe(300);
+
+      mockFirestore.setMockCollection(PATH, seeded.filter(row => row.id !== seeded[3].id));
+      const release = holdPages();
+      const refreshed = service.refresh();
+      await nextTask();
+
+      expect(mockFirestore.countDocumentsSpy.calls.length).withContext('the count, read').toBe(2);
+      expect(service.totalCount()).withContext('while its page is out').toBe(300);
+      expect(service.window().map(row => row.id)).toContain(seeded[3].id);
+
+      release();
+      await refreshed;
+      expect(service.totalCount()).toBe(299);
+      expect(service.window().map(row => row.id)).not.toContain(seeded[3].id);
+    });
+
+    it('lands with the pages it was read beside on a jump', async () => {
+      const seeded = seedTransactions(300);
+      await service.reset();
+
+      mockFirestore.setMockCollection(PATH, seeded.slice(1));
+      const release = holdPages();
+      const jumped = service.jumpTo(seeded[200].date);
+      await nextTask();
+      expect(service.totalCount()).withContext('while its pages are out').toBe(300);
+
+      release();
+      await jumped;
+      expect(service.totalCount()).toBe(299);
+    });
+
+    it('lands with the first page of a reset', async () => {
+      const seeded = seedTransactions(300);
+      await service.reset();
+
+      mockFirestore.setMockCollection(PATH, seeded.slice(0, 280));
+      const release = holdPages();
+      const reset = service.reset({}, 'asc');
+      await nextTask();
+      expect(service.totalCount()).withContext('while the first page is out').toBe(300);
+
+      release();
+      await reset;
+      expect(service.totalCount()).toBe(280);
+      expect(service.resetSeq()).toBe(2);
+    });
+
+    it('stays the count of the window it was read beside when the refreshed page fails', async () => {
+      const seeded = seedTransactions(300);
+      await service.reset();
+
+      mockFirestore.setMockCollection(PATH, seeded.slice(1));
+      spyOn(mockFirestore, 'getPage').and.rejectWith(new Error('offline'));
+      await service.refresh();
+
+      expect(service.loadError()).toBe('initial');
+      expect(service.window()[0].id).toBe(seeded[0].id);
+      expect(service.totalCount()).withContext('a count read beside a page that never came').toBe(300);
+    });
+  });
+
   describe('jumpTo', () => {
     it('re-seeds the window around an out-of-range date with context above', async () => {
       const seeded = seedTransactions(300);
