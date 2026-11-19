@@ -493,9 +493,13 @@
           </mat-card-content>
 
           <mat-card-actions>
+            <!-- This clear and the tags card's show the same words side by
+                 side, so each is named for what it forgets, its words whole
+                 inside the name. -->
             <button
               mat-stroked-button
               [disabled]="rememberedCategoryCount() === 0 || clearingCategoryMemory()"
+              [attr.aria-label]="'aiPage.categoryMemoryClearLabel' | translate"
               (click)="clearCategoryMemory()"
             >
               <mat-icon>delete_sweep</mat-icon>
@@ -523,6 +527,7 @@
             <button
               mat-stroked-button
               [disabled]="rememberedTagCount() === 0 || clearingTagMemory()"
+              [attr.aria-label]="'aiPage.tagMemoryClearLabel' | translate"
               (click)="clearTagMemory()"
             >
               <mat-icon>delete_sweep</mat-icon>

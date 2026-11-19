@@ -1523,11 +1523,13 @@
     "categoryMemoryHint": "在匯入時修正分類後，下次遇到相同商家會直接沿用該選擇，不再詢問 AI。",
     "categoryMemoryCount": "已記住的商家數量",
     "categoryMemoryClear": "全部忘記",
+    "categoryMemoryClearLabel": "將已記住的分類全部忘記",
     "categoryMemoryCleared": "已清除記住的分類",
     "tagMemoryTitle": "已記住的標籤",
     "tagMemoryHint": "匯入時保留或移除建議的標籤後，下次同一商家會沿用該選擇。",
     "tagMemoryCount": "已記住的商家",
     "tagMemoryClear": "全部忘記",
+    "tagMemoryClearLabel": "將已記住的標籤全部忘記",
     "tagMemoryCleared": "已清除記住的標籤"
   },
   "about": {
