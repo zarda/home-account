@@ -4575,6 +4575,11 @@ describe('ImportWizardComponent', () => {
           expect(other.classList).withContext(`${state}: the other is not`).not.toContain('mdc-evolution-chip--selected');
           const [pickedLabel, otherLabel] = [label(picked), label(other)];
           const overlay = picked.querySelector('.mat-mdc-chip-focus-overlay');
+          // This is the chips' only contrast reading, so a part that stops
+          // matching fails here rather than skipping every palette.
+          expect(pickedLabel).withContext(`${state}: the selected chip's label`).not.toBeNull();
+          expect(otherLabel).withContext(`${state}: the other chip's label`).not.toBeNull();
+          expect(overlay).withContext(`${state}: the selected chip's focus overlay`).not.toBeNull();
           if (!pickedLabel || !otherLabel || !overlay) return;
           for (const { name, classes } of PALETTES) {
             inPalette(classes, () => {
