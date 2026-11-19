@@ -34,6 +34,7 @@ import { BudgetService } from './budget.service';
 import { ReceiptQuotaService } from './receipt-quota.service';
 import { TransactionService, RECEIPT_ATTACH_FAILED } from './transaction.service';
 import { Transaction } from '../../models';
+import { RECEIPT_IMAGE_UNREADABLE } from '../utils/receipt-image.utils';
 import { emulatorCustomToken } from './testing/emulator-custom-token';
 import { silenceFirebaseWarnings } from './testing/silence-firebase-warnings';
 silenceFirebaseWarnings();
@@ -90,7 +91,9 @@ describe('TransactionService receipts (emulator smoke test)', () => {
   const markerOf = async (blob: Blob): Promise<number> =>
     new Uint8Array(await blob.arrayBuffer())[2];
 
-  // Rejected by the client-side size guard before any byte moves — enough to
+  // Over the ceiling and no image at all: the decoder that would shrink it
+  // under the ceiling cannot read it, so its upload rejects with
+  // RECEIPT_IMAGE_UNREADABLE before any of its bytes move. That is enough to
   // fail one upload of a batch; the server-side limit on suffixed names is
   // asserted separately in storage.service.smoke.spec.ts.
   const oversizedFile = () =>
@@ -439,6 +442,16 @@ describe('TransactionService receipts (emulator smoke test)', () => {
   }, 20000);
 
   it('writes nothing when one upload in a batch fails', async () => {
+    // Each failed batch logs its upload's failure, with the cause, once; any
+    // other line is passed on, so a failure the case does not expect shows.
+    const uploadFailed = '[Transactions] Receipt upload failed:';
+    const passOn = console.error.bind(console);
+    const logged = spyOn(console, 'error').and.callFake((...args: unknown[]) => {
+      if (args[0] !== uploadFailed) passOn(...args);
+    });
+    const uploadFailures = () => logged.calls.allArgs().filter(([text]) => text === uploadFailed);
+    const uploadFailure = [uploadFailed, jasmine.objectContaining({ message: RECEIPT_IMAGE_UNREADABLE })];
+
     // Add path: the batch fails on the middle file, so no document may
     // appear. The generated id never leaves the service, so the document
     // query is the observable surface; the object sweep is asserted on the
@@ -446,6 +459,7 @@ describe('TransactionService receipts (emulator smoke test)', () => {
     await expectAsync(
       service.addTransaction(dto('rollback add', [markedFile(0xc0), oversizedFile(), markedFile(0xc2)]))
     ).toBeRejectedWithError(RECEIPT_ATTACH_FAILED);
+    expect(uploadFailures()).withContext('the add path logs its failed upload').toEqual([uploadFailure]);
 
     const snapshot = await getDocs(
       query(
@@ -462,6 +476,7 @@ describe('TransactionService receipts (emulator smoke test)', () => {
     await expectAsync(
       service.updateTransaction(id, { receiptFiles: [markedFile(0xd1), oversizedFile()] })
     ).toBeRejectedWithError(RECEIPT_ATTACH_FAILED);
+    expect(uploadFailures()).withContext('the update path logs its failed upload').toEqual([uploadFailure, uploadFailure]);
 
     const row = await readDoc(id);
     expect((row['receiptUrls'] as string[]).length).toBe(1);
