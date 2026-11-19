@@ -1244,6 +1244,58 @@ describe('TransactionFiltersComponent', () => {
   });
 
   /**
+   * Clear all is a plain button whose box was its words and a 6px padding:
+   * 33px tall, under the 40px floor every target in the app keeps. It ends
+   * the panel, inside a container that clips its corners, and the app's
+   * focus outline is drawn 2px out from it, 2px wide and 3px under high
+   * contrast. A 375px phone gives the host 336px.
+   */
+  describe('Clear all at the 40px floor (real template)', () => {
+    for (const l of ['en', 'ja', 'tc'] as const) {
+      it(`is a 40px target on one line, its focus outline inside the clipping container, in ${l}`, () => {
+        const t = catalogTranslator(l, { strict: true });
+        mockTranslationService.t.and.callFake(catalogTranslator(l));
+        // The translate pipe memoises on the locale and the catalog version.
+        locale.set(l);
+        TestBed.inject(TranslationService).translationsVersion.update(version => version + 1);
+        pinFieldFace();
+        const root = fixture.nativeElement as HTMLElement;
+        root.style.display = 'block';
+        root.style.width = '336px';
+        component.expanded.set(true);
+        fixture.detectChanges();
+        // Today sets a start and an end date: two filters, so Clear all shows.
+        root.querySelector<HTMLButtonElement>('.quick-btn')!.click();
+        fixture.detectChanges();
+
+        const clear = root.querySelector<HTMLButtonElement>('.clear-btn');
+        expect(clear).withContext('Clear all, with two filters set').not.toBeNull();
+        if (!clear) return;
+        // Its words, beside the icon's ligature, which is text in the DOM too.
+        const label = Array.from(clear.childNodes).find(node => node.nodeType === Node.TEXT_NODE && node.textContent?.trim());
+        expect(label?.textContent?.trim()).withContext("Clear all's words").toBe(t('transactions.clearAll'));
+        const box = clear.getBoundingClientRect();
+        expect(box.height).withContext('height vs the 40px floor').toBeGreaterThanOrEqual(40);
+        expect(box.width).withContext('width vs the 40px floor').toBeGreaterThanOrEqual(40);
+        const range = document.createRange();
+        range.selectNodeContents(label!);
+        expect(new Set(Array.from(range.getClientRects()).map(rect => Math.round(rect.top))).size)
+          .withContext("Clear all's words, lines")
+          .toBe(1);
+
+        const container = root.querySelector('.filters-container')!;
+        expect(getComputedStyle(container).overflow).withContext('the container clips').toBe('hidden');
+        const edges = container.getBoundingClientRect();
+        const outline = 2 + 3;
+        expect([box.left - outline - edges.left, edges.right - box.right - outline, box.top - outline - edges.top, edges.bottom - box.bottom - outline]
+          .map(px => px >= -0.5))
+          .withContext('room for the outline on its start, end, top and bottom inside the container')
+          .toEqual([true, true, true, true]);
+      });
+    }
+  });
+
+  /**
    * Clear all, a suggestion applied from the keyboard and the save-search
    * box each take the control holding focus off the page, and focus fell to
    * the page with it. Clear all hands focus to the filter toggle, which
