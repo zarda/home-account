@@ -13,6 +13,9 @@ import {
  *
  * Noise rather than flat colour, because a flat image compresses to almost
  * nothing at any quality and every step of the ladder would fit.
+ *
+ * The photo itself is made with jpegNow, not toBlob: it is not under test,
+ * and toBlob costs about a second a call in a run that leaves no idle moment.
  */
 async function noisyImage(width: number, height: number): Promise<File> {
   const canvas = document.createElement('canvas');
@@ -27,8 +30,24 @@ async function noisyImage(width: number, height: number): Promise<File> {
     pixels.data[i + 3] = 255;
   }
   context.putImageData(pixels, 0, 0);
-  const blob = (await encodeCanvas(canvas, 1))!;
-  return new File([blob], 'receipt.jpg', { type: 'image/jpeg' });
+  return new File([jpegNow(canvas, 1)], 'receipt.jpg', { type: 'image/jpeg' });
+}
+
+/**
+ * `canvas` as a JPEG at `quality`, from the browser's own encoder, at once.
+ * Chrome's toBlob encodes in an idle moment and, when none comes, starts
+ * anyway after a second; a full run can leave the main thread no idle moment
+ * for a while, and then every toBlob takes that second, whatever the size
+ * of the image. toDataURL encodes on the spot.
+ */
+function jpegNow(canvas: HTMLCanvasElement, quality: number): Blob {
+  const url = canvas.toDataURL('image/jpeg', quality);
+  const text = atob(url.slice(url.indexOf(',') + 1));
+  const bytes = new Uint8Array(text.length);
+  for (let i = 0; i < text.length; i++) {
+    bytes[i] = text.charCodeAt(i);
+  }
+  return new Blob([bytes], { type: 'image/jpeg' });
 }
 
 /** The dimensions a produced file actually has, read back through the decoder. */
@@ -124,14 +143,38 @@ describe('receipt-image.utils', () => {
       );
     });
 
-    it('gives up by name when nothing fits the ceiling', async () => {
+    it('gives up by name when nothing fits the ceiling, after the whole ladder', async () => {
       // One byte is not achievable at any quality or edge; the point is that
-      // the caller is told which failure this was.
-      const photo = await noisyImage(1200, 800);
+      // the caller is told which failure this was, and only once every step
+      // has been tried. A strip longer than half the edge cap makes the
+      // second rung redraw it smaller, so both rungs are seen; a strip is
+      // enough, since no image fits one byte.
+      //
+      // The ladder's eight encodes go through the browser's encoder at once
+      // (jpegNow): through toBlob, a run with no idle moment spent a second
+      // on each, and eight seconds outlast the case's five.
+      const photo = await noisyImage(1200, 8);
+      const encodes: string[] = [];
+      spyOn(HTMLCanvasElement.prototype, 'toBlob').and.callFake(function (
+        this: HTMLCanvasElement,
+        callback: BlobCallback,
+        type?: string,
+        quality?: number
+      ) {
+        encodes.push(`${this.width}x${this.height} ${type} at ${quality}`);
+        callback(jpegNow(this, quality ?? 1));
+      });
 
       await expectAsync(prepareReceiptImage(photo, 1)).toBeRejectedWithError(
         RECEIPT_IMAGE_UNREADABLE
       );
+      const steps = [0.85, 0.7, 0.55, 0.4];
+      expect(encodes)
+        .withContext('every quality at the capped edge, then every quality at half of it')
+        .toEqual([
+          ...steps.map(quality => `1200x8 image/jpeg at ${quality}`),
+          ...steps.map(quality => `${MAX_RECEIPT_EDGE / 2}x7 image/jpeg at ${quality}`),
+        ]);
     });
   });
 });
