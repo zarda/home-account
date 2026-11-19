@@ -65,12 +65,16 @@ import {
 import {
   AUDIT_SCHEMES,
   MockAuthService,
+  accessibleName,
   auditInView,
   createMockUser,
   expectHeadingsInOrder,
   runAxe,
+  styleRules,
+  tokenValue,
   unexpectedViolations,
   withScheme,
+  withTheme,
   provideNoMotion
 } from './core/services/testing';
 import { BUDGET_TABS } from './features/budgets/budgets.component';
@@ -199,16 +203,17 @@ describe('App routes (emulator smoke test)', () => {
    * once a rule exists, Upcoming), /transactions, /budgets (its Budgets tab,
    * with the overview scrolled into view, then its Recurring tab with an
    * active rule and a paused one, then its Goals tab with a goal's header,
-   * progress, items and note scrolled into view), /reports (its first tab,
-   * then its Forecast tab's header and summary once a rule exists),
+   * progress, items, note and actions scrolled into view), /reports (its
+   * first tab, then its Forecast tab's header and summary once a rule exists),
    * /settings, /data, /import/file (its empty upload step, with the upload
    * area's contents scrolled into view), /household (its setup state, then
    * its member view before and after the household's own budget and goal
    * are made, and the switcher's open panel over two memberships, once the
    * walkthrough's account forms its households) and /about. Every other
-   * route is **unswept**: /login is opened by the redirect case but never
-   * audited, and /lock, /ai, /search-history and /import/history are never
-   * visited — see docs/emulator-blind-spots.md.
+   * route is **unswept**: /login is opened by the redirect case, which reads
+   * its lead line's colour and the stylesheet but runs no pass, and /lock,
+   * /ai, /search-history and /import/history are never visited — see
+   * docs/emulator-blind-spots.md.
    */
   async function expectNoAxeViolations(url: string): Promise<void> {
     const element = harness.routeNativeElement;
@@ -522,6 +527,32 @@ describe('App routes (emulator smoke test)', () => {
     await harness.navigateByUrl('/dashboard');
     expect(TestBed.inject(Router).url).toBe('/login');
     await waitForDom('login landmark', () => pageText().includes('app.title'));
+
+    // The page's lead line wears a role alias, which ships because a
+    // template names it: on the real route it paints the token the alias
+    // stands for, in each scheme. The Karma page's stylesheet comes from
+    // the same Tailwind config as the shipped one, whose content leaves
+    // specs out, so a utility only a spec names ships no rule: `.ring`,
+    // the bare focus halo, among them.
+    const lead = harness.routeNativeElement?.querySelector<HTMLElement>('p.text-fg-secondary');
+    expect(lead).withContext("the login page's lead line").toBeTruthy();
+    if (lead) {
+      for (const scheme of AUDIT_SCHEMES) {
+        withTheme(scheme, () => {
+          const token = tokenValue('--text-secondary');
+          expect(getComputedStyle(lead).color)
+            .withContext(`the lead line's colour in the ${scheme} scheme, against --text-secondary`)
+            .toBe(token);
+        });
+      }
+    }
+    const selectors = styleRules().map(({ rule }) => rule.selectorText);
+    expect(selectors)
+      .withContext('the Tailwind sheet is read: the alias the lead line wears is in it')
+      .toContain('.text-fg-secondary');
+    expect(selectors.filter(selector => /\.ring(?![\w-])/.test(selector)))
+      .withContext('rules for the bare focus halo, a word only specs hold')
+      .toEqual([]);
   }, 20000);
 
   it(
@@ -825,12 +856,13 @@ describe('App routes (emulator smoke test)', () => {
 
         // A goal with every part its card draws, written through the client so
         // the rules check its shape: a target date, linked money beside the
-        // manual contributions, two items with one done, and a note. Each part
-        // of the card is swept in view. Opened from the dashboard rather than
-        // from the Recurring tab: the budgets page reads its ?tab= once, as it
-        // is built, so a second visit that reuses it stays on the tab it was
-        // on. Deleted once swept, so the pages after this one read what they
-        // read before it.
+        // manual contributions, two items with one done, and a note. The
+        // linked money puts View transactions beside Contribute in the card's
+        // actions. Each part of the card, its actions too, is swept in view.
+        // Opened from the dashboard rather than from the Recurring tab: the
+        // budgets page reads its ?tab= once, as it is built, so a second visit
+        // that reuses it stays on the tab it was on. Deleted once swept, so the
+        // pages after this one read what they read before it.
         const goalRef = await addDoc(collection(firestore, `users/${uid}/goals`), {
           userId: uid,
           kind: 'project',
@@ -851,13 +883,14 @@ describe('App routes (emulator smoke test)', () => {
         });
         try {
           await expectPage('/budgets?tab=goals', 'budget.title', 'Walkthrough trip');
-          await waitForDom('the goal card with its linked money, its items and its note', () => {
+          await waitForDom('the goal card with its linked money, its items, its note and its two actions', () => {
             const card = harness.routeNativeElement?.querySelector('app-goal-progress-card');
             return !!card?.querySelector('.goal-progress .linked-breakdown')
               && card.querySelectorAll('.goal-items mat-checkbox').length === 2
-              && !!card.querySelector('.goal-note');
+              && !!card.querySelector('.goal-note')
+              && card.querySelectorAll('mat-card-actions button').length === 2;
           });
-          for (const part of ['.goal-header', '.goal-progress', '.goal-items', '.goal-note']) {
+          for (const part of ['.goal-header', '.goal-progress', '.goal-items', '.goal-note', 'mat-card-actions']) {
             await expectNoAxeViolationsInView('/budgets?tab=goals', `app-goal-progress-card ${part}`);
           }
         } finally {
@@ -865,6 +898,23 @@ describe('App routes (emulator smoke test)', () => {
         }
 
         await expectPage('/settings', 'settings.title', 'Test User');
+        // The Preferences panel opens expanded, so its four switches were in
+        // the pass above, which runs `button-name` without the check that let
+        // a switch nobody named pass (axeOptions). Each is named by the words
+        // it shows, the key here as no catalog is served, and the section's
+        // label names the group around it, not the switch.
+        const switchNames = Array.from(
+          harness.routeNativeElement?.querySelectorAll(
+            'app-security-settings, app-reminder-settings, app-weekly-recap-settings, app-analytics-settings'
+          ) ?? [],
+          section => {
+            const toggle = section.querySelector('button[role="switch"]');
+            return toggle ? accessibleName(toggle) : null;
+          }
+        );
+        expect(switchNames)
+          .withContext('the app lock, reminders, weekly recap and usage statistics switches, by name')
+          .toEqual(['appLock.enable', 'settings.reminderNotificationsEnable', 'settings.weeklyRecapEnable', 'analytics.enable']);
         // The hub counts each stored kind through a server-side aggregate. The
         // seeded categories prove the counts land as numbers rather than as the
         // dash a failed aggregate would leave behind.
