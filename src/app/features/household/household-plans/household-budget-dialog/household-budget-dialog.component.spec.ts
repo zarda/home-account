@@ -19,8 +19,10 @@ import { ThemeService } from '../../../../core/services/theme.service';
 import {
   AUDIT_SCHEMES,
   GLYPH_PROBE_COLOURS,
+  accessibleName,
   afterTwoFrames,
   catalogTranslationStub,
+  catalogTranslator,
   chooseOption,
   createTranslationStub,
   eachOptionState,
@@ -479,6 +481,48 @@ describe('HouseholdBudgetDialogComponent', () => {
       expect(component.form.controls.endDate.value).toBeNull();
       expect(errors()).toEqual([]);
     });
+  });
+
+  /**
+   * The start and end date fields each end in a calendar button, and the two
+   * always show together. Each is named for the field it fills: the calendar
+   * words every toggle reads, then the field's own label, so a screen reader
+   * hears two names and a voice user can say either label.
+   */
+  describe('its two calendar buttons', () => {
+    const pinned = {
+      en: ['Open calendar: Starts on', 'Open calendar: Ends on (optional)'],
+      ja: ['カレンダーを開く：開始日', 'カレンダーを開く：終了日（任意）'],
+      tc: ['開啟日曆：開始日期', '開啟日曆：結束日期（選填）'],
+    } as const;
+
+    for (const l of ['en', 'ja', 'tc'] as const) {
+      it(`names each calendar button for its own date field, in ${l}`, () => {
+        TestBed.overrideProvider(TranslationService, { useValue: catalogTranslationStub(l) });
+        create();
+
+        const t = catalogTranslator(l, { strict: true });
+        const toggles = Array.from(
+          (fixture.nativeElement as HTMLElement).querySelectorAll<HTMLButtonElement>('mat-datepicker-toggle button')
+        );
+        expect(toggles.length).withContext('the start and end date calendar buttons').toBe(2);
+        const names = toggles.map(toggle => accessibleName(toggle));
+        toggles.forEach((toggle, i) => {
+          const label = toggle.closest('mat-form-field')!.querySelector('mat-label')!.textContent!.trim();
+          expect(label)
+            .withContext(`field ${i}'s label`)
+            .toBe(t(['household.planForm.startDate', 'household.planForm.endDate'][i]));
+          expect(names[i]).withContext(`"${names[i]}" names its field, "${label}"`).toContain(label);
+          expect(names[i]).withContext(`"${names[i]}" says it opens the calendar`).toContain(t('datepicker.openCalendar'));
+        });
+        expect(names[0]).withContext('the two names, apart').not.toBe(names[1]);
+        expect(names).withContext('pinned').toEqual([...pinned[l]]);
+        expect(names).toEqual([
+          t('datepicker.openCalendarFor', { field: t('household.planForm.startDate') }),
+          t('datepicker.openCalendarFor', { field: t('household.planForm.endDate') }),
+        ]);
+      });
+    }
   });
 
   describe('editing', () => {

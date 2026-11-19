@@ -20,6 +20,8 @@ import { Category, MAX_REMINDER_LEAD_DAYS, RecurringTransaction } from '../../..
 import {
   AUDIT_SCHEMES,
   GLYPH_PROBE_COLOURS,
+  accessibleName,
+  catalogTranslator,
   chooseOption,
   createCategory,
   eachOptionState,
@@ -1658,4 +1660,60 @@ describe('RecurringFormDialogComponent, an edited rule whose end date is typed o
     expect(errors()).toEqual([]);
     expect(component.isValid).toBeTrue();
   });
+});
+
+/**
+ * Start date and End date each end in a calendar button, and the two show
+ * together once the rule has an end date. Each is named for the field it
+ * fills: the calendar words every toggle reads, then the field's own label,
+ * so a screen reader hears two names and a voice user can say either label.
+ */
+describe('RecurringFormDialogComponent, its two calendar buttons', () => {
+  const pinned = {
+    en: ['Open calendar: Start Date', 'Open calendar: End Date (Optional)'],
+    ja: ['カレンダーを開く：開始日', 'カレンダーを開く：終了日（任意）'],
+    tc: ['開啟日曆：開始日期', '開啟日曆：結束日期（選填）'],
+  } as const;
+
+  for (const l of ['en', 'ja', 'tc'] as const) {
+    it(`names each calendar button for its own date field, in ${l}`, async () => {
+      await TestBed.configureTestingModule({
+        imports: [RecurringFormDialogComponent],
+        providers: [
+          { provide: MatDialogRef, useValue: jasmine.createSpyObj('MatDialogRef', ['close']) },
+          { provide: MAT_DIALOG_DATA, useValue: {} },
+          { provide: CategoryService, useValue: { loadCategories: () => of([]) } },
+          { provide: CurrencyService, useValue: { currencies: signal([]) } },
+          provideAppDatepickerForTests({ locale: signal(l), t: catalogTranslator(l) }),
+          provideNoMotion(),
+        ],
+        schemas: [NO_ERRORS_SCHEMA],
+      }).compileComponents();
+      const fixture = TestBed.createComponent(RecurringFormDialogComponent);
+      fixture.detectChanges();
+      // What the user does to show the End date field beside Start date.
+      (fixture.nativeElement as HTMLElement).querySelector<HTMLButtonElement>('.end-date-toggle button')!.click();
+      fixture.detectChanges();
+      expect(fixture.componentInstance.hasEndDate).withContext('the rule has an end date').toBeTrue();
+
+      const t = catalogTranslator(l, { strict: true });
+      const toggles = Array.from(
+        (fixture.nativeElement as HTMLElement).querySelectorAll<HTMLButtonElement>('mat-datepicker-toggle button')
+      );
+      expect(toggles.length).withContext('the Start and End date calendar buttons').toBe(2);
+      const names = toggles.map(toggle => accessibleName(toggle));
+      toggles.forEach((toggle, i) => {
+        const label = toggle.closest('mat-form-field')!.querySelector('mat-label')!.textContent!.trim();
+        expect(label).withContext(`field ${i}'s label`).toBe(t(['settings.startDate', 'settings.endDate'][i]));
+        expect(names[i]).withContext(`"${names[i]}" names its field, "${label}"`).toContain(label);
+        expect(names[i]).withContext(`"${names[i]}" says it opens the calendar`).toContain(t('datepicker.openCalendar'));
+      });
+      expect(names[0]).withContext('the two names, apart').not.toBe(names[1]);
+      expect(names).withContext('pinned').toEqual([...pinned[l]]);
+      expect(names).toEqual([
+        t('datepicker.openCalendarFor', { field: t('settings.startDate') }),
+        t('datepicker.openCalendarFor', { field: t('settings.endDate') }),
+      ]);
+    });
+  }
 });

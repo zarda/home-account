@@ -2626,6 +2626,49 @@ describe('TransactionFiltersComponent', () => {
     });
   });
 
+  /**
+   * The From and To date fields each end in a calendar button, and the two
+   * show side by side in the open panel. Each is named for the field it
+   * fills: the calendar words every other toggle reads, then the field's own
+   * label, so a screen reader hears two names and a voice user can say
+   * either label.
+   */
+  describe('the From and To calendar buttons (real template)', () => {
+    const pinned = {
+      en: ['Open calendar: From', 'Open calendar: To'],
+      ja: ['カレンダーを開く：開始', 'カレンダーを開く：終了'],
+      tc: ['開啟日曆：從', '開啟日曆：至'],
+    } as const;
+
+    for (const l of ['en', 'ja', 'tc'] as const) {
+      it(`names each calendar button for its own date field, in ${l}`, () => {
+        const t = catalogTranslator(l);
+        mockTranslationService.t.and.callFake(catalogTranslator(l));
+        // The translate pipe memoises on the locale and the catalog version.
+        locale.set(l);
+        TestBed.inject(TranslationService).translationsVersion.update(version => version + 1);
+        component.expanded.set(true);
+        fixture.detectChanges();
+
+        const toggles = Array.from(
+          (fixture.nativeElement as HTMLElement).querySelectorAll<HTMLButtonElement>('.filter-grid mat-datepicker-toggle button')
+        );
+        expect(toggles.length).withContext('the From and To calendar buttons').toBe(2);
+        const names = toggles.map(toggle => accessibleName(toggle));
+        toggles.forEach((toggle, i) => {
+          const label = toggle.closest('mat-form-field')!.querySelector('mat-label')!.textContent!.trim();
+          expect(label).withContext(`field ${i}'s label`).toBe(t(['transactions.from', 'transactions.to'][i]));
+          expect(names[i]).withContext(`"${names[i]}" names its field, "${label}"`).toContain(label);
+          expect(names[i]).withContext(`"${names[i]}" says it opens the calendar`).toContain(t('datepicker.openCalendar'));
+        });
+        expect(names[0]).withContext('the two names, apart').not.toBe(names[1]);
+        expect(names).withContext('pinned').toEqual([...pinned[l]]);
+        const strict = catalogTranslator(l, { strict: true });
+        expect(names).toEqual([strict('transactions.openCalendarFrom'), strict('transactions.openCalendarTo')]);
+      });
+    }
+  });
+
   // A date field's input gets what is left of the field after its 12 px start
   // padding and the 44 px calendar button. The grid's fixed tracks, six to a
   // row at a 1024 px pane, left 40 px of it for a date 86 px wide, and a
