@@ -240,7 +240,7 @@ describe('LoginComponent', () => {
     it('paints the title, the sign-in line and the terms notice at AA or better over the glass card, in both themes', () => {
       for (const theme of ['light', 'dark'] as const) {
         withTheme(theme, () => {
-          for (const selector of ['mat-card-title', 'mat-card-content > p', 'mat-card-footer']) {
+          for (const selector of ['.mat-mdc-card-title', 'mat-card-content > p', 'mat-card-footer']) {
             expectReadableOverEveryStop(selector, theme);
           }
         });
