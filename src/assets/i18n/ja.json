@@ -815,7 +815,7 @@
   "data": {
     "title": "データ",
     "subtitle": "アプリが保存しているすべてのデータと、その管理場所",
-    "countUnavailable": "件数を取得できません — 接続が必要です",
+    "countUnavailable": "件数を取得できません — 接続が必要です。",
     "kinds": {
       "transactions": {
         "label": "取引",

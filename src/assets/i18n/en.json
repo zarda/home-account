@@ -902,7 +902,7 @@
   "data": {
     "title": "Your Data",
     "subtitle": "Everything the app has stored for you, and where to manage it",
-    "countUnavailable": "Count unavailable — this needs a connection",
+    "countUnavailable": "Count unavailable — this needs a connection.",
     "kinds": {
       "transactions": {
         "label": "Transactions",

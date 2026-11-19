@@ -815,7 +815,7 @@
   "data": {
     "title": "您的資料",
     "subtitle": "應用程式為您儲存的所有資料，以及管理位置",
-    "countUnavailable": "無法取得數量 — 需要連線",
+    "countUnavailable": "無法取得數量 — 需要連線。",
     "kinds": {
       "transactions": {
         "label": "交易",
