@@ -10,27 +10,27 @@
     </div>
   </header>
 
-  <!-- Features chips -->
-  <div class="features-row">
-    <mat-chip-set>
-      <mat-chip>
-        <mat-icon matChipAvatar>receipt_long</mat-icon>
-        {{ 'import.featureReceipts' | translate }}
-      </mat-chip>
-      <mat-chip>
-        <mat-icon matChipAvatar>description</mat-icon>
-        {{ 'import.featureBankStatements' | translate }}
-      </mat-chip>
-      <mat-chip>
-        <mat-icon matChipAvatar>auto_awesome</mat-icon>
-        {{ 'import.featureAutoCategory' | translate }}
-      </mat-chip>
-      <mat-chip>
-        <mat-icon matChipAvatar>content_copy</mat-icon>
-        {{ 'import.featureDuplicateDetection' | translate }}
-      </mat-chip>
-    </mat-chip-set>
-  </div>
+  <!-- What the import can do: words, not chips. The upload step's own chips
+       (receipt or statement) are pressed, and these are not. role="list"
+       because WebKit drops the role from a list drawn without markers. -->
+  <ul class="features-list" role="list">
+    <li>
+      <mat-icon aria-hidden="true">receipt_long</mat-icon>
+      <span>{{ 'import.featureReceipts' | translate }}</span>
+    </li>
+    <li>
+      <mat-icon aria-hidden="true">description</mat-icon>
+      <span>{{ 'import.featureBankStatements' | translate }}</span>
+    </li>
+    <li>
+      <mat-icon aria-hidden="true">auto_awesome</mat-icon>
+      <span>{{ 'import.featureAutoCategory' | translate }}</span>
+    </li>
+    <li>
+      <mat-icon aria-hidden="true">content_copy</mat-icon>
+      <span>{{ 'import.featureDuplicateDetection' | translate }}</span>
+    </li>
+  </ul>
 
   <!-- Stepper -->
   <mat-stepper [linear]="!fromCamera" #stepper class="modern-stepper">

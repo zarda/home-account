@@ -7,11 +7,13 @@
 }
 
 /* Header */
+// 16px down to the list of what the import can do, which closes the header's
+// words; the list keeps the 24px over the stepper.
 .wizard-header {
   display: flex;
   align-items: flex-start;
   gap: 16px;
-  margin-bottom: 24px;
+  margin-bottom: 16px;
 }
 
 .back-button {
@@ -31,22 +33,36 @@
   color: var(--text-muted);
 }
 
-/* Features Row */
-.features-row {
-  margin-bottom: 24px;
-  overflow-x: auto;
-  padding-bottom: 8px;
-}
-
-.features-row mat-chip-set {
+/* What the import can do: a line of words with a glyph each, the subtitle's
+   colour, and no fill, outline or pill. They were chips, the shape of the
+   upload step's receipt-or-statement chips, which are pressed and these are
+   not; and Material's chip set wraps, so at a 320px phone they stood a 32px
+   row each and with the header and the stepper put the upload area under
+   the first screen. Words wrap as words do, a line or two of them. */
+.features-list {
   display: flex;
-  flex-wrap: nowrap;
-  gap: 8px;
+  flex-wrap: wrap;
+  gap: 4px 16px;
+  margin: 0 0 24px;
+  padding: 0;
+  list-style: none;
+  font-size: var(--text-xs);
+  line-height: 1.5;
+  color: var(--text-muted);
 }
 
-.features-row mat-chip {
-  background: var(--surface-hover);
-  font-size: var(--text-xs);
+.features-list li {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+}
+
+.features-list mat-icon {
+  font-size: var(--text-sm);
+  width: 1em;
+  height: 1em;
+  flex-shrink: 0;
 }
 
 /* Stepper Styling */
@@ -728,10 +744,6 @@
 
   .header-content h1 {
     font-size: var(--text-2xl);
-  }
-
-  .features-row mat-chip {
-    font-size: var(--text-xs);
   }
 
   .step-actions {
