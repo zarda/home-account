@@ -190,6 +190,21 @@ describe('the stylesheet', () => {
       .toBeTrue();
     expect(selectors.filter(selector => /\.ring(?![\w-])/.test(selector))).toEqual([]);
   });
+
+  /**
+   * Tailwind reads `!` before a utility's name as that utility made
+   * important, in code as in a template, so a negation of a variable that
+   * shares a utility's name, `!hidden.has(id)`, ships `.\!hidden`. No
+   * template asks for it.
+   */
+  it('ships no important rule that only a negation in code names', () => {
+    const selectors = styleRules().map(({ rule }) => rule.selectorText);
+
+    expect(selectors.some(selector => selector === '.text-fg-disabled'))
+      .withContext('the Tailwind sheet is read: a safelisted alias is in it')
+      .toBeTrue();
+    expect(selectors.filter(selector => /\.\\!hidden(?![\w-])/.test(selector))).toEqual([]);
+  });
 });
 
 @Component({
