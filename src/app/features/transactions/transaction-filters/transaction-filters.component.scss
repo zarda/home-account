@@ -346,10 +346,13 @@
   padding-inline-end: 0 !important;
 }
 
+// Its words and padding made a 33px box: the floor keeps it a 40px target,
+// the words centred in it. The panel's 12px padding holds the focus outline.
 .clear-btn {
   display: flex;
   align-items: center;
   gap: 4px;
+  min-height: 40px;
   margin-top: 8px;
   padding: 6px 12px;
   border: none;
