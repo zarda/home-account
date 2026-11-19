@@ -725,8 +725,10 @@ textarea::placeholder {
    over it: over it, the notice covers the tabs, and the Undo a deleted
    transaction's notice carries sits where a thumb reaches for them. The bar
    is 64px over the home-indicator inset (main-layout.component.scss), and
-   the notice keeps its own 8px gap above that. */
-body:has(.bottom-nav-container.visible) .mat-mdc-snack-bar-container {
+   the notice keeps its own 8px gap above that. The shell marks the body
+   while the bar is shown; a :has() on the bar would be dropped whole by
+   iOS 15's WebView before 15.4, which does not parse it. */
+body.bottom-nav-shown .mat-mdc-snack-bar-container {
   margin-bottom: calc(64px + var(--safe-bottom) + 8px);
 }
 

@@ -260,7 +260,8 @@ describe('NotificationService: a notice with an action', () => {
 
   // The phone's bottom nav sits on the viewport's bottom edge, where the
   // notice opens: the notice would cover its tabs, and its Undo would sit
-  // where a thumb reaches for them.
+  // where a thumb reaches for them. The shell marks the body while the bar
+  // is shown (main-layout), and the lift is keyed on that mark.
   it('stands clear of the bottom nav while it is shown, and only then', async () => {
     // A home indicator's inset, as an iPhone reports it: the bar grows by it,
     // and a notice that cleared only the bar's 64 px would cover its tabs.
@@ -281,11 +282,13 @@ describe('NotificationService: a notice with an action', () => {
         .toBeGreaterThan(nav.getBoundingClientRect().top);
 
       nav.classList.add('visible');
+      document.body.classList.add('bottom-nav-shown');
       expect(container.getBoundingClientRect().bottom)
         .withContext("the notice's bottom edge, against the shown bar's top")
         .toBeLessThanOrEqual(nav.getBoundingClientRect().top);
     } finally {
       nav.remove();
+      document.body.classList.remove('bottom-nav-shown');
       document.documentElement.style.removeProperty('--safe-bottom');
     }
   });
