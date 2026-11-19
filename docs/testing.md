@@ -1135,12 +1135,12 @@ Both render in the CDK overlay, so the describe removes
 `test:ci` prints console output from paths that deliberately report a failure.
 The floor is a recorded number, not a gate: it exists so a new line is noticed.
 
-| | Base (`7b693953`) | `26.10.175` | `26.10.177` | `26.10.178` | `26.10.179` | `26.10.180` | `26.11.181` | `26.11.182` | `26.11.183` | `26.11.184` | `26.11.185` |
-|---|---|---|---|---|---|---|---|---|---|---|---|
-| ERROR | 40 | 53 | 53 | 44 | 44 | 44 | 44 | 43 | 43 | 43 | 43 |
-| WARN | 38 | 60 | 60 | 60 | 60 | 62 | 63 | 63 | 60 | 60 | 60 |
-| LOG | 26 | **0** | **0** | **0** | **0** | **0** | **0** | **0** | **0** | **0** | **0** |
-| 404 | — | — | — | — | — | — | 26 | 7 | 7 | 7 | 7 |
+| | Base (`7b693953`) | `26.10.175` | `26.10.177` | `26.10.178` | `26.10.179` | `26.10.180` | `26.11.181` | `26.11.182` | `26.11.183` | `26.11.184` | `26.11.185` | `26.11.186` |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| ERROR | 40 | 53 | 53 | 44 | 44 | 44 | 44 | 43 | 43 | 43 | 43 | 42 |
+| WARN | 38 | 60 | 60 | 60 | 60 | 62 | 63 | 63 | 60 | 60 | 60 | 35 |
+| LOG | 26 | **0** | **0** | **0** | **0** | **0** | **0** | **0** | **0** | **0** | **0** | **0** |
+| 404 | — | — | — | — | — | — | 26 | 7 | 7 | 7 | 7 | 7 |
 
 **Counting it.** Karma's progress reporter prints each console line twice, once
 behind an ANSI rewrite and once plain, so `grep -c 'ERROR: '` reports exactly
@@ -1205,9 +1205,10 @@ too
 **Three WARN lines come and go.** On some runs `firestore.service.spec.ts`'s
 `afterAll` deletes its app while the SDK still has work queued on it, and the
 SDK then warns three times that *Firebase App named 'firestore-unit-…' already
-deleted*. WARN reads 63 on those runs and 60 on the rest: the base of the
-`26.10.178` wave read 63, and that wave's measures read 60 and 63. Judge a new
-line by its text, not by that difference of three. One more comes and goes:
+deleted*. Up to `26.11.185` WARN read 63 on those runs and 60 on the rest: the
+base of the `26.10.178` wave read 63, and that wave's measures read 60 and 63.
+`26.11.186`'s 35 is a run without them. Judge a new line by its text, not by
+that difference of three. One more comes and goes:
 `offline-queue`'s *Reclaimed 1 item(s) interrupted mid-sync* printed one time
 fewer on one `26.10.179` run, which read 59 against two that read 60.
 
@@ -1234,7 +1235,11 @@ from a case that predates it. The one that recorded `26.11.182` added none
 and took one away: the budget form's failed save, *[BudgetForm] Save
 failed:*, is spied on and expected in the case that causes it, and every
 other line, deduplicated, matches `26.11.181`'s base; its 63 is the three
-*already deleted* lines on top of 60. **Rendering
+*already deleted* lines on top of 60. The one that recorded `26.11.186` added
+none and took twenty-five WARN lines and one ERROR line away: the lines a lone
+`test:dates` run printed, which the cases that cause them now hold back or
+expect (above), and every other line, deduplicated, matches `26.11.185`'s
+base. **Rendering
 twenty-four real templates added none of them** — a template that renders
 quietly is the normal case, and a new line here means a real code path started
 reporting something.
