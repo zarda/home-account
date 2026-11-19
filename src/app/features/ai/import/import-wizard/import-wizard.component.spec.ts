@@ -5021,6 +5021,22 @@ describe('ImportWizardComponent', () => {
         realFixture.detectChanges();
       }
 
+      /** The stepper's steps, by the index each is shown at. */
+      const STEP = { processing: 1, review: 2, confirm: 3 } as const;
+
+      /**
+       * Shows the step at `index`, with the stepper free to jump to it, as
+       * the camera's hand-off has it. Only the step shown is drawn: another
+       * step's content computes its colours all the same, and a reading of
+       * it would hold words nobody sees.
+       */
+      function showStep(index: number): void {
+        const stepper = realFixture.componentInstance.stepper;
+        stepper.linear = false;
+        stepper.selectedIndex = index;
+        realFixture.detectChanges();
+      }
+
       // The wizard sits on the page itself.
       beforeEach(() => {
         standOnThePage(realFixture.nativeElement as HTMLElement);
@@ -5028,6 +5044,7 @@ describe('ImportWizardComponent', () => {
 
       // A glyph is a graphic, so its floor is 3:1 (WCAG 1.4.11).
       it('paints each kind of failure in its own token, the icon at 3:1 or better on the page, in both themes', () => {
+        showStep(STEP.processing);
         const kinds: readonly (readonly [string, string])[] = [
           ['quota', '--color-warning-text'],
           ['server', '--color-error-text'],
@@ -5091,6 +5108,7 @@ describe('ImportWizardComponent', () => {
       });
 
       it('reads the hint under a failure in --text-secondary at AA, in both themes', () => {
+        showStep(STEP.processing);
         const real = realFixture.componentInstance;
         real.processingError.set('slow down');
         real.processingErrorType.set('rate_limit');
@@ -5105,6 +5123,7 @@ describe('ImportWizardComponent', () => {
 
       it('paints each summary card in its token, the icon at 3:1 on its tile and the figure at AA on the card, in both themes', () => {
         landEveryCard();
+        showStep(STEP.confirm);
         // Figure, then icon. The figure is 18px bold below 768px, which is not
         // large text, so it owes 4.5:1 there.
         const cards: readonly (readonly [string, string, string])[] = [
@@ -5129,6 +5148,7 @@ describe('ImportWizardComponent', () => {
       });
 
       it('names the merged items on a badge in --text-primary on --color-info-light, at AA, in both themes', () => {
+        showStep(STEP.processing);
         landEveryCard();
         const banner = part('.success-card .multi-image-info');
         const badge = banner?.querySelector('.merged-badge') as HTMLElement | null;
@@ -5151,6 +5171,7 @@ describe('ImportWizardComponent', () => {
       // light page, so a finished step reads in its text step. The step
       // fades between its states, so it is settled before it is read.
       it('paints each finished step in --color-success-text, its label at AA and its glyph at 3:1 on the step, in both themes', () => {
+        showStep(STEP.processing);
         mockImportService.isProcessing.set(true);
         mockImportService.processingProgress.set(100);
         realFixture.detectChanges();
@@ -5171,6 +5192,7 @@ describe('ImportWizardComponent', () => {
       // Mid-way, one step is under way and not yet finished: its label and
       // glyph are the indigo the active fill was given, on that fill.
       it('paints the step under way in --color-primary-text, its label at AA and its glyph at 3:1 on the step, in both themes', () => {
+        showStep(STEP.processing);
         mockImportService.isProcessing.set(true);
         mockImportService.processingProgress.set(40);
         realFixture.detectChanges();
@@ -5189,6 +5211,7 @@ describe('ImportWizardComponent', () => {
       });
 
       it('paints the success glyph in --color-success-text at 3:1 or better on the page, in both themes', () => {
+        showStep(STEP.processing);
         realFixture.componentInstance.extractedTransactions.set([{ ...mockTransactions[0] }]);
         realFixture.detectChanges();
 
@@ -5203,6 +5226,7 @@ describe('ImportWizardComponent', () => {
       // The amber the warning family is named for is a fill, under 2:1 on the
       // notice's own 5% tint of it in light.
       it('paints the cut-off notice\'s glyph in --color-warning-text at 3:1 or better on the notice, in both themes', () => {
+        showStep(STEP.review);
         realFixture.componentInstance.answerIncomplete.set(true);
         realFixture.detectChanges();
 
