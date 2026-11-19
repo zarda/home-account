@@ -80,7 +80,12 @@ A row shows one of three things:
 - **a number** — the count, as the server reports it;
 - **a dash** — the count was attempted and could not be fetched. The aggregate
   is server-only and does not fall back to the offline cache, so this is what
-  the whole page reads offline. A wrong number here would be worse than none;
+  the whole page reads offline. A wrong number here would be worse than none.
+  The dash is hidden from a screen reader; while any count is unavailable, one
+  line over the list says why (`data.countUnavailable`, *Count unavailable —
+  this needs a connection.*, `id="data-count-note"`), and each such row's
+  link takes that line as its description through `aria-describedby`
+  ([ADR 0194](ADR/0194-one-painted-contrast-helper-and-one-focus-hand-off-a-card-is-scored-part-by-part-and-no-page-skips-a-heading-level.md));
 - **nothing** — the kind has no countable collection. API keys are one
   document holding encrypted keys, not a collection of records.
 

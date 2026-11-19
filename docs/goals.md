@@ -41,7 +41,13 @@ pattern (`goal.model.ts`, `goal.service.ts`):
 ## Contributions
 
 **Contribute** on a goal card records an amount in (or, flipped, back
-out). The write is a Firestore transaction: two devices contributing at
+out). The flip is a pair of toggles in the dialog, a single-choice group
+named *Add or take back* (`goal.directionLabel`; ja *追加するか戻すか*, tc
+*存入或取回*), as the goal form's saving-or-project pair is named *Goal type*
+(`goal.kindLabel`; ja *目標の種類*, tc *目標類型*); `icon-labels:check` fails
+any single-choice group of the app that carries no name
+([ADR 0196](ADR/0196-sibling-controls-say-what-they-act-on-a-name-holds-its-shown-words-a-focused-button-shows-an-indicator-inside-it-focus-stays-in-the-list-after-a-delete-and-a-failed-dashboard-read-is-quiet.md)).
+The write is a Firestore transaction: two devices contributing at
 once both land, a withdrawal sees the balance it is shrinking, and one
 that would drive the counter below zero aborts with
 `GOAL_CONTRIBUTION_BELOW_ZERO`. Checking off a project item commits the
@@ -89,7 +95,7 @@ summary's goal section and cache key.
 
 ## Finding a goal's transactions
 
-Once a goal has linked rows its card offers **View transactions**, which opens
+Once a goal has linked rows its card offers **View Transactions**, which opens
 the Transactions page filtered to that goal. The filter carries only the goal,
 so it reaches links from any month rather than the page's usual current-month
 window.
@@ -109,9 +115,9 @@ goal-scoped smart-search answer's "view transactions" — see
 
 ## Where goals surface
 
-- **Budgets → Goals tab**: progress cards. The bar clamps at 100% while
-  the printed percentage keeps counting — overshooting a savings target is
-  success, not overflow.
+- **Budgets → Goals tab**: progress cards ([below](#the-goal-card)). The
+  bar clamps at 100% while the printed percentage keeps counting —
+  overshooting a savings target is success, not overflow.
 - **The AI summary** on the dashboard receives active goals as a prompt
   section (names, saved/target in the base currency, percent saved — no
   raw transactions), so insights can speak to pacing. "Saved" is the full
@@ -122,6 +128,41 @@ goal-scoped smart-search answer's "view transactions" — see
 
 None of these reaches a household: a personal goal is private to its
 account, and no household the account belongs to sees it.
+
+## The goal card
+
+- **The goal's name is an `h2`**, one level under the page's `h1`, so a
+  reader who moves by headings finds each goal; with no goal, the tab's
+  empty state is the `h2`
+  ([ADR 0194](ADR/0194-one-painted-contrast-helper-and-one-focus-hand-off-a-card-is-scored-part-by-part-and-no-page-skips-a-heading-level.md)).
+- **Each action names its goal.** The card's four buttons are stamped once
+  per goal: the icon buttons read *Edit {{name}}* and *Delete {{name}}*
+  (`goal.editNamed`, `goal.deleteNamed`), and the two text buttons keep the
+  words they show whole inside a name that adds the goal, *View Transactions
+  for {{name}}* (`goal.viewTransactionsNamed`) and *Contribute to {{name}}*
+  (`goal.contributeNamed`). ja reads `「{{name}}」の取引を表示` and
+  `「{{name}}」に積み立てる`, tc `檢視交易：「{{name}}」` and `存入「{{name}}」`, each
+  holding the button's own words
+  ([ADR 0192](ADR/0192-a-control-repeated-per-item-names-its-item-in-its-own-text-too-a-button-is-named-in-every-branch-and-an-unlabelled-switch-fails-the-axe-pass.md)).
+- **Edit and Delete stand 8px apart**, two 40px targets whose 48px touch
+  spans no longer overlap, so a press meant for Edit never reaches Delete.
+- **The foot wraps.** *View Transactions* and *Contribute* share a row
+  while it holds both, each label on one line, and take a row each, still at
+  the end, when it does not.
+- **The grid fits a phone.** A column is 300px at least, or the grid's whole
+  width where that is less (`minmax(min(100%, 300px), 1fr)`), so on a 320px
+  phone each card stays inside the 248px the tab is given.
+- **Its type follows the account's text size.** Every size on the card,
+  its two small glyphs included, is set in the app's type scale
+  (`--text-xs`, `--text-sm`, `--text-lg`), as is the Goals tab's hint, so all
+  of it scales with `--app-font-scale`; the 13px text it held before is
+  `--text-sm`, 14px at the default size.
+
+[ADR 0192](ADR/0192-a-control-repeated-per-item-names-its-item-in-its-own-text-too-a-button-is-named-in-every-branch-and-an-unlabelled-switch-fails-the-axe-pass.md)
+records the last four. `goal-progress-card.component.spec.ts` holds the
+heading, the names in en, ja and tc, the targets, the foot and the type
+scale, and `goals.component.spec.ts` the grid at a phone width and the
+hint's scale.
 
 ## Household goals
 

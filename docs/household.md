@@ -214,6 +214,13 @@ that carries one.
   index lists — ended memberships included, whatever the row's `sharedWith`
   says, since a stale cache may not show the latest share — in the row's own
   commit, or in its own transaction for a row linked to a personal goal.
+  A delete from the transactions list waits: the confirmed row leaves the
+  list at once, a notice offers *Undo* for ten seconds, and the row and its
+  copies are deleted only when that window ends, or sooner when the page is
+  left or hidden, another row is deleted or the account signs out. Until
+  then every member still sees the copy, and *Undo* leaves it as it was,
+  since nothing was written
+  ([ADR 0197](ADR/0197-a-deleted-transaction-can-be-brought-back-for-ten-seconds-because-the-delete-waits.md)).
 - **Delete all transactions** on the Data page deletes the rows, then takes
   the account's copies out of every household the index lists
   (`TransactionService.wipeTransactions`). When that purge fails after the
@@ -465,6 +472,16 @@ another device, moves nothing. *Show more* keeps focus and says how many
 rows are shown and that the new ones are above it; the press that shows the
 last of them moves focus to the first row it revealed.
 
+Every one of these hand-offs goes through the app's one
+`focusWhenRendered` (`shared/utils/focus-when-rendered.ts`) with
+`onlyIfDropped`. It looks once the new view has rendered, and moves focus
+only if focus has fallen to the page by then, or, for a switch and for the
+plans section's landings, is still in the control the action was taken
+from; wherever else the viewer has put it, it stays. And it drops the
+repeats of an Enter or Space held down through the hand-off until the key
+comes up, so a key held on *Remove* asks about no other member
+([ADR 0194](ADR/0194-one-painted-contrast-helper-and-one-focus-hand-off-a-card-is-scored-part-by-part-and-no-page-skips-a-heading-level.md)).
+
 ## The invite callable's answers
 
 `inviteToHousehold({ householdId, email, locale })` runs in `asia-east1`.
@@ -527,7 +544,12 @@ budgets and goals never appear here, and never count a shared row.
   budget's current window whose bucket or bucket group is one of its
   categories, each converted into the budget's currency at today's rate. A
   member's custom category counts under its nearest built-in ancestor. A
-  private row never counts.
+  private row never counts. The budget dialog's start and end dates always
+  show together, so each one's calendar button is named for its own field,
+  `datepicker.openCalendarFor` filled with the field's label: *Open
+  calendar: Starts on* and *Open calendar: Ends on (optional)*
+  ([ADR 0196](ADR/0196-sibling-controls-say-what-they-act-on-a-name-holds-its-shown-words-a-focused-button-shows-an-indicator-inside-it-focus-stays-in-the-list-after-a-delete-and-a-failed-dashboard-read-is-quiet.md),
+  [i18n.md](i18n.md#materials-own-words)).
 - **A goal** has a name, a target in its currency and an optional target
   date. Its progress is the shared copies linked to it, of either type,
   converted into its currency, plus the members' contributions, entered in
@@ -987,11 +1009,14 @@ rules' own comments count them:
 - **The page** is `features/household/`: the shell with its switcher, the
   setup, the overview (with *Count toward…*), the plans and their dialogs,
   the members, and `household-focus.ts` — where a section hands focus to the
-  page when an action swaps the view, and the one idiom every section moves
-  focus with. The share controls are in `features/transactions/`: the form's
-  chips, the list's row menu and select mode, and `sharing/share-dialog`. The
-  transaction row takes `interactive`, `member` and `householdNames`, the last
-  for its share chip.
+  page when an action swaps the view, and where a dialog opened for one
+  household closes once another is shown. The hand-off itself, the one idiom
+  every section moves focus with, is the app's shared `focusWhenRendered`
+  in `shared/utils/focus-when-rendered.ts`
+  ([Focus](#flows)). The share controls are in `features/transactions/`:
+  the form's chips, the list's row menu and select mode, and
+  `sharing/share-dialog`. The transaction row takes `interactive`, `member`
+  and `householdNames`, the last for its share chip.
 - **The functions**: `household-invite.ts` (every decision of the invite, no
   I/O), `household-invite-handler.ts` (its body, its I/O injected),
   `household-invite-admin-deps.ts` (that I/O over the Admin SDK, with the two
@@ -1276,8 +1301,10 @@ the first sign.
   the ledger view and the plans), every `TransactionService` write path in
   the order issue, follow, await, the category, restore and export paths,
   the start-up sweep's arming, the routes, the page and its sections, and
-  the share controls. The accept disclosure is pinned to
-  `LEDGER_COPY_FIELDS`: each field a copy carries is named by the word the
+  the share controls. Each section's hand-off of focus is held to leave
+  focus where the viewer moved it meanwhile, and an Enter held through a
+  member's removal to ask about no one else. The accept disclosure is
+  pinned to `LEDGER_COPY_FIELDS`: each field a copy carries is named by the word the
   dialog uses for it or marked as showing none of the row's content (who
   shared it, the stamps and the goal link), except the row's id, which says
   more for a row still named the old way and which the dialog does not
@@ -1291,9 +1318,15 @@ the first sign.
   cascade across memberships. The walkthrough forms two households, shares a
   seeded row into one, makes a household budget and goal with a
   contribution, and the axe pass sweeps the setup, the member view before
-  and after the plans, and the switcher's open panel. No smoke case takes a
-  client offline, since a client whose network is off with a write queued
-  stalls every other client's emulator traffic. The unit specs' call-order
+  and after the plans, and the switcher's open panel, whose five option
+  texts axe leaves undecided for contrast (`bgOverlap`), so the panel's
+  contrast is never scored
+  ([ADR 0194](ADR/0194-one-painted-contrast-helper-and-one-focus-hand-off-a-card-is-scored-part-by-part-and-no-page-skips-a-heading-level.md)).
+  `delete-undo.smoke.spec.ts` deletes a row shared into a household from the
+  list, finds its copy still stored while *Undo* is offered, and gone once
+  the delete is flushed. No smoke case takes a client offline, since a
+  client whose network is off with a write queued stalls every other
+  client's emulator traffic. The unit specs' call-order
   log pins that a copy's commit is issued behind its row's; that the two
   land in that order after an offline spell rests on the SDK's persistent
   mutation queue, which no suite proves, and journey 71 shows only which
@@ -1469,6 +1502,12 @@ the first sign.
   shared row made in it leaves the row's copy as it was until a sweep on an
   updated device: the next check for a delete, the weekly full pass for an
   edit.
+- **A tab closed inside a delete's *Undo* window can keep the row, and its
+  copies with it.** The page makes the waiting delete real as it is hidden,
+  the last moment a closing tab gives it, but the delete still has to read
+  the row and its copies and commit before the page is gone, and nothing
+  waits for it
+  ([ADR 0197](ADR/0197-a-deleted-transaction-can-be-brought-back-for-ten-seconds-because-the-delete-waits.md)).
 - **Delete all transactions** takes the copies out after the rows; if that
   purge fails, the page says the households still show them, and copies of
   rows that no longer exist stay until it is run again or the next full

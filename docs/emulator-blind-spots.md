@@ -412,14 +412,18 @@ beside itself instead of passing for what the door receives today.
 
 `app.smoke.spec.ts`'s `expectPage()` runs axe-core over every page it opens,
 WCAG 2.0 A and AA (axe's `wcag2a` and `wcag2aa` tags), scoped to the routed
-element. Six properties, each of the harness or of how axe meets it, shape
+element. Seven properties, each of the harness or of how axe meets it, shape
 what that can honestly mean:
 
 - **i18n is not served.** Karma's asset config does not publish the catalogs,
   so `| translate` renders the raw key. Every accessible name on screen is a
   non-empty string like `transactions.title` — which is what a presence rule
   needs and useless to a rule about content. Contrast is unaffected: the real
-  stylesheets compile.
+  stylesheets compile. Two controls named by one slotted key read alike
+  here: the filters' From and To calendar buttons both read
+  `datepicker.openCalendarFor`, since with no catalog the key comes back
+  whole before its field is put in. The filters' unit spec reads each one
+  filled with its own field's label, in en, ja and tc.
 - **Karma's window is 756px**, so this is a phone and small-tablet audit. A
   rule that only fires on a desktop layout is never reached.
 - **A page pass scores only what starts in the frame.** The frame the specs
@@ -440,15 +444,15 @@ what that can honestly mean:
   reads as overlapped and a part past the bottom is skipped. The scroller
   runs from behind the header, so a centred node keeps its top clear of the
   header only while it is at most about 285px tall; a taller card is audited
-  as its parts. The walkthrough audits thirteen nodes this way: the spending
+  as its parts. The walkthrough audits fourteen nodes this way: the spending
   chart's legend list and the Budget Progress widget on `/dashboard`, the
   filter grid on `/transactions`, the overview on `/budgets` (256px), the
   Forecast tab's header and summary on `/reports` once a rule exists, the
   rules grid on the Recurring tab, Upcoming Bills once a rule exists, the
-  goal card's header, progress, items and note on the Goals tab, and the
-  upload area's contents on `/import/file`. Everything else that starts
-  below the frame is never scored. Two of them are reached in a way a reader
-  would not expect:
+  goal card's header, progress, items, note and actions on the Goals tab,
+  and the upload area's contents on `/import/file`. Everything else that
+  starts below the frame is never scored. Two of them are reached in a way a
+  reader would not expect:
   - **`/import/file` is audited by `.dropzone-content`, not the zone.** The
     zone, once centred, spans 356px, 28 to 384px, 7px more than the band
     from under the 64px header to the frame's 413px bottom, so an in-view
@@ -467,6 +471,10 @@ what that can honestly mean:
   failed in both schemes, and the page passes missed the goal card's status,
   items and note and the zone's hint, all below the fold
   ([ADR 0187](ADR/0187-repeated-controls-name-their-item-the-upload-area-has-one-button-and-numbers-photos-among-photos-resting-text-is-a-token-sentences-end-in-the-readers-stop-and-a-spec-that-expects-nothing-fails.md)).
+  The goal card's actions joined the list later: with Contribute painted
+  `#c8c8c8`, their own in-view audit failed on `color-contrast`, and no
+  other pass did
+  ([ADR 0192](ADR/0192-a-control-repeated-per-item-names-its-item-in-its-own-text-too-a-button-is-named-in-every-branch-and-an-unlabelled-switch-fails-the-axe-pass.md)).
   In the run that measured it, every page pass started from the top of the
   page, and these started below the frame: on `/dashboard`'s first visit,
   Recent Transactions (521px), the spending chart's card around its legend
@@ -476,12 +484,29 @@ what that can honestly mean:
   past the first 413px of a page 2687px tall; on `/household`'s member view,
   the second row of figures (472px), the member chips, the shared rows, the
   plans and the members; and on `/about`, every card after the first (420px).
-- **The run is scoped to the routed element**, because Karma's `debug.html`
-  owns the `<html>` element, a banner and its own headings. Eight page-level
+- **The run is scoped to the routed element**, because the page Karma runs
+  the specs in owns the `<html>` element and jasmine's report above every
+  fixture. Eight page-level
   rules are therefore disabled by name (`html-has-lang`, `document-title`,
   `landmark-one-main`, `landmark-unique`, `landmark-banner-is-top-level`,
   `page-has-heading-one`, `bypass`, `region`) — a landmark rule has no meaning
   when the thing being audited is a fragment.
+- **A switch's hidden label is no name.** Every pass runs `button-name`
+  without its `explicit-label` check, which takes any `<label for>` pointing
+  at a button as its name, even one out of sight: Material's slide toggle
+  renders such a label beside its switch and hides it while it projects
+  nothing, so a switch nobody named would pass
+  ([testing.md](testing.md#what-the-shared-axe-pass-runs)). The `/settings`
+  pass opens with the Preferences panel expanded, so its four switches, app
+  lock, reminders, weekly recap and usage statistics, are in it, and the
+  walkthrough then reads each one's name with `accessibleName` and expects
+  the key of the words it shows. With the reminders switch's words taken
+  away, the pass fails with `button-name (1)` on `/settings` in both
+  schemes. The AI page's Auto sync switch is on a route the walkthrough
+  never opens: the AI page's spec runs the pass over its real row, with
+  Material's empty label in place, and journey 121 in [e2e.md](e2e.md)
+  reads its name in a browser
+  ([ADR 0192](ADR/0192-a-control-repeated-per-item-names-its-item-in-its-own-text-too-a-button-is-named-in-every-branch-and-an-unlabelled-switch-fails-the-axe-pass.md)).
 - **Each pass runs in both schemes, forced in the spec.** The walkthrough's
   account keeps the default `theme: 'system'`, which follows the
   `prefers-color-scheme` of the machine running Chrome: light on the CI
@@ -514,6 +539,30 @@ what that can honestly mean:
   finite animation before it reads (an endless one, a spinner, keeps
   running), and `expectNoAxeViolations` lets the page's zero-delay timers
   land before that, so a class cannot start moving mid-audit.
+
+**Each page's headings are ordered once.** After its passes in both schemes,
+`expectNoAxeViolations` runs `heading-order` alone over the routed element
+(`expectHeadingsInOrder`), once, since a scheme cannot move a heading. It
+fails a heading more than one level under the heading before it, and a page
+with no heading at all; `heading-order` is best practice, outside the two
+tags, so the pass itself never asks it
+([testing.md](testing.md#what-the-shared-axe-pass-runs)). It runs on every
+page `expectPage` opens and on both `/household` passes. With the Data
+page's first section put back from an `h2` to an `h3`, `npm run smoke`
+failed on `heading-order on /data` with
+`Unexpected $[0] = 'heading-order (1): h3' in array.` It orders what the
+page shows when it runs, and nothing the walkthrough reaches only in view.
+On `/reports` that is the first tab and none of the four after it: the
+Forecast tab is audited only in view, and the categories, monthly and
+insights tabs are never opened. Their levels are held by the outline cases
+of each tab's own component spec, and journey 124 in [e2e.md](e2e.md) reads
+the outline of all five tabs, and of `/ai`, `/search-history` and
+`/import/history`, in a browser. Nor can it see a page's first heading at
+the wrong level: axe judges a root's first heading against the last heading
+before it in the document, Karma's page has none, and
+`page-has-heading-one` stays off with the other page rules, so a page whose
+first heading were an `h2` would pass
+([ADR 0194](ADR/0194-one-painted-contrast-helper-and-one-focus-hand-off-a-card-is-scored-part-by-part-and-no-page-skips-a-heading-level.md)).
 
 A pass audits whatever has rendered by then. `expectPage` waits for the
 page's landmark, for the data it is told to expect, and until no
@@ -549,7 +598,18 @@ the overlay container outside the routed element, is audited on its own)
 and `/about`.
 **`/login` is opened by the redirect case and never audited, and `/lock`,
 `/ai`, `/search-history` and `/import/history` are never visited** — nothing
-here says anything about their accessibility. `/import/file` is visited with
+here says anything about their accessibility. On `/login` the redirect case
+runs no pass and no heading run and reads two things only: that the lead
+line's colour is what `--text-secondary` computes to, in both schemes, and
+that the stylesheet holds `.text-fg-secondary` and no `.ring` rule
+([ADR 0195](ADR/0195-a-gate-holds-the-test-main-to-the-builders-init-specs-stay-out-of-the-stylesheet-a-lone-date-run-is-silent-and-the-opacity-gate-reads-a-url-in-a-comment-as-a-comment.md)).
+It takes no contrast ratio there: the sign-in card stands on a decorative
+gradient, which gives the painted walk no opaque fill behind the line.
+`login.component.spec.ts` lays each of the gradient's stops under the card
+as a flat fill and reads the words over each, and holds the page's one `h1`
+with the heading run
+([ADR 0194](ADR/0194-one-painted-contrast-helper-and-one-focus-hand-off-a-card-is-scored-part-by-part-and-no-page-skips-a-heading-level.md)).
+`/import/file` is visited with
 nothing picked: the wizard's upload step with photos picked, its review step
 and its step headers under the phone rule are swept by the wizard's own spec
 ([accessibility.md](accessibility.md#what-is-tested)). Nor does
@@ -567,6 +627,13 @@ Nor does any rule read where focus goes once a dialog closes: the third
 browser run found it falling to the page after a confirm a row's menu
 opened was cancelled, and `dialog.config.spec.ts` and
 `transaction-list.component.spec.ts` hold its return to the menu's button.
+After a confirmed delete there is no menu button to return to, since it
+left with its row: `delete-undo.smoke.spec.ts` deletes a row between two
+others by keyboard, through its menu and the real confirm, against the
+emulator, and reads focus land on the menu button of the row now in its
+place, and come back to the row's own once Undo brings it back
+([ADR 0196](ADR/0196-sibling-controls-say-what-they-act-on-a-name-holds-its-shown-words-a-focused-button-shows-an-indicator-inside-it-focus-stays-in-the-list-after-a-delete-and-a-failed-dashboard-read-is-quiet.md),
+[ADR 0197](ADR/0197-a-deleted-transaction-can-be-brought-back-for-ten-seconds-because-the-delete-waits.md)).
 `wcag22aa` is left out on purpose: its headline rule,
 `target-size`, measures the 800×600 headless viewport rather than the markup
 on a mobile-first layout, and the 40px hit boxes are pinned by the component
@@ -793,6 +860,37 @@ under `@angular/fire`), as the stack's URLs show: `fromVersion` and
 top-level `node_modules/@firebase/firestore` (4.16.0, from `firebase`
 12.15.0) is not what runs, and its line numbers do not match these stacks.
 
+## What has no emulator surface
+
+Every section above is about something the emulator could be asked and
+cannot answer, or answers only in part. Some work gives it nothing to read
+at all, so no smoke case stands for it, and that is no gap the suite could
+close:
+
+- **The painted-contrast helpers.** Every spec's own `expectPainted` and
+  `tokenValue` folded onto `core/services/testing/painted-contrast.ts`. That
+  changes spec helpers only, no app code, so there is nothing for an
+  emulator case to read
+  ([testing.md](testing.md#a-node-held-to-its-token),
+  [ADR 0194](ADR/0194-one-painted-contrast-helper-and-one-focus-hand-off-a-card-is-scored-part-by-part-and-no-page-skips-a-heading-level.md)).
+- **The test-main gate, the date specs' console and the opacity gate's
+  lexer.** The two gates run in node and the console work in Karma's unit
+  run; the emulator smoke has nothing of theirs to read. The stylesheet
+  change recorded with them does have a surface, the redirect case on
+  `/login` (*What the axe pass can and cannot see*, above)
+  ([ADR 0195](ADR/0195-a-gate-holds-the-test-main-to-the-builders-init-specs-stay-out-of-the-stylesheet-a-lone-date-run-is-silent-and-the-opacity-gate-reads-a-url-in-a-comment-as-a-comment.md)).
+- **A Firestore shutdown under the dashboard.** The dashboard's five live
+  reads pass over `aborted`, Firestore shutting down, and
+  `permission-denied` without a word and keep what their cards showed. A
+  shutdown in the smoke run would end the Firestore instance the later
+  cases share, so no smoke case makes one. `dashboard.component.spec.ts`'s
+  *a live read that fails* holds each read over fakes
+  ([testing.md](testing.md#under-zonejs-window-never-hears-a-zoneawarepromise-rejection)),
+  and the last step of journey 123 in [e2e.md](e2e.md) deletes the site's
+  IndexedDB under `/dashboard` and reads no `[GlobalErrorHandler]` line, no
+  error notice, and the cards as they were
+  ([ADR 0196](ADR/0196-sibling-controls-say-what-they-act-on-a-name-holds-its-shown-words-a-focused-button-shows-an-indicator-inside-it-focus-stays-in-the-list-after-a-delete-and-a-failed-dashboard-read-is-quiet.md)).
+
 ## Summary
 
 | Blind spot | What covers it | Where |
@@ -818,7 +916,11 @@ top-level `node_modules/@firebase/firestore` (4.16.0, from `firebase`
 | An interleaving the server cannot be asked for | the orderings driven by hand, with the read replaced by a promise the spec resolves | `auth.service.spec.ts` |
 | A fixture asserting a shape no producer emits | nothing local — the producing call site is read by hand, and the driven browser pass is what meets the real one | [e2e.md](e2e.md), above |
 | A tightened rule meeting data that already exists | a live owner-scoped read before the rule ships, and the clause written inside the `touched()` guard so a legacy row stays editable | above, [ADR 0146](ADR/0146-an-icon-that-carries-a-label-is-not-hidden-and-a-category-id-is-never-empty.md) |
-| An accessibility defect nobody wrote a spec for | an axe-core pass inside `expectPage`, over every route the walkthrough opens, in both schemes forced through `ThemeService`, at 756px with unserved i18n; above the frame's fold, plus thirteen nodes scrolled into view | `app.smoke.spec.ts`, `core/services/testing/axe.ts`, above |
+| An accessibility defect nobody wrote a spec for | an axe-core pass inside `expectPage`, over every route the walkthrough opens, in both schemes forced through `ThemeService`, at 756px with unserved i18n; above the frame's fold, plus fourteen nodes scrolled into view; then one heading run per page | `app.smoke.spec.ts`, `core/services/testing/axe.ts`, above |
+| A switch named by nothing but Material's hidden, empty label | `button-name` without its `explicit-label` check in every pass; the four Settings switches read by name against the words they show; the AI page's switch in its own spec | `core/services/testing/axe.ts`, `app.smoke.spec.ts`, `ai-settings-page.component.spec.ts`, above |
+| A skipped heading on a tab the walkthrough does not order, or a page's first heading at the wrong level | the outline cases of each tab's component spec, and the sign-in page's spec; journey 124 in a browser | the component specs, [e2e.md](e2e.md) journey 124, above |
+| Words on `/login` over a decorative gradient | the lead line's colour against its token in both schemes in the smoke; the words over each gradient stop in the unit spec | `app.smoke.spec.ts`, `login.component.spec.ts`, above |
+| Work with nothing for the emulator to read: the painted-contrast helpers, the test-main gate, the date specs' console, the opacity lexer, a Firestore shutdown under the dashboard | the specs and node gates that hold each; for the shutdown, the dashboard spec's failing reads and a browser step | `painted-contrast.ts`, `npm run test-main:check`, `npm run opacity:check`, `dashboard.component.spec.ts`, [e2e.md](e2e.md) journey 123, above |
 | A commit refused after the emulator's 2 s lock wait | the smoke lanes run through a ticker that keeps the emulator's lock waiters awake; a case that holds a goal with a refused commit fails with the ticker off | `scripts/emulator-ticker.mjs`, `household-plans.service.smoke.spec.ts`, above |
 | An SDK assertion from a CPU-starved run | nothing: re-run on an idle machine; the signature (`c050` hanging the suite, or `ca9` then `b815`) tells it apart | above |
 

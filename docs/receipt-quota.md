@@ -51,6 +51,20 @@ the next one, and the figure counts objects that actually exist — which is wha
 the client's old Firestore-based count could not do, since an object no
 transaction referenced was invisible to it and still occupied storage.
 
+**A deleted transaction's images are counted out only once its delete is
+real.** A delete from the transactions list waits out a ten-second Undo
+window, longer while its notice is hovered or holds focus, before
+`deleteTransaction` sweeps the row's receipt objects
+([ADR 0197](ADR/0197-a-deleted-transaction-can-be-brought-back-for-ten-seconds-because-the-delete-waits.md)).
+Until then the objects stand and the recount holds them, and
+`ReceiptQuotaService` still finds the row with its `receiptUrl` and notes
+nothing removed. So an account at its limit that deletes a transaction to
+make room is refused a new image until the window ends; leaving or hiding
+the page, signing out or deleting another row makes the delete real at once.
+A flush takes the waiting delete once however many triggers arrive
+together, so a row's receipts are never counted out twice. Removing an image
+from its transaction does not wait.
+
 **Both pin `region: 'us-west1'`**, overriding the workspace's global
 `asia-east1`. The bucket is `home-accounter.firebasestorage.app` and lives in
 `us-west1`; Eventarc requires a storage trigger to run in its bucket's region,
@@ -196,7 +210,10 @@ Two checks worth running with it, both quick:
 
 - Upload a new receipt on that same account. It must be **refused**.
 - Delete a receipt, then upload one. It must **succeed** — the recount runs on
-  the delete, so the second attempt sees a lower count.
+  the delete, so the second attempt sees a lower count. Remove the image
+  from its transaction for this, or wait out the Undo window: a whole
+  transaction deleted from the list keeps its images until that window has
+  ended.
 
 ## Known gaps
 
@@ -227,4 +244,8 @@ Two checks worth running with it, both quick:
   aggregates over transactions carrying a `receiptUrl`, which can differ from
   the authoritative count when an orphan object exists. The UI may therefore
   offer an upload the rules refuse. The refusal is the correct answer; the
-  mismatch is cosmetic and is not reconciled.
+  mismatch is cosmetic and is not reconciled. One way an orphan comes about:
+  the three receipt sweeps ask storage only for the slots that still hold an
+  image, so an object a failed earlier sweep left in a slot already emptied
+  is never asked for again
+  ([ADR 0196](ADR/0196-sibling-controls-say-what-they-act-on-a-name-holds-its-shown-words-a-focused-button-shows-an-indicator-inside-it-focus-stays-in-the-list-after-a-delete-and-a-failed-dashboard-read-is-quiet.md)).

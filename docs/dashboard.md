@@ -32,6 +32,24 @@ Below those, `arrangedCards()` renders the account's own order over exactly
 five ids — `DashboardCardId = 'recent' | 'upcoming' | 'chart' | 'insights' |
 'budgets'` — as one `@for` loop, one DOM tree for every breakpoint.
 
+### The period selector and its chip
+
+`app-period-selector` stands in the page header's actions; Reports and the
+household overview carry the same one. Its quick ranges are one
+single-choice group, named *Period* (`dashboard.period`), as every such
+group of the app is named. A month or a year picked from its calendars
+shows as a chip whose button clears it and returns to *This Month*. The
+button closes nothing, so it is named for what it clears, the chip's own
+words whole inside the name: `dashboard.clearPeriod`, *Clear Oct 2026*, ja
+*2026年10月をクリア*, tc *清除 2026年10月*. It read *Close* before.
+
+The chip and its button leave with the period. A clear that held focus
+hands it, once the render that removes the chip has checked it, to the
+quick range the period returns to, *This Month*; a clear made while focus is
+elsewhere leaves focus there. `period-selector.component.spec.ts` pins the
+three names and both hand-offs
+([ADR 0196](ADR/0196-sibling-controls-say-what-they-act-on-a-name-holds-its-shown-words-a-focused-button-shows-an-indicator-inside-it-focus-stays-in-the-list-after-a-delete-and-a-failed-dashboard-read-is-quiet.md)).
+
 ## What each card reads
 
 | Card | Component | Reads |
@@ -63,6 +81,36 @@ hidden, the recap's alerts, AI Insights and the reminder sweep all read the
 list, and the widget does while Budget Progress is shown.
 Spending by Category has no listener of its own; it reads the transactions
 the period query already loaded.
+
+## When a read fails
+
+The page keeps five live reads open: budgets, goals and the categories,
+subscribed once in `ngOnInit()`, and the recent rows and the upcoming
+window, opened by their constructor effects. Each takes one error callback,
+`readStopped(read)` in `dashboard.component.ts`:
+
+- **Quiet** on `aborted`, which is Firestore shutting down, and on a refusal
+  (`isRefused`, `permission-denied`), which is what an open listener hears
+  when the account signs out under it.
+- **One warning** for anything else, through `console.warn`, with the
+  error: `[Dashboard] The <read> read stopped; the page keeps what it last showed:`.
+- **Nothing else is touched.** Every card keeps what it last showed, and no
+  new copy is shown. `upcomingArrived` stays as it was, so a waiting
+  [`?bill` link](#links-from-a-notification-bill-and-recap) is not answered
+  "absent" from a window that never emitted, and one followed after the
+  window had painted and then failed is asked of the window the card shows.
+
+Without a callback, RxJS rethrew the failure from a timer in the Angular
+zone, where AngularFire runs every listener callback, and it reached the
+global error handler: a console error per read and the Error snackbar. A
+failed read is closed by its failure. Budgets, goals and the categories are
+not opened again while the page is open. The recent rows open again only
+once `recentWanted` has closed and opened again. The upcoming window opens
+again once `upcomingWanted` has, or when a `?bill` link's server read lists
+a rule the shown window lacks
+([step 4](#links-from-a-notification-bill-and-recap)). The period, previous-period and baseline reads
+had error paths of their own already
+([ADR 0196](ADR/0196-sibling-controls-say-what-they-act-on-a-name-holds-its-shown-words-a-focused-button-shows-an-indicator-inside-it-focus-stays-in-the-list-after-a-delete-and-a-failed-dashboard-read-is-quiet.md)).
 
 ## The Upcoming window's floor
 
@@ -263,9 +311,12 @@ drag handle does not offer," in the component's own words. Each move:
   positions already passed;
 - moves focus to the row's *other* button once the pressed one becomes
   disabled by the move — a disabled button drops focus, and the row's
-  surviving control is what takes it, via `afterNextRender` with a
-  destroyed-injector guard (the house idiom,
-  `transaction-preview-table.component.ts:808-836`).
+  surviving control is what takes it, through the shared
+  `focusWhenRendered` (`shared/utils/focus-when-rendered.ts`), which waits
+  for the render, stands down once the component has gone, and drops the
+  repeats of an Enter or Space held through the hand-off, so a held Enter on
+  **Move down** moves the card one row
+  ([ADR 0194](ADR/0194-one-painted-contrast-helper-and-one-focus-hand-off-a-card-is-scored-part-by-part-and-no-page-skips-a-heading-level.md)).
 
 That first announcement is optimistic — it names the position the move
 asked for, before the write behind it has settled. **A write that fails
@@ -276,11 +327,15 @@ the failed save, an event, so it queues rather than replacing. Without it, a
 screen-reader user had already been told where the card landed and had no
 way to learn that it had not.
 
-Each `mat-slide-toggle` is named `aria-labelledby` pointing at the row's own
-visible title span, never a bound `aria-label` — the house idiom
-(`security-settings.component.html:9`): the inner `button[role=switch]`
-takes its name from the referenced element, and `[attr.aria-label]` would
-stay on the host instead.
+Each `mat-slide-toggle` shows no words of its own, so it is named by
+`aria-labelledby` pointing at the row's own visible title span, never a
+bound `aria-label`: the inner `button[role=switch]` takes its name from the
+referenced element, and `[attr.aria-label]` would stay on the host instead.
+A switch that shows words beside it is named by those words, as the
+Settings page's four are, each in a group its section names
+([ADR 0192](ADR/0192-a-control-repeated-per-item-names-its-item-in-its-own-text-too-a-button-is-named-in-every-branch-and-an-unlabelled-switch-fails-the-axe-pass.md));
+an `aria-labelledby` there would hand the switch the section's title in
+place of its words.
 
 ## Links from a notification: `?bill` and `?recap`
 
@@ -305,7 +360,10 @@ subscription and does nothing.
    transactions instead.*).
 2. **Otherwise it waits for the upcoming listener's first emission**, since
    the signal's initial empty schedule would answer "absent" for every rule,
-   and then binds the rule to `app-upcoming-bills`' `focusRuleId`.
+   and then binds the rule to `app-upcoming-bills`' `focusRuleId`. A
+   listener that fails before it emits leaves the link waiting: nothing is
+   focused, nothing is asked of the server and the page goes nowhere
+   ([When a read fails](#when-a-read-fails)).
 3. **The card answers.** Every bill row carries `data-rule-id`, `data-day`
    and `tabindex="-1"`, so it can be focused by script and never by Tab. The
    card picks the rule's day nearest today, a tie going to the later day,
@@ -451,6 +509,39 @@ The Recent Transactions and Upcoming Bills specs sweep 200–420 px in
 Verdana: "never breaks the title to keep the actions beside it, at any rail
 width".
 
+## Card titles and View All
+
+**Every card's title is an `h2`**, one level under the page's `h1`, so a
+reader who moves by headings finds each card: Recent Transactions, Upcoming
+Bills, Spending by Category and the weekly recap (whose `id` its region's
+`aria-labelledby` still reads) moved up from `h3`, AI Insights' title is an
+`h2` where it was a `span`, and Budget Progress's is `<h2 mat-card-title>`.
+Upcoming Bills' day headers are `h3`, and an empty state inside a card stays
+an `h3`, under its card's title. The smoke walkthrough runs axe's
+`heading-order` once per page, and fails a page whose headings skip a level
+([ADR 0194](ADR/0194-one-painted-contrast-helper-and-one-focus-hand-off-a-card-is-scored-part-by-part-and-no-page-skips-a-heading-level.md)).
+
+Budget Progress's title wears the other cards' title look, from its own
+stylesheet's `.mat-mdc-card-title` rule: `--text-lg`, weight 600, a line one
+and a half times its size, normal tracking, in `--text-primary`. It read
+16px / 400 in the app before, beside the others' 18px / 600. The rule names
+Material's class, not the element, so it holds whichever tag carries the
+title, and with the component's attribute it outranks Material's.
+
+**The two View All links name their card.** Each shows *View All* and is
+named `dashboard.viewAllNamed` with the card's title: *View All Recent
+Transactions* and *View All Upcoming Bills*, ja *{{name}}をすべて表示*, tc
+*查看全部{{name}}*, so a list of links tells them apart and the shown words
+stay whole inside each name
+([ADR 0192](ADR/0192-a-control-repeated-per-item-names-its-item-in-its-own-text-too-a-button-is-named-in-every-branch-and-an-unlabelled-switch-fails-the-axe-pass.md)).
+Each is a 40 px target (`min-height: 40px` on `.view-all-link`), its words
+centred where they were; the link was 68 × 21 before, and the header row was
+already that tall for the card's menu
+([ADR 0196](ADR/0196-sibling-controls-say-what-they-act-on-a-name-holds-its-shown-words-a-focused-button-shows-an-indicator-inside-it-focus-stays-in-the-list-after-a-delete-and-a-failed-dashboard-read-is-quiet.md)).
+Each card's spec holds both, in its cases *names View All by the card's
+title in* en, ja and tc, and *gives View All a 40px target, clear of the
+menu beside it, its focus outline inside the card*.
+
 ## What a hidden card skips
 
 Hiding a card removes its component; nothing is hidden with CSS. The
@@ -505,6 +596,19 @@ the editor shows it hidden").
 the parent map the SDK creates and a nested write over a stored value that
 is not a map.
 
+A failing read has no emulator case: shutting Firestore down in the smoke
+would break the app every later case shares. `dashboard.component.spec.ts`'s
+describe *a live read that fails* holds each of the five reads with
+`unavailable`, `aborted` and `permission-denied`, delivered inside the
+Angular zone as AngularFire delivers them: nothing reaches `NgZone.onError`,
+the `ErrorHandler` double or `console.error`, and the card's last value is
+still shown. Its bill cases hold a waiting `?bill` link unanswered after the
+upcoming read fails, and answered from the window shown after one that
+painted first. In the browser, journey 123 in [e2e.md](e2e.md) ends by
+deleting the app's IndexedDB under `/dashboard`; run on 2026-11-19, it
+printed no `[GlobalErrorHandler]` line and showed no error notice, and the
+cards kept what they showed.
+
 ## Known gaps
 
 - **Offline, an unsaved change is held in memory rather than by Firestore.**
@@ -544,3 +648,27 @@ is not a map.
   covers everything behind the floor, so the card cannot say which rule
   stalled — and the walk producing it re-runs on every emission of the
   schedule listener, not only when the window itself moves.
+- **Other readers of the same streams still reach the global handler.**
+  Eleven readers of `loadCategories()` and two of `getGoals()` on other pages
+  and dialogs subscribe with no error path, so a failing listener there
+  still shows the Error snackbar. An error path on each, or one in the
+  services' streams, would close it; ADR 0196 lists them.
+- **A failed read says nothing on the page.** The cards keep what they last
+  showed with nothing to say it may be stale, by decision; only an
+  unexpected code leaves a `[Dashboard]` line in the console.
+- **A key held through some of the page's hand-offs is passed on.** The card
+  menu's own hand-offs, `focusAfterHide` and the period chip's clear focus
+  from a render hook of their own rather than through `focusWhenRendered`, so
+  a held key's repeats press what focus lands on; on the card menu a held
+  Enter can reopen the menu and press its first entry again, read from the
+  code and not driven (ADR 0194).
+- **The "go to page" links keep two looks.** Budget Progress's **Manage** is
+  a Material text button in `--mat-sys-primary` with a 16px `arrow_forward`;
+  **View All** is a plain link in `--color-accent` with an 18px
+  `chevron_right`. Budget Progress also keeps its own padding, 12px above its
+  header, where the other cards have 16px (ADR 0194).
+- **The period chip's clear has a 24 × 24 box.** It is a `mat-icon-button`,
+  and nothing in `period-selector.component.scss` holds in Material's 48px
+  touch span, which the theme's density 0 keeps round the box; no spec
+  measures where that span reaches, so whether the target meets the 40px
+  floor the app's other targets keep is unread (ADR 0196).

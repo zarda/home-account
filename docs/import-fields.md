@@ -365,6 +365,24 @@ own `imageMetadata`:
   what the extraction ran over, not `selectedFiles`. The camera flow passes
   the `sourceFiles` its capture result handed over via router state.
 
+**The order the photos are read in is the upload area's.** The upload area
+lists the files in the order they were picked and numbers the photos among
+themselves, and the image subset is the photos in that order. A photo moves
+only among the photos' rows: its arrows swap it with the photo before or
+after it, past any file between, and its handle drags it to another photo's
+place. A row that is no photo keeps its row. It is no drag item at all, so a
+photo dragged past a CSV leaves the CSV where it stands, and a drop's
+indices count the photos alone
+([ADR 0193](ADR/0193-a-row-that-is-no-photo-is-no-drag-item-the-receipt-or-statement-chips-are-measured-and-the-upload-area-shows-where-a-photo-will-land.md),
+which amends how
+[ADR 0187](ADR/0187-repeated-controls-name-their-item-the-upload-area-has-one-button-and-numbers-photos-among-photos-resting-text-is-a-token-sentences-end-in-the-readers-stop-and-a-spec-that-expects-nothing-fails.md)
+kept such a row in its place). While a photo is held, an empty outline dashed
+in `--color-primary-text` stands where it will land; the handle is a 40px
+target, and each arrow's touch target is held to the arrow's own 28px, so
+neither reaches over the other. The names, the focus after a move and the
+row's layout on a phone are in [accessibility.md](accessibility.md) and
+[ui-overflow.md](ui-overflow.md).
+
 **The offline drain is the second door that attaches**, and it attaches
 through the same planner: it plans over the rows the reader produced, keyed on
 the ids it is about to write, and hands the file to the row the plan names.
@@ -416,7 +434,7 @@ runs again, and whether anything is remembered past the wizard.
 | Location / country | one chip with three controls: the name is an inline editor, the country a menu over the bundled table with **No country** on it, and the removal clears both | a picked country clears `receiptCountry` and writes `location.country`; the removal clears `location` and `receiptCountry` together | no | no |
 | Row (added by hand) | **Add a row** under the list appends a blank row with its description editor open; Continue and Import wait until it has an amount and a description | nothing — it is born with no grade and no mark to clear | not on arrival while blank (a blank row has nothing to compare; a filled row that appears is checked, as the split row below is), but on every edit to a detection input — date, amount, type or description — so a filled row has been checked | no |
 | Row (split) | **Split** in the extras opens an inline amount field; Enter takes that amount into a new row directly under the original, which keeps the purchase's identity — description, date and its marks, currency, type, category, location, tags, photo — and drops notes, the rule link and the verdict, and opens with its description editor focused. The figure taken and the remainder are each rounded to the row's own currency, and the refusal is judged on the rounded remainder; the trigger is hidden altogether on a row worth less than two minor units, since no figure would clear the floor on both halves | `fieldConfidence.amount` on both halves; the type's grade, `movedCategory` and `typeFlaggedAs` ride onto both, since a split does not touch the type, so each half counts as flagged | yes — the original by its amount, the part on arrival; the two are never each other's within-batch twins | no |
-| Row (merged) | **Merge into…** lists the other rows in the same currency that have an amount, a description and no standing verdict; the target keeps its id, the amounts net with the type following the sign, tags and photos union, notes join, and the source leaves the batch with everything keyed on its id | `fieldConfidence.amount` on the survivor, whose verdict is written clear, and `fieldConfidence.type`, `movedCategory` and `typeFlaggedAs` too when the two rows sat on opposite sides, since the net then decides the type, so the survivor counts as neither flagged nor flipped; on one side the target's ride through, and the source's never do. Whichever side the net lands on, the survivor's category is held to it as a flip holds it, announced | yes, the target — the row that merged away owes none | no |
+| Row (merged) | **Merge…** lists the other rows in the same currency that have an amount, a description and no standing verdict; the target keeps its id, the amounts net with the type following the sign, tags and photos union, notes join, and the source leaves the batch with everything keyed on its id | `fieldConfidence.amount` on the survivor, whose verdict is written clear, and `fieldConfidence.type`, `movedCategory` and `typeFlaggedAs` too when the two rows sat on opposite sides, since the net then decides the type, so the survivor counts as neither flagged nor flipped; on one side the target's ride through, and the source's never do. Whichever side the net lands on, the survivor's category is held to it as a flip holds it, announced | yes, the target — the row that merged away owes none | no |
 | Row (removed) | **Remove** in the extras takes the row off the batch, on any row — in one press for a row as it arrived, and after *Remove this row?* for one carrying work made on the card (`editedOnCard`, a split part, or a merge survivor); focus lands on the neighbour's Remove or Add a row | everything keyed on its id — the card's editing state, the wizard's overrule, stamp and verdict, and its entry in the receipt-row set | not for the removed row — nothing left to check — but yes for a survivor whose within-batch verdict named it, since that verdict is now about a row that has gone | no |
 | Recurring rule | the offer's checkbox | sets or restores `recurringId` and `isRecurring` | no | no |
 | Duplicate verdict | the badge's close button, named and tooltipped *Not a duplicate — import {description}* | `isDuplicate` and `duplicateOf`, reselects the row, and marks it overruled for the rest of the batch | it *is* the overrule | no |
@@ -437,6 +455,24 @@ otherwise, and the add trigger it would land on renders only in the `@else` of
 its own editor. Editors take their landings from the card's one `EDITORS`
 table; a control that is not an editor names its own beside the write
 ([ADR 0107](ADR/0107-the-review-card-has-one-editing-machine.md)).
+
+A control the card stamps once per row also **names its row**, in a sentence
+that holds the words it shows, whole: *Add tag to {description}*, *Add
+location to {description}*, *Notes for {description}* (the Notes field's own
+label, reused), *Split {description} into two rows*, *Merge {description}
+into another row* and *Remove {description}* in en. Two cards' buttons then
+read apart, and a voice user can still say the words a button shows. Add
+tag, Add location and Notes fill the slot through `announceDescription(row)`,
+so an untitled row reads its stand-in; on such a row Split and Remove are
+named by the words they show, and Merge is not offered. In en Merge shows
+**Merge…**, as ja shows *結合…* and tc *合併…*: its name holds *Merge*, and
+the ellipsis says only that a menu follows. tc's Split is named
+*分割「{description}」成兩列*, which holds the *分割* it shows. The label
+gate's sixth rule fails a control stamped once per item whose whole name, its
+own text included, is one key with no parameters, and the card's spec holds
+each name to its control's shown words in en, ja and tc
+([ADR 0192](ADR/0192-a-control-repeated-per-item-names-its-item-in-its-own-text-too-a-button-is-named-in-every-branch-and-an-unlabelled-switch-fails-the-axe-pass.md),
+[ADR 0196](ADR/0196-sibling-controls-say-what-they-act-on-a-name-holds-its-shown-words-a-focused-button-shows-an-indicator-inside-it-focus-stays-in-the-list-after-a-delete-and-a-failed-dashboard-read-is-quiet.md)).
 
 The decisions are
 [ADR 0099](ADR/0099-the-review-step-edits-what-it-shows.md) for the editors,

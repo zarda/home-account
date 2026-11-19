@@ -60,6 +60,40 @@ Specs and smoke tests provide `provideAppCharts()` rather than their own
 registry. A spec that registered the full set would pass against pieces
 production does not ship.
 
+## Tailwind's utilities in the stylesheet
+
+`styles` is an initial output, and Tailwind writes into it a rule for every
+utility whose name it finds standing alone in a file its `content` reads,
+comments and strings included. `tailwind.config.js`'s `content` reads
+`./src/**/*.{html,ts}` and leaves out `!./src/**/*.spec.ts`,
+`!./src/**/*.testing.ts`, `!./src/app/core/services/testing/**` and
+`!./src/test-main.ts` (Tailwind 3.4.19 reads a negated glob), so a word in a
+spec, a testing helper or the test main ships nothing. A word in an app
+template or `.ts` still ships its utility, a comment included: no such file
+holds *ring* standing alone, and `theme-aliases.spec.ts`'s case *ships no
+rule for a utility that only a spec names* fails when the sheet Karma builds
+from the same config holds a `.ring` selector. It first finds
+`.text-fg-disabled`, which only the safelist ships, so that the absence is
+read from a sheet that was read
+([ADR 0195](ADR/0195-a-gate-holds-the-test-main-to-the-builders-init-specs-stay-out-of-the-stylesheet-a-lone-date-run-is-silent-and-the-opacity-gate-reads-a-url-in-a-comment-as-a-comment.md)).
+
+The config's `safelist` holds the nineteen role aliases of
+[ADR 0164](ADR/0164-colours-come-from-theme-tokens-and-a-gate-keeps-them-there.md)
+that no file still in `content` names, `text-fg-disabled` and `text-ai`
+among them. They ship as the theme's documented colour API, which
+`theme-aliases.spec.ts` reads off the page in every palette, and their rules
+come to 1,015 bytes of the built sheet. A template that starts naming one
+makes its entry redundant, not wrong. The other eight aliases ship because
+templates name them.
+
+Leaving the specs out was proved on the built sheet, by
+`npm run build:analyze` before and after on 2026-11-19: `styles-*.css` went
+from 32,655 to 31,811 bytes, 844 less, the initial bundle from 2,428,963 to
+2,428,119, and the sheet's class selectors from 173 to 166. The seven that
+left, `.flex-wrap`, `.invert`, `.line-through`, `.ordinal`, `.ring`,
+`.underline` and `.uppercase`, were each a word only a spec held, and a
+rule-by-rule diff of the two sheets shows nothing else changed. None came.
+
 ## What a component declares
 
 A Material module in a component's `imports: [...]` that its template never
@@ -216,10 +250,15 @@ for what ADR 0187's third browser run found, the names that put a
 description in the reader's own quotation marks call
 `TranslationService.t('common.quotedName')` in such an argument for every
 transaction or review row that has a description: the transaction list's
-note and receipt buttons and the receipt manager's remove-all, convert and
-remove buttons (each component's `quotedName`), and the review card's
-per-row names (`announceDescription`, which ten pipe arguments in its
-template read). The review card's row checkbox makes the same call without
+note and receipt buttons, the receipt manager's remove-all, convert and
+remove buttons and its thumbnails' alt (each component's `quotedName`), a
+transaction row's swipe *Edit* and *Delete* (the row's own `quotedName()`),
+and the review card's per-row names (`announceDescription`, which thirteen
+pipe arguments in its template read). The thumbnails' alt, the swipe
+buttons and three of the review card's thirteen, *Add location*, *Add tag*
+and *Notes*, came with the per-item names of
+[ADR 0192](ADR/0192-a-control-repeated-per-item-names-its-item-in-its-own-text-too-a-button-is-named-in-every-branch-and-an-unlabelled-switch-fails-the-axe-pass.md).
+The review card's row checkbox makes the same call without
 the pipe: its name is `selectLabel(row)`, a method the template calls on
 each check, which asks the catalog for `import.selectRowLabel` with
 `announceDescription`'s answer. Before, a description went in as it stood,
@@ -240,6 +279,42 @@ accepted and has not been measured.
 Against 2,424,293 bytes (JavaScript 2,392,926, stylesheet 31,367, in 63
 initial files), measured by `npm run build:analyze` from a production build
 of `26.11.185` on 2026-11-17.
+
+The work of #542, #543, #544, #545, #546 and #555
+([ADR 0192](ADR/0192-a-control-repeated-per-item-names-its-item-in-its-own-text-too-a-button-is-named-in-every-branch-and-an-unlabelled-switch-fails-the-axe-pass.md)
+to
+[ADR 0197](ADR/0197-a-deleted-transaction-can-be-brought-back-for-ten-seconds-because-the-delete-waits.md))
+puts the initial bundle over that warning, and the warning has not moved
+for it. A production build on 2026-11-19, after the fixes for what that
+work's first browser run found, prints the initial bundle `2.86 kB` over
+the 2.42 MB the build rounds the warning to; a warning stops nothing, and
+the build completes. The last exact figure, from `npm run build:analyze` on
+2026-11-19 once specs had left the stylesheet's `content`, is 2,428,119
+bytes (JavaScript 2,396,308, stylesheet 31,811), 3,119 over 2,425,000.
+
+Three parts of it are known by name. `pending-delete.service.ts`, the root
+`PendingDeleteService` that holds a deleted transaction's delete through its
+ten-second Undo window, measured 2,670 bytes of `main` when the transactions
+page was wired to it: it is initial because the header injects it, to make a
+waiting delete real before its sign-out
+([ADR 0197](ADR/0197-a-deleted-transaction-can-be-brought-back-for-ten-seconds-because-the-delete-waits.md)).
+The shared focus hand-off, `shared/utils/focus-when-rendered.ts`, is an
+initial chunk of its own, 935 bytes, which holds `focus.utils.ts` beside it.
+It is initial because the transaction form's split parts import it and
+`quick-add.service.ts` imports the form, and it is a chunk of its own
+because lazy chunks import it too. At its commit the private copies it
+replaced went with `import-focus.ts`, and the initial bundle fell 582 bytes,
+from 2,424,691 to 2,424,109, with one initial file more
+([ADR 0194](ADR/0194-one-painted-contrast-helper-and-one-focus-hand-off-a-card-is-scored-part-by-part-and-no-page-skips-a-heading-level.md)).
+The stylesheet stood at 32,655 bytes before specs left `content`, 1,288 more
+than the 31,367 above: the rules that draw Material's focus indicator inside
+every Material button
+([ADR 0196](ADR/0196-sibling-controls-say-what-they-act-on-a-name-holds-its-shown-words-a-focused-button-shows-an-indicator-inside-it-focus-stays-in-the-list-after-a-delete-and-a-failed-dashboard-read-is-quiet.md)),
+the one that opens every notice above the phone's bottom bar (ADR 0197),
+and `.flex-wrap`, which a spec's inline style had brought in. Leaving the
+specs out took 844 bytes off it
+([Tailwind's utilities in the stylesheet](#tailwinds-utilities-in-the-stylesheet)).
+The rest of the JavaScript's growth has not been measured input by input.
 
 The warning went up, to 2.425 MB, when the work of #535, #505, #517 and the
 last cheap gap of #446
@@ -351,15 +426,18 @@ inputs come to 2,885,955 bytes (2,884,980 at the base), 975 more, against
 2,415,396 (2,414,488) on disk and 908 more, a difference of 67 bytes between
 the two measures that is not attributed.
 
-The stylesheet's 171 bytes are no rule of this work. Tailwind's `content`
-reads every `.ts` under `src`, specs included, and *ring*, a word standing
-alone in a comment of `file-dropzone.component.spec.ts`, is the name of
-Tailwind's bare `ring` utility, which it now generates. Nothing in the app
-uses it. Specs bring about 1.8 kB of Tailwind's utilities into the
-stylesheet in all, some of them on purpose (`theme-aliases.spec.ts` reads
-every semantic alias's utility off the page), so leaving specs out of
-`content` is more than a one-line change; ADR 0187 records it as a known
-gap.
+The stylesheet's 171 bytes were no rule of this work. Tailwind's `content`
+then read every `.ts` under `src`, specs included, and *ring*, a word
+standing alone in a comment of `file-dropzone.component.spec.ts`, is the
+name of Tailwind's bare `ring` utility, which it then generated. Nothing in
+the app used it. Specs brought about 1.8 kB of Tailwind's utilities into
+the stylesheet in all, some of them on purpose (`theme-aliases.spec.ts`
+reads every semantic alias's utility off the page), so leaving specs out of
+`content` was more than a one-line change, and ADR 0187 recorded it as a
+known gap. ADR 0195 closed it: specs are out of `content`, which took the
+`.ring` rule and six others, 844 bytes, out of the sheet, and the aliases no
+template names are safelisted, 1,015 bytes of rules
+([Tailwind's utilities in the stylesheet](#tailwinds-utilities-in-the-stylesheet)).
 
 The `anyComponentStyle` budget is unchanged. Compiled by Sass, compressed,
 the import wizard's and the preview table's stylesheets read as before; the
@@ -399,10 +477,12 @@ attributed. The rest of the fixes are in lazy chunks: the filter panel's
 suggestions and save-search box, the transaction list's confirms, the upload
 area's removes, the budget dialog's row, the tab strip's reveal and the
 review card's keep-date and currency-offer tooltips. Among the lazy chunks,
-`import-focus.ts`, which the filter panel now imports too, moved out of the
-import wizard's chunk into a small one it shares with
-`country-options.utils.ts`. The confirms' new sentences are in the catalogs,
-which are fetched at runtime. In the same stats, the component stylesheets
+`import-focus.ts`, which the filter panel then imported too, moved out of the
+import wizard's chunk into a small one it shared with
+`country-options.utils.ts`; it has since become
+`shared/utils/focus-when-rendered.ts`, an initial chunk of its own (above).
+The confirms' new sentences are in the catalogs, which are fetched at
+runtime. In the same stats, the component stylesheets
 the fixes touched stay well under the `anyComponentStyle` warning: the dialog
 header's took 164 bytes (425 to 589), the filter panel's 42 (5,425 to 5,467)
 and the budget dialog's 20 (663 to 683). A component's styles ship inside its
@@ -415,7 +495,7 @@ found (ADR 0187 records both) brought the figure to 2,416,258 bytes, 519
 more than the 2,415,739 above, all of it JavaScript; the stylesheet did not
 move. No chunk was cut or added, and each of the 63 initial files holds the
 same inputs as one of the 2,415,739-byte build's 63, but for `main`, which
-also holds `focus.utils.ts`, new with the fixes. Their growth, measured the
+then also held `focus.utils.ts`, new with the fixes. Their growth, measured the
 same way against the stats of the 2,415,739-byte build: `dialog.config.ts`
 took 278 bytes (180 to 458): `provideAppDialogs()` now provides, beside the
 options, one rule for where focus goes when a dialog closes,
@@ -424,8 +504,9 @@ focus back to the menu's button if focus has fallen to the page.
 `focus.utils.ts` brought 136: `focusDropped`, the one test of whether focus
 has fallen to the page, which that rule reads. It moved there out of the
 household page's focus helpers, which load with that page, and the
-transactions page and the transaction list read it too. Both files are in
-`main`, which took 347 on disk. `transaction-display.utils.ts` took 95 (162
+transactions page and the transaction list read it too. Both files were in
+`main`, which took 347 on disk; `focus.utils.ts` has since moved into the
+shared focus hand-off's own initial chunk (*The budget*, above). `transaction-display.utils.ts` took 95 (162
 to 257): `quotedTransactionName`, which the list's note and receipt buttons
 and the receipt manager's image controls read, puts a description in the
 reader's own quotation marks (`common.quotedName`: none in en and ja, 「」 in
@@ -448,8 +529,10 @@ overview's goal button; the note and share dialogs' stand-in, which now
 follows a language switch; Save search's open state and the rings round the
 filter panel's two text boxes; the review card's names; and the guard in
 `import-focus.ts` that keeps a held Enter or Space from pressing what the
-filter panel, the upload area and the review card hand focus to. The
-catalogs, which gained `common.quotedName`, lost two keys the review card no
+filter panel, the upload area and the review card hand focus to, which now
+lives in `focus-when-rendered.ts` and guards the hand-offs of all thirteen
+of its callers. The catalogs, which gained `common.quotedName`, lost two
+keys the review card no
 longer reads and in tc lost the quotation marks round a description, are
 fetched at runtime. The filter panel's stylesheet, which took the rings,
 raised no `anyComponentStyle` warning. The changes to `icon-labels:check`,
@@ -997,3 +1080,11 @@ CI. The real run needs a production build, so it is local only
 - Nothing measures the initial bundle in CI beyond the budget. The budget
   catches growth past a threshold, not a steady creep beneath it, and
   `build:analyze` runs only when someone runs it.
+- The warning stops nothing. A build over it completes, as the builds of
+  the work of #542 to #546 and #555 do ([the budget](#the-budget)); only
+  the 2.7 MB error fails one.
+- Only `.ring` is read back from the stylesheet. A word in an app template
+  or `.ts` that names any other Tailwind utility, a comment included, ships
+  it, and nothing fails; three of the four `content` exclusions
+  (`*.testing.ts`, `core/services/testing/**`, `test-main.ts`) remove nothing
+  today and no case pins them (ADR 0195).

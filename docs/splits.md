@@ -65,11 +65,17 @@ the purchase they came from.
 
 **Add.** The amount field stays the purchase's total throughout. Pressing
 **Split across categories** adds a row asking for a category and an amount;
-adding more rows takes more off the same total. A footer line under the
-rows reads the remainder as it stands — *"NT$2 stays on the main
-category"* — and updates as each row changes. A row with no category chosen
-reports *"Every part needs a category"* instead, ahead of any amount
-problem, because a blank category is the more specific thing to fix first.
+adding more rows takes more off the same total. Focus moves to the new
+row's category select once the row has rendered, through the shared focus
+hand-off, `focusWhenRendered` (`shared/utils/focus-when-rendered.ts`), which
+also drops the repeats of an Enter or Space held through it, so a key held
+on the button presses nothing on the select
+([ADR 0194](ADR/0194-one-painted-contrast-helper-and-one-focus-hand-off-a-card-is-scored-part-by-part-and-no-page-skips-a-heading-level.md)).
+A footer line under the rows reads the remainder as it stands — *"NT$2
+stays on the main category"* — and updates as each row changes. A row with
+no category chosen reports *"Every part needs a category"* instead, ahead
+of any amount problem, because a blank category is the more specific thing
+to fix first.
 A part, or a set of parts, that leaves nothing positive on the main
 category — zero or negative — reports the same invalid state with
 `role="alert"`, and the submit control is held until it clears: nothing
@@ -110,9 +116,23 @@ as *"Part of a split purchase"* rather than only shown. No query backs the
 badge; it costs nothing past what the list already fetched.
 
 Deleting a part deletes exactly that row, nothing else in its group. The
-confirmation names what is actually happening — *"Delete this part of
-'{description}'? Its other parts stay."* — rather than the ordinary delete
+confirmation names what is actually happening — *Delete this part of
+"{description}"? Its other parts stay.* — rather than the ordinary delete
 message, so the choice being made is stated rather than implied.
+
+A part's delete waits as every row's delete from the list does
+([ADR 0197](ADR/0197-a-deleted-transaction-can-be-brought-back-for-ten-seconds-because-the-delete-waits.md)).
+Once confirmed, the part leaves the list, the header count and the period
+totals at once, focus goes to the row now in its place, or the one before
+it at the end of the list
+([ADR 0196](ADR/0196-sibling-controls-say-what-they-act-on-a-name-holds-its-shown-words-a-focused-button-shows-an-indicator-inside-it-focus-stays-in-the-list-after-a-delete-and-a-failed-dashboard-read-is-quiet.md)),
+and a notice offers **Undo** for ten seconds, longer while it is hovered or
+holds focus. Only when that window ends is the part's document deleted.
+**Undo** shows the part again, badge and group field untouched, since
+nothing was written. One delete waits at a time, so deleting a second part
+makes the first one's delete real at once, and only the last part's Undo is
+offered. Leaving or hiding the page, and signing out, make a waiting delete
+real too.
 
 ## Budgets and reports need nothing new
 
@@ -148,7 +168,14 @@ submit, the goal field hiding and returning, an add that produces three
 real documents sharing one `splitGroupId` and one `createdAt`, the badge
 reaching assistive technology, the dashboard's category chart crediting
 each part, and a restore that deletes all three through the list with the
-part-aware confirmation on each.
+part-aware confirmation on each. Since a delete waits for its Undo window,
+the restore reads the documents back only once the last part's window has
+ended or the page has been left.
+
+`split-parts.component.spec.ts` holds the hand-off to a new part's category
+select ("moves focus to the new row's category select"), and the shared
+helper's own spec the held key. No browser run has driven the hand-off: the
+run of 19 November 2026 had no split purchase in its data.
 
 `transaction-split.smoke.spec.ts` proves both service seams and the rules'
 `splitGroupId is string` line against the deployed emulator rules, and

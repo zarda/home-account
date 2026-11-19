@@ -817,6 +817,13 @@ Emptying a place name withdraws the name only, keeping a country under it;
 withdrawing the country from a location with no name drops the location whole,
 because a bare coordinate pair is a shape the write refuses.
 
+**Add tag** and **Add location** are stamped once per card, so each names its
+row around the words it shows — *Add tag to {description}* and *Add location
+to {description}* in en — and two cards' buttons read apart, while the words
+on the button stay whole inside its name for a voice user to say. An untitled
+row is named by its stand-in
+([ADR 0192](ADR/0192-a-control-repeated-per-item-names-its-item-in-its-own-text-too-a-button-is-named-in-every-branch-and-an-unlabelled-switch-fails-the-axe-pass.md)).
+
 ## Splitting, merging and removing on the card
 
 Consolidation is a one-way door: `consolidateReceiptItems` folds every item
@@ -855,7 +862,7 @@ duplicate detector never reads rows born of one split as each other's twins. A
 bill halved is the first thing Split is for, and an even split is exactly the
 shape the within-batch pass looks for.
 
-**Merge into…** lists the other rows in the same currency as *description ·
+**Merge…** lists the other rows in the same currency as *description ·
 amount · date*; picking one folds this row into it. The target keeps its id and
 its identity — description, date and marks, category, currency, rule link — and
 the amounts net, an income line cancelling an expense with the type following
@@ -910,9 +917,18 @@ no verdict, and after a removal the rows a departed within-batch twin leaves
 holding a verdict about it. All three keep the card's own rules: 40px targets,
 nothing truncating, and a focus landing named for the control that leaves —
 the part's editor after a split, the survivor after a merge, the neighbour's
-own Remove after a removal. None of them edits the note, and a merge cannot be
-undone except by splitting an amount back off, which makes a new part with the
-survivor's identity rather than the row that was folded in. The decisions, the
+own Remove after a removal. Each is named for its row in a sentence that
+holds the words it shows, so a voice user can still say what the button
+shows: *Split {description} into two rows*, *Merge {description} into another
+row* and *Remove {description}* in en. On a row with no description, Split and
+Remove are named by the words they show, and Merge is not offered. In en
+Merge shows *Merge…*, as ja shows *結合…* and tc *合併…*: the name holds
+*Merge*, and the ellipsis says only that a menu follows. tc's Split is named
+*分割「{description}」成兩列*, which holds the *分割* it shows
+([ADR 0196](ADR/0196-sibling-controls-say-what-they-act-on-a-name-holds-its-shown-words-a-focused-button-shows-an-indicator-inside-it-focus-stays-in-the-list-after-a-delete-and-a-failed-dashboard-read-is-quiet.md)).
+None of them edits the note, and a merge cannot be undone except by splitting
+an amount back off, which makes a new part with the survivor's identity rather
+than the row that was folded in. The decisions, the
 seams they had to meet and what they rejected are in
 [ADR 0106](ADR/0106-the-review-step-splits-a-row-and-merges-two.md) and
 [ADR 0108](ADR/0108-the-review-step-removes-a-row.md).
@@ -920,8 +936,8 @@ seams they had to meet and what they rejected are in
 **What counts as merged is the app's to say.** The processing step's banner
 and the confirm step's *Items merged* card count the rows whose
 `imageMetadata.wasMerged` is set, and two things set it: consolidation, when it
-folds two or more items of one receipt group into a row, and **Merge into…**,
-on the survivor. The model is not asked — the multi-image prompt carries no
+folds two or more items of one receipt group into a row, and **Merge…**, on
+the survivor. The model is not asked — the multi-image prompt carries no
 such field, and the shared cloud base writes `false` on every row it reads
 whatever the answer says — and a receipt group of one is written `false`
 too. A split part is written `false`, because a fraction of a merged receipt
@@ -1326,7 +1342,13 @@ order, one per success and nothing else. Import History turns that into a way
 back into the ledger: a **View transaction** button on a record that created
 exactly one, and a menu of positional entries (*Transaction 1*,
 *Transaction 2*) on a batch, since the record stores ids and has no description
-to label them with. Either opens `/transactions?tx=<id>`, which widens the
+to label them with. The button, the menu's trigger and the record's **Delete**
+each keep the words they show and add the record, by its file and when it
+came in, since two photos can share a file name and two records a count:
+*View transaction from {name} ({date})*, *View transactions ({count}) from
+{name} ({date})* and *Delete {name} ({date}) from import history* in en
+([ADR 0192](ADR/0192-a-control-repeated-per-item-names-its-item-in-its-own-text-too-a-button-is-named-in-every-branch-and-an-unlabelled-switch-fails-the-axe-pass.md)).
+The button and each menu entry open `/transactions?tx=<id>`, which widens the
 page to every date before its first filter is ever applied, jumps the window
 to that transaction, highlights it and opens its edit dialog — a target the
 default month filter would have missed now arrives the same way a current
@@ -1413,13 +1435,24 @@ other. Files shared from other apps (see
 [share-import.md](share-import.md)) arrive through that same wizard intake, so
 a shared receipt follows this rule rather than adding a third producer.
 
-**A statement photo is refused rather than queued.** The wizard asks which
-kind of image you picked, and with no connection the statement door says cloud
-AI could not be reached instead of storing the page. The drain reads every
-queued image as a receipt — merging the line items of one purchase into a
-single transaction — so a statement page through it would land a page of
-unrelated charges in the ledger as one lumped row that no review step ever
-saw. Queueing one could only be right once a queued image carried its own kind
+**The wizard reads the photos as what it was told they are.** With a photo
+picked, the upload step asks *What are these images?* over two chips,
+*Receipts* and *Statement*, and the batch's photos go to the receipt door or
+the statement door by the one picked. The question always has an answer: a
+second press on the picked chip keeps it picked. It used to take the pick
+away, leaving neither chip shown or announced as picked while the photos were
+still read as receipts, or, from *Statement*, falling back to receipts unseen.
+Both chips' words are measured as painted in the four palettes, picked and
+not, at AA on what each stands on, and the picked chip's checkmark at 3:1
+([ADR 0193](ADR/0193-a-row-that-is-no-photo-is-no-drag-item-the-receipt-or-statement-chips-are-measured-and-the-upload-area-shows-where-a-photo-will-land.md)).
+
+**A statement photo is refused rather than queued.** With *Statement* picked
+and no connection, the statement door says cloud AI could not be reached
+instead of storing the page. The drain reads every queued image as a
+receipt — merging the line items of one purchase into a single transaction —
+so a statement page through it would land a page of unrelated charges in the
+ledger as one lumped row that no review step ever saw. Queueing one could
+only be right once a queued image carried its own kind
 ([ADR 0142](ADR/0142-a-queued-receipt-lands-whole-or-says-what-it-dropped.md)).
 The in-form **Scan Receipt** queues nothing either — as above, it keeps the
 image on the form and tells you the scan needs a connection — and neither does

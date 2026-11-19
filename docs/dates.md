@@ -292,7 +292,17 @@ consecutive periods cannot overlap or leave a gap.
   `TZ=America/New_York` and `TZ=Asia/Tokyo` inside one `emulators:exec` by
   `npm run smoke:dates` (ADR 0050). Anything asserting a calendar day or a
   window bound belongs in one of the two lists; a spec left out of both is
-  only ever run at one offset.
+  only ever run at one offset. A lone `test:dates` run prints no browser
+  console line, `WARN:` or `ERROR:`, in either zone: a case that makes the
+  code under test warn on purpose spies the console and expects its line.
+  The household and export specs do it through `quietConsole`
+  (`core/services/testing/console-quiet.ts`), which holds back only the lines
+  that start with a prefix the spec names and passes every other line on, and
+  they check after each case that every line held back was read
+  (`expectEveryHeldLineRead`). A spec that joins the list expects the lines
+  its cases cause, or the run is no longer silent. Karma's own three font
+  `WARN [web-server]: 404` lines still print
+  ([ADR 0195](ADR/0195-a-gate-holds-the-test-main-to-the-builders-init-specs-stay-out-of-the-stylesheet-a-lone-date-run-is-silent-and-the-opacity-gate-reads-a-url-in-a-comment-as-a-comment.md)).
 - `import-dto.utils.spec.ts` is left out **on purpose**, and this is the
   place that says so, so it is not re-filed. Every `resolveImportDate` case
   there freezes the clock with `jasmine.clock().mockDate` and then compares
@@ -355,7 +365,7 @@ behind a file name.
 |---|---|---|
 | `recent-transactions.component.ts` | 1 | cloning a value already typed as a `Date`, not parsing a string |
 | `insight-card.component.ts` | 2 | the legacy-ISO-instant fallback, reached only after `parseDayKey` returns null |
-| `import-review.utils.ts` | 2 | `CategorizedImportTransaction.date` is typed `Date` (`import-history.model.ts`), so `:90` and `:353` both clone; recorded here for the first time when `dates:check` landed |
+| `import-review.utils.ts` | 2 | `CategorizedImportTransaction.date` is typed `Date` (`import-history.model.ts`), so `:164` and `:602` both clone; recorded here for the first time when `dates:check` landed |
 
 Anything else is the #174 shape and should go through `parseDateInput`.
 
