@@ -216,8 +216,11 @@
  *     speech user can say what they see (WCAG 2.5.3).
  *   - **Two text-named controls are exempt.** One inside a `<mat-menu>`: its
  *     panel is open only for the one trigger that opened it, and that trigger
- *     is already held to name its item, by the fourth rule and this one. A
- *     control named by its `aria-label` is read inside a menu as anywhere.
+ *     is already held to name its item, by the fourth rule and this one. That
+ *     holds for a menu stamped once per item, and not for a control a repeat
+ *     inside the menu stamps: its copies share the one open panel under one
+ *     name, so it is read. A control named by its `aria-label` is read inside
+ *     a menu as anywhere.
  *     And one with a bound `aria-describedby` (`[attr.aria-describedby]`,
  *     `[aria-describedby]`, or a literal that interpolates,
  *     `aria-describedby="{{ r.hintId }}"`): the household's six buttons are
@@ -801,12 +804,12 @@ function readBlocks(text, frames, { casesApart = false, base = 0 } = {}) {
 
 /**
  * Walks a template's opening tags in order, calling
- * `visit({ name, attrs, line, at, repeated, inTemplate, cases, arms })` for
- * each, `at` being the tag's offset in the template (readOwnTexts keys on
- * it). `repeated` is true when the element is stamped once per item within
- * this template: inside an `@for` block, or on or under an element carrying
- * a repeating structural directive. `inTemplate` is true when an
- * `<ng-template>` is open around it.
+ * `visit({ name, attrs, line, at, repeated, inTemplate, cases, arms, inMenu,
+ * repeatedInMenu })` for each, `at` being the tag's offset in the template
+ * (readOwnTexts keys on it). `repeated` is true when the element is stamped
+ * once per item within this template: inside an `@for` block, or on or under
+ * an element carrying a repeating structural directive. `inTemplate` is true
+ * when an `<ng-template>` is open around it.
  *
  * With `casesApart`, an `@case` on the nearest `@for`'s own item holds that
  * `@for` apart (readBlocks), so an element under it is not repeated by it,
@@ -818,6 +821,11 @@ function readBlocks(text, frames, { casesApart = false, base = 0 } = {}) {
  * conditional or a switch around it, as `{ chainAt, armAt }` (armOf). Two
  * elements show at once only if, at the deepest chain both sit in, they sit
  * in the same arm (exclusiveArms).
+ *
+ * `inMenu` is true when a `<mat-menu>` is open around the element, and
+ * `repeatedInMenu` when a repeat inside the innermost such menu, or the
+ * element's own repeating directive, stamps it there: every copy then sits in
+ * the one panel the menu opens.
  */
 export function walkTemplate(source, visit, { casesApart = false } = {}) {
   const masked = maskComments(source);
@@ -840,15 +848,19 @@ export function walkTemplate(source, visit, { casesApart = false } = {}) {
     const repeat = REPEAT_DIRECTIVE.test(attrs);
     const cases = frames.filter((frame) => frame.lifts);
     const lifted = new Set(cases.map((frame) => frame.lifts));
+    const menuAt = frames.findLastIndex((frame) => frame.element === 'mat-menu');
+    const repeatAt = frames.findLastIndex((frame) => frame.repeat && !lifted.has(frame));
     visit({
       name,
       attrs,
       line: lineOf(masked, match.index),
       at: match.index,
-      repeated: repeat || frames.some((frame) => frame.repeat && !lifted.has(frame)),
+      repeated: repeat || repeatAt >= 0,
       inTemplate: frames.some((frame) => frame.element === 'ng-template'),
       cases: cases.map((frame) => ({ switchAt: frame.switchAt, caseAt: frame.at })),
       arms: frames.map(armOf).filter((arm) => arm !== null),
+      inMenu: menuAt >= 0,
+      repeatedInMenu: menuAt >= 0 && (repeat || repeatAt > menuAt),
     });
     const selfClosing = /\/\s*$/.test(attrs) || VOID_ELEMENTS.has(name);
     if (!selfClosing) frames.push({ element: name, repeat });
@@ -1054,7 +1066,7 @@ function ownTextKey(runs) {
  * from its own text, and whose text is one key with no parameters (or a
  * ternary between two), by its opening tag's offset, mapped to that key.
  * walkTemplate reads opening tags only, so this pass keeps its own stack of
- * open elements, which is also how it knows a `<mat-menu>` is open.
+ * open elements.
  *
  * A control takes its name from its text when no `aria-label` or
  * `aria-labelledby` names it, in any spelling (THUMB_NAMES). Its text is every
@@ -1062,11 +1074,11 @@ function ownTextKey(runs) {
  * ligature MatIcon hides) and outside an element with a literal
  * `aria-hidden="true"`, with BESIDE_THE_TEXT where an `<img>` with an alt or a
  * component adds to the name (addsToName), so that a bare key beside one is
- * not read as bare. Two text-named controls are left out: one inside a
- * `<mat-menu>`, whose panel opens for the one trigger that names the item, and
- * one with a bound `aria-describedby` (describedByBound), the household's
- * "named by what it does, described by its item" (a Known gap, see the
- * header).
+ * not read as bare. A control with a bound `aria-describedby`
+ * (describedByBound) is left out, the household's "named by what it does,
+ * described by its item" (a Known gap, see the header). The other exemption,
+ * a control inside a `<mat-menu>`, is readHeldApart's, which knows from
+ * walkTemplate whether a repeat inside the menu stamps it.
  */
 function readOwnTexts(source) {
   const masked = maskComments(source);
@@ -1104,10 +1116,7 @@ function readOwnTexts(source) {
     }
     if (selfClosing) continue;
     const textNamed =
-      (TEXT_NAMED_TAGS.has(name) || CONTROL_ROLE.test(attrs)) &&
-      !thumbNamed(attrs) &&
-      !describedByBound(attrs) &&
-      !open.some((frame) => frame.name === 'mat-menu');
+      (TEXT_NAMED_TAGS.has(name) || CONTROL_ROLE.test(attrs)) && !thumbNamed(attrs) && !describedByBound(attrs);
     open.push({
       name,
       hidden: name === 'mat-icon' || literallyHidden(attrs),
@@ -1127,6 +1136,11 @@ function readOwnTexts(source) {
  * kinds feed the same tally across templates (heldApartAcross): a key is one
  * name, however a control comes by it. `arms` is walkTemplate's, which the
  * ninth rule reads.
+ *
+ * A control named by its text inside a `<mat-menu>` is left out, since the
+ * menu's panel opens for the one trigger that names the item, unless a repeat
+ * inside the menu stamps it (walkTemplate's `repeatedInMenu`): its copies then
+ * share the one panel, and the trigger's name tells none of them apart.
  */
 function readHeldApart(source, selectors = null) {
   const controls = [];
@@ -1134,7 +1148,7 @@ function readHeldApart(source, selectors = null) {
   const texts = readOwnTexts(source);
   walkTemplate(
     source,
-    ({ name, attrs, line, at, repeated, cases, arms }) => {
+    ({ name, attrs, line, at, repeated, cases, arms, inMenu, repeatedInMenu }) => {
       if (selectors?.has(name)) stamps.push({ name, repeated, cases });
       if (!CONTROL_TAGS.has(name) && !CONTROL_ROLE.test(attrs)) return;
       if (MENU_TRIGGER.test(attrs) && itemlessName(attrs)) return;
@@ -1153,7 +1167,7 @@ function readHeldApart(source, selectors = null) {
         return;
       }
       const key = texts.get(at);
-      if (key) controls.push({ line, tag: name, key, via: 'text', repeated, cases, arms });
+      if (key && (!inMenu || repeatedInMenu)) controls.push({ line, tag: name, key, via: 'text', repeated, cases, arms });
     },
     { casesApart: true }
   );
@@ -4381,6 +4395,39 @@ function selfTest() {
     'a label-named item inside a <mat-menu> is still read',
     scanItemlessLabels(MENU_OF("<button mat-menu-item [attr.aria-label]=\"'common.edit' | translate\">x</button>")),
     [{ line: 4, tag: 'button', key: 'common.edit', via: 'label' }]
+  );
+  // A menu rendered once whose items a repeat inside it stamps: every copy
+  // sits in the one panel the trigger opens.
+  const MENU_REPEATING = (inside) =>
+    "<button [matMenuTriggerFor]=\"m\" [attr.aria-label]=\"'account.switchAccount' | translate\">x</button>\n" +
+    `<mat-menu #m="matMenu">\n  @for (a of accounts(); track a.id) {\n    ${inside}\n  }\n</mat-menu>`;
+  check(
+    'a text-named item a repeat inside the <mat-menu> stamps is read, as its label-named twin is',
+    [
+      scanItemlessLabels(MENU_REPEATING("<button mat-menu-item (click)=\"pick(a)\">{{ 'common.select' | translate }}</button>")),
+      scanItemlessLabels(MENU_REPEATING("<button mat-menu-item [attr.aria-label]=\"'common.select' | translate\">x</button>")),
+      itemlessLines(
+        "<mat-menu #m=\"matMenu\">\n  <button mat-menu-item *ngFor=\"let a of accounts\">{{ 'common.select' | translate }}</button>\n</mat-menu>"
+      ),
+      itemlessLines(
+        "@for (r of rows; track r.id) {\n  <mat-menu #m=\"matMenu\">\n    @for (a of r.accounts; track a.id) {\n" +
+          "      <button mat-menu-item>{{ 'common.select' | translate }}</button>\n    }\n  </mat-menu>\n}"
+      ),
+    ],
+    [
+      [{ line: 4, tag: 'button', key: 'common.select', via: 'text' }],
+      [{ line: 4, tag: 'button', key: 'common.select', via: 'label' }],
+      [2],
+      [4],
+    ]
+  );
+  check(
+    'a repeat inside the <mat-menu> that does not hold the item leaves it exempt',
+    itemlessLines(
+      "@for (c of list; track c.id) {\n  <mat-menu #m=\"matMenu\">\n    <button mat-menu-item>{{ 'common.edit' | translate }}</button>\n" +
+        '    @for (t of c.tags; track t) {\n      <span>{{ t }}</span>\n    }\n  </mat-menu>\n}'
+    ),
+    []
   );
   check(
     'the menu\'s exemption ends where the menu closes',
