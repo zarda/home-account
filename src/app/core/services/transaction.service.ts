@@ -1498,20 +1498,19 @@ export class TransactionService {
     // way that image is neither swept nor tombstoned, so it survives the
     // clear together with its object. Storage before Firestore for the same
     // reason as removeReceiptAt.
-    const slotSpan = transaction.receiptUrls?.length ?? 1;
     const sweptSlots = receiptImageSlots(transaction).map(image => image.slot);
     await this.storageService.deleteReceiptSlots(userId, id, sweptSlots);
 
-    const swept = new Set(sweptSlots);
     const docRef = this.firestoreService.getDocRef(path);
     const removed = await this.firestoreService.runTransaction(async tx => {
       const snapshot = await tx.get(docRef);
       if (!snapshot.exists()) return 0;
 
+      // Only the slots swept: each lies inside the span read above.
       const slots = this.receiptSlotsOf(snapshot.data() as Transaction);
       let tombstoned = 0;
-      for (let slot = 0; slot < slotSpan && slot < slots.length; slot++) {
-        if (swept.has(slot) && slots[slot]) {
+      for (const slot of sweptSlots) {
+        if (slot < slots.length && slots[slot]) {
           slots[slot] = '';
           tombstoned += 1;
         }
