@@ -1531,6 +1531,29 @@ describe('TransactionListComponent focus after a dialog a row menu opened (real 
           expect(document.activeElement).withContext("focus, on the returned row's menu button").toBe(menuButton('b'));
           expect(windowSource().requestScrollTo).toHaveBeenCalledOnceWith('b');
         });
+
+        it("after a failed delete, leaves focus in the next row's Undo notice, which is still up", async () => {
+          await confirmAndHide('b');
+          // The row's own notice went as its delete began; the one up now is
+          // the next row's, whose opening began that delete, and the reader
+          // is in it to press its Undo.
+          const notice = document.createElement('div');
+          notice.className = 'mat-mdc-snack-bar-container';
+          const undo = document.createElement('button');
+          notice.append(undo);
+          document.body.append(notice);
+          try {
+            undo.focus();
+            expect(document.activeElement).withContext("focus, on the next row's Undo").toBe(undo);
+
+            bringBack('b', 'deleteFailed');
+
+            expect(document.activeElement).withContext("focus, still on the next row's Undo").toBe(undo);
+            expect(windowSource().requestScrollTo).toHaveBeenCalledOnceWith('b');
+          } finally {
+            notice.remove();
+          }
+        });
       });
     });
   }
