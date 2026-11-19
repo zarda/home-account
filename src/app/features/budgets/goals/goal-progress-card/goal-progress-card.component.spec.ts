@@ -14,8 +14,11 @@ import {
   channels,
   createLocaleFormatStub,
   createTranslationStub,
+  expectIndicatorInEveryPalette,
   expectPainted,
   holdsShownWords,
+  iconBox,
+  iconSquare,
   inPalette,
   paintedBackground,
   paintedColor,
@@ -23,6 +26,7 @@ import {
   provideNoMotion,
   ratio,
   settleAnimations,
+  textLines,
   tokenValue,
   type TranslationStub,
   withTheme,
@@ -518,6 +522,135 @@ describe('GoalProgressCardComponent, through its own template', () => {
         expect(ratio(paintedColor(icon), paintedBackground(icon)))
           .withContext(`${theme} on the card`)
           .toBeGreaterThanOrEqual(3);
+      });
+    }
+  });
+
+  /**
+   * The account's text size scales the page's root: AccessibilityService
+   * writes --app-font-scale on <html>, and styles.scss sizes the root from it.
+   * A size in the app's type scale is in rem and follows it; a px size stays
+   * where it was while the words round it grow. Every size the card sets is
+   * read on a filled card and on a reached one, at the default scale and at
+   * 1.3, the largest the account offers: a line of type at its token, and a
+   * glyph set in such a line at its token, its box and line box the same.
+   */
+  it("sets its type in the app's scale, so every size it sets follows the account's text size", () => {
+    const lines: [string, string][] = [
+      ['.goal-date', '--text-xs'],
+      ['.linked-breakdown', '--text-xs'],
+      ['.status', '--text-sm'],
+      ['.items-count', '--text-xs'],
+      ['.item-amount', '--text-xs'],
+      ['.goal-note', '--text-sm'],
+    ];
+    // A box is laid out in 64ths of a pixel, so 1em of 18.2px is 18.19.
+    const expectSquare = (icon: Element | null, token: string, label: string) => {
+      expect(icon).withContext(label).not.toBeNull();
+      if (!icon) return;
+      const shown = iconBox(icon);
+      const square = iconSquare(token);
+      for (const key of ['fontSize', 'lineHeight', 'width', 'height'] as const) {
+        expect(shown[key]).withContext(`${label}: ${key}`).toBeCloseTo(square[key], 1);
+      }
+    };
+    const root = document.documentElement;
+    const before = root.style.getPropertyValue('--app-font-scale');
+
+    try {
+      for (const scale of ['1', '1.3']) {
+        root.style.setProperty('--app-font-scale', scale);
+        card({
+          targetDate: Timestamp.fromDate(new Date('2026-12-01T00:00:00Z')),
+          linkedAmount: 250,
+          items: [{ name: 'Deposit', amount: 100, done: false }],
+          note: 'Three months of expenses',
+        });
+        for (const [selector, token] of lines) {
+          const node = el().querySelector(selector);
+          expect(node ? getComputedStyle(node).fontSize : null)
+            .withContext(`${selector} at scale ${scale}`)
+            .toBe(tokenValue(token, 'font-size'));
+        }
+        expectSquare(el().querySelector('.goal-date mat-icon'), '--text-sm', `the date's glyph at scale ${scale}`);
+
+        card({ contributedAmount: 3000 });
+        expectSquare(el().querySelector('.reached-note mat-icon'), '--text-lg', `the reached note's glyph at scale ${scale}`);
+      }
+    } finally {
+      if (before) root.style.setProperty('--app-font-scale', before);
+      else root.style.removeProperty('--app-font-scale');
+    }
+  });
+
+  /**
+   * On a 320px phone the Goals tab gives each card 248px. The card keeps
+   * every control whole and on the card there: Edit and Delete apart, so a
+   * press meant for one never lands on the other, and the foot's two buttons
+   * on a row of their own each when they no longer fit one together, each
+   * label on one line. Karma serves none of the app's fonts, so each
+   * platform measures in its own fallback; the Linux runner's is DejaVu Sans,
+   * which Verdana matches to within a few pixels.
+   */
+  describe("at the width the Goals tab gives a card on a 320px phone", () => {
+    const face = "Verdana, 'DejaVu Sans', sans-serif";
+
+    beforeEach(() => {
+      const host = el();
+      host.style.display = 'block';
+      host.style.width = '248px';
+      host.style.fontFamily = face;
+      for (const token of ['--mat-sys-body-large-font', '--mat-sys-body-medium-font', '--mat-sys-label-large-font']) {
+        host.style.setProperty(token, face);
+      }
+    });
+
+    const box = (node: Element) => node.getBoundingClientRect();
+
+    // Material lays a 48px touch span round each 40px icon button, 4px past
+    // its edge on every side; two buttons that touch share 8px of it.
+    it('holds Edit and Delete apart: each a 40px target, and the touch spans round them clear of each other', () => {
+      card();
+      const [edit, remove] = Array.from(el().querySelectorAll<HTMLElement>('.goal-actions button'));
+      for (const [name, button] of [['Edit', edit], ['Delete', remove]] as const) {
+        expect(box(button).width).withContext(`${name} width vs the 40px floor`).toBeGreaterThanOrEqual(40);
+        expect(box(button).height).withContext(`${name} height vs the 40px floor`).toBeGreaterThanOrEqual(40);
+        expect(box(button).right).withContext(`${name} inside the card`).toBeLessThanOrEqual(box(el()).right + 0.5);
+      }
+
+      const span = (button: HTMLElement) => box(button.querySelector('.mat-mdc-button-touch-target')!);
+      expect(span(edit).width).withContext("Edit's touch span").toBeGreaterThanOrEqual(48);
+      expect(span(edit).right).withContext("Edit's touch span ends before Delete's begins").toBeLessThanOrEqual(span(remove).left + 0.5);
+      expect(box(edit).right).withContext('a gap between the two buttons').toBeLessThan(box(remove).left);
+    });
+
+    it('still draws the focus indicator of Edit and Delete whole, inside each, in every palette', () => {
+      card();
+      const [edit, remove] = Array.from(el().querySelectorAll<HTMLElement>('.goal-actions button'));
+      expectIndicatorInEveryPalette(edit ?? null, 'Edit on the goal card');
+      expectIndicatorInEveryPalette(remove ?? null, 'Delete on the goal card');
+    });
+
+    for (const locale of ['en', 'ja', 'tc'] as const) {
+      it(`keeps View Transactions and Contribute whole on the card, each label on one line, in ${locale}`, () => {
+        Object.assign(translation, catalogTranslationStub(locale));
+        card({ name: 'Japan trip', linkedAmount: 120 });
+
+        const goalCard = box(el().querySelector('.goal-card')!);
+        const row = el().querySelector<HTMLElement>('mat-card-actions')!;
+        const foot = Array.from(row.querySelectorAll<HTMLElement>('button'));
+        expect(foot.length).withContext('View Transactions and Contribute').toBe(2);
+        expect(row.scrollWidth).withContext('the row holds its buttons').toBeLessThanOrEqual(row.clientWidth);
+        for (const button of foot) {
+          const name = button.textContent?.trim();
+          expect(textLines(button.querySelector('.mdc-button__label')!)).withContext(`"${name}" lines`).toBe(1);
+          expect(box(button).left).withContext(`"${name}" starts on the card`).toBeGreaterThanOrEqual(goalCard.left - 0.5);
+          expect(box(button).right).withContext(`"${name}" ends on the card`).toBeLessThanOrEqual(goalCard.right + 0.5);
+          expect(box(button).height).withContext(`"${name}" height vs the 40px floor`).toBeGreaterThanOrEqual(40);
+        }
+        const [view, contribute] = foot.map(box);
+        const apart = view.right <= contribute.left || view.bottom <= contribute.top;
+        expect(apart).withContext('the two buttons do not overlap').toBeTrue();
       });
     }
   });
