@@ -14665,7 +14665,9 @@ put the noted classes back after.
    [Switching the theme](#switching-the-theme) says, and hand the same three
    files over. **Pass:** the zone's top,
    `document.querySelector('app-file-dropzone .dropzone').getBoundingClientRect().top`,
-   at 403, on the first screen; a photo's row, its `display` and
+   at 395, on the first screen (both runs read 403, before the word list
+   came to stand 16px over the steps at phone widths); a photo's row, its
+   `display` and
    `gridTemplateColumns` read, a grid of `40px 129px 40px`, 111px tall, its
    handle 40 by 40. Press and move as step 2 does, and read
    the preview's top before and after one more move,

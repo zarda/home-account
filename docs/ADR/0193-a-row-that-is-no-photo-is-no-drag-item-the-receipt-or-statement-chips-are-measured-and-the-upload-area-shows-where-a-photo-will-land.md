@@ -270,7 +270,10 @@ from a screen reader and its words in a span: `--text-xs` in `--text-muted`,
 the subtitle's colour, with no fill, outline or pointer, wrapping as words do.
 `role="list"` because WebKit drops the role from a list drawn without
 markers. The header's margin over the list is 16px where it was 24; the list
-keeps the 24 over the stepper. The list sets its margins, its items' floor
+keeps the 24 over the stepper, except under the wizard's 768px rule, where it
+stands 16px over the stepper too
+(`fix: the import's word list stands 16px over the steps on a phone, keeping the upload area on the first screen in a wider face`).
+The list sets its margins, its items' floor
 and its glyphs' size in logical properties, as the upload area's rules
 beside it do, so they compute the same in either reading direction. A 320 by
 568 phone shows 424px under the wizard's top, between the app bar, the page's
@@ -360,9 +363,11 @@ lifted row inside the list, and reads the photos as `[b, a]`.
 - A second press on the picked chip leaves it picked, by pointer, Space or
   Enter.
 - The import's features are words in `--text-muted`, and at 320 by 568 the
-  upload area starts on the first screen: in Karma's pinned face it starts
-  366px under the wizard's top in en, 338 in ja and 302 in tc, where en's
-  started at 480 and ja's at 434.
+  upload area starts on the first screen: in Karma's pinned face, Verdana on
+  the Mac, it starts 358px under the wizard's top in en, 330 in ja and 294 in
+  tc, where en's started at 480 and ja's at 434. The runner's DejaVu Sans
+  wraps en's subtitle a line more. In the app's own PT Sans at 320 by 568 the
+  zone starts at 417 and its contents at 457, above the bottom nav at 504.
 - One drag helper serves the upload area's spec and the wizard's smoke.
 
 ## What the browser runs found
@@ -587,9 +592,13 @@ stylesheet read, which in Chrome 156 drops every plain rule.
   scored at once.
 - The feature chips' height came from Material's chip set, which wraps inside
   its own element, so a `flex-wrap: nowrap` on the set had never held; at a
-  288px page en's four stood one 32px row each. The header's 16px margin buys
-  en 8px more, 374px to 366 against the 384 the zone may start at, for CI,
-  whose face is DejaVu Sans rather than the Verdana the case pins.
+  288px page en's four stood one 32px row each. The header's 16px margin
+  bought en 8px, 374px to 366 against the 384 the zone may start at, as room
+  for CI, whose face is DejaVu Sans rather than the Verdana the case pins. It
+  was not enough: DejaVu Sans wraps en's 200px subtitle onto a fifth line, and
+  the first CI run read the zone at 388,
+  `Expected 428 to be less than or equal 424.` The word list's 16px over the
+  stepper at phone widths gives back 8px more, 358 on the Mac.
 
 ## Known gaps
 
