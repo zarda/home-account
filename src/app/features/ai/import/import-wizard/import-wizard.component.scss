@@ -747,6 +747,13 @@
     font-size: var(--text-2xl);
   }
 
+  // The header's own 16px over the steps as well: at a 320px phone the 8px
+  // this gives back keeps the upload area on the first screen in a face as
+  // wide as the CI runner's, where en's subtitle takes one line more.
+  .features-list {
+    margin-block-end: 16px;
+  }
+
   .step-actions {
     flex-direction: column;
   }
