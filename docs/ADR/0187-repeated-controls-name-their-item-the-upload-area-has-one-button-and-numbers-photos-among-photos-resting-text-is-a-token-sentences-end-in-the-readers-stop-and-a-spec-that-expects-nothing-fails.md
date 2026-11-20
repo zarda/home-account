@@ -3079,12 +3079,20 @@ spec or a self-test case red before its fix.
   it froze none of them, and #531 took up what it froze and the goal card's
   pair. Closing them needs a name with the item's slot on each, and a rule
   that reads a repeated control's text.
+  *Closed by
+  [0192](0192-a-control-repeated-per-item-names-its-item-in-its-own-text-too-a-button-is-named-in-every-branch-and-an-unlabelled-switch-fails-the-axe-pass.md):
+  each names its item around the words it shows, in en, ja and tc, and the
+  sixth rule reads a repeated control's own text, which named ten more.*
 - **No gate reads a plain button's name.** The filter toggle had a name only
   while its badge rendered, inside an `@if`; `icon-labels:check` counted the
   badge's text and has no rule for a `<button>`'s own name. A button whose
   only text sits inside an `@if` is unnamed in one of its states, and nothing
   fails it. A rule that holds a button's name in every branch of its blocks
   would close it.
+  *Closed by
+  [0192](0192-a-control-repeated-per-item-names-its-item-in-its-own-text-too-a-button-is-named-in-every-branch-and-an-unlabelled-switch-fails-the-axe-pass.md):
+  the eighth rule holds every control named by what it holds, a button among
+  them, to words that render in every state of its blocks.*
 - **The sixth rule's remaining blind spots.** A selector or key that two
   switches on the same item each reach in one case is counted as rendered
   once, since the tally counts the cases of one switch; the form where one
@@ -3104,6 +3112,12 @@ spec or a self-test case red before its fix.
   (`common.remove`, `ai-settings-page.component.html:88`, `:179` and
   `:259`), under fields all labelled `settings.apiKey`. A name that carries
   its offer, or its provider, would close each.
+  *Closed by
+  [0196](0196-sibling-controls-say-what-they-act-on-a-name-holds-its-shown-words-a-focused-button-shows-an-indicator-inside-it-focus-stays-in-the-list-after-a-delete-and-a-failed-dashboard-read-is-quiet.md):
+  the two dismissals and the three removes read keys of their own, and a
+  ninth rule of `icon-labels:check` fails two controls of one template named
+  by one bare key that can render at once, read through the arms of their
+  blocks.*
 - **Split in tc and Merge into… in en are not named by the words they
   show.** The review card's split trigger shows *分割* in tc and is named
   *將「{description}」分成兩列*; the merge trigger shows *Merge into…* in en
@@ -3115,12 +3129,21 @@ spec or a self-test case red before its fix.
   serves no fonts, and would not leave out `aria-hidden` glyphs. A case that
   walks the card and holds each button's shown words, glyphs left out and
   punctuation folded, inside its name in en, ja and tc would close it.
+  *Closed by
+  [0196](0196-sibling-controls-say-what-they-act-on-a-name-holds-its-shown-words-a-focused-button-shows-an-indicator-inside-it-focus-stays-in-the-list-after-a-delete-and-a-failed-dashboard-read-is-quiet.md):
+  en shows Merge…, its name unchanged, and tc's split trigger is named
+  分割「{description}」成兩列; the review card's spec holds Split, Merge and
+  Remove to their shown words in en, ja and tc.*
 - **Axe cannot find an unnamed Material switch.** Its `button-name` accepts
   the empty label Material renders, so every axe sweep over a slide toggle
   passes it named or not. The eighth rule and the `accessibleName` cases are
   the guard. Axe reads a per-run option that turns that label check off, but
   its typings do not declare it, and the shared `runAxe` does not pass it;
   passing it there would close the gap for every sweep.
+  *Closed by
+  [0192](0192-a-control-repeated-per-item-names-its-item-in-its-own-text-too-a-button-is-named-in-every-branch-and-an-unlabelled-switch-fails-the-axe-pass.md):
+  `axeOptions()` runs `button-name` without its `explicit-label` check, so
+  every pass built on it fails a switch nobody named.*
 - **No gate reads what a dialog's title holds.** `aria-labelledby` takes
   every word under the element it names, so a control inside
   `mat-dialog-title` joins the dialog's name, as the shared header's close
@@ -3151,6 +3174,13 @@ spec or a self-test case red before its fix.
   outlined field say, would show the box's purpose, a layout change of its
   own. WebKit and VoiceOver may treat a placeholder differently once a box
   holds a value; no run has read them.
+  *Closed by
+  [0196](0196-sibling-controls-say-what-they-act-on-a-name-holds-its-shown-words-a-focused-button-shows-an-indicator-inside-it-focus-stays-in-the-list-after-a-delete-and-a-failed-dashboard-read-is-quiet.md):
+  the search box carries an `aria-label` in its placeholder's words,
+  `transactions.searchBoxLabel`, and the save-search box shows a caption
+  inside its pill, a real label reading `transactions.saveNameLabel`, which
+  is its name. How WebKit and VoiceOver treat the placeholder is still
+  unread.*
 - **The quoting case reads keys, not callers.** The case in
   `translation-keys.spec.ts` fails a key that quotes `{{description}}`
   unless it is listed with why its caller never hands it a stand-in, which
@@ -3185,9 +3215,21 @@ spec or a self-test case red before its fix.
   that skips rows that are no photo would close it; CDK's drop list offers
   none, and a list of photos apart from the other files would give up the
   order the files were picked in, which #536's answer keeps.
+  *Closed by
+  [0193](0193-a-row-that-is-no-photo-is-no-drag-item-the-receipt-or-statement-chips-are-measured-and-the-upload-area-shows-where-a-photo-will-land.md):
+  a row that is no photo is no drag item, so nothing slides it, and a drop's
+  indices count the photos alone. Photos of unequal height, or a pointer
+  that jumps several rows, can still draw a photo over the still CSV until
+  the drop.*
 - **The receipt-or-statement chips stay unscored.** Axe leaves them
   `incomplete` for overlapping backgrounds, for a cause not found, and no
   painted case reads their labels.
+  *Closed by
+  [0193](0193-a-row-that-is-no-photo-is-no-drag-item-the-receipt-or-statement-chips-are-measured-and-the-upload-area-shows-where-a-photo-will-land.md):
+  a painted case reads each chip's label at AA and the checkmark at 3:1 in
+  the four palettes, in both states, at rest. Axe still leaves them
+  unscored; its overlap is Material's focus indicator span inside each
+  label.*
 - **The focus helpers are not yet one.** `household-focus.ts` and
   `import-focus.ts` each export a `focusWhenRendered`, the first moving focus
   only once it has dropped, and four components keep a private copy:
@@ -3212,6 +3254,12 @@ spec or a self-test case red before its fix.
   driven, to loop that way. No gate holds the class: it is 0171's fold to
   finish, and a lint rule against a `.focus()` inside `afterNextRender`
   outside the helper would freeze about ten sites.
+  *Narrowed by
+  [0194](0194-one-painted-contrast-helper-and-one-focus-hand-off-a-card-is-scored-part-by-part-and-no-page-skips-a-heading-level.md):
+  one `focusWhenRendered`, in `shared/utils/focus-when-rendered.ts`, takes
+  all six, the household guard as its `onlyIfDropped`, and every hand-off
+  made through it drops a held key's repeats. The focus calls made straight
+  from a render hook stay outside it.*
 - **A pick made through Browse drops focus to the page.** Browse goes with
   the empty zone once a pick lands, and nothing asks for focus after a pick,
   so a reader who picked from a focused Browse is left on `<body>`. It is
@@ -3245,12 +3293,23 @@ spec or a self-test case red before its fix.
   focus then falls to the page once the row leaves. And the rule cannot see
   a dialog closed before its menu has left the page, a submenu's entry, or
   `restoreFocus: false`; the app has none of the three.
+  *Narrowed by
+  [0196](0196-sibling-controls-say-what-they-act-on-a-name-holds-its-shown-words-a-focused-button-shows-an-indicator-inside-it-focus-stays-in-the-list-after-a-delete-and-a-failed-dashboard-read-is-quiet.md):
+  once a confirmed Delete's row leaves, focus that fell goes to the menu
+  button of the row now in its place, else of the row before it, else to the
+  empty state's button. The datepickers opened from a menu's entry still
+  give focus back to the detached entry.*
 - **A keyboard-focused icon button is marked only by Material's state
   layer.** Material's icon button sets `outline: none`, which wins over the
   app's `:focus-visible` ring, and the strong focus indicator Material
   offers is not turned on, so a focused icon button shows a 12% tint and no
   outline. The third run met it on Save search; it holds for every
   Material icon button in the app, and no case reads it.
+  *Closed by
+  [0196](0196-sibling-controls-say-what-they-act-on-a-name-holds-its-shown-words-a-focused-button-shows-an-indicator-inside-it-focus-stays-in-the-list-after-a-delete-and-a-failed-dashboard-read-is-quiet.md):
+  every Material button, of every kind, draws Material's focus indicator
+  inside it, 2px in its own text colour and 3px under high contrast, and an
+  icon button's 12% focus state layer is gone.*
 - **No case reads the review card's notes ring.** `.notes-input` clears its
   outline and draws its own under `:focus-visible`, as it did before this
   wave, and no spec reads that rule, so a selector that outranks it passes
@@ -3277,11 +3336,21 @@ spec or a self-test case red before its fix.
   use the shared ones; folding the old would have spread this change over two
   dozen specs outside its issues. A fold onto the shared exports, spec by
   spec, closes it.
+  *Closed by
+  [0194](0194-one-painted-contrast-helper-and-one-focus-hand-off-a-card-is-scored-part-by-part-and-no-page-skips-a-heading-level.md):
+  thirty-seven spec files, the arrow forms and the `tokenColour` copies among
+  them, read the testing barrel's `expectPainted` and `tokenValue`, and
+  `paintedVerdict` settles a node before it reads it.*
 - **Two older cases read contrast from a pass over a whole card.** The About
   card's sweep and the review card's *scores the card's contrast rather than
   skipping it* expect `color-contrast` among the passes of one pass over the
   card or the whole table, which one node can hold.
   `expectEachContrastScored` over the parts' words closes them.
+  *Closed by
+  [0194](0194-one-painted-contrast-helper-and-one-focus-hand-off-a-card-is-scored-part-by-part-and-no-page-skips-a-heading-level.md):
+  both score each part's words through `expectEachContrastScored`, the
+  review card's date chip, currency chip and duplicate badge in spans of
+  their own.*
 - **Other sweeps may stand below Karma's body.** Only the wizard's sweeps of
   the empty upload step, of photos picked and of the review step, its
   painted colours case, and the Goals hint's case call `standOnThePage`. The
@@ -3290,6 +3359,11 @@ spec or a self-test case red before its fix.
   `--surface-card`; any other sweep of a fixture taller than 413px with no
   fill of its own may leave its lower text unscored and read clean. An
   audit of the step-wide and page-wide axe cases closes it.
+  *Closed by
+  [0194](0194-one-painted-contrast-helper-and-one-focus-hand-off-a-card-is-scored-part-by-part-and-no-page-skips-a-heading-level.md):
+  every sweep that never stood on the page was read for its lowest text; the
+  household plans section now stands on the page, the command palette on its
+  dialog's surface, and a plan dialog is swept at every half-screenful.*
 - **Heading order is held on the upload step alone.** Axe's `heading-order`
   is best practice, outside the `wcag2a`/`wcag2aa` pass every sweep runs, and
   only the wizard's two upload-step cases run it. No pass reads heading order
@@ -3297,6 +3371,12 @@ spec or a self-test case red before its fix.
   (`weekly-recap.component.html:7`) and the Data page's receipt-images `h3`
   (`data-management.component.html:87`), are unchecked. A `heading-order`
   pass over every page the walkthrough reaches would close it.
+  *Closed by
+  [0194](0194-one-painted-contrast-helper-and-one-focus-hand-off-a-card-is-scored-part-by-part-and-no-page-skips-a-heading-level.md):
+  the walkthrough runs `heading-order` once on every page it reaches, and
+  the headings that skipped a level are fixed rather than frozen. The
+  Reports tabs past the first and the routes it never visits are read by
+  journey 124, the tabs by unit outline cases as well.*
 - **`opacity:check`'s `url()` mask has a narrow shape it misreads.** The
   unquoted-`url(` mask runs before comments are blanked, so in a comment
   holding an unquoted `url(` whose closing paren lies past the comment's `*/`
@@ -3304,6 +3384,10 @@ spec or a self-test case red before its fix.
   is read as comment: `/* url(x */ .a { opacity: .5; } /* ) */` passes. The
   tree holds no such line. Masking the `url(` only outside comments closes
   it.
+  *Closed by
+  [0195](0195-a-gate-holds-the-test-main-to-the-builders-init-specs-stay-out-of-the-stylesheet-a-lone-date-run-is-silent-and-the-opacity-gate-reads-a-url-in-a-comment-as-a-comment.md):
+  `maskComments` blanks an unquoted `url(…)` in code state only, in the one
+  pass that blanks comments, so the shape reads as code.*
 - **Two places the start date's label is not held.** The larger text sizes
   in the 480px dialog are read in Karma now (*Run 2, on 5 November 2026*),
   and two residues are left. At the default size there, en's *Start Date
@@ -3345,6 +3429,11 @@ spec or a self-test case red before its fix.
   it, and it is older than this wave. An error path on each of the five, as
   `RowSharingService`'s stream has, would close it; other pages' live reads
   were not read for the same shape.
+  *Closed by
+  [0196](0196-sibling-controls-say-what-they-act-on-a-name-holds-its-shown-words-a-focused-button-shows-an-indicator-inside-it-focus-stays-in-the-list-after-a-delete-and-a-failed-dashboard-read-is-quiet.md):
+  each of the five takes an error callback that is quiet on a shutdown or a
+  refusal and logs one `[Dashboard]` warning otherwise, and no card changes.
+  Thirteen other consumers of the same streams still have no error path.*
 
 ### The test harness
 
@@ -3357,6 +3446,12 @@ spec or a self-test case red before its fix.
   red. The file's header asks for a re-read on every upgrade; a node gate
   that reads the builder's init beside the copy and fails on a difference
   would close it.
+  *Closed by
+  [0195](0195-a-gate-holds-the-test-main-to-the-builders-init-specs-stay-out-of-the-stylesheet-a-lone-date-run-is-silent-and-the-opacity-gate-reads-a-url-in-a-comment-as-a-comment.md):
+  `npm run test-main:check`, in CI, reads the builder's init for the
+  project's arms and compares every top-level statement of the copy with
+  it, allowing the jasmine configuration and, while the test polyfills load
+  it, the localize import the copy leaves out.*
 - **The fonts stay unserved.** Karma still logs a 404 for each font file a
   run asks for. Serving them would change what every width spec and every axe
   glyph score measures, so they stay unserved by decision. Serving them and
@@ -3381,6 +3476,11 @@ spec or a self-test case red before its fix.
   [0123](0123-the-unit-sweep-is-silent-on-a-normal-path.md)'s silence on a
   run of those specs alone, as they did before this wave. Spying on them in
   the cases that cause them closes it.
+  *Closed by
+  [0195](0195-a-gate-holds-the-test-main-to-the-builders-init-specs-stay-out-of-the-stylesheet-a-lone-date-run-is-silent-and-the-opacity-gate-reads-a-url-in-a-comment-as-a-comment.md):
+  each of the twenty-six lines is spied and expected in the case that causes
+  it, and both zones print no `WARN: ` or `ERROR: ` line. Karma's three font
+  404 lines stay.*
 - **Tailwind reads the specs.** Its `content` is every `.html` and `.ts`
   under `src`, specs included, so a word in a spec that names a utility
   ships that utility. *ring*, standing alone in a comment of the dropzone's
@@ -3391,3 +3491,8 @@ spec or a self-test case red before its fix.
   utilities in all, and some on purpose: `theme-aliases.spec.ts` reads each
   semantic alias's utility off the page. Leaving specs out of `content`, with
   a safelist for the utilities a spec reads, would close it.
+  *Closed by
+  [0195](0195-a-gate-holds-the-test-main-to-the-builders-init-specs-stay-out-of-the-stylesheet-a-lone-date-run-is-silent-and-the-opacity-gate-reads-a-url-in-a-comment-as-a-comment.md):
+  `content` leaves out the specs, `*.testing.ts`, `core/services/testing/**`
+  and `src/test-main.ts`, and the nineteen role aliases no template names are
+  safelisted; seven rules, 844 bytes, left the stylesheet.*

@@ -98,6 +98,7 @@
 } @else if (showEmptyState()) {
   <app-empty-state
     icon="receipt_long"
+    [headingLevel]="2"
     [title]="'transactions.noTransactions' | translate"
     [description]="'transactions.adjustFilters' | translate"
     [actionLabel]="'transactions.addTransaction' | translate"
@@ -119,7 +120,7 @@
           [class.row-selected]="inSelectMode() && isSelected(transaction)"
           (activate)="onRowActivate(transaction)"
           (edit)="edit.emit(transaction)"
-          (delete)="confirmDelete(transaction)"
+          (delete)="confirmDelete(transaction, 'drawer')"
         >
           @if (inSelectMode()) {
             <!-- In the menu's corner while choosing. Its click stops here:

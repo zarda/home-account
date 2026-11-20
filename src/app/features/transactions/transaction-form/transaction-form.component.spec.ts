@@ -76,6 +76,7 @@ import {
   placeholderWidthPx,
   ratio,
   settleAnimations,
+  tokenValue,
   withScheme,
   withTheme,
   provideNoMotion,
@@ -3584,6 +3585,17 @@ describe('TransactionFormComponent, through its own template', () => {
     expect(toggle('expense').querySelector('mat-icon')?.textContent?.trim()).toBe('trending_down');
   });
 
+  // A radio group is entered by its name, so a reader hears that the two
+  // segments are the transaction's type before the first of them; each
+  // segment keeps its own name, the flag's sentence included.
+  it('names its Expense / Income group', () => {
+    render();
+
+    const group = el().querySelector('.type-toggle-container mat-button-toggle-group') as HTMLElement;
+    expect(group.getAttribute('role')).toBe('radiogroup');
+    expect(accessibleName(group)).toBe('transactions.type');
+  });
+
   it('tells a part it is one', () => {
     render({
       mode: 'edit',
@@ -3658,6 +3670,42 @@ describe('TransactionFormComponent, through its own template', () => {
     fixture.detectChanges();
 
     expect(el().querySelector('.suggestion-chip')).toBeNull();
+  });
+
+  /**
+   * The scan can offer a currency and a position at once, and each offer has
+   * a dismiss beside it, under the dialog's own close: three buttons of one
+   * glyph each, shown together. So each names what it closes, and no two read
+   * the same name.
+   */
+  describe('the two offers and the dialog close, shown together', () => {
+    const pinned = {
+      en: ['Dismiss the currency suggestion', 'Dismiss the location suggestion', 'Close'],
+      ja: ['通貨の提案を閉じる', '場所の提案を閉じる', '閉じる'],
+      tc: ['關閉貨幣建議', '關閉地點建議', '關閉'],
+    } as const;
+    for (const locale of ['en', 'ja', 'tc'] as const) {
+      it(`read three different names in ${locale}`, () => {
+        TestBed.overrideProvider(TranslationService, { useValue: catalogTranslationStub(locale) });
+        render();
+        component.suggestedCurrency.set({ code: 'EUR', reason: 'receipt' } as never);
+        component.suggestedCoordinates.set({ lat: 3, lng: 4 });
+        fixture.detectChanges();
+
+        const dismissals = Array.from(el().querySelectorAll('.ai-suggestion-container .suggestion-dismiss'));
+        expect(dismissals.length).withContext('both offers shown').toBe(2);
+        const close = el().querySelector('.dialog-header-close') as HTMLElement;
+        const names = [...dismissals, close].map(accessibleName);
+        expect(new Set(names).size).withContext(`three names: ${names.join(' / ')}`).toBe(3);
+        expect(names).withContext('pinned').toEqual([...pinned[locale]]);
+        const t = catalogTranslator(locale, { strict: true });
+        expect(names).toEqual([
+          t('transactions.dismissCurrencySuggestion'),
+          t('transactions.dismissPositionSuggestion'),
+          t('common.close'),
+        ]);
+      });
+    }
   });
 
   it('withdraws the category chip when the type moves to a side its category does not fit', () => {
@@ -4267,18 +4315,6 @@ describe('TransactionFormComponent, through its own template', () => {
       render(data);
       el().style.display = 'block';
       el().style.background = 'var(--mat-sys-surface)';
-    }
-
-    /** What `<property>: var(token)` computes to under the theme on <html> now. */
-    function tokenValue(token: string, property = 'color'): string {
-      const probe = document.createElement('span');
-      probe.style.setProperty(property, `var(${token})`);
-      document.body.appendChild(probe);
-      try {
-        return getComputedStyle(probe).getPropertyValue(property);
-      } finally {
-        probe.remove();
-      }
     }
 
     /** The element whose own text node holds `text`: the one that paints it. */

@@ -2,11 +2,11 @@
   <span class="section-label" id="weekly-recap-label">{{ 'settings.weeklyRecap' | translate }}</span>
   <p class="section-description">{{ 'settings.weeklyRecapDescription' | translate }}</p>
 
-  <div class="setting-row">
+  <!-- The section names the group; the switch is named by the words it shows. -->
+  <div class="setting-row" role="group" aria-labelledby="weekly-recap-label">
     <mat-slide-toggle
       [checked]="enabled()"
       (change)="onEnabledChange($event)"
-      aria-labelledby="weekly-recap-label"
     >
       {{ 'settings.weeklyRecapEnable' | translate }}
     </mat-slide-toggle>

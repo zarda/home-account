@@ -34,6 +34,7 @@ import {
   settleAnimations,
   summarizeViolations,
   textLines,
+  tokenValue,
   withScheme,
   withTheme,
   provideNoMotion,
@@ -699,18 +700,6 @@ describe('BudgetFormComponent', () => {
     afterEach(() => {
       document.querySelectorAll('.cdk-overlay-container').forEach(node => node.remove());
     });
-
-    /** What `<property>: var(token)` computes to under the theme on <html> now. */
-    function tokenValue(token: string, property = 'color'): string {
-      const probe = document.createElement('span');
-      probe.style.setProperty(property, `var(${token})`);
-      document.body.appendChild(probe);
-      try {
-        return getComputedStyle(probe).getPropertyValue(property);
-      } finally {
-        probe.remove();
-      }
-    }
 
     it('paints the threshold label, its value and the scale ends in the theme text tokens at AA, in both themes', () => {
       const label = el().querySelector('#threshold-label') as HTMLElement;

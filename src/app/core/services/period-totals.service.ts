@@ -81,6 +81,14 @@ export class PeriodTotalsService {
 
   readonly status = signal<PeriodTotalsStatus>({ kind: 'idle' });
 
+  /**
+   * Ids the fold leaves out: rows the page has hidden while their delete
+   * waits for its Undo window, which the server still counts. Changing it
+   * refolds the swept rows at zero reads, and it outlives every re-read; the
+   * page clears an id once the delete is real and no longer needs hiding.
+   */
+  readonly exclude = signal<ReadonlySet<string>>(new Set());
+
   private baseCurrency = computed(() => baseCurrencyOf(this.authService.currentUser()));
 
   // categoryId -> display name as rendered, so search matches what the user
@@ -93,12 +101,14 @@ export class PeriodTotalsService {
     return names;
   });
 
-  // The single fold: client-only filters once over the entire swept set,
-  // then sumByType through amountInBase — the dashboard's own chokepoint,
-  // so the two surfaces cannot disagree.
+  // The single fold: the excluded rows out, client-only filters once over
+  // the rest of the swept set, then sumByType through amountInBase — the
+  // dashboard's own chokepoint, so the two surfaces cannot disagree.
   readonly totals = computed<TypeTotals | null>(() => {
-    const rows = this.sweptRows();
-    if (rows === null) return null;
+    const swept = this.sweptRows();
+    if (swept === null) return null;
+    const exclude = this.exclude();
+    const rows = exclude.size === 0 ? swept : swept.filter(row => !exclude.has(row.id));
     const filtered = applyClientTransactionFilters(rows, this.filters(), {
       categoryNames: this.categoryNames()
     });

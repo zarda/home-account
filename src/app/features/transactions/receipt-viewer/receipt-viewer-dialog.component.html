@@ -13,7 +13,6 @@
     @if (total > 1) {
       <div class="image-nav">
         <button
-          #previousButton
           mat-icon-button
           type="button"
           class="previous-button"
@@ -27,7 +26,6 @@
           {{ 'receiptImages.imageNumber' | translate: { index: index() + 1, total: total } }}
         </span>
         <button
-          #nextButton
           mat-icon-button
           type="button"
           class="next-button"
@@ -50,7 +48,6 @@
           </p>
           <p class="translated-text">{{ result.text }}</p>
           <button
-            #hideTranslationButton
             mat-button
             type="button"
             class="hide-translation-button"
@@ -66,7 +63,6 @@
              keyboard never reaches it or the hint saying why it does
              nothing. -->
         <button
-          #retryButton
           mat-button
           type="button"
           class="retry-button"
@@ -82,7 +78,6 @@
         }
       } @else {
         <button
-          #translateButton
           mat-button
           type="button"
           class="translate-button"

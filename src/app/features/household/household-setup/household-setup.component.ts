@@ -33,9 +33,10 @@ import {
   ConfirmDialogData
 } from '../../../shared/components/confirm-dialog/confirm-dialog.component';
 import { TranslatePipe } from '../../../shared/pipes/translate.pipe';
+import { FocusContext, focusWhenRendered } from '../../../shared/utils/focus-when-rendered';
 import { HouseholdInvite, MAX_HOUSEHOLDS_PER_ACCOUNT } from '../../../models';
 import { writeFailureMessage } from '../household-failure';
-import { FocusContext, HouseholdPageFocus, focusWhenRendered } from '../household-focus';
+import { HouseholdPageFocus } from '../household-focus';
 
 interface InviteView {
   invite: HouseholdInvite;
@@ -135,7 +136,7 @@ export class HouseholdSetupComponent {
       if (declined === null || this.invites().some(view => view.invite.id === declined)) return;
       untracked(() => {
         this.declined.set(null);
-        focusWhenRendered(this.focus, ['#household-invites-title']);
+        focusWhenRendered(this.focus, '#household-invites-title', { onlyIfDropped: true });
       });
     });
   }

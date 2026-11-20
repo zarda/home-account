@@ -1,25 +1,9 @@
-import { DestroyRef, Injectable, Injector, afterNextRender, effect, signal, untracked } from '@angular/core';
+import { DestroyRef, Injectable, effect, signal, untracked } from '@angular/core';
 import type { MatDialogRef } from '@angular/material/dialog';
 
 import type { HouseholdStatus } from '../../core/services/household.service';
-import { focusDropped } from '../../core/utils/focus.utils';
 import { sameStamp } from '../../core/utils/household-index.utils';
 import type { Household } from '../../models';
-
-/** What a section needs to move focus within its own markup. */
-export interface FocusContext {
-  host: HTMLElement;
-  injector: Injector;
-  destroyRef: DestroyRef;
-}
-
-export interface FocusOptions {
-  /**
-   * The control a swap was chosen in, when it stays on screen through the
-   * swap: focus left on it moves too, as focus left on the document does.
-   */
-  from?: Element | null;
-}
 
 /**
  * The same household, and the same generation of it, as a section holds
@@ -56,34 +40,6 @@ export function closeDialogsOnSwitch(
   destroyRef.onDestroy(() => {
     for (const ref of open.keys()) ref.close();
   });
-}
-
-/**
- * Moves focus to the first of `selectors` found under the host once the next
- * render has settled, and only when focus was left on the document itself
- * (focusDropped), or on `options.from`: wherever else the viewer has put it
- * by then, it stays. The target exists only once it has rendered, which is
- * what afterNextRender waits for; registering on a destroyed injector throws
- * NG0911, hence the guard.
- */
-export function focusWhenRendered(
-  { host, injector, destroyRef }: FocusContext,
-  selectors: readonly string[],
-  options: FocusOptions = {}
-): void {
-  if (destroyRef.destroyed) return;
-  afterNextRender(() => {
-    const active = document.activeElement;
-    const onOrigin = !!options.from && !!active && options.from.contains(active);
-    if (!focusDropped() && !onOrigin) return;
-    for (const selector of selectors) {
-      const target = host.querySelector<HTMLElement>(selector);
-      if (target) {
-        target.focus();
-        return;
-      }
-    }
-  }, { injector });
 }
 
 /**

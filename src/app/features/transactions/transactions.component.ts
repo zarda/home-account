@@ -14,6 +14,7 @@ import {
   untracked
 } from '@angular/core';
 
+import { DOCUMENT } from '@angular/common';
 import { ActivatedRoute, Router } from '@angular/router';
 import { MatButtonModule } from '@angular/material/button';
 import { MatIconModule } from '@angular/material/icon';
@@ -45,11 +46,20 @@ import { TranslatePipe } from '../../shared/pipes/translate.pipe';
 import { TranslationService } from '../../core/services/translation.service';
 import { NotificationService } from '../../core/services/notification.service';
 import { AnnouncerService } from '../../core/services/announcer.service';
+import { PendingDeleteService } from '../../core/services/pending-delete.service';
 
 /** One header money figure: a catalog label over a formatted amount. */
 export interface HeaderFigure {
   labelKey: string;
   value: string;
+}
+
+/** A row hidden after its delete was confirmed (see `hidden`). */
+interface HiddenRow {
+  /** Whether the delete has been carried out. */
+  readonly deleted: boolean;
+  /** The filters the row was listed and deleted under. */
+  readonly filters: TransactionFilters;
 }
 
 @Component({
@@ -74,6 +84,9 @@ export interface HeaderFigure {
   // reset on every visit; the window is shared with the child list component
   // through the injector.
   providers: [TransactionWindowService, PeriodTotalsService],
+  host: {
+    '(document:visibilitychange)': 'onVisibilityChange()',
+  },
 })
 export class TransactionsComponent implements OnInit, OnDestroy {
   private transactionService = inject(TransactionService);
@@ -91,6 +104,8 @@ export class TransactionsComponent implements OnInit, OnDestroy {
   private notifications = inject(NotificationService);
   private announcer = inject(AnnouncerService);
   private pendingFilters = inject(PendingFiltersService);
+  private pendingDelete = inject(PendingDeleteService);
+  private document = inject(DOCUMENT);
   private host = inject<ElementRef<HTMLElement>>(ElementRef);
   private injector = inject(Injector);
   private destroyRef = inject(DestroyRef);
@@ -100,7 +115,24 @@ export class TransactionsComponent implements OnInit, OnDestroy {
   // so exactly one of the two is on screen at every width.
   readonly isMobileViewport = injectIsMobileViewport();
 
-  transactions = this.windowSource.visibleWindow;
+  /**
+   * Rows whose delete was confirmed, by id, hidden while the delete waits
+   * out its Undo window (PendingDeleteService) and after, with whether it has
+   * been carried out and the filters it was deleted under. The window still
+   * holds such a row until a refresh lands without it, and a refresh can fail
+   * without a word, so an id is let go only once its delete is done and the
+   * loaded window no longer holds it (or the page goes). The totals leave the
+   * same rows out.
+   */
+  private readonly hidden = signal<ReadonlyMap<string, HiddenRow>>(new Map());
+
+  transactions = computed(() => {
+    const rows = this.windowSource.visibleWindow();
+    // Not `hidden`: Tailwind would read its negation as a utility made
+    // important, and ship the rule.
+    const hiddenRows = this.hidden();
+    return hiddenRows.size === 0 ? rows : rows.filter(row => !hiddenRows.has(row.id));
+  });
   isInitialLoading = this.windowSource.isInitialLoading;
 
   // Header count: the server-side total of the filtered set when it is exact,
@@ -118,12 +150,33 @@ export class TransactionsComponent implements OnInit, OnDestroy {
 
     if (!hasClientOnlyFilter) {
       const total = this.windowSource.totalCount();
-      if (total !== null) return `${total}`;
+      if (total !== null) return `${Math.max(0, total - this.hiddenCounted())}`;
     }
 
     const loaded = this.transactions().length;
     const complete = this.windowSource.reachedStart() && this.windowSource.reachedEnd();
     return complete ? `${loaded}` : `${loaded}+`;
+  });
+
+  /**
+   * How many hidden rows the server count still holds. The count lands with
+   * the page it was read beside (TransactionWindowService), so a row the
+   * window holds is one the count holds, before its delete and after it
+   * until a refresh lands. A row whose delete still waits is on the server
+   * whatever the window holds, so under the filters it was deleted under,
+   * whose rows it was listed among, it is counted even once a scroll has
+   * trimmed it from the window or a jump has re-seeded the window elsewhere.
+   */
+  private readonly hiddenCounted = computed(() => {
+    const hidden = this.hidden();
+    if (hidden.size === 0) return 0;
+    const held = new Set(this.windowSource.window().map(row => row.id));
+    const filters = this.currentFilters();
+    let counted = 0;
+    for (const [id, row] of hidden) {
+      if (held.has(id) || (!row.deleted && row.filters === filters)) counted++;
+    }
+    return counted;
   });
 
   // Header totals render state. 'ready' additionally requires a non-null
@@ -247,6 +300,16 @@ export class TransactionsComponent implements OnInit, OnDestroy {
       });
     });
 
+    // A hidden row is let go once its delete is done and the loaded window
+    // no longer holds it.
+    effect(() => {
+      const hidden = this.hidden();
+      if (hidden.size === 0) return;
+      const held = new Set(this.windowSource.window().map(row => row.id));
+      const gone = [...hidden].filter(([id, { deleted }]) => deleted && !held.has(id)).map(([id]) => id);
+      if (gone.length > 0) untracked(() => this.unhide(...gone));
+    });
+
     // Filters handed off from the smart-search dialog: works both when this
     // page is freshly created by the navigation and when it was already open.
     effect(() => {
@@ -317,6 +380,15 @@ export class TransactionsComponent implements OnInit, OnDestroy {
 
   ngOnDestroy(): void {
     this.categoriesSub?.unsubscribe();
+    // A delete waiting for its Undo window is made real as the page goes:
+    // its Undo leaves with the page.
+    void this.pendingDelete.flush();
+  }
+
+  // Hidden, the page may never be shown again (an app swiped away, a tab
+  // closed), so a delete waiting for its Undo window is made real now.
+  onVisibilityChange(): void {
+    if (this.document.visibilityState === 'hidden') void this.pendingDelete.flush();
   }
 
   // Read once: a filter change does not move the oldest row. An account with
@@ -493,16 +565,57 @@ export class TransactionsComponent implements OnInit, OnDestroy {
     });
   }
 
-  async onDeleteTransaction(transaction: Transaction): Promise<void> {
-    try {
-      await this.transactionService.deleteTransaction(transaction.id);
-      // The lastMutation effect refreshes the window.
-    } catch (error) {
-      // The row never left the list — no rollback needed, but the user has
-      // to be told the delete did not happen.
-      console.error('[Transactions] Delete failed:', error);
-      this.notifications.error(this.translationService.t('common.error'));
+  /**
+   * A confirmed delete from one of the list's three row doors. The row
+   * leaves the list, the count and the totals at once, and the delete itself
+   * waits out its Undo window (PendingDeleteService): Undo only shows the row
+   * again, since nothing was touched. Once the delete is carried out the row
+   * stays hidden until the window lets it go (see `hidden`); the
+   * lastMutation effect refreshes the window. A delete that fails brings the
+   * row back, which PendingDeleteService names in the error notice, and the
+   * list, which hands focus on as a row leaves, is told it is back.
+   */
+  async onDeleteTransaction(
+    transaction: Transaction,
+    list: Pick<TransactionListComponent, 'deleteFailed' | 'deleteUndone'>
+  ): Promise<void> {
+    this.hide(transaction.id);
+    const outcome = await this.pendingDelete.defer(transaction);
+    if (outcome === 'deleted') {
+      this.markDeleted(transaction.id);
+      return;
     }
+
+    this.unhide(transaction.id);
+    // Signed out, or someone else signed in: nobody to hand focus to.
+    if (outcome === 'signed-out' || this.destroyRef.destroyed) return;
+    if (outcome === 'failed') list.deleteFailed(transaction.id);
+    else list.deleteUndone(transaction.id);
+  }
+
+  private hide(id: string): void {
+    const next = new Map(this.hidden());
+    next.set(id, { deleted: false, filters: this.currentFilters() });
+    this.setHidden(next);
+  }
+
+  private markDeleted(id: string): void {
+    const row = this.hidden().get(id);
+    if (!row) return;
+    const next = new Map(this.hidden());
+    next.set(id, { ...row, deleted: true });
+    this.setHidden(next);
+  }
+
+  private unhide(...ids: string[]): void {
+    const next = new Map(this.hidden());
+    for (const id of ids) next.delete(id);
+    this.setHidden(next);
+  }
+
+  private setHidden(next: ReadonlyMap<string, HiddenRow>): void {
+    this.hidden.set(next);
+    this.periodTotals.exclude.set(new Set(next.keys()));
   }
 
   navigateToImportFile(): void {

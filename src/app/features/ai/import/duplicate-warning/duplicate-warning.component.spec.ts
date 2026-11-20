@@ -16,7 +16,7 @@ import {
   paintedColor,
   provideNoMotion,
   ratio,
-  settleAnimations,
+  tokenValue,
   withTheme,
 } from '../../../../core/services/testing';
 
@@ -343,17 +343,4 @@ describe('DuplicateWarningComponent, through its own template', () => {
       });
     }
   });
-
-  /** What `color: var(token)` computes to under the theme on <html> now. */
-  function tokenValue(token: string): string {
-    const probe = document.createElement('span');
-    probe.style.color = `var(${token})`;
-    document.body.appendChild(probe);
-    try {
-      settleAnimations(document);
-      return getComputedStyle(probe).color;
-    } finally {
-      probe.remove();
-    }
-  }
 });

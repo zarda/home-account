@@ -78,14 +78,14 @@
 
           <mat-card-content>
             <mat-form-field appearance="outline" class="api-key-field">
-              <mat-label>{{ 'settings.apiKey' | translate }}</mat-label>
+              <mat-label>{{ 'settings.apiKeyFor' | translate: { provider: providerName('gemini') } }}</mat-label>
               <input matInput
                      type="password"
                      [(ngModel)]="geminiApiKey"
                      (blur)="onGeminiApiKeyChange()"
                      placeholder="AIza...">
               @if (geminiApiKey()) {
-                <button mat-icon-button matSuffix (click)="clearGeminiApiKey()" type="button" [attr.aria-label]="'common.remove' | translate">
+                <button mat-icon-button matSuffix (click)="clearGeminiApiKey()" type="button" [attr.aria-label]="'settings.removeApiKey' | translate: { provider: providerName('gemini') }">
                   <mat-icon>close</mat-icon>
                 </button>
               }
@@ -124,6 +124,7 @@
           <mat-card-actions align="end">
             <a mat-button
                href="https://aistudio.google.com/app/apikey"
+               [attr.aria-label]="'settings.getApiKeyFor' | translate: { provider: providerName('gemini') }"
                target="_blank"
                rel="noopener">
               <mat-icon>open_in_new</mat-icon>
@@ -133,13 +134,12 @@
                     color="primary"
                     [disabled]="!geminiApiKey() || isTestingGemini()"
                     [attr.aria-busy]="isTestingGemini()"
-                    [attr.aria-label]="isTestingGemini() ? ('settings.testApiKey' | translate) : null"
+                    [attr.aria-label]="'settings.testApiKeyFor' | translate: { provider: providerName('gemini') }"
                     (click)="testGeminiApiKey()"
                     type="button">
               @if (isTestingGemini()) {
-                <!-- The visible label is replaced while testing, so the busy
-                     state reuses this same idle key as the button's name
-                     instead of leaving it nameless. -->
+                <!-- The spinner takes the place of the words while testing;
+                     the aria-label above names the button in both states. -->
                 <mat-spinner diameter="18" aria-hidden="true"></mat-spinner>
               } @else {
                 {{ 'settings.testApiKey' | translate }}
@@ -169,14 +169,14 @@
 
           <mat-card-content>
             <mat-form-field appearance="outline" class="api-key-field">
-              <mat-label>{{ 'settings.apiKey' | translate }}</mat-label>
+              <mat-label>{{ 'settings.apiKeyFor' | translate: { provider: providerName('openai') } }}</mat-label>
               <input matInput
                      type="password"
                      [(ngModel)]="openaiApiKey"
                      (blur)="onOpenaiApiKeyChange()"
                      placeholder="sk-...">
               @if (openaiApiKey()) {
-                <button mat-icon-button matSuffix (click)="clearOpenaiApiKey()" type="button" [attr.aria-label]="'common.remove' | translate">
+                <button mat-icon-button matSuffix (click)="clearOpenaiApiKey()" type="button" [attr.aria-label]="'settings.removeApiKey' | translate: { provider: providerName('openai') }">
                   <mat-icon>close</mat-icon>
                 </button>
               }
@@ -191,7 +191,7 @@
 
             @if (isProviderAvailable('openai')) {
               <mat-form-field appearance="outline" class="model-field">
-                <mat-label>{{ 'settings.modelLabel' | translate }}</mat-label>
+                <mat-label>{{ 'settings.modelFor' | translate: { provider: providerName('openai') } }}</mat-label>
                 <mat-select [value]="selectedOpenaiModel()" (selectionChange)="onOpenaiModelChange($event.value)">
                   @for (model of openaiModels; track model.id) {
                     <mat-option [value]="model.id">{{ model.name }}</mat-option>
@@ -204,6 +204,7 @@
           <mat-card-actions align="end">
             <a mat-button
                href="https://platform.openai.com/api-keys"
+               [attr.aria-label]="'settings.getApiKeyFor' | translate: { provider: providerName('openai') }"
                target="_blank"
                rel="noopener">
               <mat-icon>open_in_new</mat-icon>
@@ -213,13 +214,12 @@
                     color="primary"
                     [disabled]="!openaiApiKey() || isTestingOpenai()"
                     [attr.aria-busy]="isTestingOpenai()"
-                    [attr.aria-label]="isTestingOpenai() ? ('settings.testApiKey' | translate) : null"
+                    [attr.aria-label]="'settings.testApiKeyFor' | translate: { provider: providerName('openai') }"
                     (click)="testOpenaiApiKey()"
                     type="button">
               @if (isTestingOpenai()) {
-                <!-- The visible label is replaced while testing, so the busy
-                     state reuses this same idle key as the button's name
-                     instead of leaving it nameless. -->
+                <!-- The spinner takes the place of the words while testing;
+                     the aria-label above names the button in both states. -->
                 <mat-spinner diameter="18" aria-hidden="true"></mat-spinner>
               } @else {
                 {{ 'settings.testApiKey' | translate }}
@@ -249,14 +249,14 @@
 
           <mat-card-content>
             <mat-form-field appearance="outline" class="api-key-field">
-              <mat-label>{{ 'settings.apiKey' | translate }}</mat-label>
+              <mat-label>{{ 'settings.apiKeyFor' | translate: { provider: providerName('claude') } }}</mat-label>
               <input matInput
                      type="password"
                      [(ngModel)]="claudeApiKey"
                      (blur)="onClaudeApiKeyChange()"
                      placeholder="sk-ant-...">
               @if (claudeApiKey()) {
-                <button mat-icon-button matSuffix (click)="clearClaudeApiKey()" type="button" [attr.aria-label]="'common.remove' | translate">
+                <button mat-icon-button matSuffix (click)="clearClaudeApiKey()" type="button" [attr.aria-label]="'settings.removeApiKey' | translate: { provider: providerName('claude') }">
                   <mat-icon>close</mat-icon>
                 </button>
               }
@@ -271,7 +271,7 @@
 
             @if (isProviderAvailable('claude')) {
               <mat-form-field appearance="outline" class="model-field">
-                <mat-label>{{ 'settings.modelLabel' | translate }}</mat-label>
+                <mat-label>{{ 'settings.modelFor' | translate: { provider: providerName('claude') } }}</mat-label>
                 <mat-select [value]="selectedClaudeModel()" (selectionChange)="onClaudeModelChange($event.value)">
                   @for (model of claudeModels; track model.id) {
                     <mat-option [value]="model.id">{{ model.name }}</mat-option>
@@ -284,6 +284,7 @@
           <mat-card-actions align="end">
             <a mat-button
                href="https://console.anthropic.com/settings/keys"
+               [attr.aria-label]="'settings.getApiKeyFor' | translate: { provider: providerName('claude') }"
                target="_blank"
                rel="noopener">
               <mat-icon>open_in_new</mat-icon>
@@ -293,13 +294,12 @@
                     color="primary"
                     [disabled]="!claudeApiKey() || isTestingClaude()"
                     [attr.aria-busy]="isTestingClaude()"
-                    [attr.aria-label]="isTestingClaude() ? ('settings.testApiKey' | translate) : null"
+                    [attr.aria-label]="'settings.testApiKeyFor' | translate: { provider: providerName('claude') }"
                     (click)="testClaudeApiKey()"
                     type="button">
               @if (isTestingClaude()) {
-                <!-- The visible label is replaced while testing, so the busy
-                     state reuses this same idle key as the button's name
-                     instead of leaving it nameless. -->
+                <!-- The spinner takes the place of the words while testing;
+                     the aria-label above names the button in both states. -->
                 <mat-spinner diameter="18" aria-hidden="true"></mat-spinner>
               } @else {
                 {{ 'settings.testApiKey' | translate }}
@@ -493,9 +493,13 @@
           </mat-card-content>
 
           <mat-card-actions>
+            <!-- This clear and the tags card's show the same words side by
+                 side, so each is named for what it forgets, its words whole
+                 inside the name. -->
             <button
               mat-stroked-button
               [disabled]="rememberedCategoryCount() === 0 || clearingCategoryMemory()"
+              [attr.aria-label]="'aiPage.categoryMemoryClearLabel' | translate"
               (click)="clearCategoryMemory()"
             >
               <mat-icon>delete_sweep</mat-icon>
@@ -523,6 +527,7 @@
             <button
               mat-stroked-button
               [disabled]="rememberedTagCount() === 0 || clearingTagMemory()"
+              [attr.aria-label]="'aiPage.tagMemoryClearLabel' | translate"
               (click)="clearTagMemory()"
             >
               <mat-icon>delete_sweep</mat-icon>

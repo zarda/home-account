@@ -50,16 +50,10 @@ import {
 } from '../../../shared/components/confirm-dialog/confirm-dialog.component';
 import { MemberChipComponent } from '../../../shared/components/member-chip/member-chip.component';
 import { TranslatePipe } from '../../../shared/pipes/translate.pipe';
+import { FocusContext, focusWhenRendered } from '../../../shared/utils/focus-when-rendered';
 import { Household, HouseholdInvite, HouseholdInviteMail, HouseholdMember } from '../../../models';
 import { writeFailureMessage } from '../household-failure';
-import {
-  FocusContext,
-  HouseholdPageFocus,
-  OpenDialog,
-  closeDialogsOnSwitch,
-  focusWhenRendered,
-  sameShownHousehold
-} from '../household-focus';
+import { HouseholdPageFocus, OpenDialog, closeDialogsOnSwitch, sameShownHousehold } from '../household-focus';
 
 /**
  * What an invite's age is allowed beyond the callable's mail deadline
@@ -382,7 +376,7 @@ export class HouseholdMembersComponent {
       if (listed.has(departure.key)) return;
       untracked(() => {
         this.departing.set(null);
-        focusWhenRendered(this.focus, departure.landings);
+        focusWhenRendered(this.focus, departure.landings, { onlyIfDropped: true });
       });
     });
 
@@ -563,7 +557,7 @@ export class HouseholdMembersComponent {
       }
       this.setRemoval(key, undefined);
       this.notification.success(this.t('household.members.purged', { name: nameInline }));
-      focusWhenRendered(this.focus, ['#household-members-title']);
+      focusWhenRendered(this.focus, '#household-members-title', { onlyIfDropped: true });
     });
   }
 

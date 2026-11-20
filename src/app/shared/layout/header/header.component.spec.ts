@@ -6,6 +6,7 @@ import { MatDialog } from '@angular/material/dialog';
 import { BehaviorSubject, Subject, map } from 'rxjs';
 import { HeaderComponent } from './header.component';
 import { AuthService } from '../../../core/services/auth.service';
+import { PendingDeleteService } from '../../../core/services/pending-delete.service';
 import { AiSearchDialogComponent } from '../../components/ai-search-dialog/ai-search-dialog.component';
 import { CommandPaletteComponent } from '../../components/command-palette/command-palette.component';
 import { User } from '../../../models';
@@ -15,7 +16,9 @@ import { APP_BREAKPOINTS, AppBreakpointName } from '../../../core/layout/breakpo
 import {
   AUDIT_SCHEMES,
   createTranslationStub,
+  expectIndicatorInEveryPalette,
   provideNoMotion,
+  provideNoPendingDelete,
   runAxe,
   summarizeViolations,
   withTheme,
@@ -27,6 +30,7 @@ describe('HeaderComponent', () => {
   let routerEvents: Subject<unknown>;
   let mockRouter: { events: Subject<unknown>; navigate: jasmine.Spy };
   let mockAuth: { currentUser: ReturnType<typeof signal<User | null>>; signOut: jasmine.Spy };
+  let pendingDelete: { flushBeforeSignOut: jasmine.Spy };
   let mockDialog: jasmine.SpyObj<MatDialog>;
   let viewport$: BehaviorSubject<BreakpointState>;
 
@@ -52,6 +56,7 @@ describe('HeaderComponent', () => {
       currentUser: signal<User | null>({ id: 'u1', displayName: 'Tester' } as User),
       signOut: jasmine.createSpy('signOut').and.resolveTo(undefined),
     };
+    pendingDelete = { flushBeforeSignOut: jasmine.createSpy('flushBeforeSignOut').and.resolveTo(undefined) };
     // Auto-hide only applies on mobile; tests opt in per case.
     viewport$ = new BehaviorSubject<BreakpointState>(mobileViewport(true));
     mockDialog = jasmine.createSpyObj('MatDialog', ['open']);
@@ -61,6 +66,7 @@ describe('HeaderComponent', () => {
       providers: [
         { provide: Router, useValue: mockRouter },
         { provide: AuthService, useValue: mockAuth },
+        { provide: PendingDeleteService, useValue: pendingDelete },
         { provide: MatDialog, useValue: mockDialog },
         { provide: BreakpointObserver, useValue: { observe: () => viewport$.asObservable() } },
         { provide: TranslationService, useValue: createTranslationStub() },
@@ -166,6 +172,23 @@ describe('HeaderComponent', () => {
     expect(mockRouter.navigate).toHaveBeenCalledWith(['/login']);
   });
 
+  it('logout signs out only once a waiting transaction delete is made real and has settled', async () => {
+    let settled!: () => void;
+    pendingDelete.flushBeforeSignOut.and.returnValue(new Promise<void>(resolve => (settled = resolve)));
+    fixture.detectChanges();
+
+    const done = component.logout();
+    for (let i = 0; i < 5; i++) await Promise.resolve();
+    expect(pendingDelete.flushBeforeSignOut).toHaveBeenCalledTimes(1);
+    expect(mockAuth.signOut).withContext('while the delete settles').not.toHaveBeenCalled();
+    expect(mockRouter.navigate).not.toHaveBeenCalled();
+
+    settled();
+    await done;
+    expect(mockAuth.signOut).toHaveBeenCalledTimes(1);
+    expect(mockRouter.navigate).toHaveBeenCalledWith(['/login']);
+  });
+
   it('cleans up subscriptions and listeners on destroy', () => {
     const { el } = addScrollContainer();
     fixture.detectChanges();
@@ -223,6 +246,7 @@ describe('HeaderComponent, through its own template', () => {
       providers: [
         provideRouter([]),
         { provide: AuthService, useValue: auth },
+        provideNoPendingDelete(),
         { provide: MatDialog, useValue: dialog },
         {
           provide: BreakpointObserver,
@@ -358,11 +382,15 @@ describe('HeaderComponent, through its own template', () => {
     expect(openUserMenu().querySelector('.user-name')?.textContent?.trim()).toBe('User');
   });
 
-  it('signs out from the menu item a user actually clicks', () => {
+  it('signs out from the menu item a user actually clicks', async () => {
+    // No /login route here; the sign-out's own navigation is not the point.
+    spyOn(TestBed.inject(Router), 'navigate').and.resolveTo(true);
     fixture.detectChanges();
 
     const panel = openUserMenu();
     (Array.from(panel.querySelectorAll('button[mat-menu-item]')) as HTMLButtonElement[])[1].click();
+    // After the flush of any waiting transaction delete, which is a promise.
+    for (let i = 0; i < 5; i++) await Promise.resolve();
 
     expect(auth.signOut).toHaveBeenCalled();
   });
@@ -389,6 +417,7 @@ describe('HeaderComponent, the account name when the language switches', () => {
       providers: [
         provideRouter([]),
         { provide: AuthService, useValue: auth },
+        provideNoPendingDelete(),
         { provide: MatDialog, useValue: jasmine.createSpyObj('MatDialog', ['open']) },
         {
           provide: BreakpointObserver,
@@ -487,6 +516,7 @@ describe('HeaderComponent, the palette button and the ? hint (#446)', () => {
             signOut: jasmine.createSpy('signOut'),
           },
         },
+        provideNoPendingDelete(),
         { provide: MatDialog, useValue: dialog },
         { provide: BreakpointObserver, useValue: { observe } },
         { provide: TranslationService, useValue: createTranslationStub() },
@@ -558,6 +588,26 @@ describe('HeaderComponent, the palette button and the ? hint (#446)', () => {
     expect(localStorage.getItem(HINT_KEY)).toBe('true');
     recreate();
     expect(hint()).withContext('after a re-create').toBeNull();
+  });
+
+  // The hint shows at desktop widths, which a touch screen reaches too: its
+  // dismiss is a 40px target, the floor every target in the app keeps, not
+  // 32px. The hint grows round it and still sits inside the toolbar's band,
+  // and the indicator a keyboard focus draws inside the button is whole.
+  it("gives the hint's dismiss a 40px target inside the toolbar, its focus indicator whole in every palette", () => {
+    create();
+    const dismiss = dismissButton();
+    expect(dismiss).withContext('the dismiss renders').not.toBeNull();
+    if (!dismiss) return;
+
+    const box = dismiss.getBoundingClientRect();
+    expect(box.width).withContext('width vs the 40px floor').toBeGreaterThanOrEqual(40);
+    expect(box.height).withContext('height vs the 40px floor').toBeGreaterThanOrEqual(40);
+    const band = el().querySelector('.header-toolbar')!.getBoundingClientRect();
+    const tip = hint()!.getBoundingClientRect();
+    expect(tip.top).withContext('the hint inside the toolbar, top').toBeGreaterThanOrEqual(band.top);
+    expect(tip.bottom).withContext('the hint inside the toolbar, bottom').toBeLessThanOrEqual(band.bottom);
+    expectIndicatorInEveryPalette(dismiss, "the hint's dismiss");
   });
 
   it('hands focus to the palette button when the hint is dismissed, so a keyboard keeps its place', () => {
@@ -669,6 +719,7 @@ describe("HeaderComponent, focus after a palette opened from the hint's own dism
             signOut: jasmine.createSpy('signOut'),
           },
         },
+        provideNoPendingDelete(),
         {
           provide: BreakpointObserver,
           useValue: {

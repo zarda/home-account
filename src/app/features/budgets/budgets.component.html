@@ -37,6 +37,7 @@
         } @else if (budgets().length === 0) {
           <app-empty-state
             icon="savings"
+            [headingLevel]="2"
             [title]="'budget.noBudgets' | translate"
             [description]="'budget.noBudgetsDescription' | translate"
             [actionLabel]="'budget.createBudget' | translate"

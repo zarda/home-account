@@ -7,11 +7,9 @@ import { Transaction } from '../../../models';
 import { CurrencyService } from '../../../core/services/currency.service';
 import { TranslationService } from '../../../core/services/translation.service';
 import {
-  paintedBackground,
-  paintedColor,
+  expectPainted,
+  headingOutline,
   provideNoMotion,
-  ratio,
-  settleAnimations,
   withTheme,
 } from '../../../core/services/testing';
 
@@ -209,6 +207,16 @@ describe('CountryBreakdownComponent, through its own template', () => {
     expect(fixture.nativeElement.querySelector('.row-label')).toBeNull();
   });
 
+  // The card is one of the Reports page's own sections, so its title is an h2
+  // under the page's h1 and the empty state inside it an h3 under the title.
+  it("titles the card one level under the page's own heading, and its empty state one under the title", () => {
+    component.transactions = [inCountry(10), inCountry(5)];
+    fixture.detectChanges();
+
+    const outline = headingOutline(fixture.nativeElement);
+    expect(outline).toEqual(['h2 reports.spendingByCountry', 'h3 reports.noCountriesRecorded']);
+  });
+
   it('renders nothing at all for a period with no expenses', () => {
     component.transactions = [txn({ type: 'income', amount: 500 })];
     fixture.detectChanges();
@@ -229,28 +237,6 @@ describe('CountryBreakdownComponent, through its own template', () => {
     const THEMES = ['light', 'dark'] as const;
     const part = (selector: string) =>
       (fixture.nativeElement as HTMLElement).querySelector(selector) as HTMLElement;
-
-    /** What `<property>: var(token)` computes to under the theme on <html> now. */
-    function tokenValue(token: string, property = 'color'): string {
-      const probe = document.createElement('span');
-      probe.style.setProperty(property, `var(${token})`);
-      document.body.appendChild(probe);
-      try {
-        settleAnimations(document);
-        return getComputedStyle(probe).getPropertyValue(property);
-      } finally {
-        probe.remove();
-      }
-    }
-
-    /** `node` is `token`, and reads at 4.5:1 or better on what is painted behind it. */
-    function expectPainted(node: HTMLElement, token: string, label: string): void {
-      expect(node).withContext(label).toBeTruthy();
-      expect(getComputedStyle(node).color).withContext(label).toBe(tokenValue(token));
-      expect(ratio(paintedColor(node), paintedBackground(node)))
-        .withContext(`${label} on what it sits on`)
-        .toBeGreaterThanOrEqual(4.5);
-    }
 
     beforeEach(() => {
       component.transactions = [inCountry(30, 'KR'), inCountry(10, 'JP'), inCountry(5)];

@@ -143,7 +143,11 @@
            for the flag, so the group keeps its place and width; the
            segment's name carries the flag's sentence. -->
       <div class="type-toggle-container">
-        <mat-button-toggle-group formControlName="type" class="type-toggle">
+        <mat-button-toggle-group
+          formControlName="type"
+          class="type-toggle"
+          [attr.aria-label]="'transactions.type' | translate"
+        >
           <mat-button-toggle
             value="expense"
             class="type-button expense"
@@ -292,7 +296,7 @@
             mat-icon-button
             type="button"
             class="suggestion-dismiss"
-            [attr.aria-label]="'common.close' | translate"
+            [attr.aria-label]="'transactions.dismissCurrencySuggestion' | translate"
             (click)="dismissCurrencySuggestion()"
           >
             <mat-icon>close</mat-icon>
@@ -491,7 +495,7 @@
             mat-icon-button
             type="button"
             class="suggestion-dismiss"
-            [attr.aria-label]="'common.close' | translate"
+            [attr.aria-label]="'transactions.dismissPositionSuggestion' | translate"
             (click)="dismissCoordinateSuggestion()"
           >
             <mat-icon>close</mat-icon>

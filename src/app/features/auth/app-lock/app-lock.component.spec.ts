@@ -5,6 +5,7 @@ import { Router } from '@angular/router';
 import { AppLockComponent } from './app-lock.component';
 import { AppLockMethod, AppLockService } from '../../../core/services/app-lock.service';
 import { AuthService } from '../../../core/services/auth.service';
+import { PendingDeleteService } from '../../../core/services/pending-delete.service';
 import {
   BiometricAuthService,
   BiometricOutcome,
@@ -17,6 +18,7 @@ describe('AppLockComponent', () => {
   let fixture: ComponentFixture<AppLockComponent>;
   let appLock: jasmine.SpyObj<AppLockService>;
   let auth: jasmine.SpyObj<AuthService>;
+  let pendingDelete: { flushBeforeSignOut: jasmine.Spy };
   let router: jasmine.SpyObj<Router>;
   let biometricAuth: jasmine.SpyObj<BiometricAuthService>;
   let attemptsExhausted: ReturnType<typeof signal<boolean>>;
@@ -41,6 +43,7 @@ describe('AppLockComponent', () => {
 
     auth = jasmine.createSpyObj<AuthService>('AuthService', ['signOut']);
     auth.signOut.and.resolveTo(undefined);
+    pendingDelete = { flushBeforeSignOut: jasmine.createSpy('flushBeforeSignOut').and.resolveTo(undefined) };
 
     router = jasmine.createSpyObj<Router>('Router', ['navigate', 'navigateByUrl']);
     router.navigate.and.resolveTo(true);
@@ -61,6 +64,7 @@ describe('AppLockComponent', () => {
       providers: [
         { provide: AppLockService, useValue: appLock },
         { provide: AuthService, useValue: auth },
+        { provide: PendingDeleteService, useValue: pendingDelete },
         { provide: BiometricAuthService, useValue: biometricAuth },
         { provide: TranslationService, useValue: translation },
         { provide: Router, useValue: router },
@@ -159,6 +163,26 @@ describe('AppLockComponent', () => {
     await component.signOut();
 
     expect(appLock.clearCredential).toHaveBeenCalled();
+    expect(router.navigate).toHaveBeenCalledWith(['/login']);
+  });
+
+  // A transaction delete still inside its Undo window is made real first, and
+  // the sign-out waits for it to settle, so it is not cut off half done.
+  it('signs out only once a waiting transaction delete is made real and has settled', async () => {
+    let settled!: () => void;
+    pendingDelete.flushBeforeSignOut.and.returnValue(new Promise<void>(resolve => (settled = resolve)));
+
+    const done = component.signOut();
+    // Promise callbacks only: the countdown's interval keeps the page from ever being stable.
+    for (let i = 0; i < 5; i++) await Promise.resolve();
+    expect(appLock.clearCredential).withContext('cleared first, whatever follows').toHaveBeenCalled();
+    expect(pendingDelete.flushBeforeSignOut).toHaveBeenCalledTimes(1);
+    expect(auth.signOut).withContext('while the delete settles').not.toHaveBeenCalled();
+    expect(router.navigate).not.toHaveBeenCalled();
+
+    settled();
+    await done;
+    expect(auth.signOut).toHaveBeenCalledTimes(1);
     expect(router.navigate).toHaveBeenCalledWith(['/login']);
   });
 

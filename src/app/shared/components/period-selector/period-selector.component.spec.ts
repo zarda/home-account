@@ -7,8 +7,8 @@ import {
   PeriodSelection,
   defaultPeriodSelection,
 } from './period-selector.component';
-import { TranslationService } from '../../../core/services/translation.service';
-import { provideNoMotion } from '../../../core/services/testing';
+import { INTL_LOCALES, TranslationService } from '../../../core/services/translation.service';
+import { accessibleName, catalogTranslator, holdsShownWords, provideNoMotion } from '../../../core/services/testing';
 
 describe('PeriodSelectorComponent', () => {
   let fixture: ComponentFixture<PeriodSelectorComponent>;
@@ -53,6 +53,15 @@ describe('PeriodSelectorComponent', () => {
 
   it('does not emit on init — parents seed from defaultPeriodSelection()', () => {
     expect(emitted).toEqual([]);
+  });
+
+  // A radio group is entered by its name, so a reader hears that the quick
+  // ranges choose a period before the first of them.
+  it('names its quick-range group (real template)', () => {
+    const group = (fixture.nativeElement as HTMLElement).querySelector('.period-toggle') as HTMLElement;
+
+    expect(group.getAttribute('role')).toBe('radiogroup');
+    expect(accessibleName(group)).toBe('dashboard.period');
   });
 
   it('emits calendar bounds when a quick range is chosen', () => {
@@ -100,6 +109,93 @@ describe('PeriodSelectorComponent', () => {
     expect(emitted[1].option).toBe('thisMonth');
     expect(component.isCustomPeriod()).toBeFalse();
     expect(component.customPeriodLabel()).toBe('');
+  });
+
+  /**
+   * A chosen month or year shows as a chip whose button clears it and returns
+   * to the toggle. It closes nothing, so it is named for what it clears: the
+   * chip's own words, whole, inside a name that says it clears them.
+   */
+  describe("the chip's clear button (real template)", () => {
+    const pinned = {
+      en: { month: 'Clear Oct 2026', year: 'Clear 2025' },
+      ja: { month: '2026年10月をクリア', year: '2025年をクリア' },
+      tc: { month: '清除 2026年10月', year: '清除 2025年' },
+    } as const;
+
+    for (const locale of ['en', 'ja', 'tc'] as const) {
+      it(`names the clear for the period it clears, in ${locale}`, () => {
+        const translation = TestBed.inject(TranslationService) as jasmine.SpyObj<TranslationService>;
+        translation.t.and.callFake(catalogTranslator(locale));
+        translation.getIntlLocale.and.returnValue(INTL_LOCALES[locale]);
+        const t = catalogTranslator(locale);
+
+        const read = (chosen: 'month' | 'year') => {
+          fixture.detectChanges();
+          const chip = (fixture.nativeElement as HTMLElement).querySelector('.period-chip');
+          const clear = chip?.querySelector<HTMLButtonElement>('.clear-btn') ?? null;
+          expect(clear).withContext(`the clear on the ${chosen}'s chip`).not.toBeNull();
+          const shown = chip!.querySelector('span')!.textContent!.trim();
+          expect(shown).withContext(`the ${chosen}'s chip shows its period`).toBe(component.customPeriodLabel());
+          const name = accessibleName(clear!);
+          expect(holdsShownWords(name, shown, locale))
+            .withContext(`"${name}" holds the chip's words, "${shown}", whole`)
+            .toBeTrue();
+          expect(name).withContext(`"${name}" closes nothing`).not.toBe(t('common.close'));
+          expect(name).withContext(`the ${chosen}, pinned`).toBe(pinned[locale][chosen]);
+          expect(name).toBe(catalogTranslator(locale, { strict: true })('dashboard.clearPeriod', { period: shown }));
+        };
+
+        component.onMonthSelected(new Date(2026, 9, 15), fakePicker);
+        read('month');
+        component.onYearSelected(new Date(2025, 6, 1), fakePicker);
+        read('year');
+      });
+    }
+
+    /**
+     * The chip leaves with the period it shows, and the clear with it, so
+     * focus on the clear would fall to the page and a keyboard or screen
+     * reader user would start again from the top. It goes to the quick range
+     * the period returns to, This Month, checked.
+     */
+    describe('where focus goes once the chip has gone', () => {
+      const host = () => fixture.nativeElement as HTMLElement;
+      const thisMonth = () => host().querySelector<HTMLButtonElement>('mat-button-toggle[value="thisMonth"] button');
+
+      beforeEach(() => {
+        component.onMonthSelected(new Date(2026, 9, 15), fakePicker);
+        fixture.detectChanges();
+        expect(host().isConnected).withContext('the selector, on the page').toBeTrue();
+      });
+
+      it('goes to the This Month toggle, checked, from the clear the user pressed', () => {
+        const clear = host().querySelector<HTMLButtonElement>('.period-chip .clear-btn')!;
+        clear.focus();
+        expect(document.activeElement).withContext('the clear, focused').toBe(clear);
+
+        clear.click();
+        fixture.detectChanges();
+        // The hand-off waits for the render that removes the chip.
+        TestBed.tick();
+
+        expect(host().querySelector('.period-chip')).withContext('the chip, gone').toBeNull();
+        expect(thisMonth()?.getAttribute('aria-checked')).withContext('This Month, checked').toBe('true');
+        expect(document.activeElement).withContext('focus, on This Month').toBe(thisMonth());
+      });
+
+      it('stays where it is when the clear did not hold it (pin)', () => {
+        const calendar = host().querySelector<HTMLButtonElement>('.picker-btn')!;
+        calendar.focus();
+
+        component.clearCustomPeriod();
+        fixture.detectChanges();
+        TestBed.tick();
+
+        expect(host().querySelector('.period-chip')).withContext('the chip, gone').toBeNull();
+        expect(document.activeElement).withContext('focus, on the calendar button still').toBe(calendar);
+      });
+    });
   });
 
   describe('picker bounds', () => {

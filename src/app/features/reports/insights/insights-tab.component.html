@@ -3,6 +3,7 @@
     <app-loading-spinner [message]="'insights.computing' | translate" />
   } @else if (hasFailed()) {
     <app-empty-state
+      [headingLevel]="2"
       icon="error_outline"
       [title]="'insights.errorTitle' | translate"
       [description]="'insights.errorBody' | translate"
@@ -15,6 +16,7 @@
          empty snapshot, and telling the user they have no transactions would be
          a lie. -->
     <app-empty-state
+      [headingLevel]="2"
       icon="cloud_off"
       [title]="'insights.offlineTitle' | translate"
       [description]="'insights.offlineBody' | translate"
@@ -68,6 +70,7 @@
       </div>
     } @else if (isViewingArchive()) {
       <app-empty-state
+        [headingLevel]="2"
         icon="history"
         size="sm"
         [title]="'insights.archiveEmptyTitle' | translate"
@@ -78,6 +81,7 @@
            Name the gaps rather than looking broken. -->
       <div class="getting-started">
         <app-empty-state
+          [headingLevel]="2"
           icon="lightbulb"
           size="sm"
           [title]="'insights.gettingStartedTitle' | translate"
@@ -91,6 +95,7 @@
       </div>
     } @else {
       <app-empty-state
+        [headingLevel]="2"
         icon="lightbulb"
         [title]="'insights.noPatternsTitle' | translate"
         [description]="'insights.noPatternsBody' | translate"

@@ -24,13 +24,17 @@ import {
 } from '../../../models';
 import {
   AUDIT_SCHEMES,
+  accessibleName,
+  catalogTranslator,
+  headingOutline,
+  holdsShownWords,
   hoverValue,
   paintedBackground,
   paintedColor,
   provideNoMotion,
   ratio,
-  settleAnimations,
   textLines,
+  tokenValue,
   withScheme,
   withTheme,
 } from '../../../core/services/testing';
@@ -124,6 +128,20 @@ describe('UpcomingBillsComponent', () => {
 
     fixture = TestBed.createComponent(UpcomingBillsComponent);
     component = fixture.componentInstance;
+  });
+
+  // The dashboard's h1 heads the page, so the card's title is an h2, and each
+  // day, or the empty state, an h3 under it.
+  it('titles the card one level under the page, and each day or its empty state one under the title', () => {
+    const outline = () => headingOutline(fixture.nativeElement);
+    render([]);
+    expect(outline()).toEqual(['h2 dashboard.upcomingBills', 'h3 dashboard.noUpcomingBills']);
+
+    render([
+      occurrence({ recurringId: 'r1', date: new Date(2026, 8, 1, 9, 0) }),
+      occurrence({ recurringId: 'r3', date: new Date(2026, 8, 4, 8, 0) }),
+    ]);
+    expect(outline()).toEqual(['h2 dashboard.upcomingBills', 'h3 day 1', 'h3 day 4']);
   });
 
   it('groups occurrences by local day, keeping the order they arrive in', () => {
@@ -424,6 +442,34 @@ describe('UpcomingBillsComponent', () => {
     });
   });
 
+  /**
+   * The dashboard renders this card and Recent Transactions side by side,
+   * each with a View All of its own, so each names the card it belongs to
+   * by the card's title, around the words it shows (WCAG 2.5.3), read
+   * without regard to case in the reader's own locale.
+   */
+  const viewAllNames = { en: 'View All Upcoming Bills', ja: '今後の予定をすべて表示', tc: '查看全部近期排程' } as const;
+  for (const locale of ['en', 'ja', 'tc'] as const) {
+    it(`names View All by the card's title in ${locale}`, () => {
+      const t = catalogTranslator(locale, { strict: true });
+      const translation = TestBed.inject(TranslationService) as unknown as jasmine.SpyObj<TranslationService>;
+      translation.t.and.callFake(catalogTranslator(locale));
+      render([]);
+      const el = fixture.nativeElement as HTMLElement;
+
+      const link = el.querySelector('.view-all-link') as HTMLAnchorElement;
+      const shown = t('dashboard.viewAll');
+      const title = t('dashboard.upcomingBills');
+      const name = accessibleName(link);
+      expect(el.querySelector('.card-title')?.textContent?.trim()).withContext("the card's title").toBe(title);
+      expect(link.textContent).withContext('View All shows its words').toContain(shown);
+      expect(name).withContext(`"${name}" names the card`).toContain(title);
+      expect(holdsShownWords(name, shown, locale)).withContext(`"${name}" holds "${shown}" whole`).toBeTrue();
+      expect(name).withContext('pinned').toBe(viewAllNames[locale]);
+      expect(name).toBe(t('dashboard.viewAllNamed', { name: title }));
+    });
+  }
+
   // At 1024 px the dashboard's rail is about 229 px wide, too narrow for the
   // title, View all and the menu on one line. The title may wrap; the link
   // and the menu stay one line, together.
@@ -472,6 +518,26 @@ describe('UpcomingBillsComponent', () => {
         .toBeLessThanOrEqual(host.querySelector('mat-card')!.getBoundingClientRect().right);
     });
 
+    // Its words are a 21px line, and the link was no taller: under the 40px
+    // floor every target in the app keeps. The menu's 48px touch span reaches
+    // 4px past its trigger, and the app's focus outline sits 2px out from the
+    // link and is 2px wide, 3px under high contrast, inside a card that clips.
+    it('gives View All a 40px target, clear of the menu beside it, its focus outline inside the card', () => {
+      const link = host.querySelector('.view-all-link') as HTMLElement;
+      const box = link.getBoundingClientRect();
+      expect(box.height).withContext('height vs the 40px floor').toBeGreaterThanOrEqual(40);
+      expect(box.width).withContext('width vs the 40px floor').toBeGreaterThanOrEqual(40);
+
+      const span = host.querySelector('.card-menu-trigger .mat-mdc-button-touch-target')!.getBoundingClientRect();
+      expect(span.left).withContext("the menu's touch span begins after the link").toBeGreaterThanOrEqual(box.right - 0.5);
+
+      const card = host.querySelector('mat-card')!.getBoundingClientRect();
+      const outline = 2 + 3;
+      expect(box.top - outline).withContext('outline top inside the card').toBeGreaterThanOrEqual(card.top);
+      expect(box.left - outline).withContext('outline left inside the card').toBeGreaterThanOrEqual(card.left);
+      expect(box.right + outline).withContext('outline right inside the card').toBeLessThanOrEqual(card.right);
+    });
+
     // Three cards stack in the rail, and Budget Progress keeps its title whole
     // and drops its actions to the row below. A title broken to keep the
     // actions beside it reads as a different header, so at every width the
@@ -495,19 +561,6 @@ describe('UpcomingBillsComponent', () => {
   // Not the category tile or its glyph: those paint the category's own colour,
   // and 'category tiles' below measures them.
   describe('colours', () => {
-    /** What `color: var(token)` computes to under the palette on <html> now. */
-    function tokenColour(token: string): string {
-      const probe = document.createElement('span');
-      probe.style.color = `var(${token})`;
-      document.body.appendChild(probe);
-      try {
-        settleAnimations(document);
-        return getComputedStyle(probe).color;
-      } finally {
-        probe.remove();
-      }
-    }
-
     it('paints every line in its text token, at AA or better on the card, in both themes', () => {
       render([occurrence()], -1200, 2);
       const lines = [
@@ -529,7 +582,7 @@ describe('UpcomingBillsComponent', () => {
               .toBeGreaterThanOrEqual(4.5);
             expect(getComputedStyle(el).color)
               .withContext(`${theme} ${label}`)
-              .toBe(tokenColour(token));
+              .toBe(tokenValue(token));
           }
         });
       }
@@ -545,7 +598,7 @@ describe('UpcomingBillsComponent', () => {
               .withContext(`${theme} link at rest on the card`)
               .toBeGreaterThanOrEqual(4.5);
             const rest = getComputedStyle(link).color;
-            expect(rest).withContext(`${theme} link at rest`).toBe(tokenColour('--color-accent'));
+            expect(rest).withContext(`${theme} link at rest`).toBe(tokenValue('--color-accent'));
 
             link.style.color = hoverValue(link, '.view-all-link', 'color');
             expect(ratio(paintedColor(link), paintedBackground(link)))

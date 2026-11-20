@@ -4,12 +4,15 @@ import {
   catalogTranslator,
   createTranslationStub,
   createLocaleFormatStub,
+  expectPainted,
+  headingOutline,
   hoverValue,
   paintedBackground,
   paintedColor,
   ratio,
   settleAnimations,
   textLines,
+  tokenValue,
   withTheme,
   provideNoMotion,
   TranslationStub,
@@ -1091,6 +1094,21 @@ describe('DataManagementComponent, through its own template', () => {
       .every(b => b.disabled)).toBeTrue();
   });
 
+  // The Data page's h1 heads the five sections with no heading between, so
+  // each section's title is an h2.
+  it("heads each of its five sections one level under the page's own heading", () => {
+    fixture.detectChanges();
+
+    const outline = headingOutline(el());
+    expect(outline).toEqual([
+      'h2 settings.exportData',
+      'h2 import.smartImport',
+      'h2 receiptImages.title',
+      'h2 settings.importData',
+      'h2 settings.dangerZone',
+    ]);
+  });
+
   it('routes into the import wizard and its history', () => {
     fixture.detectChanges();
 
@@ -1525,19 +1543,6 @@ describe('DataManagementComponent, through its own template', () => {
       }
     }
 
-    const tokenValue = (token: string, property = 'color') => computedAs(`var(${token})`, property);
-
-    /** `node` is `token`, and reads at `floor` or better on what is painted behind it. */
-    function expectPainted(node: Element | null, token: string, label: string, floor = 4.5): void {
-      expect(node).withContext(label).toBeTruthy();
-      if (!node) return;
-      settleAnimations(document);
-      expect(getComputedStyle(node).color).withContext(label).toBe(tokenValue(token));
-      expect(ratio(paintedColor(node), paintedBackground(node)))
-        .withContext(`${label} on what it sits on`)
-        .toBeGreaterThanOrEqual(floor);
-    }
-
     /** Runs `fn` with `value` laid inline on `node` as `property`, then takes it off again. */
     function withInline(node: HTMLElement, property: string, value: string, fn: () => void): void {
       node.style.setProperty(property, value);
@@ -1567,7 +1572,7 @@ describe('DataManagementComponent, through its own template', () => {
             .withContext(`${theme} zone edge`)
             .toBe(computedAs('color-mix(in srgb, var(--color-error) 30%, transparent)', 'border-top-color'));
 
-          expectPainted(zone.querySelector('.section-header h3'), '--text-primary', `${theme} heading`);
+          expectPainted(zone.querySelector('.section-header h2'), '--text-primary', `${theme} heading`);
           expectPainted(zone.querySelector('.section-description'), '--text-muted', `${theme} description`);
           expectPainted(zone.querySelector('.section-icon.danger'), '--color-error', `${theme} warning glyph`, 3);
 
@@ -1611,7 +1616,7 @@ describe('DataManagementComponent, through its own template', () => {
           for (const [name, end] of Object.entries(ends)) {
             withInline(section, 'background', end, () => {
               const at = `${theme}, at the ${name}`;
-              expectPainted(section.querySelector('.section-header h3'), '--text-primary', `${at}: heading`);
+              expectPainted(section.querySelector('.section-header h2'), '--text-primary', `${at}: heading`);
               expectPainted(section.querySelector('.section-description'), '--text-muted', `${at}: description`);
               expectPainted(section.querySelector('.section-icon.ai-icon'), '--color-ai', `${at}: AI glyph`, 3);
               features.forEach((feature, i) => {

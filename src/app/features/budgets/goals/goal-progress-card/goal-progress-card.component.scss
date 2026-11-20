@@ -27,20 +27,24 @@
         display: inline-flex;
         align-items: center;
         gap: 4px;
-        font-size: 12px;
+        font-size: var(--text-xs);
         color: var(--text-muted);
 
         mat-icon {
-          font-size: 14px;
-          width: 14px;
-          height: 14px;
+          font-size: var(--text-sm);
+          width: 1em;
+          height: 1em;
         }
       }
     }
 
+    // Edit and Delete stand apart: the 8px is the two 4px edges of the
+    // 48px touch span Material lays round each 40px button, so a press meant
+    // for Edit never reaches Delete.
     .goal-actions {
       display: flex;
       flex-shrink: 0;
+      gap: 8px;
     }
   }
 
@@ -70,13 +74,13 @@
     // Where the total comes from, shown only when transactions feed it.
     .linked-breakdown {
       margin: 0 0 6px;
-      font-size: 12px;
+      font-size: var(--text-xs);
       color: var(--text-muted);
     }
 
     .status {
       margin: 6px 0 0;
-      font-size: 13px;
+      font-size: var(--text-sm);
       color: var(--text-muted);
 
       // Reaching the goal is the card's news, so it reads in the card's own
@@ -88,9 +92,9 @@
         color: inherit;
 
         mat-icon {
-          font-size: 18px;
-          width: 18px;
-          height: 18px;
+          font-size: var(--text-lg);
+          width: 1em;
+          height: 1em;
         }
       }
     }
@@ -110,7 +114,7 @@
     flex-direction: column;
 
     .items-count {
-      font-size: 12px;
+      font-size: var(--text-xs);
       color: var(--text-muted);
       margin-bottom: 4px;
     }
@@ -128,15 +132,24 @@
 
     .item-amount {
       margin-left: 8px;
-      font-size: 12px;
+      font-size: var(--text-xs);
       color: var(--text-muted);
     }
   }
 
   .goal-note {
     margin: 12px 0 0;
-    font-size: 13px;
+    font-size: var(--text-sm);
     color: var(--text-muted);
     overflow-wrap: anywhere;
+  }
+
+  // The foot's two buttons share a row while it holds both, each label on
+  // one line, and take a row each, still at the end, when it does not: a
+  // row that cannot wrap squeezed View Transactions onto two lines and
+  // pushed Contribute past the card on a phone.
+  .mat-mdc-card-actions {
+    flex-wrap: wrap;
+    gap: 8px;
   }
 }

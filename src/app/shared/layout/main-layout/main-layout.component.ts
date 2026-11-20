@@ -1,4 +1,5 @@
 import { ChangeDetectionStrategy, Component, computed, effect, inject, signal } from '@angular/core';
+import { DOCUMENT } from '@angular/common';
 
 import { RouterOutlet } from '@angular/router';
 import { BreakpointObserver } from '@angular/cdk/layout';
@@ -15,6 +16,9 @@ import { TranslatePipe } from '../../pipes/translate.pipe';
 
 /** localStorage key for the user's docked-sidebar collapse preference. */
 const SIDEBAR_COLLAPSED_KEY = 'homeaccount.sidebar-collapsed';
+
+/** The body's class while the phone's bottom nav is shown; styles.scss lifts a notice over the bar by it. */
+const BOTTOM_NAV_SHOWN = 'bottom-nav-shown';
 
 @Component({
   selector: 'app-main-layout',
@@ -70,6 +74,17 @@ export class MainLayoutComponent {
       if (this.onboarding.shouldShow()) {
         this.onboarding.show();
       }
+    });
+
+    // A notice opens on the viewport's bottom edge, outside this shell, so
+    // the body says when the bottom nav is shown for the notice to stand
+    // above it. A class rather than :has(): iOS 15's WebView before 15.4
+    // does not parse :has(), and drops the whole rule that holds it.
+    // The mark goes with the shell.
+    const body = inject(DOCUMENT).body;
+    effect(onCleanup => {
+      body.classList.toggle(BOTTOM_NAV_SHOWN, this.isMobile());
+      onCleanup(() => body.classList.remove(BOTTOM_NAV_SHOWN));
     });
   }
 

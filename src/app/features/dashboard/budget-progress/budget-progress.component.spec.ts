@@ -12,6 +12,7 @@ import {
   AUDIT_SCHEMES,
   GLYPH_PROBE_COLOURS,
   channels,
+  headingOutline,
   iconBox,
   iconSquare,
   paintedBackground,
@@ -19,26 +20,11 @@ import {
   ratio,
   settleAnimations,
   textLines,
+  tokenValue,
   withScheme,
   withTheme,
   provideNoMotion,
 } from '../../../core/services/testing';
-
-/**
- * What `color: var(token)` computes to under the palette on <html> now,
- * once any transition the theme swap started has run to its end.
- */
-function tokenColour(token: string): string {
-  const probe = document.createElement('span');
-  probe.style.color = `var(${token})`;
-  document.body.appendChild(probe);
-  try {
-    settleAnimations(document);
-    return getComputedStyle(probe).color;
-  } finally {
-    probe.remove();
-  }
-}
 
 // The card as the dashboard renders it: what carries `card-actions` is the
 // card's own menu.
@@ -275,13 +261,13 @@ describe('BudgetProgressComponent', () => {
           withTheme(theme, () => {
             expect(paintedBackground(row))
               .withContext(`${theme} row`)
-              .toEqual(channels(tokenColour('--surface-subtle')).rgb);
+              .toEqual(channels(tokenValue('--surface-subtle')).rgb);
             expect(ratio(paintedColor(percentage), paintedBackground(percentage)))
               .withContext(`${theme} ${severity.name} on the row`)
               .toBeGreaterThanOrEqual(4.5);
             expect(getComputedStyle(percentage).color)
               .withContext(`${theme} ${severity.name}`)
-              .toBe(tokenColour(severity.token));
+              .toBe(tokenValue(severity.token));
           });
         }
       }
@@ -303,7 +289,7 @@ describe('BudgetProgressComponent', () => {
             .toBeGreaterThanOrEqual(4.5);
           expect(getComputedStyle(link).color)
             .withContext(`${theme} Manage link`)
-            .toBe(tokenColour('--mat-sys-primary'));
+            .toBe(tokenValue('--mat-sys-primary'));
         });
       }
     });
@@ -322,7 +308,7 @@ describe('BudgetProgressComponent', () => {
               .toBeGreaterThanOrEqual(4.5);
             expect(getComputedStyle(el).color)
               .withContext(`${theme} ${label}`)
-              .toBe(tokenColour(token));
+              .toBe(tokenValue(token));
           }
         });
       }
@@ -345,7 +331,7 @@ describe('BudgetProgressComponent', () => {
             const label = `${scheme} ${Object.values(colours)[i]}`;
             expect(paintedBackground(glyph))
               .withContext(`${label} on the row`)
-              .toEqual(channels(tokenColour('--surface-subtle')).rgb);
+              .toEqual(channels(tokenValue('--surface-subtle')).rgb);
             expect(ratio(paintedColor(glyph), paintedBackground(glyph)))
               .withContext(`${label} glyph`)
               .toBeGreaterThanOrEqual(4.5);
@@ -364,7 +350,7 @@ describe('BudgetProgressComponent', () => {
           settleAnimations(document);
           expect(getComputedStyle(track).backgroundColor)
             .withContext(`${theme} track`)
-            .toBe(tokenColour('--mat-sys-surface-variant'));
+            .toBe(tokenValue('--mat-sys-surface-variant'));
         });
       }
     });
@@ -384,7 +370,7 @@ describe('BudgetProgressComponent', () => {
             const label = `${theme} ${severity.name} bar`;
             const indicator = getComputedStyle(part('.mdc-linear-progress__bar-inner')).borderTopColor;
             painted.set(severity.name, indicator);
-            expect(indicator).withContext(label).toBe(tokenColour(severity.token));
+            expect(indicator).withContext(label).toBe(tokenValue(severity.token));
             expect(ratio(channels(indicator).rgb, paintedBackground(part('.mdc-linear-progress__buffer-bar'))))
               .withContext(`${label} on its track`)
               .toBeGreaterThanOrEqual(3);
@@ -590,6 +576,30 @@ describe('BudgetProgressComponent', () => {
       expect(compiled.textContent?.includes('Budget Progress') || compiled.textContent?.includes('dashboard.budgetProgress')).toBe(true);
     });
 
+    // The dashboard's h1 heads the page, so the card's title is an h2, as every
+    // other card's is; a budget's name is a line of the card, not a heading.
+    it('titles the card one level under the page', () => {
+      const outline = headingOutline(fixture.nativeElement);
+      expect(outline).toEqual(['h2 dashboard.budgetProgress']);
+    });
+
+    // Every other dashboard card sets its title in --text-lg, semibold, on a
+    // line one and a half times its size, in the primary text colour; Budget
+    // Progress's was 16px on a 24px line. Its title is Material's card title,
+    // whose own rule sets the font from the theme's title tokens, so what
+    // shows is read as computed.
+    it("sets its title in the look of every other card's title", () => {
+      const title = fixture.nativeElement.querySelector('h2') as HTMLElement;
+      const style = getComputedStyle(title);
+      const size = tokenValue('--text-lg', 'font-size');
+      expect(style.fontSize).withContext('size').toBe(size);
+      expect(style.fontWeight).withContext('weight').toBe('600');
+      expect(style.lineHeight).withContext('line height').toBe(`${parseFloat(size) * 1.5}px`);
+      expect(style.letterSpacing).withContext('tracking').toBe('normal');
+      expect(style.color).withContext('colour').toBe(tokenValue('--text-primary'));
+      expect(style.margin).withContext('margin').toBe('0px');
+    });
+
     it('should display manage link', () => {
       const compiled = fixture.nativeElement as HTMLElement;
       // Check for translation key or translated text
@@ -625,16 +635,7 @@ describe('BudgetProgressComponent', () => {
       // .budget-period wears the token means resolving the token itself
       // here, not asserting whichever theme happened to be active when the
       // suite reached this test.
-      const tokenValue = getComputedStyle(document.documentElement)
-        .getPropertyValue('--text-muted')
-        .trim();
-      const probe = document.createElement('span');
-      probe.style.color = tokenValue;
-      document.body.appendChild(probe);
-      const expectedColor = getComputedStyle(probe).color;
-      probe.remove();
-
-      expect(getComputedStyle(period).color).toBe(expectedColor);
+      expect(getComputedStyle(period).color).toBe(tokenValue('--text-muted'));
     });
 
     it('should display progress bar', () => {

@@ -2,7 +2,7 @@ import { ChangeDetectionStrategy, Component } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { MatIconModule } from '@angular/material/icon';
 import { MatMenuModule } from '@angular/material/menu';
-import { PALETTES, channels, inPalette, withTheme } from './core/services/testing';
+import { PALETTES, channels, inPalette, styleRules, withTheme } from './core/services/testing';
 
 /**
  * The colour utilities in tailwind.config.js that follow the theme, the
@@ -32,9 +32,13 @@ function propertyOf(utility: string): 'color' | 'border-top-color' | 'background
 }
 
 /**
- * Every alias, as the utility its consumers reach for. The class names are
- * written out whole because Tailwind generates only the utilities it finds
- * spelled in the sources.
+ * Every alias, as the utility its consumers reach for. Tailwind does not read
+ * specs (tailwind.config.js), so spelling a class here generates nothing: each
+ * ships because a template names it or the config's safelist holds it. A row
+ * whose utility does neither fails against its probe: a text row inherits the
+ * sentinel, a background row stays transparent, and a border row keeps
+ * preflight's gray, which none of the border tokens holds in all four
+ * palettes.
  */
 const ALIASES: readonly { utility: string; token: string }[] = [
   { utility: 'text-fg', token: '--text-primary' },
@@ -161,6 +165,45 @@ describe('theme-following colours', () => {
         }
       });
     }
+  });
+});
+
+describe('the stylesheet', () => {
+  /**
+   * Tailwind's `content` leaves specs out (tailwind.config.js), so a word
+   * that only a spec holds generates nothing. *ring*, the name of Tailwind's
+   * bare focus-halo utility, is such a word: this case spells it, comments in
+   * other specs use it, and no file Tailwind's content reads holds it
+   * standing alone. Were specs read again, `.ring` would be generated and
+   * this case would fail. The Karma page's stylesheet comes from the same
+   * config as the shipped one.
+   *
+   * An absence proves nothing about a sheet that was never read, and
+   * `styleRules` skips a sheet whose rules cannot be read. So the case first
+   * finds `.text-fg-disabled`, which only the safelist ships, in what it read.
+   */
+  it('ships no rule for a utility that only a spec names', () => {
+    const selectors = styleRules().map(({ rule }) => rule.selectorText);
+
+    expect(selectors.some(selector => selector === '.text-fg-disabled'))
+      .withContext('the Tailwind sheet is read: a safelisted alias is in it')
+      .toBeTrue();
+    expect(selectors.filter(selector => /\.ring(?![\w-])/.test(selector))).toEqual([]);
+  });
+
+  /**
+   * Tailwind reads `!` before a utility's name as that utility made
+   * important, in code as in a template, so a negation of a variable that
+   * shares a utility's name, `!hidden.has(id)`, ships `.\!hidden`. No
+   * template asks for it.
+   */
+  it('ships no important rule that only a negation in code names', () => {
+    const selectors = styleRules().map(({ rule }) => rule.selectorText);
+
+    expect(selectors.some(selector => selector === '.text-fg-disabled'))
+      .withContext('the Tailwind sheet is read: a safelisted alias is in it')
+      .toBeTrue();
+    expect(selectors.filter(selector => /\.\\!hidden(?![\w-])/.test(selector))).toEqual([]);
   });
 });
 

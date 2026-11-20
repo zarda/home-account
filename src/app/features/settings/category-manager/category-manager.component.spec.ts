@@ -11,13 +11,18 @@ import { AnnouncerService } from '../../../core/services/announcer.service';
 import { Category } from '../../../models';
 import { NotificationService } from '../../../core/services/notification.service';
 import {
+  accessibleName,
+  catalogTranslationStub,
   createTranslationStub,
+  expectPainted,
+  headingOutline,
   hoverValue,
-  paintedBackground,
-  paintedColor,
   provideNoMotion,
-  ratio,
+  runAxe,
   settleAnimations,
+  standOnThePage,
+  summarizeViolations,
+  tokenValue,
   withTheme,
 } from '../../../core/services/testing';
 
@@ -422,6 +427,7 @@ describe('CategoryManagerComponent, through its own template', () => {
   let fixture: ComponentFixture<CategoryManagerComponent>;
   let categories: jasmine.SpyObj<CategoryService>;
   let dialog: jasmine.SpyObj<MatDialog>;
+  let translation: ReturnType<typeof createTranslationStub>;
 
   const el = () => fixture.nativeElement as HTMLElement;
   const rows = () => Array.from(el().querySelectorAll('.category-item')) as HTMLElement[];
@@ -463,6 +469,7 @@ describe('CategoryManagerComponent, through its own template', () => {
     categories.deleteCategory.and.resolveTo();
     categories.reorderCategories.and.resolveTo();
     dialog = jasmine.createSpyObj('MatDialog', ['open']);
+    translation = createTranslationStub();
 
     await TestBed.configureTestingModule({
       imports: [CategoryManagerComponent],
@@ -471,7 +478,7 @@ describe('CategoryManagerComponent, through its own template', () => {
         { provide: CategoryService, useValue: categories },
         { provide: MatDialog, useValue: dialog },
         { provide: MatSnackBar, useValue: jasmine.createSpyObj('MatSnackBar', ['open']) },
-        { provide: TranslationService, useValue: createTranslationStub() },
+        { provide: TranslationService, useValue: translation },
         { provide: AnnouncerService, useValue: jasmine.createSpyObj('AnnouncerService', ['announce']) },
         provideNoMotion(),
       ],
@@ -492,6 +499,39 @@ describe('CategoryManagerComponent, through its own template', () => {
     fixture.detectChanges();
 
     expect(names()).toEqual(['Salary']);
+  });
+
+  /**
+   * A single-select toggle group is a radiogroup, and a reader moving into one
+   * hears its name before its first choice. The Theme and Font size groups on
+   * the same page are named; without a name of its own, this one announced
+   * only "Total Expenses, 1 of 2" with nothing to say what is being chosen.
+   */
+  describe('its Expenses / Income group', () => {
+    const pinned = { en: 'Category type', ja: 'カテゴリの種類', tc: '類別類型' } as const;
+    const group = () => el().querySelector('.manager-header mat-button-toggle-group') as HTMLElement;
+
+    for (const locale of ['en', 'ja', 'tc'] as const) {
+      it(`is a radiogroup named for the category type, in ${locale}`, () => {
+        Object.assign(translation, catalogTranslationStub(locale));
+        setUp(mockCategoryList);
+
+        expect(group().getAttribute('role')).toBe('radiogroup');
+        expect(accessibleName(group())).withContext('the group\'s name').toBe(pinned[locale]);
+      });
+    }
+
+    // A general check of the header, not the guard for the group's name: axe
+    // reads no radiogroup's name, and passes with this one unnamed. The cases
+    // above hold this group's name, and icon-labels:check every group's.
+    it('leaves the header with nothing for axe to report', async () => {
+      Object.assign(translation, catalogTranslationStub('en'));
+      setUp(mockCategoryList);
+      standOnThePage(el());
+
+      const header = el().querySelector('.manager-header') as HTMLElement;
+      expect(summarizeViolations(await runAxe(header))).toEqual([]);
+    });
   });
 
   it('shows the spinner only while the first load is open', () => {
@@ -519,6 +559,15 @@ describe('CategoryManagerComponent, through its own template', () => {
 
     (el().querySelector('app-empty-state button') as HTMLButtonElement).click();
     expect(dialog.open).toHaveBeenCalledTimes(2);
+  });
+
+  // Settings' panels are titled by no heading, so the empty state sits
+  // directly under the page's h1.
+  it("heads the empty state one level under the page's own heading", () => {
+    setUp([]);
+
+    const outline = headingOutline(el());
+    expect(outline).toEqual(['h2 settings.noCategoriesFound']);
   });
 
   it('badges a default category and refuses to offer its delete', () => {
@@ -576,28 +625,6 @@ describe('CategoryManagerComponent, through its own template', () => {
 
   describe('colours, as painted', () => {
     const THEMES = ['light', 'dark'] as const;
-
-    /** What `<property>: var(token)` computes to under the theme on <html> now. */
-    function tokenValue(token: string, property = 'color'): string {
-      const probe = document.createElement('span');
-      probe.style.setProperty(property, `var(${token})`);
-      document.body.appendChild(probe);
-      try {
-        settleAnimations(document);
-        return getComputedStyle(probe).getPropertyValue(property);
-      } finally {
-        probe.remove();
-      }
-    }
-
-    /** `node` is `token`, and reads at `floor` or better on what is painted behind it. */
-    function expectPainted(node: HTMLElement, token: string, label: string, floor = 4.5): void {
-      expect(node).withContext(label).toBeTruthy();
-      expect(getComputedStyle(node).color).withContext(label).toBe(tokenValue(token));
-      expect(ratio(paintedColor(node), paintedBackground(node)))
-        .withContext(`${label} on what it sits on`)
-        .toBeGreaterThanOrEqual(floor);
-    }
 
     // A glyph is a graphic, so the drag handle's floor is 3:1 (WCAG 1.4.11).
     it('paints a row\'s name, its Default badge and its drag handle in the text tokens, at rest and hovered, in both themes', () => {

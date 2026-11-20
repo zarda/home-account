@@ -4,6 +4,7 @@
   @if (history.answers().length === 0) {
     <app-empty-state
       icon="travel_explore"
+      [headingLevel]="2"
       [title]="emptyTitle()"
       [description]="emptyHint()"
     />
@@ -57,6 +58,9 @@
                 mat-stroked-button
                 class="history-refresh"
                 [disabled]="isRefreshing()"
+                [attr.aria-label]="
+                  'aiSearch.historyRefreshLabel' | translate: { query: record.query, date: recordDateLabel(record) }
+                "
                 (click)="refreshExpanded()"
               >
                 <mat-icon>refresh</mat-icon>

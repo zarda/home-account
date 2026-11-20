@@ -85,17 +85,45 @@
   color: var(--text-muted);
 }
 
-// Mobile subtitle line: caption and figures wrap at the separators, never
-// inside an amount.
+// Mobile subtitle line: caption and figures wrap between parts, never inside
+// an amount. A dot of its own was a part the wrap could put first on a line
+// ("· Net Balance"), so each part leads with its dot instead: a 0.5em box and
+// the 8px gap after it, the room the parts' start margin takes back. The dot
+// of whichever part starts a line stands outside the line's box, and the
+// line's clip-path cuts it there. The clip stands 6px out at either end,
+// inside that 8px gap: room for the focus outline (2px out, 3px wide under
+// high contrast) of an action that starts or ends a line, and none for the
+// dot. Above and below it stands 24px out, past the 20px at most that the
+// actions' 40px tap overhang reaches. overflow-x: clip would cut at the box
+// itself: Chrome applies overflow-clip-margin only where both axes clip,
+// and the iOS 15 WebView knows no clip value, so every dot would show there.
 .period-totals-line {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: baseline;
-  gap: 2px 8px;
   margin: 4px 0 0;
   font-size: var(--text-sm);
   color: var(--text-muted);
   min-width: 0;
+  clip-path: inset(-24px -6px);
+
+  .period-parts {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: 2px 8px;
+    margin-inline-start: calc(-0.5em - 8px);
+  }
+
+  .period-part {
+    display: inline-flex;
+    align-items: baseline;
+    gap: 8px;
+    min-width: 0;
+  }
+
+  .period-sep {
+    flex-shrink: 0;
+    inline-size: 0.5em;
+    text-align: center;
+  }
 
   .period-figure {
     display: inline-flex;

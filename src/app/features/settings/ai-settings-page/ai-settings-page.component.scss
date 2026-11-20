@@ -181,8 +181,21 @@
     box-shadow: 0 0 0 1px var(--mat-sys-primary);
   }
 
+  // The Recommended chip stands in the header's row, after the title: at the
+  // row's end where the two fit, on a line of its own where they do not. Laid
+  // over the row instead, it sat on "Google Gemini" at 320px. The row breaks
+  // before the chip, never before the title: the title block is capped at the
+  // room beside Material's 40px avatar, where its words wrap. Uncapped, a
+  // block wider than that room took a line of its own under the avatar,
+  // "OpenAI (ChatGPT)" and "Anthropic Claude" at 320px. The row keeps
+  // Material's own alignment, so each avatar stands at the top beside its
+  // title's first line; only the chip is centred in the row.
   mat-card-header {
-    position: relative;
+    flex-wrap: wrap;
+
+    ::ng-deep .mat-mdc-card-header-text {
+      max-inline-size: calc(100% - 40px);
+    }
   }
 
   // colors:allow-start(brand) each provider's own colours, with a white glyph on them
@@ -233,11 +246,14 @@
     }
   }
 
+  // The avatar's 16px bottom margin, matched, keeps the chip level with the
+  // avatar on a shared row; on its own row it ends the header the same way.
+  // Centred in its row: beside the title, its 16px bottom margin matches
+  // the avatar's, so it stands level with the avatar.
   .recommended-chip {
-    position: absolute;
-    right: 0;
-    top: 50%;
-    transform: translateY(-50%);
+    align-self: center;
+    margin-inline-start: auto;
+    margin-bottom: 16px;
     padding: 4px 12px;
     background-color: var(--mat-sys-tertiary);
     color: var(--mat-sys-on-tertiary);

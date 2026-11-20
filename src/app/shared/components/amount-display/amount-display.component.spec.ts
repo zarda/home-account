@@ -1,7 +1,7 @@
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { AmountDisplayComponent } from './amount-display.component';
 import { CurrencyService } from '../../../core/services/currency.service';
-import { withTheme } from '../../../core/services/testing';
+import { tokenValue, withTheme } from '../../../core/services/testing';
 
 describe('AmountDisplayComponent', () => {
   let mockCurrencyService: jasmine.SpyObj<CurrencyService>;
@@ -115,18 +115,6 @@ describe('AmountDisplayComponent', () => {
      */
     const SENTINEL = 'rgb(1, 2, 3)';
 
-    /** What `color: var(token)` computes to under the palette on <html> now. */
-    function tokenColour(token: string): string {
-      const probe = document.createElement('span');
-      probe.style.color = `var(${token})`;
-      document.body.appendChild(probe);
-      try {
-        return getComputedStyle(probe).color;
-      } finally {
-        probe.remove();
-      }
-    }
-
     const TYPES = [
       { type: 'neutral', token: '--text-primary' },
       { type: 'income', token: '--color-income-text' },
@@ -145,7 +133,7 @@ describe('AmountDisplayComponent', () => {
             withTheme(theme, () => {
               expect(getComputedStyle(amount).color)
                 .withContext(`${theme} ${type} amount`)
-                .toBe(tokenColour(token));
+                .toBe(tokenValue(token));
             });
           }
         } finally {

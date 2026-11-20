@@ -7,6 +7,7 @@ import {
   AUDIT_SCHEMES,
   GLYPH_PROBE_COLOURS,
   channels,
+  expectPainted,
   hoverValue,
   paintedBackground,
   paintedColor,
@@ -14,6 +15,7 @@ import {
   runAxe,
   settleAnimations,
   summarizeViolations,
+  tokenValue,
   withScheme,
   withTheme,
   provideNoMotion,
@@ -227,28 +229,6 @@ describe('CategoryFormDialogComponent', () => {
       el().style.background = 'var(--mat-sys-surface)';
     });
 
-    /** What `<property>: var(token)` computes to under the theme on <html> now. */
-    function tokenValue(token: string, property = 'color'): string {
-      const probe = document.createElement('span');
-      probe.style.setProperty(property, `var(${token})`);
-      document.body.appendChild(probe);
-      try {
-        settleAnimations(document);
-        return getComputedStyle(probe).getPropertyValue(property);
-      } finally {
-        probe.remove();
-      }
-    }
-
-    /** `node` is `token`, and reads at `floor` or better on what is painted behind it. */
-    function expectPainted(node: HTMLElement, token: string, label: string, floor = 4.5): void {
-      expect(node).withContext(label).toBeTruthy();
-      expect(getComputedStyle(node).color).withContext(label).toBe(tokenValue(token));
-      expect(ratio(paintedColor(node), paintedBackground(node)))
-        .withContext(`${label} on what it sits on`)
-        .toBeGreaterThanOrEqual(floor);
-    }
-
     /** A computed colour as the whole channels it is painted in. */
     function rounded(computed: string): Rgb {
       const [r, g, b] = channels(computed).rgb.map(Math.round);
@@ -437,9 +417,7 @@ describe('CategoryFormDialogComponent', () => {
      * halo and the edge are what tell the chosen colour from the others, so
      * each is held to 3:1 against the dialog (WCAG 1.4.11); the gap is the
      * dialog's own surface, so it reads as space rather than as a third
-     * colour. (The word for the halo is kept off Tailwind's utility names:
-     * the content scan reads specs, and a bare utility name here would ship
-     * its CSS in the initial bundle.)
+     * colour.
      */
     it('marks the chosen swatch with an edge and a halo in --text-primary at 3:1 or better on the dialog, with a gap of the dialog surface, in both themes', () => {
       const chosen = el().querySelector('.color-btn.selected') as HTMLElement;

@@ -6,7 +6,16 @@ import { AuthService } from '../../../core/services/auth.service';
 import { NotificationService } from '../../../core/services/notification.service';
 import { TranslationService } from '../../../core/services/translation.service';
 import { SubscriptionTier, User, UserPreferences } from '../../../models';
-import { provideNoMotion } from '../../../core/services/testing';
+import {
+  Translator,
+  accessibleDescription,
+  accessibleName,
+  catalogTranslator,
+  holdsShownWords,
+  provideNoMotion,
+  runAxe,
+  summarizeViolations,
+} from '../../../core/services/testing';
 
 describe('AnalyticsSettingsComponent', () => {
   let fixture: ComponentFixture<AnalyticsSettingsComponent>;
@@ -14,6 +23,8 @@ describe('AnalyticsSettingsComponent', () => {
   let currentUser: ReturnType<typeof signal<User | null>>;
   let mockAuthService: jasmine.SpyObj<AuthService>;
   let notifications: jasmine.SpyObj<NotificationService>;
+  /** The words the template is rendered in: the keys themselves, unless a case reads a catalog. */
+  let translate: Translator;
 
   const userWith = (
     preferences: Partial<UserPreferences>,
@@ -27,6 +38,7 @@ describe('AnalyticsSettingsComponent', () => {
 
   beforeEach(async () => {
     currentUser = signal<User | null>(userWith({ baseCurrency: 'USD' }));
+    translate = (key: string) => key;
 
     mockAuthService = jasmine.createSpyObj('AuthService', ['updateUserPreferences'], {
       currentUser,
@@ -40,7 +52,7 @@ describe('AnalyticsSettingsComponent', () => {
       providers: [
         { provide: AuthService, useValue: mockAuthService },
         { provide: NotificationService, useValue: notifications },
-        { provide: TranslationService, useValue: { t: (key: string) => key } },
+        { provide: TranslationService, useValue: { t: (key: string, params?: Record<string, string | number>) => translate(key, params) } },
         provideNoMotion(),
       ],
       schemas: [NO_ERRORS_SCHEMA],
@@ -142,5 +154,62 @@ describe('AnalyticsSettingsComponent', () => {
       // Nothing was persisted, so the toggle must not claim otherwise.
       expect(component.enabled()).toBeFalse();
     });
+  });
+
+  /**
+   * Material hands a toggle's aria-labelledby to its role="switch" button in
+   * place of its own label, which holds the words shown beside the switch.
+   * Pointed at the section's label, the switch was named by the section and
+   * not by what it shows, so a voice user saying those words reached nothing
+   * (WCAG 2.5.3). The section names the group the switch stands in instead.
+   * Read with the real words, in a component of its own: the ids are the
+   * template's own, so the echo-worded one goes first. On the free plan the
+   * switch is held on, and the note saying why is its description; that
+   * description was written on the toggle's host, which is no control, and
+   * never reached the switch.
+   */
+  describe("the switch's name (real template)", () => {
+    function renderIn(l: 'en' | 'ja' | 'tc'): HTMLElement {
+      fixture.destroy();
+      (fixture.nativeElement as HTMLElement).remove();
+      translate = catalogTranslator(l);
+      fixture = TestBed.createComponent(AnalyticsSettingsComponent);
+      fixture.detectChanges();
+      return fixture.nativeElement as HTMLElement;
+    }
+
+    const switchIn = (root: HTMLElement) => root.querySelector('button[role="switch"]') as HTMLButtonElement;
+
+    for (const l of ['en', 'ja', 'tc'] as const) {
+      it(`names the switch by the words it shows, in a group named by the section, in ${l}`, async () => {
+        const t = catalogTranslator(l, { strict: true });
+        currentUser.set(userWith({ baseCurrency: 'USD' }, 'premium'));
+        const root = renderIn(l);
+        const control = switchIn(root);
+        const shown = root.querySelector('mat-slide-toggle label')?.textContent?.trim() ?? '';
+
+        expect(shown).withContext('the words beside the switch').toBe(t('analytics.enable'));
+        expect(accessibleName(control)).withContext("the switch's name").toBe(t('analytics.enable'));
+        expect(holdsShownWords(accessibleName(control), shown, l)).withContext('the name holds the shown words').toBeTrue();
+        const group = control.closest('[role="group"]');
+        expect(group).withContext('the group the switch stands in').not.toBeNull();
+        expect(accessibleName(group!)).withContext("the group's name").toBe(t('analytics.settingsTitle'));
+        expect(accessibleDescription(control)).withContext('premium: no note to describe it').toBe('');
+
+        const names = summarizeViolations(await runAxe(root))
+          .filter(line => line.startsWith('button-name') || line.startsWith('aria-toggle-field-name'));
+        expect(names).withContext('the name rules of the shared pass').toEqual([]);
+      });
+
+      it(`describes the switch held on by the free plan by the note that says why, in ${l}`, () => {
+        const t = catalogTranslator(l, { strict: true });
+        const root = renderIn(l);
+        const control = switchIn(root);
+
+        expect(accessibleName(control)).withContext("the switch's name").toBe(t('analytics.enable'));
+        expect(control.disabled).withContext('held on').toBeTrue();
+        expect(accessibleDescription(control)).withContext("the switch's description").toBe(t('analytics.freeTierNotice'));
+      });
+    }
   });
 });

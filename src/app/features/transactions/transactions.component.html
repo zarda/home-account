@@ -77,38 +77,54 @@
          never neither. -->
     <ng-container ngProjectAs="[header-subtitle]">
       @if (isMobileViewport() && totalsState() !== 'hidden') {
+        <!-- Each part leads with its dot, and a line's first dot stands in
+             the room the parts' negative start margin puts outside the line,
+             where it is clipped: a wrap never leaves a dot first on a line. -->
         <p class="period-totals-line" tabindex="-1">
-          @if (periodCaption(); as caption) {
-            <span class="period-caption">{{ caption }}</span>
-            <span class="period-sep" aria-hidden="true">·</span>
-          }
-          @switch (totalsState()) {
-            @case ('ready') {
-              @for (figure of totalsFigures(); track figure.labelKey; let last = $last) {
-                <span class="period-figure">
-                  <span class="period-figure-label">{{ figure.labelKey | translate }}</span>
-                  <span class="period-figure-value">{{ figure.value }}</span>
-                </span>
-                @if (!last) {
-                  <span class="period-sep" aria-hidden="true">·</span>
+          <span class="period-parts">
+            @if (periodCaption(); as caption) {
+              <span class="period-part">
+                <span class="period-sep" aria-hidden="true">·</span>
+                <span class="period-caption">{{ caption }}</span>
+              </span>
+            }
+            @switch (totalsState()) {
+              @case ('ready') {
+                @for (figure of totalsFigures(); track figure.labelKey) {
+                  <span class="period-part">
+                    <span class="period-sep" aria-hidden="true">·</span>
+                    <span class="period-figure">
+                      <span class="period-figure-label">{{ figure.labelKey | translate }}</span>
+                      <span class="period-figure-value">{{ figure.value }}</span>
+                    </span>
+                  </span>
                 }
               }
+              @case ('computing') {
+                <span class="period-part">
+                  <span class="period-sep" aria-hidden="true">·</span>
+                  <span class="period-totals-placeholder" aria-hidden="true"></span>
+                </span>
+              }
+              @case ('unavailable') {
+                <span class="period-part">
+                  <span class="period-sep" aria-hidden="true">·</span>
+                  <span>{{ 'transactions.totalsUnavailable' | translate }}</span>
+                  <button class="period-totals-retry-link" (click)="onRetryTotals()">
+                    {{ 'common.retry' | translate }}
+                  </button>
+                </span>
+              }
+              @case ('overCap') {
+                <span class="period-part">
+                  <span class="period-sep" aria-hidden="true">·</span>
+                  <button class="period-totals-calc-link" (click)="onCalculateTotals()">
+                    {{ 'transactions.calculateTotals' | translate }}
+                  </button>
+                </span>
+              }
             }
-            @case ('computing') {
-              <span class="period-totals-placeholder" aria-hidden="true"></span>
-            }
-            @case ('unavailable') {
-              <span>{{ 'transactions.totalsUnavailable' | translate }}</span>
-              <button class="period-totals-retry-link" (click)="onRetryTotals()">
-                {{ 'common.retry' | translate }}
-              </button>
-            }
-            @case ('overCap') {
-              <button class="period-totals-calc-link" (click)="onCalculateTotals()">
-                {{ 'transactions.calculateTotals' | translate }}
-              </button>
-            }
-          }
+          </span>
         </p>
       }
     </ng-container>
@@ -133,12 +149,13 @@
     <app-loading-spinner [message]="'transactions.loading' | translate" />
   } @else {
     <app-transaction-list
+      #list
       [transactions]="transactions()"
       [categories]="categoriesMap()"
       [dateSortDirection]="sortDirection()"
       (dateSortChange)="onDateSortChange($event)"
       (edit)="openEditDialog($event)"
-      (delete)="onDeleteTransaction($event)"
+      (delete)="onDeleteTransaction($event, list)"
     />
   }
 </div>

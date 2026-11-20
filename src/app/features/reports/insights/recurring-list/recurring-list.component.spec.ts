@@ -16,12 +16,14 @@ import {
   StorableRecurringSummary
 } from '../../../../models';
 import {
+  headingOutline,
   type TranslationStub,
   accessibleName,
   catalogTranslator,
   createCategory,
   createTranslationStub,
   provideNoMotion,
+  tokenValue,
 } from '../../../../core/services/testing';
 
 function groupFor(overrides: Partial<StorableRecurringGroup> = {}): StorableRecurringGroup {
@@ -274,6 +276,34 @@ describe('RecurringListComponent, through its own template', () => {
     expect(sections()[1].querySelector('.section-note')?.textContent?.trim())
       .toBe('insights.recurringDetectedNote');
     expect(rows().length).toBe(2);
+  });
+
+  // The Insights tab sits directly under the Reports page's h1, so the card's
+  // title is an h2 and each side's label an h3 under it.
+  it("titles the card one level under the page's own heading, and each side one under the title", () => {
+    render([
+      groupFor({ key: 'a', source: 'detected', label: 'NETFLIX.COM' }),
+      groupFor({ key: 'b', source: 'declared', label: 'Rent' }),
+    ]);
+
+    const outline = headingOutline(el());
+    expect(outline).toEqual([
+      'h2 insights.recurringListTitle',
+      'h3 insights.recurringDeclared',
+      'h3 insights.recurringDetected',
+    ]);
+  });
+
+  // The title matches the insight cards and the narrative beside it, not
+  // Material's larger, lighter card title, whichever tag carries it: an
+  // element rule stopped matching once the title became an h2.
+  it("sets the card's title in the list's own size and weight", () => {
+    render([groupFor()]);
+
+    const title = el().querySelector('h2[mat-card-title]') as HTMLElement;
+    const style = getComputedStyle(title);
+    expect(style.fontSize).withContext('size').toBe(tokenValue('--text-lg', 'font-size'));
+    expect(style.fontWeight).withContext('weight').toBe('600');
   });
 
   it('reads a row as its label, cadence, occurrences and monthly cost', () => {

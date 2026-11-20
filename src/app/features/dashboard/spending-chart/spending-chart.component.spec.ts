@@ -17,13 +17,14 @@ import {
 } from '../../../models';
 import {
   AUDIT_SCHEMES,
+  headingOutline,
   hoverValue,
   paintedBackground,
   paintedColor,
   provideNoMotion,
   ratio,
-  settleAnimations,
   textLines,
+  tokenValue,
   withScheme,
   withTheme,
 } from '../../../core/services/testing';
@@ -466,6 +467,17 @@ describe('SpendingChartComponent', () => {
       }
     });
 
+    // The dashboard's h1 heads the page, so a card's title is an h2 and the
+    // empty state under it an h3. Reports reuses the card at the same level.
+    it('titles the card one level under the page, and its empty state one under the title', () => {
+      const outline = () => headingOutline(realFixture.nativeElement);
+      expect(outline()).toEqual(['h2 dashboard.spendingByCategory']);
+
+      realFixture.componentRef.setInput('categoryTotals', []);
+      realFixture.detectChanges();
+      expect(outline()).toEqual(['h2 dashboard.spendingByCategory', 'h3 dashboard.noExpenses']);
+    });
+
     it('should render each legend row as a real button', () => {
       const buttons = realFixture.debugElement.queryAll(By.css('button.legend-item'));
       expect(buttons.length).toBe(3);
@@ -505,19 +517,6 @@ describe('SpendingChartComponent', () => {
     // The progress bar is not measured: it is a graphic filled with the
     // category's own colour, beside the share printed as text.
     describe('colours', () => {
-      /** What `color: var(token)` computes to under the palette on <html> now. */
-      function tokenColour(token: string): string {
-        const probe = document.createElement('span');
-        probe.style.color = `var(${token})`;
-        document.body.appendChild(probe);
-        try {
-          settleAnimations(document);
-          return getComputedStyle(probe).color;
-        } finally {
-          probe.remove();
-        }
-      }
-
       /** `value` as the browser computes a background colour. */
       function computedBackground(value: string): string {
         const probe = document.createElement('span');
@@ -608,7 +607,7 @@ describe('SpendingChartComponent', () => {
               .toBeGreaterThanOrEqual(4.5);
             expect(getComputedStyle(title).color)
               .withContext(`${theme} title`)
-              .toBe(tokenColour('--text-primary'));
+              .toBe(tokenValue('--text-primary'));
           });
         }
       });
@@ -632,7 +631,7 @@ describe('SpendingChartComponent', () => {
                     .toBeGreaterThanOrEqual(4.5);
                   expect(getComputedStyle(el).color)
                     .withContext(`${theme} ${label}`)
-                    .toBe(tokenColour(token));
+                    .toBe(tokenValue(token));
                 }
               }
             } finally {

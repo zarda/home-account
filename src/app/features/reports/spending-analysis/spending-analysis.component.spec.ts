@@ -13,11 +13,9 @@ import { ChartThemeService, hexToRgba } from '../../../core/services/chart-theme
 import { ThemeService } from '../../../core/services/theme.service';
 import {
   AUDIT_SCHEMES,
-  paintedBackground,
-  paintedColor,
+  expectPainted,
+  headingOutline,
   provideNoMotion,
-  ratio,
-  settleAnimations,
   withScheme,
   withTheme,
 } from '../../../core/services/testing';
@@ -723,33 +721,37 @@ describe('SpendingAnalysisComponent', () => {
     });
   });
 
+  // The tab sits directly under the Reports page's h1, with no heading between.
+  describe('its headings (real template)', () => {
+    it("heads the empty state one level under the page's own heading", async () => {
+      TestBed.resetTestingModule();
+      await TestBed.configureTestingModule({
+        imports: [SpendingAnalysisComponent],
+        providers: [
+          provideAppCharts(),
+          { provide: CurrencyService, useValue: mockCurrencyService },
+          { provide: TranslationService, useValue: mockTranslationService },
+          provideNoMotion()
+        ]
+      }).compileComponents();
+
+      const renderFixture = TestBed.createComponent(SpendingAnalysisComponent);
+      const instance = renderFixture.componentInstance;
+      instance.transactions = [];
+      instance.categories = mockCategories;
+      instance.dateRange = { start: new Date(2024, 5, 1), end: new Date(2024, 5, 30) };
+      renderFixture.detectChanges();
+
+      const outline = headingOutline(renderFixture.nativeElement);
+      expect(outline).toEqual(['h2 reports.noDataAvailable']);
+    });
+  });
+
   describe('colours, as painted (real template)', () => {
     const THEMES = ['light', 'dark'] as const;
     let renderFixture: ComponentFixture<SpendingAnalysisComponent>;
     const part = (selector: string) =>
       (renderFixture.nativeElement as HTMLElement).querySelector(selector) as HTMLElement;
-
-    /** What `<property>: var(token)` computes to under the theme on <html> now. */
-    function tokenValue(token: string, property = 'color'): string {
-      const probe = document.createElement('span');
-      probe.style.setProperty(property, `var(${token})`);
-      document.body.appendChild(probe);
-      try {
-        settleAnimations(document);
-        return getComputedStyle(probe).getPropertyValue(property);
-      } finally {
-        probe.remove();
-      }
-    }
-
-    /** `node` is `token`, and reads at 4.5:1 or better on what is painted behind it. */
-    function expectPainted(node: HTMLElement, token: string, label: string): void {
-      expect(node).withContext(label).toBeTruthy();
-      expect(getComputedStyle(node).color).withContext(label).toBe(tokenValue(token));
-      expect(ratio(paintedColor(node), paintedBackground(node)))
-        .withContext(`${label} on what it sits on`)
-        .toBeGreaterThanOrEqual(4.5);
-    }
 
     beforeEach(async () => {
       TestBed.resetTestingModule();

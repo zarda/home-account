@@ -1,6 +1,7 @@
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { signal } from '@angular/core';
 import { MatDialog, MatDialogRef } from '@angular/material/dialog';
+import { MatTooltip } from '@angular/material/tooltip';
 import { of } from 'rxjs';
 
 import { ReceiptImageManagerComponent } from './receipt-image-manager.component';
@@ -14,6 +15,7 @@ import {
 import { TranslationService } from '../../../core/services/translation.service';
 import { NotificationService } from '../../../core/services/notification.service';
 import {
+  accessibleDescription,
   accessibleName,
   catalogTranslationStub,
   catalogTranslator,
@@ -25,6 +27,7 @@ import {
   paintedColor,
   ratio,
   settleAnimations,
+  tokenValue,
   withTheme,
   provideNoMotion,
 } from '../../../core/services/testing';
@@ -360,15 +363,18 @@ describe('ReceiptImageManagerComponent, through its own template', () => {
     expect(groups()[1].querySelector('.item-description')?.textContent?.trim()).toBe('Market');
   });
 
-  it('numbers each thumbnail for a screen reader', async () => {
+  it('numbers each thumbnail and names its transaction for a screen reader', async () => {
     await render();
 
-    const images = Array.from(tiles(groups()[0]).map(t => t.querySelector('img') as HTMLImageElement));
-    expect(images.map(i => i.alt)).toEqual([
-      'receiptImages.imageNumber:{"index":1,"total":2}',
-      'receiptImages.imageNumber:{"index":2,"total":2}',
+    const alts = (group: HTMLElement) => tiles(group).map(t => (t.querySelector('img') as HTMLImageElement).alt);
+    expect(alts(groups()[0])).toEqual([
+      'receiptImages.imageNumberOf:{"index":1,"total":2,"description":"Cafe"}',
+      'receiptImages.imageNumberOf:{"index":2,"total":2,"description":"Cafe"}',
     ]);
-    expect(images[0].getAttribute('loading')).toBe('lazy');
+    expect(alts(groups()[1])).toEqual([
+      'receiptImages.imageNumberOf:{"index":1,"total":1,"description":"Market"}',
+    ]);
+    expect(tiles(groups()[0])[0].querySelector('img')?.getAttribute('loading')).toBe('lazy');
   });
 
   it('offers remove-all only on a row that has more than one image', async () => {
@@ -389,14 +395,16 @@ describe('ReceiptImageManagerComponent, through its own template', () => {
   });
 
   /**
-   * Remove-all is stamped once per transaction, and convert and remove once
-   * per image, so each names its transaction by the description its row
-   * shows, and its image by the number the thumbnail's alt reads. A
-   * transaction saved with no description is named by the catalog's words
-   * for an untitled one, so no name ends on "of". A transaction whose first
-   * images were removed keeps its survivors at their storage slots, so its
-   * images are numbered by their place in the row, as the alts are, never by
-   * their slots.
+   * Remove-all is stamped once per transaction, and the thumbnail, convert
+   * and remove once per image, so each names its transaction by the
+   * description its row shows, and its image by the number the thumbnail's
+   * alt reads. The thumbnail is named by its alt alone; its tooltip, View
+   * image, is read after the name as its description and does not say the
+   * transaction again. A transaction saved with no description is named by
+   * the catalog's words for an untitled one, so no name ends on "of". A
+   * transaction whose first images were removed keeps its survivors at their
+   * storage slots, so its images are numbered by their place in the row, as
+   * the alts are, never by their slots.
    */
   describe('every image control names its image and its transaction', () => {
     const untitled = createTransaction({
@@ -421,19 +429,24 @@ describe('ReceiptImageManagerComponent, through its own template', () => {
         transactionsSpy.getTransactionsWithReceiptsOnce.and.resolveTo([...managedTransactions, untitled, gapped]);
         await render();
 
+        // The tooltips hand their words to the describer in a render hook.
+        TestBed.tick();
+
         const removeAll = (group: HTMLElement) => {
           const button = group.querySelector('.remove-all-btn');
           return button ? accessibleName(button) : null;
         };
-        // Each tile as a reader meets it: the thumbnail's alt, then the names
-        // of its convert and remove, so a name's number sits beside the alt's.
+        const thumbnail = (tile: HTMLElement) => tile.querySelector('.thumbnail-link') as HTMLElement;
+        // Each tile as a reader meets it: the thumbnail, named by its alt,
+        // then the names of its convert and remove, so a name's number sits
+        // beside the alt's.
         const tileNames = (group: HTMLElement) => tiles(group).map(tile => [
-          (tile.querySelector('img') as HTMLImageElement).alt,
+          accessibleName(thumbnail(tile)),
           ...Array.from(tile.querySelectorAll('.tile-actions button')).map(button => accessibleName(button)),
         ]);
         const perTile = (description: string, images: number) =>
           Array.from({ length: images }, (_, i) => i + 1).map(index => [
-            t('receiptImages.imageNumber', { index, total: images }),
+            t('receiptImages.imageNumberOf', { index, total: images, description }),
             t('receiptImages.convertImageOf', { index, description }),
             t('receiptImages.removeImageOf', { index, description }),
           ]);
@@ -453,6 +466,26 @@ describe('ReceiptImageManagerComponent, through its own template', () => {
           .toBe(t('receiptImages.removeAllImagesOf', { description: nameless }));
         expect(tileNames(groups()[2])).withContext('the untitled row').toEqual(perTile(nameless, 2));
         expect(tileNames(groups()[3])).withContext('Bakery, at slots 2 and 5').toEqual(perTile(quoted('Bakery'), 2));
+
+        // The tile names above compare the catalog with itself, so they would
+        // still pass if imageNumberOf lost its description: the name is held
+        // to its transaction here. The thumbnail's tooltip reaches it as its
+        // description, in whatever words the tooltip has, and those never
+        // say the transaction again.
+        const named = [['Cafe', 2], ['Market', 1], [nameless, 2], ['Bakery', 2]] as const;
+        named.forEach(([name, images], g) => {
+          const thumbnails = tiles(groups()[g]).map(thumbnail);
+          expect(thumbnails.length).withContext(`${name}: one thumbnail per image`).toBe(images);
+          for (const [i, button] of thumbnails.entries()) {
+            const at = `${name}, image ${i + 1}`;
+            const tooltip = fixture.debugElement.query(debug => debug.nativeElement === button).injector.get(MatTooltip);
+            const description = accessibleDescription(button);
+            expect(accessibleName(button)).withContext(`${at}: the name carries the transaction`).toContain(name);
+            expect(description).withContext(`${at}: the tooltip describes it`).not.toBe('');
+            expect(description).withContext(`${at}: in the tooltip's own words`).toBe(tooltip.message);
+            expect(description).withContext(`${at}: and does not say the transaction again`).not.toContain(name);
+          }
+        });
       });
     }
   });
@@ -480,18 +513,22 @@ describe('ReceiptImageManagerComponent, through its own template', () => {
         await render();
 
         const names = (group: HTMLElement) =>
-          [group.querySelector('.remove-all-btn'), ...Array.from(group.querySelectorAll('.tile-actions button'))]
-            .map(button => accessibleName(button as Element));
+          [
+            group.querySelector('.remove-all-btn'),
+            ...Array.from(group.querySelectorAll('.thumbnail-link, .tile-actions button')),
+          ].map(button => accessibleName(button as Element));
         const nameless = t('transactions.untitledRow');
         expect(names(groups()[0])).withContext('Cafe keeps its quotes (pin)').toEqual([
           '刪除「Cafe」的所有圖片',
+          '「Cafe」的第 1 張收據圖片（共 2 張）',
           '將「Cafe」的第 1 張圖片轉換為備註',
           '刪除「Cafe」的第 1 張圖片',
+          '「Cafe」的第 2 張收據圖片（共 2 張）',
           '將「Cafe」的第 2 張圖片轉換為備註',
           '刪除「Cafe」的第 2 張圖片',
         ]);
         const untitled = names(groups()[2]);
-        expect(untitled.length).withContext('remove-all and two images\' convert and remove').toBe(5);
+        expect(untitled.length).withContext('remove-all and two images\' thumbnail, convert and remove').toBe(7);
         expect(untitled.filter(name => !name.includes(nameless))).withContext("each names it by the catalog's words")
           .toEqual([]);
         expect(untitled.filter(name => name.includes(`「${nameless}」`))).withContext("the catalog's words in quotes")
@@ -574,18 +611,6 @@ describe('ReceiptImageManagerComponent, through its own template', () => {
       await render();
       el().style.display = 'block';
       el().style.background = 'var(--mat-sys-surface)';
-    }
-
-    /** What `<property>: var(token)` computes to under the theme on <html> now. */
-    function tokenValue(token: string, property = 'color'): string {
-      const probe = document.createElement('span');
-      probe.style.setProperty(property, `var(${token})`);
-      document.body.appendChild(probe);
-      try {
-        return getComputedStyle(probe).getPropertyValue(property);
-      } finally {
-        probe.remove();
-      }
     }
 
     it('paints the at-limit line in --color-error-text at AA on a tint of its own, in both themes', async () => {

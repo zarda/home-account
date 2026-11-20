@@ -65,7 +65,7 @@
               @if (row.isDuplicate) {
                 <span class="duplicate-badge">
                   <mat-icon>content_copy</mat-icon>
-                  {{ 'import.duplicate' | translate }}
+                  <span class="duplicate-label">{{ 'import.duplicate' | translate }}</span>
                   <!-- import.recheckFailed tells the reviewer to use "Not a
                        duplicate", so the name has to be findable by sight
                        too: the glyph alone says nothing about what it does. -->
@@ -203,7 +203,7 @@
                 } @else {
                   <mat-icon aria-hidden="true">calendar_today</mat-icon>
                 }
-                {{ row.date | localeDate }}
+                <span class="date-chip-text">{{ row.date | localeDate }}</span>
               </button>
               <button
                 type="button"
@@ -220,7 +220,7 @@
                     aria-hidden="true"
                   >error_outline</mat-icon>
                 }
-                {{ row.currency }}
+                <span class="currency-chip-code">{{ row.currency }}</span>
                 <mat-icon class="chip-caret" aria-hidden="true">arrow_drop_down</mat-icon>
               </button>
               <mat-menu #currencyMenu="matMenu">
@@ -480,7 +480,7 @@
             } @else if (isEditing(row, 'place')) {
               <ng-container [ngTemplateOutlet]="placeEditor" />
             } @else {
-              <button type="button" class="extra-add location-add" (click)="startEdit(row, 'place')">
+              <button type="button" class="extra-add location-add" [attr.aria-label]="'import.addLocationTo' | translate: { description: announceDescription(row) }" (click)="startEdit(row, 'place')">
                 <mat-icon aria-hidden="true">place</mat-icon>
                 <span>{{ 'import.addLocation' | translate }}</span>
               </button>
@@ -522,7 +522,7 @@
                 (blur)="commitTag(row, $event)"
               >
             } @else {
-              <button type="button" class="extra-add tag-add" (click)="startEdit(row, 'tag')">
+              <button type="button" class="extra-add tag-add" [attr.aria-label]="'import.addTagTo' | translate: { description: announceDescription(row) }" (click)="startEdit(row, 'tag')">
                 <mat-icon aria-hidden="true">add</mat-icon>
                 <span>{{ 'import.addTag' | translate }}</span>
               </button>
@@ -547,7 +547,7 @@
             </div>
           } @else {
             <div class="notes-section notes-empty">
-              <button type="button" class="add-notes-btn" (click)="startEdit(row, 'notes')">
+              <button type="button" class="add-notes-btn" [attr.aria-label]="'import.notesLabel' | translate: { description: announceDescription(row) }" (click)="startEdit(row, 'notes')">
                 <mat-icon>add</mat-icon>
                 <span>{{ 'import.notes' | translate }}</span>
               </button>

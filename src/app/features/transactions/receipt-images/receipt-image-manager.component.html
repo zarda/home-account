@@ -53,7 +53,7 @@
                   <img
                     class="thumbnail"
                     [src]="image.url"
-                    [alt]="'receiptImages.imageNumber' | translate: { index: i + 1, total: group.images.length }"
+                    [alt]="'receiptImages.imageNumberOf' | translate: { index: i + 1, total: group.images.length, description: quotedName(group) }"
                     loading="lazy"
                   />
                 </button>

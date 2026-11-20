@@ -107,12 +107,22 @@ export class AiSettingsPageComponent implements OnInit {
   openaiTestResult = signal<'success' | 'error' | null>(null);
   claudeTestResult = signal<'success' | 'error' | null>(null);
 
-  // Available providers for selection
-  allProviders: { value: LLMProvider; label: string }[] = [
-    { value: 'gemini', label: 'Google Gemini' },
-    { value: 'openai', label: 'OpenAI (ChatGPT)' },
-    { value: 'claude', label: 'Anthropic Claude' },
+  // Available providers for selection, each with the full name its card's
+  // title and the preference selects' options show (`label`), and the short
+  // name the controls on its card are named by (`name`), so that one card's
+  // controls never read as another's. The key field's label and the model
+  // select's show it, and a full name there would be cut short by Material's
+  // label ellipsis in a field as wide as a phone.
+  allProviders: { value: LLMProvider; label: string; name: string }[] = [
+    { value: 'gemini', label: 'Google Gemini', name: 'Gemini' },
+    { value: 'openai', label: 'OpenAI (ChatGPT)', name: 'OpenAI' },
+    { value: 'claude', label: 'Anthropic Claude', name: 'Claude' },
   ];
+
+  /** The short name the controls on `provider`'s card are named by. */
+  providerName(provider: LLMProvider): string {
+    return this.allProviders.find(entry => entry.value === provider)?.name ?? provider;
+  }
 
   // Computed from services
   isOnline = computed(() => this.pwaService.isOnline());

@@ -1,6 +1,13 @@
 .goals-tab {
+  // The hint and Add Goal share a line where both fit whole. Where they do
+  // not, as on a 320px phone's 248px tab, the hint takes its own line and
+  // Add Goal the next, at its start, as the sibling tabs' header puts its
+  // button under its description. Without the wrap the two shrank side by
+  // side and Add Goal's label broke a word, or in ja a character, a line.
+  // Keyed on the tab's own width, not the viewport's.
   .goals-header {
     display: flex;
+    flex-wrap: wrap;
     align-items: center;
     justify-content: space-between;
     gap: 12px;
@@ -8,14 +15,18 @@
 
     .goals-hint {
       margin: 0;
-      font-size: 13px;
+      font-size: var(--text-sm);
       color: var(--text-muted);
     }
   }
 
+  // A column is 300px at least, or the grid's whole width where that is less:
+  // on a 320px phone the tab is 248px wide, and a 300px column ran the cards
+  // off the page. min() reads the grid's own width, so it holds wherever the
+  // tab is laid out, not only on a phone's viewport.
   .goals-grid {
     display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+    grid-template-columns: repeat(auto-fill, minmax(min(100%, 300px), 1fr));
     gap: 16px;
   }
 }

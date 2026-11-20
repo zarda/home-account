@@ -9,7 +9,12 @@ import { HeaderComponent } from './header.component';
 import { AuthService } from '../../../core/services/auth.service';
 import { SupportedLocale, TranslationService } from '../../../core/services/translation.service';
 import { APP_BREAKPOINTS } from '../../../core/layout/breakpoints';
-import { catalogTranslationStub, catalogTranslator, provideNoMotion } from '../../../core/services/testing';
+import {
+  catalogTranslationStub,
+  catalogTranslator,
+  provideNoMotion,
+  provideNoPendingDelete,
+} from '../../../core/services/testing';
 import { User } from '../../../models';
 
 /**
@@ -43,6 +48,7 @@ describe('overflow guard: the header avatar', () => {
       providers: [
         provideRouter([]),
         { provide: AuthService, useValue: mockAuth },
+        provideNoPendingDelete(),
         { provide: MatDialog, useValue: jasmine.createSpyObj('MatDialog', ['open']) },
         { provide: BreakpointObserver, useValue: { observe: () => viewport$.asObservable() } },
         { provide: TranslationService, useValue: translation },
@@ -113,6 +119,7 @@ describe('overflow guard: the header with the ? hint at 1024 px', () => {
           provide: AuthService,
           useValue: { currentUser: signal<User | null>({ id: 'u1', displayName: 'Tester' } as User) },
         },
+        provideNoPendingDelete(),
         { provide: MatDialog, useValue: jasmine.createSpyObj('MatDialog', ['open'], { openDialogs: [] }) },
         {
           provide: BreakpointObserver,

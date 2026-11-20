@@ -8,7 +8,14 @@ import { BiometricAuthService } from '../../../core/services/biometric-auth.serv
 import { NotificationService } from '../../../core/services/notification.service';
 import { TranslationService } from '../../../core/services/translation.service';
 import { User, UserPreferences } from '../../../models';
-import { provideNoMotion } from '../../../core/services/testing';
+import {
+  accessibleName,
+  catalogTranslator,
+  holdsShownWords,
+  provideNoMotion,
+  runAxe,
+  summarizeViolations,
+} from '../../../core/services/testing';
 
 describe('SecuritySettingsComponent', () => {
   let fixture: ComponentFixture<SecuritySettingsComponent>;
@@ -22,6 +29,7 @@ describe('SecuritySettingsComponent', () => {
   let method: ReturnType<typeof signal<AppLockMethod>>;
   let available: ReturnType<typeof signal<boolean>>;
   let biometry: ReturnType<typeof signal<'faceId' | 'touchId' | 'none'>>;
+  let translation: jasmine.SpyObj<TranslationService>;
 
   const userWith = (preferences: Partial<UserPreferences>): User =>
     ({ id: 'user-1', preferences }) as User;
@@ -58,7 +66,7 @@ describe('SecuritySettingsComponent', () => {
       'error',
     ]);
 
-    const translation = jasmine.createSpyObj<TranslationService>('TranslationService', ['t']);
+    translation = jasmine.createSpyObj<TranslationService>('TranslationService', ['t']);
     translation.t.and.callFake((key: string, params?: Record<string, string | number>) =>
       params ? `${key}|${JSON.stringify(params)}` : key
     );
@@ -136,5 +144,48 @@ describe('SecuritySettingsComponent', () => {
     fixture.detectChanges();
 
     expect(biometricToggleEl()).toBeNull();
+  });
+
+  /**
+   * Material hands a toggle's aria-labelledby to its role="switch" button in
+   * place of its own label, which holds the words shown beside the switch.
+   * Pointed at the section's label, the lock's switch was named by the
+   * section and not by what it shows, so a voice user saying those words
+   * reached nothing (WCAG 2.5.3). The section names the group the switch
+   * stands in instead. Read with the real words, in a component of its own:
+   * the ids are the template's own, so the echo-worded one goes first.
+   */
+  describe("the switches' names (real template)", () => {
+    for (const l of ['en', 'ja', 'tc'] as const) {
+      it(`names the lock's switch by the words it shows, in a group named by the section, in ${l}`, async () => {
+        const t = catalogTranslator(l, { strict: true });
+        fixture.destroy();
+        (fixture.nativeElement as HTMLElement).remove();
+        translation.t.and.callFake(catalogTranslator(l));
+        fixture = TestBed.createComponent(SecuritySettingsComponent);
+        fixture.detectChanges();
+        const root = fixture.nativeElement as HTMLElement;
+        const lock = root.querySelector('mat-slide-toggle:not(.biometric-toggle)') as HTMLElement;
+        const control = lock.querySelector('button[role="switch"]') as HTMLButtonElement;
+        const shown = lock.querySelector('label')?.textContent?.trim() ?? '';
+
+        expect(shown).withContext('the words beside the switch').toBe(t('appLock.enable'));
+        expect(accessibleName(control)).withContext("the switch's name").toBe(t('appLock.enable'));
+        expect(holdsShownWords(accessibleName(control), shown, l)).withContext('the name holds the shown words').toBeTrue();
+        const group = control.closest('[role="group"]');
+        expect(group).withContext('the group the switch stands in').not.toBeNull();
+        expect(accessibleName(group!)).withContext("the group's name").toBe(t('appLock.settingsTitle'));
+
+        // Pin: the biometric switch was always named by its own words.
+        const biometric = biometricToggleEl()!.querySelector('button[role="switch"]') as HTMLButtonElement;
+        expect(accessibleName(biometric))
+          .withContext("the biometric switch's name")
+          .toBe(t('appLock.useBiometry', { biometry: t('appLock.faceId') }));
+
+        const names = summarizeViolations(await runAxe(root))
+          .filter(line => line.startsWith('button-name') || line.startsWith('aria-toggle-field-name'));
+        expect(names).withContext('the name rules of the shared pass').toEqual([]);
+      });
+    }
   });
 });

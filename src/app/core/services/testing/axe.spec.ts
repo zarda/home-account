@@ -1,5 +1,6 @@
 import { ChangeDetectionStrategy, Component, inject, signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
+import { MatSlideToggle } from '@angular/material/slide-toggle';
 import axe, { type AxeResults } from 'axe-core';
 import { type EffectiveTheme, ThemeService } from '../theme.service';
 import {
@@ -14,12 +15,17 @@ import {
   contrastUnscored,
   expectContrastScored,
   expectEachContrastScored,
+  expectHeadingsInOrder,
+  headingOutline,
+  headingsOutOfOrder,
+  holdsShownWords,
   runAxe,
   standOnThePage,
   summarizeViolations,
   unexpectedViolations,
   withScheme,
 } from './axe';
+import { keepThePageWhereFound } from './page-scroll';
 
 /**
  * The axe harness itself, proven against a component that is wrong on
@@ -197,6 +203,77 @@ class ThemeReaderFixtureComponent {
   readonly theme = inject(ThemeService);
 }
 
+/**
+ * Material's slide toggle with nothing to name it. Its `role="switch"` button
+ * points `aria-labelledby` at the toggle's own `<label for>`, which projects
+ * nothing, and Material hides a label that is empty (`label:empty { display:
+ * none }`).
+ */
+@Component({
+  selector: 'app-axe-unnamed-switch-fixture',
+  standalone: true,
+  changeDetection: ChangeDetectionStrategy.OnPush,
+  imports: [MatSlideToggle],
+  template: '<mat-slide-toggle />',
+})
+class UnnamedSwitchFixtureComponent {}
+
+/** The same switch named by the words beside it, the way the Auto sync switch is. */
+@Component({
+  selector: 'app-axe-labelled-switch-fixture',
+  standalone: true,
+  changeDetection: ChangeDetectionStrategy.OnPush,
+  imports: [MatSlideToggle],
+  template: '<span id="axe-switch-words">Auto sync</span><mat-slide-toggle aria-labelledby="axe-switch-words" />',
+})
+class LabelledSwitchFixtureComponent {}
+
+/** The same switch named by the words it projects into its own label. */
+@Component({
+  selector: 'app-axe-projected-switch-fixture',
+  standalone: true,
+  changeDetection: ChangeDetectionStrategy.OnPush,
+  imports: [MatSlideToggle],
+  template: '<mat-slide-toggle>Auto sync</mat-slide-toggle>',
+})
+class ProjectedSwitchFixtureComponent {}
+
+/** A field named by a `<label for>` alone, which the same check reads for a field's own rule. */
+@Component({
+  selector: 'app-axe-labelled-field-fixture',
+  standalone: true,
+  changeDetection: ChangeDetectionStrategy.OnPush,
+  template: '<label for="axe-field">Amount</label><input id="axe-field" />',
+})
+class LabelledFieldFixtureComponent {}
+
+/** A page's heading, then a card's that skips the level between. */
+@Component({
+  selector: 'app-axe-skipped-heading-fixture',
+  standalone: true,
+  changeDetection: ChangeDetectionStrategy.OnPush,
+  template: '<h1>Data</h1><h3 id="axe-skipped-heading">Export</h3>',
+})
+class SkippedHeadingFixtureComponent {}
+
+/** The same card's heading one level under the page's. */
+@Component({
+  selector: 'app-axe-nested-heading-fixture',
+  standalone: true,
+  changeDetection: ChangeDetectionStrategy.OnPush,
+  template: '<h1>Data</h1><h2>Export</h2>',
+})
+class NestedHeadingFixtureComponent {}
+
+/** Words and no heading at all. */
+@Component({
+  selector: 'app-axe-headingless-fixture',
+  standalone: true,
+  changeDetection: ChangeDetectionStrategy.OnPush,
+  template: '<p>Total</p>',
+})
+class HeadinglessFixtureComponent {}
+
 describe('the axe harness', () => {
   function rulesOf(results: AxeResults): string[] {
     return summarizeViolations(results).map(line => line.split(' ')[0]);
@@ -292,6 +369,145 @@ describe('the axe harness', () => {
     ])).toEqual(['the undrawn words: no pass of its own']);
   });
 
+  describe('an unnamed switch', () => {
+    const BUTTON_NAME_ENTRY = { enabled: true, checks: { 'explicit-label': { enabled: false } } };
+
+    function render(component: typeof UnnamedSwitchFixtureComponent): HTMLElement {
+      TestBed.configureTestingModule({ imports: [component] });
+      const fixture = TestBed.createComponent(component);
+      fixture.detectChanges();
+      return fixture.nativeElement as HTMLElement;
+    }
+
+    function switchOf(host: HTMLElement): HTMLElement {
+      return host.querySelector('button[role="switch"]') as HTMLElement;
+    }
+
+    /** Every rule a run looked at, whatever it found. */
+    function rulesRun(results: AxeResults): string[] {
+      return [...results.passes, ...results.violations, ...results.incomplete, ...results.inapplicable]
+        .map(result => result.id)
+        .sort();
+    }
+
+    it('reports button-name on a slide toggle that nothing names', async () => {
+      const host = render(UnnamedSwitchFixtureComponent);
+      expect(accessibleName(switchOf(host))).withContext('the switch has no name').toBe('');
+
+      expect(rulesOf(await runAxe(host))).toEqual(['button-name']);
+    });
+
+    // The gap the entry closes, proved on the same fixture: axe's
+    // explicit-label check takes a `<label for>` it cannot see as a name,
+    // whatever the label says, and Material's empty label is out of sight.
+    it('passes the same switch without the entry, through the label it cannot see', async () => {
+      const host = render(UnnamedSwitchFixtureComponent);
+      const options = axeOptions();
+      const { 'button-name': entry, ...others } = options.rules ?? {};
+      expect(entry as unknown).withContext('the entry the shared pass carries').toEqual(BUTTON_NAME_ENTRY);
+
+      const results = await axe.run(host, { ...options, rules: others });
+
+      expect(rulesOf(results)).withContext('without the entry').not.toContain('button-name');
+      const passed = results.passes.find(result => result.id === 'button-name')?.nodes[0];
+      expect(passed?.any.map(check => check.id)).withContext('the check that passed it').toEqual(['explicit-label']);
+    });
+
+    // Every rule of the pass but contrast: the projected words' colours follow
+    // the machine's colour scheme here, so contrast is left to the sweeps that
+    // force a scheme. Any other rule a named switch trips is reported.
+    it('reports nothing on a switch named by the words beside it or by the words it projects, contrast aside', async () => {
+      for (const [component, how] of [
+        [LabelledSwitchFixtureComponent, 'aria-labelledby'],
+        [ProjectedSwitchFixtureComponent, 'projected words'],
+      ] as const) {
+        const host = render(component);
+        expect(accessibleName(switchOf(host))).withContext(`named by ${how}`).toBe('Auto sync');
+        expect(rulesOf(await runAxe(host)).filter(id => id !== 'color-contrast'))
+          .withContext(`named by ${how}`)
+          .toEqual([]);
+        TestBed.resetTestingModule();
+      }
+    });
+
+    // Five rules share explicit-label. Switched off for every rule, a field
+    // named by its `<label for>` alone would read as unnamed.
+    it('turns explicit-label off for button-name alone, and leaves a field its label', async () => {
+      const options = axeOptions();
+      expect(options.rules?.['button-name'] as unknown).toEqual(BUTTON_NAME_ENTRY);
+      expect((options as { checks?: unknown }).checks).withContext('no check switched for every rule').toBeUndefined();
+      expect(Object.entries(options.rules ?? {}).filter(([, rule]) => 'checks' in rule).map(([id]) => id))
+        .withContext('the rules that set a check')
+        .toEqual(['button-name']);
+
+      const field = render(LabelledFieldFixtureComponent);
+      expect(accessibleName(field.querySelector('input') as HTMLElement)).withContext('the field\'s name').toBe('Amount');
+      expect(rulesOf(await runAxe(field))).withContext('a field named by its label').not.toContain('label');
+    });
+
+    // `enabled: true` runs button-name in the tag pass, where wcag2a already
+    // asks for it. A run cut to named rules runs those alone whatever the map
+    // enables, so the contrast sweep, built on the shared options, never meets
+    // an unnamed switch. Nor does the heading run, which is read here from
+    // the helper's own call: a tag run spread over the shared options, a
+    // best-practice one say, would carry button-name with it, since axe
+    // honours a rule's own `enabled` ahead of its tags, and the page pass
+    // would then report one switch twice.
+    it('stays out of the contrast sweep and of the heading run', async () => {
+      const host = render(UnnamedSwitchFixtureComponent);
+      const run = spyOn(axe, 'run').and.callThrough();
+
+      await contrastUnscored([[host, 'the switch']]);
+      // Typed by axe.run's last overload, the callback form, which returns void.
+      const contrast = await (run.calls.mostRecent().returnValue as unknown as Promise<AxeResults>);
+      expect(rulesRun(contrast)).withContext('the contrast sweep').toEqual(['color-contrast']);
+
+      run.calls.reset();
+      const lines = await headingsOutOfOrder(host);
+      expect(run).withContext('the heading run is one axe run').toHaveBeenCalledTimes(1);
+      const headings = await (run.calls.mostRecent().returnValue as unknown as Promise<AxeResults>);
+      expect(rulesRun(headings)).withContext('the heading run').toEqual(['heading-order']);
+      expect(lines.filter(line => line.startsWith('button-name')))
+        .withContext('what the heading run reports')
+        .toEqual([]);
+    });
+  });
+
+  describe('the heading run', () => {
+    function render(component: typeof SkippedHeadingFixtureComponent): HTMLElement {
+      TestBed.configureTestingModule({ imports: [component] });
+      const fixture = TestBed.createComponent(component);
+      fixture.detectChanges();
+      return fixture.nativeElement as HTMLElement;
+    }
+
+    // heading-order is best practice, outside the tags of the shared pass,
+    // so the page pass never asks it: an h3 straight under the page's h1
+    // read clean on every route that had one.
+    it('reports a heading that skips the level under the one before it', async () => {
+      const host = render(SkippedHeadingFixtureComponent);
+      expect(rulesOf(await runAxe(host))).withContext('the shared pass').toEqual([]);
+
+      expect(await headingsOutOfOrder(host)).toEqual(['heading-order (1): #axe-skipped-heading']);
+    });
+
+    // A root with no heading leaves the rule inapplicable, which reports no
+    // violation either: a page whose headings all went would read as
+    // ordered. The run says so instead.
+    it('says it found no heading under a root that has none, rather than reading clean', async () => {
+      expect(await headingsOutOfOrder(render(HeadinglessFixtureComponent))).toEqual(['heading-order: no heading found']);
+    });
+
+    it('passes a heading one level under the one before it', async () => {
+      await expectHeadingsInOrder(render(NestedHeadingFixtureComponent));
+    });
+
+    it("reads the outline as each heading's level and words, in order", () => {
+      expect(headingOutline(render(SkippedHeadingFixtureComponent))).toEqual(['h1 Data', 'h3 Export']);
+      expect(headingOutline(document.createElement('div'))).withContext('no heading').toEqual([]);
+    });
+  });
+
   describe('motion', () => {
     // Headless Chrome need not paint a frame between a class landing and the
     // pass, so a transition can still sit on its first colours for the whole
@@ -332,10 +548,7 @@ describe('the axe harness', () => {
   });
 
   describe('below the fold', () => {
-    // The tall fixture scrolls the document itself.
-    afterEach(() => {
-      document.scrollingElement?.scrollTo(0, 0);
-    });
+    keepThePageWhereFound();
 
     it('scores a node below the fold once it is scrolled into view, and not before', async () => {
       TestBed.configureTestingModule({ imports: [FoldFixtureComponent] });
@@ -371,10 +584,7 @@ describe('the axe harness', () => {
   });
 
   describe('below body\'s box', () => {
-    // The tall fixture scrolls the document itself.
-    afterEach(() => {
-      document.scrollingElement?.scrollTo(0, 0);
-    });
+    keepThePageWhereFound();
 
     // Body paints the page's fill only as far down as its own box, so axe
     // finds no background it can trust behind words further down, and
@@ -640,6 +850,27 @@ describe('the axe harness', () => {
       expect(accessibleName(node('browse'))).withContext('the name stays the button\'s own').toBe('Browse');
       expect(accessibleDescription(node('plain'))).withContext('nothing describes it').toBe('');
       expect(accessibleDescription(node('inline'))).withContext('aria-description').toBe('Opens the picker.');
+    });
+
+    it('holds the words a control shows when its name has them whole, as words, read without regard to case', () => {
+      expect(holdsShownWords('Add location to Coffee Shop', 'Add location', 'en')).withContext('at the start').toBeTrue();
+      expect(holdsShownWords('View Transactions for Japan trip', 'view transactions', 'en'))
+        .withContext('in another case').toBeTrue();
+      expect(holdsShownWords('Add\n    location to Cafe', ' Add location ', 'en'))
+        .withContext('a run of white space reads as one space').toBeTrue();
+      expect(holdsShownWords('檢視交易：「Japan trip」', '檢視交易', 'tc')).withContext('tc, kept whole').toBeTrue();
+      expect(holdsShownWords('檢視「Japan trip」的交易', '檢視交易', 'tc'))
+        .withContext('tc, split round the name').toBeFalse();
+      expect(holdsShownWords('Add tag to Coffee Shop', 'Add location', 'en')).withContext('other words').toBeFalse();
+      expect(holdsShownWords('Credit card', 'Edit', 'en')).withContext('only inside a longer word').toBeFalse();
+      expect(holdsShownWords('Address of Cafe', 'Add', 'en')).withContext('only at the start of a longer word').toBeFalse();
+      expect(holdsShownWords('Edit credit card', 'Edit', 'en'))
+        .withContext('whole once, though also inside a longer word').toBeTrue();
+      expect(holdsShownWords('Delete Cafe (2)', 'Delete', 'en')).withContext('beside a space').toBeTrue();
+      expect(holdsShownWords('目標を追加', '追加', 'ja')).withContext('ja, beside kana').toBeTrue();
+      expect(holdsShownWords('新增目標', '目標', 'tc')).withContext('tc, beside Han').toBeTrue();
+      expect(() => holdsShownWords('Receipt image 1 of 2 for Cafe', ' ', 'en'))
+        .withContext('a control that shows no words').toThrowError(/shows no words/);
     });
 
     it('refuses to read a name while a pass is still running, and leaves the pass whole', async () => {

@@ -4,7 +4,17 @@
   margin: 0 auto;
 }
 
+// Why a row shows a dash: one line over the list, read as the description of
+// each row it explains.
+.count-note {
+  margin: 0 0 12px;
+  font-size: var(--text-sm);
+  color: var(--text-secondary);
+}
+
+// Named as a container so a row can answer the list's own width.
 .kind-list {
+  container: kind-list / inline-size;
   list-style: none;
   margin: 0 0 32px;
   padding: 0;
@@ -70,15 +80,19 @@
   min-width: 0;
 }
 
+// A word wider than its line breaks rather than running out of the row
+// (docs/ui-overflow.md G3); words that fit are never broken.
 .kind-label {
   font-size: var(--text-base);
   font-weight: 600;
   color: var(--text-primary);
+  overflow-wrap: anywhere;
 }
 
 .kind-description {
   font-size: var(--text-sm);
   color: var(--text-secondary);
+  overflow-wrap: anywhere;
 }
 
 .kind-count {
@@ -102,13 +116,62 @@
 
   &.is-unavailable {
     color: var(--text-secondary);
-    cursor: help;
   }
 }
 
 .kind-arrow {
   color: var(--text-secondary);
   flex-shrink: 0;
+}
+
+/* A phone's row cannot hold the icon, the label, the count and the chevron
+   side by side and leave the description more than a word or two a line:
+   at 320px it had 51px. Below 480px the label and the description take the
+   row's middle whole, the count comes under them, and the icon and the
+   chevron stand beside all three. The order is the DOM's, so the row reads as
+   it is spoken. The threshold is in px because a rem one would grow with the
+   very font size it answers. */
+@container kind-list (max-width: 480px) {
+  .kind-link {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr) auto;
+    grid-template-areas:
+      'icon label arrow'
+      'icon description arrow'
+      'icon count arrow';
+    column-gap: 12px;
+    padding: 16px;
+  }
+
+  .kind-content {
+    display: contents;
+  }
+
+  .kind-icon {
+    grid-area: icon;
+    align-self: center;
+  }
+
+  .kind-label {
+    grid-area: label;
+  }
+
+  .kind-description {
+    grid-area: description;
+    margin-top: 2px;
+  }
+
+  .kind-count {
+    grid-area: count;
+    justify-self: start;
+    margin-top: 4px;
+    text-align: start;
+  }
+
+  .kind-arrow {
+    grid-area: arrow;
+    align-self: center;
+  }
 }
 
 @keyframes kind-count-pulse {

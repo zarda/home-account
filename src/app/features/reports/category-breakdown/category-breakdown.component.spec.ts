@@ -7,16 +7,18 @@ import { CategoryBreakdownComponent } from './category-breakdown.component';
 import { Transaction, Category } from '../../../models';
 import { CurrencyService } from '../../../core/services/currency.service';
 import { TranslationService } from '../../../core/services/translation.service';
+import { AuthService } from '../../../core/services/auth.service';
+import { provideAppCharts } from '../../../core/config/chart.config';
 import { SpendingChartComponent } from '../../dashboard/spending-chart/spending-chart.component';
 import { AmountDisplayComponent } from '../../../shared/components/amount-display/amount-display.component';
 import { CategoryChipComponent } from '../../../shared/components/category-chip/category-chip.component';
 import { EmptyStateComponent } from '../../../shared/components/empty-state/empty-state.component';
 import {
-  paintedBackground,
-  paintedColor,
+  accessibleName,
+  expectPainted,
+  headingOutline,
   provideNoMotion,
-  ratio,
-  settleAnimations,
+  tokenValue,
   withTheme,
 } from '../../../core/services/testing';
 
@@ -438,6 +440,15 @@ describe('CategoryBreakdownComponent', () => {
       expect(activated).toEqual([{ categoryId: 'cat3', type: 'income' }]);
     });
 
+    // A radio group is entered by its name, so a reader hears that the two
+    // choices are a transaction type before the first of them.
+    it('names its Expenses / Income group', () => {
+      const group = (realFixture.nativeElement as HTMLElement).querySelector('mat-button-toggle-group') as HTMLElement;
+
+      expect(group.getAttribute('role')).toBe('radiogroup');
+      expect(accessibleName(group)).toBe('transactions.type');
+    });
+
     // #488: the panels and the donut both render a tie in category id order,
     // with the higher id's row arriving first.
     it('renders a tie in category id order in the panels and the donut', () => {
@@ -515,33 +526,74 @@ describe('CategoryBreakdownComponent', () => {
     });
   });
 
+  // The Reports page's h1 heads the tab with no heading between. The reused
+  // donut's title is an h2 under it, and each panel's recent transactions an
+  // h3 under that; with nothing to chart, the empty state stands where the
+  // donut would, an h2. The donut is the real one here, as its title is the
+  // level the panels sit under.
+  describe('its headings (real template, with the real donut)', () => {
+    let realFixture: ComponentFixture<CategoryBreakdownComponent>;
+    const outline = () => headingOutline(realFixture.nativeElement);
+
+    beforeEach(async () => {
+      TestBed.resetTestingModule();
+      await TestBed.configureTestingModule({
+        imports: [CategoryBreakdownComponent],
+        providers: [
+          provideAppCharts(),
+          {
+            provide: CurrencyService,
+            useValue: {
+              currencies: signal([{ code: 'USD', name: 'US Dollar', symbol: '$' }]),
+              getCurrencyInfo: () => ({ code: 'USD', name: 'US Dollar', symbol: '$' }),
+              convert: (amount: number) => amount,
+              amountInBase: (t: Transaction) => t.amountInBaseCurrency,
+              formatCurrency: (a: number, c: string) => `${c} ${a.toFixed(2)}`
+            }
+          },
+          { provide: TranslationService, useValue: { t: (key: string) => key, currentLocale: signal('en') } },
+          {
+            provide: AuthService,
+            useValue: {
+              currentUser: signal({
+                preferences: { baseCurrency: 'USD', theme: 'light', language: 'en', dateFormat: 'MM/DD/YYYY' }
+              })
+            }
+          },
+          provideNoMotion()
+        ]
+      }).compileComponents();
+
+      realFixture = TestBed.createComponent(CategoryBreakdownComponent);
+      realFixture.componentInstance.categories = mockCategories;
+    });
+
+    afterEach(() => realFixture.destroy());
+
+    it("heads the empty state one level under the page's own heading", () => {
+      realFixture.componentInstance.transactions = [];
+      realFixture.detectChanges();
+
+      expect(outline()).toEqual(['h2 reports.noExpenses']);
+    });
+
+    it("heads each panel's recent transactions one level under the donut's title", () => {
+      realFixture.componentInstance.transactions = mockTransactions;
+      realFixture.detectChanges();
+
+      expect(outline()).toEqual([
+        'h2 dashboard.spendingByCategory',
+        'h3 reports.recentTransactions',
+        'h3 reports.recentTransactions'
+      ]);
+    });
+  });
+
   describe('colours, as painted (real template)', () => {
     const THEMES = ['light', 'dark'] as const;
     let realFixture: ComponentFixture<CategoryBreakdownComponent>;
     const part = (selector: string) =>
       (realFixture.nativeElement as HTMLElement).querySelector(selector) as HTMLElement;
-
-    /** What `<property>: var(token)` computes to under the theme on <html> now. */
-    function tokenValue(token: string, property = 'color'): string {
-      const probe = document.createElement('span');
-      probe.style.setProperty(property, `var(${token})`);
-      document.body.appendChild(probe);
-      try {
-        settleAnimations(document);
-        return getComputedStyle(probe).getPropertyValue(property);
-      } finally {
-        probe.remove();
-      }
-    }
-
-    /** `node` is `token`, and reads at 4.5:1 or better on what is painted behind it. */
-    function expectPainted(node: HTMLElement, token: string, label: string): void {
-      expect(node).withContext(label).toBeTruthy();
-      expect(getComputedStyle(node).color).withContext(label).toBe(tokenValue(token));
-      expect(ratio(paintedColor(node), paintedBackground(node)))
-        .withContext(`${label} on what it sits on`)
-        .toBeGreaterThanOrEqual(4.5);
-    }
 
     beforeEach(async () => {
       realFixture = await renderRealTemplate();

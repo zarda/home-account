@@ -7,6 +7,7 @@ import { CategoryService } from '../../../core/services/category.service';
 import { CurrencyService } from '../../../core/services/currency.service';
 import { PwaService } from '../../../core/services/pwa.service';
 import { InsightSnapshotService } from '../../../core/services/insight-snapshot.service';
+import { InsightsService } from '../../../core/services/insights.service';
 import { TransactionService } from '../../../core/services/transaction.service';
 import { TranslationService } from '../../../core/services/translation.service';
 import { NotificationService } from '../../../core/services/notification.service';
@@ -23,7 +24,7 @@ import { MatIconModule } from '@angular/material/icon';
 import { EmptyStateComponent } from '../../../shared/components/empty-state/empty-state.component';
 import { LoadingSpinnerComponent } from '../../../shared/components/loading-spinner/loading-spinner.component';
 import { TranslatePipe } from '../../../shared/pipes/translate.pipe';
-import { createTranslationStub, provideNoMotion } from '../../../core/services/testing';
+import { createTranslationStub, headingOutline, provideNoMotion } from '../../../core/services/testing';
 
 function expenseRow(date: Date, amount: number, overrides: Partial<Transaction> = {}): Transaction {
   return createTransaction({
@@ -582,6 +583,62 @@ describe('InsightsTabComponent, through its own template', () => {
     expect(el().textContent).toContain('insights.archiveEmptyTitle');
     expect(el().textContent).not.toContain('insights.gettingStartedTitle');
     expect(el().textContent).not.toContain('insights.noPatternsTitle');
+  });
+
+  // The tab sits directly under the Reports page's h1, with no heading
+  // between, so whichever empty state it shows is an h2. The cards, the
+  // narrative and the recurring list are not rendered here.
+  describe('its headings', () => {
+    const outline = () => headingOutline(el());
+
+    it("heads the failed, offline, young-account and empty-archive states one level under the page's own heading", () => {
+      transactions.getTransactionsInRange.and.returnValue(throwError(() => new Error('offline')));
+      fixture = TestBed.createComponent(InsightsTabComponent);
+      fixture.componentRef.setInput('period', windowPeriod);
+      fixture.componentRef.setInput('currency', 'USD');
+      fixture.detectChanges();
+      expect(outline()).withContext('failed').toEqual(['h2 insights.errorTitle']);
+
+      online.set(false);
+      render([]);
+      expect(outline()).withContext('offline').toEqual(['h2 insights.offlineTitle']);
+
+      online.set(true);
+      render([expenseRow(new Date(2026, 5, 3), 10)]);
+      expect(outline()).withContext('young account').toEqual(['h2 insights.gettingStartedTitle']);
+
+      const frozen = storedSnapshotFixture('2026-05');
+      stored.set([frozen]);
+      snapshots.get.and.returnValue(frozen);
+      render(historyRows());
+      component.onMonthSelected('2026-05');
+      fixture.detectChanges();
+      expect(outline()).withContext('empty archive').toEqual(['h2 insights.archiveEmptyTitle']);
+    });
+
+    // No detector found anything in a window that met every gate: reached
+    // through the tab's own service, as no fixture short of the detectors'
+    // thresholds can promise to stay below every one of them.
+    it("heads the no-patterns state one level under the page's own heading", () => {
+      TestBed.overrideProvider(InsightsService, {
+        useValue: {
+          isLoading: signal(false),
+          hasFailed: signal(false),
+          window: signal(null),
+          facts: signal(null),
+          cards: signal([]),
+          drillDownIds: signal({}),
+          transactionLookup: signal(new Map()),
+          windowTransactionCount: signal(0),
+          isOfflineWithoutData: signal(false),
+          load: () => undefined,
+          refresh: () => undefined,
+        },
+      });
+      render([]);
+
+      expect(outline()).toEqual(['h2 insights.noPatternsTitle']);
+    });
   });
 
   it('keeps the history accordion out until a month has been stored', () => {

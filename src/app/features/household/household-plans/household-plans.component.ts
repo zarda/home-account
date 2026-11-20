@@ -51,8 +51,9 @@ import { LoadingSpinnerComponent } from '../../../shared/components/loading-spin
 import { MemberChipComponent } from '../../../shared/components/member-chip/member-chip.component';
 import { FitTextDirective } from '../../../shared/directives/fit-text.directive';
 import { TranslatePipe } from '../../../shared/pipes/translate.pipe';
+import { FocusContext, focusWhenRendered } from '../../../shared/utils/focus-when-rendered';
 import { writeFailureMessage } from '../household-failure';
-import { FocusContext, OpenDialog, closeDialogsOnSwitch, focusWhenRendered, sameShownHousehold } from '../household-focus';
+import { OpenDialog, closeDialogsOnSwitch, sameShownHousehold } from '../household-focus';
 import {
   HouseholdBudgetDialogComponent,
   HouseholdBudgetDialogData
@@ -415,7 +416,7 @@ export class HouseholdPlansComponent {
       if (!landing || !landing.shown()) return;
       untracked(() => {
         this.landing.set(null);
-        focusWhenRendered(this.focus, landing.selectors, { from: landing.from });
+        focusWhenRendered(this.focus, landing.selectors, { onlyIfDropped: true, from: landing.from });
       });
     });
     closeDialogsOnSwitch(() => this.householdService.household(), this.dialogsOpen, this.focus.destroyRef);

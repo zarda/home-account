@@ -13,6 +13,8 @@ import {
   ratio,
   withTheme,
 } from '../../../core/services/testing/painted-contrast';
+import { accessibleName, holdsShownWords } from '../../../core/services/testing/axe';
+import { catalogTranslator } from '../../../core/services/testing/catalog-translator';
 
 describe('NlAnswerCardComponent', () => {
   let fixture: ComponentFixture<NlAnswerCardComponent>;
@@ -149,6 +151,70 @@ describe('NlAnswerCardComponent', () => {
 
     expect(emitted).toBe(answer.scope);
   });
+
+  /**
+   * The saved answers stamp one card per expanded answer, and the search
+   * dialog shows one live, so View matching transactions names the answer it
+   * opens by what the card shows: what was asked for and over which period.
+   * A count answer's label says what the button already says (Matching
+   * transactions), so its name gives the period alone rather than the same
+   * words twice. The name holds the words the button shows (WCAG 2.5.3), read
+   * without regard to case in the reader's own locale.
+   */
+  const viewNames = {
+    en: [
+      'View matching transactions (Total spent, 2026-06-01 – 2026-06-30)',
+      'View matching transactions (2026-07-01 – 2026-07-31)',
+    ],
+    ja: [
+      '該当する取引を表示（支出合計、2026-06-01 – 2026-06-30）',
+      '該当する取引を表示（2026-07-01 – 2026-07-31）',
+    ],
+    tc: [
+      '查看符合的交易（支出總額，2026-06-01 – 2026-06-30）',
+      '查看符合的交易（2026-07-01 – 2026-07-31）',
+    ],
+  } as const;
+  for (const locale of ['en', 'ja', 'tc'] as const) {
+    it(`names View matching transactions by its answer and period, a count by its period, in ${locale}`, () => {
+      const t = catalogTranslator(locale, { strict: true });
+      const translation = TestBed.inject(TranslationService) as jasmine.SpyObj<TranslationService>;
+      translation.t.and.callFake(catalogTranslator(locale));
+      const shown = t('aiSearch.viewTransactions');
+      const times = (text: string, words: string) =>
+        text.toLocaleLowerCase().split(words.toLocaleLowerCase()).length - 1;
+      const sum = sumAnswer();
+      const count = sumAnswer({
+        operation: 'count',
+        value: 4,
+        currency: undefined,
+        transactionCount: 4,
+        scope: { startDate: new Date(2026, 6, 1), endDate: new Date(2026, 6, 31) },
+      });
+
+      const nameOf = (answer: AggregateAnswer, period: string): string => {
+        render(answer);
+        const button = fixture.nativeElement.querySelector('button') as HTMLButtonElement;
+        const name = accessibleName(button);
+        expect(button.textContent).withContext('the button shows its words').toContain(shown);
+        expect(name).withContext(`"${name}" names the period`).toContain(period);
+        expect(holdsShownWords(name, shown, locale)).withContext(`"${name}" holds "${shown}" whole`).toBeTrue();
+        return name;
+      };
+      const names = [nameOf(sum, '2026-06-01 – 2026-06-30'), nameOf(count, '2026-07-01 – 2026-07-31')];
+
+      expect(names[0]).withContext(`"${names[0]}" names the answer`).toContain(t('aiSearch.answerSum'));
+      const countLabel = t('aiSearch.answerCount');
+      expect(times(names[1], countLabel))
+        .withContext(`"${names[1]}" says "${countLabel}" no more often than the button does`)
+        .toBe(times(shown, countLabel));
+      expect(names).withContext('pinned').toEqual([...viewNames[locale]]);
+      expect(names).toEqual([
+        t('aiSearch.viewTransactionsFor', { answer: t('aiSearch.answerSum'), period: '2026-06-01 – 2026-06-30' }),
+        t('aiSearch.viewTransactionsIn', { period: '2026-07-01 – 2026-07-31' }),
+      ]);
+    });
+  }
 
   it('paints every secondary line at AA or better on the answer block, in both themes', () => {
     render(sumAnswer({

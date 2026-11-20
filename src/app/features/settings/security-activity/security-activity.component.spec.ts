@@ -10,6 +10,7 @@ import { DateFormatService } from '../../../core/services/date-format.service';
 import { LocaleFormatService } from '../../../core/services/locale-format.service';
 import { TranslationService } from '../../../core/services/translation.service';
 import { SecurityEvent } from '../../../models';
+import { headingOutline } from '../../../core/services/testing';
 
 describe('SecurityActivityComponent', () => {
   let component: SecurityActivityComponent;
@@ -155,6 +156,16 @@ describe('SecurityActivityComponent', () => {
 
       const meta = (fixture.nativeElement as HTMLElement).querySelector('.activity-meta');
       expect(meta?.textContent).toContain('settings.activityAt:Yesterday:TIME-FROM-FORMATTER');
+    });
+
+    // Settings' panels are titled by no heading, and the section's own label
+    // is a line of text, so the empty state sits directly under the page's h1.
+    it("heads the empty state one level under the page's own heading", async () => {
+      await setup();
+      fixture.detectChanges();
+
+      const outline = headingOutline(fixture.nativeElement);
+      expect(outline).toEqual(['h2 settings.securityActivityEmpty']);
     });
   });
 });

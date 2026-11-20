@@ -598,6 +598,19 @@ describe('HouseholdOverviewComponent', () => {
       expect(document.activeElement).toBe(lastMonth);
     });
 
+    it('leaves focus where the viewer moved it as a change left no rows at all', async () => {
+      twoAndAHalfPages();
+      moreButton()?.focus();
+      const lastMonth = element().querySelector<HTMLElement>('mat-button-toggle[value="lastMonth"] button') as HTMLElement;
+
+      ledger.rows.set([]);
+      lastMonth.focus();
+      await settle();
+
+      expect(emptyState()).toContain('household.overview.emptyTitle');
+      expect(document.activeElement).toBe(lastMonth);
+    });
+
     it('takes no focus when the viewer had already let it go from the button', async () => {
       twoAndAHalfPages();
       const more = moreButton() as HTMLButtonElement;

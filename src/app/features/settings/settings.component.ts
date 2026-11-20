@@ -8,6 +8,7 @@ import { MatExpansionModule } from '@angular/material/expansion';
 import { MatDialog } from '@angular/material/dialog';
 
 import { AuthService } from '../../core/services/auth.service';
+import { PendingDeleteService } from '../../core/services/pending-delete.service';
 import { TranslationService } from '../../core/services/translation.service';
 import { accountDisplayName } from '../../core/utils/person-name.utils';
 import { TranslatePipe } from '../../shared/pipes/translate.pipe';
@@ -38,6 +39,7 @@ import { DashboardLayoutSettingsComponent } from './dashboard-layout-settings/da
 })
 export class SettingsComponent {
   private authService = inject(AuthService);
+  private pendingDelete = inject(PendingDeleteService);
   private translationService = inject(TranslationService);
   private dialog = inject(MatDialog);
 
@@ -78,9 +80,13 @@ export class SettingsComponent {
     const dialogRef = this.dialog.open(ConfirmDialogComponent, { data });
 
     dialogRef.afterClosed().subscribe(confirmed => {
-      if (confirmed) {
-        this.authService.signOut();
-      }
+      if (confirmed) void this.signOutConfirmed();
     });
+  }
+
+  private async signOutConfirmed(): Promise<void> {
+    // A transaction delete still inside its Undo window is made real first.
+    await this.pendingDelete.flushBeforeSignOut();
+    await this.authService.signOut();
   }
 }

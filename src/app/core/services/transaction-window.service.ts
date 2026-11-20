@@ -90,7 +90,8 @@ export class TransactionWindowService {
   // Completed reset() count; consumers use it to react once per filter/sort
   // change instead of once per scrolled page.
   readonly resetSeq = signal<number>(0);
-  // Server-side count of the filtered set (client-only filters excluded).
+  // Server-side count of the filtered set (client-only filters excluded). It
+  // lands with the page it was read beside (readTotalCount), never alone.
   readonly totalCount = signal<number | null>(null);
   readonly loadError = signal<WindowLoadError | null>(null);
   // Row the list should scroll to and highlight once it is rendered (set
@@ -129,15 +130,17 @@ export class TransactionWindowService {
     this.filters.set(filters);
     this.sortDirection.set(sort);
     this.loadError.set(null);
-    this.refreshTotalCount(gen);
+    const count = this.readTotalCount();
 
     try {
       const page = await this.fetchPage({ limit: INITIAL_BATCH }, gen);
+      const total = await count;
       if (gen !== this.generation) return;
       this.items = page.items;
       this.snaps = page.snapshots as PageCursor[];
       this.reachedStart.set(true);
       this.reachedEnd.set(page.items.length < INITIAL_BATCH);
+      this.totalCount.set(total);
       this.publish();
       this.resetSeq.update(seq => seq + 1);
     } catch (error) {
@@ -234,12 +237,14 @@ export class TransactionWindowService {
     const op = this.takeLock();
     const gen = ++this.generation;
     this.loadError.set(null);
-    this.refreshTotalCount(gen);
+    const count = this.readTotalCount();
 
     try {
+      let total: number | null;
       if (this.reachedStart() || this.items.length === 0) {
         const requested = Math.max(this.items.length, INITIAL_BATCH);
         const page = await this.fetchPage({ limit: requested }, gen);
+        total = await count;
         if (gen !== this.generation) return;
         this.items = page.items;
         this.snaps = page.snapshots as PageCursor[];
@@ -253,6 +258,7 @@ export class TransactionWindowService {
           { startAtValues: [this.items[0].date], limit: requested },
           gen
         );
+        total = await count;
         if (gen !== this.generation) return;
         this.items = page.items;
         this.snaps = page.snapshots as PageCursor[];
@@ -263,6 +269,7 @@ export class TransactionWindowService {
           this.reachedEnd.set(false);
         }
       }
+      this.totalCount.set(total);
       this.publish();
     } catch {
       if (gen === this.generation) this.loadError.set('initial');
@@ -279,7 +286,7 @@ export class TransactionWindowService {
     const op = this.takeLock();
     const gen = ++this.generation;
     this.loadError.set(null);
-    this.refreshTotalCount(gen);
+    const count = this.readTotalCount();
 
     try {
       // Page containing the target date and rows after it in query order.
@@ -293,11 +300,13 @@ export class TransactionWindowService {
         // Target not reachable under the active server filters; fall back to
         // a plain top-of-list load.
         const page = await this.fetchPage({ limit: INITIAL_BATCH }, gen);
+        const total = await count;
         if (gen !== this.generation) return;
         this.items = page.items;
         this.snaps = page.snapshots as PageCursor[];
         this.reachedStart.set(true);
         this.reachedEnd.set(page.items.length < INITIAL_BATCH);
+        this.totalCount.set(total);
         this.publish();
         return;
       }
@@ -308,6 +317,7 @@ export class TransactionWindowService {
         { endBeforeDoc: below.snapshots[0] as PageCursor, limit: BATCH_SIZE },
         gen
       );
+      const total = await count;
       if (gen !== this.generation) return;
 
       this.items = [...above.items, ...below.items];
@@ -317,6 +327,7 @@ export class TransactionWindowService {
       ];
       this.reachedStart.set(above.items.length < BATCH_SIZE);
       this.reachedEnd.set(below.items.length < INITIAL_BATCH);
+      this.totalCount.set(total);
       this.publish();
     } catch {
       if (gen === this.generation) this.loadError.set('initial');
@@ -385,17 +396,19 @@ export class TransactionWindowService {
     throw lastError ?? new Error('superseded');
   }
 
-  private refreshTotalCount(gen: number): void {
-    void this.firestoreService
+  // Read beside a page, in parallel, and set only in the step that publishes
+  // that page, under the same generation. The transactions page takes a
+  // deleted row off this count while the window still holds it, so the two
+  // must describe the same moment: a count that landed ahead of its page
+  // would already lack a row the window still shows, and if that page then
+  // failed, lack it until the next refresh. A failed count reads as null (no
+  // exact total) rather than failing the page.
+  private readTotalCount(): Promise<number | null> {
+    return this.firestoreService
       .countDocuments(this.userTransactionsPath, {
         where: buildTransactionWhere(this.filters())
       })
-      .then(count => {
-        if (gen === this.generation) this.totalCount.set(count);
-      })
-      .catch(() => {
-        if (gen === this.generation) this.totalCount.set(null);
-      });
+      .catch(() => null);
   }
 
   private takeLock(): symbol {

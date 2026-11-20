@@ -1,6 +1,12 @@
 <div class="page-container">
   <app-page-header titleKey="data.title" subtitleKey="data.subtitle" />
 
+  <!-- Why a row shows a dash for its count: on the page, where a keyboard and
+       a glance reach it, and as each such row's description. -->
+  @if (anyUnavailable()) {
+    <p class="count-note" id="data-count-note">{{ 'data.countUnavailable' | translate }}</p>
+  }
+
   <ul class="kind-list">
     @for (kind of kinds; track kind.id) {
       <li class="kind-row">
@@ -8,6 +14,7 @@
           class="kind-link"
           [routerLink]="kind.route"
           [queryParams]="kind.queryParams ?? null"
+          [attr.aria-describedby]="stateFor(kind).status === 'unavailable' ? 'data-count-note' : null"
         >
           <div class="kind-icon">
             <mat-icon>{{ kind.icon }}</mat-icon>
@@ -26,10 +33,7 @@
               <span class="kind-count">{{ stateFor(kind).count }}</span>
             }
             @case ('unavailable') {
-              <span
-                class="kind-count is-unavailable"
-                [attr.title]="'data.countUnavailable' | translate"
-              >—</span>
+              <span class="kind-count is-unavailable" aria-hidden="true">—</span>
             }
           }
 

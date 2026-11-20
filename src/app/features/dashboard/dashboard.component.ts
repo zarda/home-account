@@ -59,6 +59,7 @@ import {
   yearWindow,
 } from '../../core/utils/transaction-date.utils';
 import { welcomeGreeting } from '../../core/utils/person-name.utils';
+import { errorCode, isRefused } from '../../core/utils/firebase-error.utils';
 import { APP_BREAKPOINTS } from '../../core/layout/breakpoints';
 import { DASHBOARD_MAIN_COLUMN, dashboardGridAreas } from './dashboard-layout.utils';
 import { DashboardLayoutService } from './dashboard-layout.service';
@@ -87,6 +88,23 @@ import {
  * move", not "what happened in the window I am looking at".
  */
 const UPCOMING_WINDOW_DAYS = 14;
+
+/**
+ * The error path of a live read the page keeps open (#546). Without one,
+ * RxJS rethrew the failure from a timer in the Angular zone, where
+ * AngularFire runs every listener callback, so it reached the global
+ * handler: a console error per read and the Error snackbar. Nothing is
+ * touched, so the page keeps what it last showed and a bill link still waits
+ * for an upcoming window that has emitted. An abort is Firestore shutting
+ * down and a refusal is what an open listener hears when the account signs
+ * out under it; both pass without a word, and anything else is worth a line.
+ */
+function readStopped(read: string): (error: unknown) => void {
+  return error => {
+    if (isRefused(error) || errorCode(error) === 'aborted') return;
+    console.warn(`[Dashboard] The ${read} read stopped; the page keeps what it last showed:`, error);
+  };
+}
 
 @Component({
   selector: 'app-dashboard',
@@ -459,18 +477,18 @@ export class DashboardComponent implements OnInit {
     // all read the list, and the widget does while the card is shown.
     this.budgetService.getBudgets()
       .pipe(takeUntilDestroyed(this.destroyRef))
-      .subscribe();
+      .subscribe({ error: readStopped('budgets') });
 
     // Goals feed the AI summary prompt; same live-stream reasoning as budgets.
     this.goalService.getGoals()
       .pipe(takeUntilDestroyed(this.destroyRef))
-      .subscribe();
+      .subscribe({ error: readStopped('goals') });
 
     // Categories are period-independent, so like budgets they are subscribed
     // once here rather than re-subscribed on every period change in loadData().
     this.categoryService.loadCategories()
       .pipe(takeUntilDestroyed(this.destroyRef))
-      .subscribe();
+      .subscribe({ error: readStopped('categories') });
 
     this.loadData();
     this.loadPickerFloor();
@@ -561,7 +579,8 @@ export class DashboardComponent implements OnInit {
       .subscribe({
         next: (transactions) => {
           this.recentTransactions.set(transactions);
-        }
+        },
+        error: readStopped('recent transactions'),
       });
   }
 
@@ -571,10 +590,15 @@ export class DashboardComponent implements OnInit {
     this.upcomingArrived = false;
     this.upcomingSub = this.recurringService.getUpcomingSchedule(UPCOMING_WINDOW_DAYS)
       .pipe(takeUntilDestroyed(this.destroyRef))
-      .subscribe(schedule => {
-        this.upcomingSchedule.set(schedule);
-        this.upcomingArrived = true;
-        this.bindRequestedBill();
+      .subscribe({
+        next: schedule => {
+          this.upcomingSchedule.set(schedule);
+          this.upcomingArrived = true;
+          this.bindRequestedBill();
+        },
+        // upcomingArrived is left as it was: a window that never emitted
+        // would answer a waiting bill link "absent" for every rule.
+        error: readStopped('upcoming schedule'),
       });
   }
 

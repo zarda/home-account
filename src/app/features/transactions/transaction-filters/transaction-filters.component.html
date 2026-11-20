@@ -110,9 +110,12 @@
       <!-- Search -->
       <div class="search-wrapper" (focusout)="onSearchAreaFocusout($event)">
         <mat-icon class="search-icon">search</mat-icon>
+        <!-- Named in the hint's own words: a placeholder is no name, and it
+             goes as soon as the box holds a query. -->
         <input
           type="text"
           class="search-input"
+          [attr.aria-label]="'transactions.searchBoxLabel' | translate"
           [placeholder]="'transactions.searchPlaceholder' | translate"
           [(ngModel)]="filters.searchQuery"
           (input)="onSearchInput()"
@@ -189,14 +192,21 @@
 
       @if (saveMode()) {
         <div class="save-search-row">
-          <input
-            type="text"
-            class="save-label-input"
-            [placeholder]="'transactions.searchLabelPlaceholder' | translate"
-            [(ngModel)]="saveLabel"
-            (keydown.enter)="onSaveLabelEnter($event)"
-            (keydown.escape)="onSaveLabelEscape($event)"
-          >
+          <!-- The box opens holding the query as the name it offers, so a
+               placeholder in it showed only once it was emptied. Its caption
+               stands above it inside the pill, whatever it holds, and is the
+               label it is named by. -->
+          <div class="save-name">
+            <label class="save-name-label" [for]="saveNameId">{{ 'transactions.saveNameLabel' | translate }}</label>
+            <input
+              type="text"
+              class="save-label-input"
+              [id]="saveNameId"
+              [(ngModel)]="saveLabel"
+              (keydown.enter)="onSaveLabelEnter($event)"
+              (keydown.escape)="onSaveLabelEscape($event)"
+            >
+          </div>
           <button
             mat-icon-button
             type="button"
@@ -265,7 +275,16 @@
               {{ 'datepicker.dateInvalid' | translate }}
             }
           </span>
-          <mat-datepicker-toggle matIconSuffix [for]="startPicker"></mat-datepicker-toggle>
+          <!-- From and To each end in a calendar button, side by side, so
+               each is named for its own field, by the slotted calendar name
+               the dialogs' start and end dates use, filled with the field's
+               label. The toggle's aria-label input reaches its inner button
+               and takes the place of the calendar's shared label. -->
+          <mat-datepicker-toggle
+            matIconSuffix
+            [for]="startPicker"
+            [aria-label]="'datepicker.openCalendarFor' | translate: { field: ('transactions.from' | translate) }"
+          ></mat-datepicker-toggle>
           <mat-datepicker
             #startPicker
             [dateClass]="dateClass"
@@ -289,7 +308,11 @@
               {{ 'datepicker.dateInvalid' | translate }}
             }
           </span>
-          <mat-datepicker-toggle matIconSuffix [for]="endPicker"></mat-datepicker-toggle>
+          <mat-datepicker-toggle
+            matIconSuffix
+            [for]="endPicker"
+            [aria-label]="'datepicker.openCalendarFor' | translate: { field: ('transactions.to' | translate) }"
+          ></mat-datepicker-toggle>
           <mat-datepicker
             #endPicker
             [dateClass]="dateClass"

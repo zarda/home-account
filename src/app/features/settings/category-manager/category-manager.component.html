@@ -1,7 +1,11 @@
 <div class="category-manager">
-  <!-- Type Toggle & Add Button -->
+  <!-- Type Toggle & Add Button. The toggle is a radiogroup, so it carries a
+       name of its own; no visible label sits beside it. -->
   <div class="manager-header">
-    <mat-button-toggle-group [(ngModel)]="selectedType">
+    <mat-button-toggle-group
+      [(ngModel)]="selectedType"
+      [attr.aria-label]="'settings.categoryType' | translate"
+    >
       <mat-button-toggle value="expense">
         <mat-icon>trending_down</mat-icon>
         {{ 'common.totalExpenses' | translate }}
@@ -72,6 +76,7 @@
     <app-empty-state
       icon="category"
       size="sm"
+      [headingLevel]="2"
       [title]="'settings.noCategoriesFound' | translate"
       [description]="'settings.noCategoriesDescription' | translate"
       [actionLabel]="'settings.addCategory' | translate"

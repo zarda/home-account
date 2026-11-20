@@ -2,11 +2,11 @@
   <span class="section-label" id="app-lock-label">{{ 'appLock.settingsTitle' | translate }}</span>
   <p class="section-description">{{ 'appLock.settingsDescription' | translate }}</p>
 
-  <div class="setting-row">
+  <!-- The section names the group; the switch is named by the words it shows. -->
+  <div class="setting-row" role="group" aria-labelledby="app-lock-label">
     <mat-slide-toggle
       [checked]="enabled()"
       (change)="onEnabledChange($event.checked)"
-      aria-labelledby="app-lock-label"
     >
       {{ 'appLock.enable' | translate }}
     </mat-slide-toggle>

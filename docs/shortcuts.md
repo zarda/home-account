@@ -200,8 +200,11 @@ tracked one, so `Ctrl/Cmd+K` toggles it closed — and does nothing while any
 dialog is open.
 
 **The hint** (`.shortcuts-hint`) says *Press ? to see the keyboard shortcuts*
-(`shortcuts.hint`), beside a decorative `keyboard` icon and a 32 px dismiss
-button named `shortcuts.hintDismiss`.
+(`shortcuts.hint`), beside a decorative `keyboard` icon and a 40 px dismiss
+button named `shortcuts.hintDismiss`: its state layer is 40 px, the app's floor
+for a control, and Material's 48 px touch span is hidden, so nothing spills
+past the hint
+([ADR 0196](ADR/0196-sibling-controls-say-what-they-act-on-a-name-holds-its-shown-words-a-focused-button-shows-an-indicator-inside-it-focus-stays-in-the-list-after-a-delete-and-a-failed-dashboard-read-is-quiet.md)).
 
 | | |
 |---|---|

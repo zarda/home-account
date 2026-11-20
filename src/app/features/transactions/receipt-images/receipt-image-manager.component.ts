@@ -122,10 +122,10 @@ export class ReceiptImageManagerComponent implements OnInit {
   }
 
   /**
-   * The transaction as remove-all and each image's convert and remove name
-   * it, whose keys only tc quotes: its description in the reader's own
-   * quotation marks, or the catalog's words for an untitled one, bare
-   * (quotedTransactionName). The template reads it, which is why it is
+   * The transaction as remove-all, and each image's thumbnail alt, convert
+   * and remove, name it, whose keys only tc quotes: its description in the
+   * reader's own quotation marks, or the catalog's words for an untitled one,
+   * bare (quotedTransactionName). The template reads it, which is why it is
    * protected.
    */
   protected quotedName(group: ReceiptGroup): string {

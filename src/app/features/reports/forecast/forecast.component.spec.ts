@@ -11,8 +11,10 @@ import { RecurringOccurrence, RecurringTransaction } from '../../../models';
 import { MAX_FORECAST_POINTS } from '../../../core/utils/forecast-series.utils';
 import {
   AUDIT_SCHEMES,
+  accessibleName,
   createTranslationStub,
   expectPainted,
+  headingOutline,
   inPalette,
   PALETTES,
   provideNoMotion,
@@ -312,6 +314,26 @@ describe('ForecastComponent, through its own template', () => {
     expect(empty.textContent).toContain('reports.forecastNoRulesBody');
     expect(el().querySelector('canvas')).toBeNull();
     expect(el().querySelector('.horizon-toggle')).toBeNull();
+  });
+
+  // The card carries no title, so the empty state sits directly under the
+  // Reports page's h1.
+  it("heads the empty state one level under the page's own heading", () => {
+    rules.set([]);
+    fixture.detectChanges();
+
+    const outline = headingOutline(el());
+    expect(outline).toEqual(['h2 reports.forecastNoRulesTitle']);
+  });
+
+  // A radio group is entered by its name, so a reader hears that 30, 60 and
+  // 90 days are the forecast's reach before the first of them.
+  it('names its horizon group', () => {
+    render();
+
+    const group = el().querySelector('.horizon-toggle') as HTMLElement;
+    expect(group.getAttribute('role')).toBe('radiogroup');
+    expect(accessibleName(group)).toBe('reports.forecastPeriod');
   });
 
   it('draws the projection on a real canvas, with its note and summary', () => {

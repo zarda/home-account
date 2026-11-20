@@ -1,19 +1,19 @@
 <mat-card class="recurring-card elevation-card">
   <mat-card-header>
-    <mat-card-title>{{ 'insights.recurringListTitle' | translate }}</mat-card-title>
+    <h2 mat-card-title>{{ 'insights.recurringListTitle' | translate }}</h2>
   </mat-card-header>
 
   <mat-card-content>
     @if (declared().length > 0) {
       <section class="recurring-section">
-        <h4 class="section-label">{{ 'insights.recurringDeclared' | translate }}</h4>
+        <h3 class="section-label">{{ 'insights.recurringDeclared' | translate }}</h3>
         <ng-container [ngTemplateOutlet]="rows" [ngTemplateOutletContext]="{ groups: declared() }" />
       </section>
     }
 
     @if (detected().length > 0) {
       <section class="recurring-section">
-        <h4 class="section-label">{{ 'insights.recurringDetected' | translate }}</h4>
+        <h3 class="section-label">{{ 'insights.recurringDetected' | translate }}</h3>
         <p class="section-note">{{ 'insights.recurringDetectedNote' | translate }}</p>
         <ng-container
           [ngTemplateOutlet]="rows"

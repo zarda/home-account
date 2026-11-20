@@ -8,9 +8,10 @@ import {
   paintedBackground,
   paintedColor,
   ratio,
+  tokenValue,
   withTheme,
 } from '../../../core/services/testing/painted-contrast';
-import { provideNoMotion } from '../../../core/services/testing';
+import { expectHeadingsInOrder, provideNoMotion } from '../../../core/services/testing';
 
 describe('LoginComponent', () => {
   let component: LoginComponent;
@@ -202,6 +203,142 @@ describe('LoginComponent', () => {
     });
   });
 
+  /**
+   * /login is a page of its own, outside the shell, and its title is the only
+   * words that say where the reader is. A reader who moves by headings found
+   * none there: the title was a plain mat-card-title.
+   */
+  describe('its heading (real template)', () => {
+    const host = () => fixture.nativeElement as HTMLElement;
+    const title = () => host().querySelector('.mat-mdc-card-title') as HTMLElement | null;
+
+    /** What a reader sees of a title: its type and its spacing, and its colour. */
+    function look(el: Element) {
+      const style = getComputedStyle(el);
+      return {
+        fontSize: style.fontSize,
+        fontWeight: style.fontWeight,
+        lineHeight: style.lineHeight,
+        margin: [style.marginTop, style.marginRight, style.marginBottom, style.marginLeft].join(' '),
+        color: style.color,
+      };
+    }
+
+    it("has exactly one h1, and it is the app's title", async () => {
+      const h1s = Array.from(host().querySelectorAll('h1'));
+
+      expect(h1s.length).withContext('the h1s on the page').toBe(1);
+      // The page asked for the title's key, and its h1 reads the words it was
+      // given for it.
+      expect(mockTranslationService.t).toHaveBeenCalledWith('app.title', undefined);
+      expect(h1s[0]?.textContent?.trim()).toBe(mockTranslationService.t('app.title'));
+      expect(h1s[0]).withContext('the h1 is the card title').toBe(title() as HTMLHeadingElement);
+      await expectHeadingsInOrder(host(), 'the sign-in page');
+    });
+
+    /** The look of a mat-card-title twin put in the heading's place, then taken out again. */
+    function twinLook(heading: HTMLElement) {
+      const twin = document.createElement('mat-card-title');
+      for (const attr of Array.from(heading.attributes)) twin.setAttribute(attr.name, attr.value);
+      twin.textContent = heading.textContent;
+      heading.replaceWith(twin);
+      try {
+        return look(twin);
+      } finally {
+        twin.replaceWith(heading);
+      }
+    }
+
+    /**
+     * The title became its heading with nothing redrawn: an h1 draws what the
+     * mat-card-title drew. That claim is read from a mat-card-title twin put in
+     * the h1's place, so a rule that reaches an h1 and not the card title (an
+     * element selector in the component's stylesheet, Tailwind's preflight,
+     * Material's own) fails here. Mutation: an `h1 { margin-bottom: 1rem }` in
+     * login.component.scss.
+     *
+     * The pinned figures, 24px / 700 / 32px with a 16px top margin, are what
+     * Karma's sheet order gives, not what the app shows. Karma's page links the
+     * global stylesheet in its body, after the sheets components add to the
+     * head, so the template's utilities win over the card's own rule. The
+     * built app links the global sheet in the head, before them, so the card's
+     * sheet wins: there the same h1, and a twin beside it, read 22px / 400 /
+     * 28px with no margin. The twin comparison holds in both orders; the next
+     * case reads it in the app's.
+     */
+    it("keeps its title's look, in both themes", () => {
+      const heading = title();
+      expect(heading).withContext('the card title').toBeTruthy();
+      if (!heading) return;
+
+      for (const theme of ['light', 'dark'] as const) {
+        withTheme(theme, () => {
+          const drawn = look(heading);
+          expect({ ...drawn, color: undefined })
+            .withContext(`${theme}: the title's type and spacing in Karma's sheet order, utilities last`)
+            .toEqual({ fontSize: '24px', fontWeight: '700', lineHeight: '32px', margin: '16px 0px 0px 0px', color: undefined });
+          expect(drawn.color).withContext(`${theme}: the title's colour`).toBe(tokenValue('--text-primary'));
+          expect(drawn).withContext(`${theme}: the same title drawn as a mat-card-title`).toEqual(twinLook(heading));
+        });
+      }
+    });
+
+    /**
+     * The same claim in the app's sheet order. The real sheet that holds the
+     * card title's rule is moved after the one that holds the utilities, as
+     * the built app orders them, both elements are read again, and the sheet
+     * goes back where it was. The figures are then the card's own, as read in
+     * the running app, and the h1 still draws what its twin draws. Mutations:
+     * the same `h1 { margin-bottom: 1rem }`; leaving the sheet where Karma put
+     * it fails the figures.
+     */
+    it("keeps its title's look in the app's sheet order, in both themes", () => {
+      const heading = title();
+      expect(heading).withContext('the card title').toBeTruthy();
+      if (!heading) return;
+
+      const sheetsHolding = (selector: string): Element[] =>
+        Array.from(document.styleSheets)
+          .filter(sheet => {
+            try {
+              return Array.from(sheet.cssRules).some(rule => rule instanceof CSSStyleRule && rule.selectorText === selector);
+            } catch {
+              // A sheet from another origin keeps its rules to itself.
+              return false;
+            }
+          })
+          .map(sheet => sheet.ownerNode as Element);
+      const cardSheets = sheetsHolding('.mat-mdc-card-title');
+      const utilitySheets = sheetsHolding('.text-2xl');
+      expect(cardSheets.length).withContext("the sheets that hold the card title's rule").toBeGreaterThan(0);
+      expect(utilitySheets.length).withContext('the sheets that hold the utilities').toBeGreaterThan(0);
+      if (cardSheets.length === 0 || utilitySheets.length === 0) return;
+
+      const sheetOrder = () => Array.from(document.styleSheets).map(sheet => sheet.ownerNode);
+      const karmaOrder = sheetOrder();
+      const places = cardSheets.map(node => ({ node, parent: node.parentNode!, next: node.nextSibling }));
+      utilitySheets[utilitySheets.length - 1].after(...cardSheets);
+      try {
+        for (const theme of ['light', 'dark'] as const) {
+          withTheme(theme, () => {
+            const drawn = look(heading);
+            expect({ ...drawn, color: undefined })
+              .withContext(`${theme}: the title's type and spacing in the app's sheet order, the card's own`)
+              .toEqual({ fontSize: '22px', fontWeight: '400', lineHeight: '28px', margin: '0px 0px 0px 0px', color: undefined });
+            expect(drawn.color).withContext(`${theme}: the title's colour`).toBe(tokenValue('--text-primary'));
+            expect(drawn).withContext(`${theme}: the same title drawn as a mat-card-title`).toEqual(twinLook(heading));
+          });
+        }
+      } finally {
+        for (const { node, parent, next } of places.reverse()) parent.insertBefore(node, next);
+      }
+      const restored = sheetOrder();
+      expect(restored.length === karmaOrder.length && restored.every((node, i) => node === karmaOrder[i]))
+        .withContext("the page's sheets, back in Karma's order")
+        .toBeTrue();
+    });
+  });
+
   describe('colours', () => {
     /**
      * The glass card is translucent over the page's gradient, which the
@@ -240,7 +377,7 @@ describe('LoginComponent', () => {
     it('paints the title, the sign-in line and the terms notice at AA or better over the glass card, in both themes', () => {
       for (const theme of ['light', 'dark'] as const) {
         withTheme(theme, () => {
-          for (const selector of ['mat-card-title', 'mat-card-content > p', 'mat-card-footer']) {
+          for (const selector of ['.mat-mdc-card-title', 'mat-card-content > p', 'mat-card-footer']) {
             expectReadableOverEveryStop(selector, theme);
           }
         });

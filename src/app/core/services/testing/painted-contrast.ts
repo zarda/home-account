@@ -208,6 +208,17 @@ export function tokenValue(token: string, property = 'color'): string {
   }
 }
 
+/** Throws unless the page draws `node`: rendered, not hidden, and of some size. */
+function drawn(node: Element): void {
+  const box = node.getBoundingClientRect();
+  if (!node.checkVisibility({ visibilityProperty: true }) || box.width === 0 || box.height === 0) {
+    throw new Error(
+      `painted-contrast: the element is not drawn (hidden, not rendered or of no size), so nothing is painted: ` +
+        node.outerHTML.slice(0, 120)
+    );
+  }
+}
+
 /**
  * What `expectPainted` asserts on, read without asserting, so a spec can
  * check it both ways.
@@ -225,10 +236,14 @@ export interface PaintedVerdict {
 
 /**
  * Whether `node`'s text is painted in `token`, and how it reads on what is
- * painted behind it. Throws, as `paintedColor` does, when `node` is detached
- * or nothing under it is opaque.
+ * painted behind it, once its motion has settled: a colour read mid-transition
+ * is one the text only passes through. Throws, as `paintedColor` does, when
+ * `node` is detached or nothing under it is opaque, and when the page does
+ * not draw it: a node under `display: none`, hidden, or of no size still
+ * computes a colour and a background, and would read as painted at AA.
  */
 export function paintedVerdict(node: Element, token: string): PaintedVerdict {
+  drawn(settled(node));
   const colour = getComputedStyle(node).color;
   const tokenColour = tokenValue(token);
   return {
@@ -291,7 +306,7 @@ export function inPalette<T>(classes: readonly string[], fn: () => T): T {
 }
 
 /** A selector list split at its top-level commas, leaving `:is(a, b)` whole. */
-function selectorsOf(list: string): string[] {
+export function selectorsOf(list: string): string[] {
   const parts: string[] = [];
   let depth = 0;
   let start = 0;

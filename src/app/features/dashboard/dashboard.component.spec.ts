@@ -1,5 +1,5 @@
 import { ComponentFixture, TestBed } from '@angular/core/testing';
-import { Component, input, NO_ERRORS_SCHEMA, output, signal } from '@angular/core';
+import { Component, computed, ErrorHandler, input, NgZone, NO_ERRORS_SCHEMA, output, signal } from '@angular/core';
 import { By } from '@angular/platform-browser';
 import { BreakpointObserver } from '@angular/cdk/layout';
 import {
@@ -10,7 +10,7 @@ import {
   convertToParamMap,
   provideRouter,
 } from '@angular/router';
-import { of, BehaviorSubject, Subject, throwError, EMPTY } from 'rxjs';
+import { of, BehaviorSubject, Observable, Subject, Subscriber, throwError, EMPTY } from 'rxjs';
 import { MatSnackBar } from '@angular/material/snack-bar';
 import { provideNativeDateAdapter } from '@angular/material/core';
 import { DashboardComponent } from './dashboard.component';
@@ -41,9 +41,11 @@ import { AnalyticsService } from '../../core/services/analytics.service';
 import { ReminderService } from '../../core/services/reminder.service';
 import { RecapFigures } from '../../core/utils/weekly-recap.utils';
 import {
+  Budget,
   BudgetAlert,
   Category,
   DashboardCardId,
+  Goal,
   RecurringOccurrence,
   Transaction,
   UpcomingSchedule,
@@ -127,12 +129,17 @@ describe('DashboardComponent', () => {
     getEarliestTransactionDateFromServer: () => Promise<Date | null>;
   };
   let budgetService: {
-    activeBudgets: ReturnType<typeof signal<unknown[]>>;
+    budgets: ReturnType<typeof signal<Budget[]>>;
+    activeBudgets: ReturnType<typeof computed<Budget[]>>;
     budgetAlerts: ReturnType<typeof signal<BudgetAlert[]>>;
     isLoading: ReturnType<typeof signal<boolean>>;
     getBudgets: jasmine.Spy;
   };
-  let goalService: { activeGoals: ReturnType<typeof signal<unknown[]>>; getGoals: jasmine.Spy };
+  let goalService: {
+    goals: ReturnType<typeof signal<Goal[]>>;
+    activeGoals: ReturnType<typeof computed<Goal[]>>;
+    getGoals: jasmine.Spy;
+  };
   let categoryService: { categories: ReturnType<typeof signal<unknown[]>>; loadCategories: jasmine.Spy };
   let recurringService: {
     catchUpRecurringTransactions: jasmine.Spy;
@@ -225,14 +232,21 @@ describe('DashboardComponent', () => {
       getExpensesInRange: jasmine.createSpy('getExpensesInRange').and.returnValue(of([])),
       getEarliestTransactionDateFromServer: () => Promise.resolve(null),
     };
+    // The active lists are computed from a writable source, as in the
+    // services; a case sets the source, which is what the services' reads
+    // write.
+    const budgets = signal<Budget[]>([]);
     budgetService = {
-      activeBudgets: signal<unknown[]>([]),
+      budgets,
+      activeBudgets: computed(() => budgets().filter(budget => budget.isActive)),
       budgetAlerts: signal<BudgetAlert[]>([]),
       isLoading: signal(false),
       getBudgets: jasmine.createSpy('getBudgets').and.returnValue(of([])),
     };
+    const goals = signal<Goal[]>([]);
     goalService = {
-      activeGoals: signal<unknown[]>([]),
+      goals,
+      activeGoals: computed(() => goals().filter(goal => goal.isActive)),
       getGoals: jasmine.createSpy('getGoals').and.returnValue(of([])),
     };
     categoryService = {
@@ -616,13 +630,13 @@ describe('DashboardComponent', () => {
     });
 
     it('adds budgets once there is an active budget', () => {
-      budgetService.activeBudgets.set([{} as never]);
+      budgetService.budgets.set([{ isActive: true } as never]);
       expect(build().componentInstance.arrangedCards())
         .toEqual(['recent', 'upcoming', 'chart', 'insights', 'budgets']);
     });
 
     it('follows a stored layout, dropping the hidden card', () => {
-      budgetService.activeBudgets.set([{} as never]);
+      budgetService.budgets.set([{ isActive: true } as never]);
       authService.currentUser.set(createUser({
         preferences: {
           dashboardLayout: {
@@ -1735,6 +1749,207 @@ describe('DashboardComponent', () => {
     });
   });
 
+  // #546: the five reads the page keeps open while it is shown. A read with no
+  // error path fails through RxJS, which rethrows from a timer in the zone the
+  // error arrived in. AngularFire runs every listener callback in the Angular
+  // zone, so a Firestore shutdown reached NgZone.onError and the global
+  // handler: a console error per read and the Error snackbar.
+  describe('a live read that fails', () => {
+    interface LiveRead {
+      name: string;
+      opens: () => jasmine.Spy;
+      painted: unknown;
+      // What the real service writes on an emission, where it owns the signal
+      // the card reads or, for budgets and goals, the source that signal is
+      // computed from. A page that cleared it would no longer show `painted`.
+      paint?: (value: unknown) => void;
+      shown: (page: DashboardComponent) => unknown;
+    }
+
+    const rent: RecurringOccurrence = {
+      recurringId: 'r1',
+      name: 'Rent',
+      type: 'expense',
+      amount: 1200,
+      currency: 'USD',
+      categoryId: 'food',
+      date: new Date(2026, 8, 1),
+    };
+
+    const READS: LiveRead[] = [
+      {
+        name: 'budgets',
+        opens: () => budgetService.getBudgets,
+        painted: [{ id: 'b1', name: 'Food', isActive: true }],
+        paint: value => budgetService.budgets.set(value as Budget[]),
+        shown: page => page.activeBudgets(),
+      },
+      {
+        name: 'goals',
+        opens: () => goalService.getGoals,
+        painted: [{ id: 'g1', name: 'Holiday', isActive: true }],
+        paint: value => goalService.goals.set(value as Goal[]),
+        shown: page => page.activeGoals(),
+      },
+      {
+        name: 'categories',
+        opens: () => categoryService.loadCategories,
+        painted: [createCategory({ id: 'travel' })],
+        paint: value => categoryService.categories.set(value as unknown[]),
+        shown: page => page.categories(),
+      },
+      {
+        name: 'recent transactions',
+        opens: () => transactionService.getRecentTransactions,
+        painted: [createTransaction({ id: 't1' })],
+        shown: page => page.recentTransactions(),
+      },
+      {
+        name: 'upcoming schedule',
+        opens: () => recurringService.getUpcomingSchedule,
+        painted: { occurrences: [rent], olderCount: 1 },
+        shown: page => page.upcomingSchedule(),
+      },
+    ];
+
+    let errorHandler: jasmine.SpyObj<ErrorHandler>;
+    let zoneErrors: unknown[];
+    let consoleError: jasmine.Spy;
+    let consoleWarn: jasmine.Spy;
+    let unsubscribeZone: () => void;
+
+    const settle = () => new Promise(resolve => setTimeout(resolve));
+    const failure = (code: string) => Object.assign(new Error(`Firestore ${code}`), { code });
+
+    beforeEach(() => {
+      // In the app NgZone.onError feeds the ErrorHandler; under TestBed the
+      // fixture rethrows what onError hears instead. Both are watched.
+      errorHandler = jasmine.createSpyObj<ErrorHandler>('ErrorHandler', ['handleError']);
+      TestBed.configureTestingModule({ providers: [{ provide: ErrorHandler, useValue: errorHandler }] });
+      zoneErrors = [];
+      const subscription = TestBed.inject(NgZone).onError.subscribe(error => zoneErrors.push(error));
+      unsubscribeZone = () => subscription.unsubscribe();
+      consoleError = spyOn(console, 'error');
+      consoleWarn = spyOn(console, 'warn');
+    });
+
+    afterEach(() => unsubscribeZone());
+
+    /**
+     * A listener as AngularFire hands one to the page: it emits `painted`, if
+     * given, as it opens, and `fail` delivers an error inside the Angular
+     * zone, where ɵzoneWrap runs every callback. Each delivery records
+     * whether it ran there, the zone NgZone.onError reports for.
+     */
+    function listener(painted?: unknown, paint?: (value: unknown) => void) {
+      const inAngularZone: boolean[] = [];
+      let opened: Subscriber<unknown> | undefined;
+      const stream = new Observable<unknown>(subscriber => {
+        opened = subscriber;
+        if (painted === undefined) return;
+        paint?.(painted);
+        subscriber.next(painted);
+      });
+      const fail = (error: unknown): void => {
+        if (!opened) throw new Error('the read was never opened');
+        const subscriber = opened;
+        TestBed.inject(NgZone).run(() => {
+          inAngularZone.push(NgZone.isInAngularZone());
+          subscriber.error(error);
+        });
+      };
+      return { stream, fail, inAngularZone };
+    }
+
+    /** Paints `read`, fails it with `code`, and lets a macrotask pass. */
+    async function paintThenFail(read: LiveRead, code: string) {
+      const live = listener(read.painted, read.paint);
+      read.opens().and.returnValue(live.stream);
+      const fixture = build();
+      fixture.detectChanges();
+      expect(read.shown(fixture.componentInstance)).withContext('shown before the failure').toEqual(read.painted);
+
+      const error = failure(code);
+      live.fail(error);
+      await settle();
+      return { page: fixture.componentInstance, error, inAngularZone: live.inAngularZone };
+    }
+
+    function expectNothingUnhandled(inAngularZone: boolean[]): void {
+      expect(inAngularZone).withContext('the failure ran in the zone onError reports for').toEqual([true]);
+      expect(zoneErrors).withContext('NgZone.onError').toEqual([]);
+      expect(errorHandler.handleError).withContext('the global handler').not.toHaveBeenCalled();
+      expect(consoleError).not.toHaveBeenCalled();
+    }
+
+    for (const read of READS) {
+      describe(`the ${read.name} read`, () => {
+        it('says once in the log that it stopped when unavailable, and keeps what its card showed', async () => {
+          const { page, error, inAngularZone } = await paintThenFail(read, 'unavailable');
+
+          expectNothingUnhandled(inAngularZone);
+          expect(consoleWarn).toHaveBeenCalledOnceWith(
+            jasmine.stringMatching(new RegExp(`^\\[Dashboard\\] .*\\b${read.name}\\b`)), error);
+          expect(read.shown(page)).withContext('shown after the failure').toEqual(read.painted);
+        });
+
+        // Aborted is Firestore shutting down; a refusal is what a listener
+        // hears when the sign-in it was opened under ends.
+        for (const code of ['aborted', 'permission-denied']) {
+          it(`passes over ${code} without a word, and keeps what its card showed`, async () => {
+            const { page, inAngularZone } = await paintThenFail(read, code);
+
+            expectNothingUnhandled(inAngularZone);
+            expect(consoleWarn).not.toHaveBeenCalled();
+            expect(read.shown(page)).withContext('shown after the failure').toEqual(read.painted);
+          });
+        }
+      });
+    }
+
+    // The card answers a bill link only once the window has emitted, since
+    // the signal's empty start would answer "absent" for every rule. A read
+    // that fails first, however it fails, leaves the waiting link unanswered,
+    // and a link followed after the failure waits as well.
+    for (const code of ['unavailable', 'aborted', 'permission-denied']) {
+      it(`leaves bill links unanswered when the upcoming read fails with ${code} before its first emission`, async () => {
+        const live = listener();
+        recurringService.getUpcomingSchedule.and.returnValue(live.stream);
+        activatedRoute.queryParamMap.next(convertToParamMap({ bill: 'r1' }));
+        const fixture = build();
+        fixture.detectChanges();
+
+        live.fail(failure(code));
+        await settle();
+        activatedRoute.queryParamMap.next(convertToParamMap({ bill: 'r2' }));
+        await settle();
+
+        expectNothingUnhandled(live.inAngularZone);
+        expect(fixture.componentInstance.billInFocus()).withContext('the card is asked').toBeNull();
+        expect(recurringService.getUpcomingScheduleFromServer).not.toHaveBeenCalled();
+        // Each link leaves the URL with a navigation of its own; the rules
+        // page is the one that must not be opened.
+        expect(router.navigate)
+          .withContext('sent to the recurring rules')
+          .not.toHaveBeenCalledWith(['/budgets'], jasmine.anything());
+        expect(announcer.announce).not.toHaveBeenCalled();
+        expect(fixture.componentInstance.upcomingSchedule()).toEqual({ occurrences: [], olderCount: 0 });
+      });
+    }
+
+    // A window that emitted before it failed is still on the card, so a link
+    // followed after the failure is asked of the rows the card shows.
+    it('answers a bill link from the window it showed when the upcoming read fails after painting', async () => {
+      const upcoming = READS.find(read => read.name === 'upcoming schedule')!;
+      const { page, inAngularZone } = await paintThenFail(upcoming, 'unavailable');
+
+      activatedRoute.queryParamMap.next(convertToParamMap({ bill: 'r1' }));
+
+      expectNothingUnhandled(inAngularZone);
+      expect(page.billInFocus()).withContext('the card is asked').toBe('r1');
+    });
+  });
+
   describe('widget snapshot publishing', () => {
     // Every case flushes the constructor effect with TestBed.tick(): the
     // signal writes below happen outside a template binding, so nothing else
@@ -1781,8 +1996,8 @@ describe('DashboardComponent', () => {
         createTransaction({ type: 'income', amount: 1000 }),
         createTransaction({ type: 'expense', amount: 400 }),
       ]);
-      const budgets = [{ id: 'b1' } as never];
-      budgetService.activeBudgets.set(budgets);
+      const budgets = [{ id: 'b1', isActive: true } as never];
+      budgetService.budgets.set(budgets);
       const rent: RecurringOccurrence = {
         recurringId: 'r1',
         name: 'Rent',
@@ -1858,7 +2073,7 @@ describe('DashboardComponent', () => {
       TestBed.tick();
       expect(fixture.componentInstance.publishedPeriodOption()).toBe('lastMonth');
 
-      budgetService.activeBudgets.set([{ id: 'b1' } as never]);
+      budgetService.budgets.set([{ id: 'b1', isActive: true } as never]);
       TestBed.tick();
 
       const rent: RecurringOccurrence = {
@@ -1918,7 +2133,7 @@ describe('DashboardComponent', () => {
       TestBed.tick();
       widgetSnapshots.publish.calls.reset();
 
-      budgetService.activeBudgets.set([{ id: 'b1' } as never]);
+      budgetService.budgets.set([{ id: 'b1', isActive: true } as never]);
       TestBed.tick();
 
       expect(widgetSnapshots.publish).toHaveBeenCalledTimes(1);
@@ -2136,7 +2351,7 @@ describe('DashboardComponent', () => {
         expect(widgetSnapshots.publish).withContext('a listener emission').toHaveBeenCalledTimes(1);
         expect(widgetSnapshots.publish.calls.mostRecent().args[0].month).toEqual(september);
 
-        budgetService.activeBudgets.set([{ id: 'b1' } as never]);
+        budgetService.budgets.set([{ id: 'b1', isActive: true } as never]);
         TestBed.tick();
         expect(widgetSnapshots.publish).withContext('a budgets emission').toHaveBeenCalledTimes(2);
         expect(widgetSnapshots.publish.calls.mostRecent().args[0].month).toEqual(september);
@@ -2154,7 +2369,7 @@ describe('DashboardComponent', () => {
         expect(fixture.componentInstance.publishedPeriodOption()).toBe('thisMonth');
         widgetSnapshots.publish.calls.reset();
 
-        budgetService.activeBudgets.set([{ id: 'b1' } as never]);
+        budgetService.budgets.set([{ id: 'b1', isActive: true } as never]);
         TestBed.tick();
 
         expect(widgetSnapshots.publish).toHaveBeenCalledTimes(1);
@@ -2589,7 +2804,7 @@ describe('DashboardComponent', () => {
         TestBed.overrideProvider(BreakpointObserver, {
           useValue: { observe: () => of({ matches: false, breakpoints: {} }) },
         });
-        budgetService.activeBudgets.set([{} as never]);
+        budgetService.budgets.set([{ isActive: true } as never]);
         cloudLLM.hasAnyCloudProvider.set(true);
         // Lands the way AuthService's write does, so the account follows it.
         authService.updatePreferenceFields.and.callFake(async (key, fields) => {

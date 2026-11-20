@@ -8,7 +8,7 @@ import { MatButtonModule } from '@angular/material/button';
 import { MatIconModule } from '@angular/material/icon';
 import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
 import { MatProgressBarModule } from '@angular/material/progress-bar';
-import { MatChipsModule } from '@angular/material/chips';
+import { MatChipListboxChange, MatChipsModule } from '@angular/material/chips';
 import { MatTooltipModule } from '@angular/material/tooltip';
 
 import { AIImportService, AI_QUEUED_OFFLINE, IMPORT_NOT_STARTED, IMPORT_READBACK_FAILED } from '../../../../core/services/ai-import.service';
@@ -646,6 +646,22 @@ export class ImportWizardComponent implements OnInit, AfterViewInit, OnDestroy {
     // have to go to processFiles to know that.
     this.receiptRowIds.set(new Set());
     this.processingError.set(null);
+  }
+
+  /**
+   * The answer to what the picked images are. The listbox lets a press on the
+   * chip already picked take the pick away, and then reports no value at all.
+   * The question always has an answer, the one the photos are read by, so the
+   * pick goes back on that chip rather than leaving neither selected (or, from
+   * Statement, falling back to receipts unseen). The listbox's value setter
+   * selects without a user-input event, so nothing is reported again.
+   */
+  chooseImageKind({ source, value }: MatChipListboxChange): void {
+    if (value === 'receipt' || value === 'statement') {
+      this.imageKind.set(value);
+    } else {
+      source.value = this.imageKind();
+    }
   }
 
   // Revoke before minting, so a re-pick releases the previous batch rather

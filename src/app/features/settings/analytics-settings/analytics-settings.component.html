@@ -2,13 +2,16 @@
   <span class="section-label" id="usage-analytics-label">{{ 'analytics.settingsTitle' | translate }}</span>
   <p class="section-description">{{ 'analytics.settingsDescription' | translate }}</p>
 
-  <div class="setting-row">
+  <!-- The section names the group; the switch is named by the words it shows.
+       The note is bound through the toggle's input, which hands it to the
+       switch; an attribute binding stays on the host. The input takes a
+       string, and an empty one names no note. -->
+  <div class="setting-row" role="group" aria-labelledby="usage-analytics-label">
     <mat-slide-toggle
       [checked]="enabled()"
       [disabled]="!canDisable()"
       (change)="onEnabledChange($event.checked)"
-      aria-labelledby="usage-analytics-label"
-      [attr.aria-describedby]="canDisable() ? null : 'usage-analytics-tier-note'"
+      [aria-describedby]="canDisable() ? '' : 'usage-analytics-tier-note'"
     >
       {{ 'analytics.enable' | translate }}
     </mat-slide-toggle>

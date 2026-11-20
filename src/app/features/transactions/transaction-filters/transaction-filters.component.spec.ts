@@ -20,8 +20,12 @@ import {
   channels,
   chooseOption,
   contentWidthPx,
+  expectIndicatorInEveryPalette,
   expectOneRule,
+  expectPainted,
   hoverValue,
+  inPalette,
+  PALETTES,
   paintedBackground,
   paintedColor,
   placeholderWidthPx,
@@ -31,6 +35,7 @@ import {
   ratio,
   settleAnimations,
   styleRules,
+  tokenValue,
   withTheme,
 } from '../../../core/services/testing';
 
@@ -934,6 +939,31 @@ describe('TransactionFiltersComponent', () => {
     }
 
     /**
+     * A placeholder is a hint, not a name: it goes once the box holds a query,
+     * and a browser need not read it as one. The search box carries a name of
+     * its own, in its placeholder's words without the ellipsis, so it keeps
+     * one with the placeholder taken away.
+     */
+    for (const l of ['en', 'ja', 'tc'] as const) {
+      it(`names the search box with its placeholder taken away, in ${l}`, () => {
+        const t = catalogTranslator(l, { strict: true });
+        mockTranslationService.t.and.callFake(catalogTranslator(l));
+        locale.set(l);
+        TestBed.inject(TranslationService).translationsVersion.update(version => version + 1);
+        const { input } = renderExpanded();
+        expect(input.placeholder).withContext('the hint it shows').toBe(t('transactions.searchPlaceholder'));
+
+        input.removeAttribute('placeholder');
+
+        const name = accessibleName(input);
+        expect(name).withContext('the name, with no placeholder').toBe(t('transactions.searchBoxLabel'));
+        expect(name)
+          .withContext("the placeholder's own words, its ellipsis left out")
+          .toBe(t('transactions.searchPlaceholder').replace(/(?:…|\.\.\.)$/, ''));
+      });
+    }
+
+    /**
      * The panel scrolls down once its rows outgrow it, never sideways. A
      * row's remove is its last item, flush with the panel's end, and
      * Material centres a 48 px touch target on the 40 px button, 4 px past
@@ -1211,6 +1241,58 @@ describe('TransactionFiltersComponent', () => {
       expect(root.querySelector('.filter-panel')).withContext('the panel the second click closes').toBeNull();
       expect(toggle.getAttribute('aria-expanded')).withContext('after a second click').toBe('false');
     });
+  });
+
+  /**
+   * Clear all is a plain button whose box was its words and a 6px padding:
+   * 33px tall, under the 40px floor every target in the app keeps. It ends
+   * the panel, inside a container that clips its corners, and the app's
+   * focus outline is drawn 2px out from it, 2px wide and 3px under high
+   * contrast. A 375px phone gives the host 336px.
+   */
+  describe('Clear all at the 40px floor (real template)', () => {
+    for (const l of ['en', 'ja', 'tc'] as const) {
+      it(`is a 40px target on one line, its focus outline inside the clipping container, in ${l}`, () => {
+        const t = catalogTranslator(l, { strict: true });
+        mockTranslationService.t.and.callFake(catalogTranslator(l));
+        // The translate pipe memoises on the locale and the catalog version.
+        locale.set(l);
+        TestBed.inject(TranslationService).translationsVersion.update(version => version + 1);
+        pinFieldFace();
+        const root = fixture.nativeElement as HTMLElement;
+        root.style.display = 'block';
+        root.style.width = '336px';
+        component.expanded.set(true);
+        fixture.detectChanges();
+        // Today sets a start and an end date: two filters, so Clear all shows.
+        root.querySelector<HTMLButtonElement>('.quick-btn')!.click();
+        fixture.detectChanges();
+
+        const clear = root.querySelector<HTMLButtonElement>('.clear-btn');
+        expect(clear).withContext('Clear all, with two filters set').not.toBeNull();
+        if (!clear) return;
+        // Its words, beside the icon's ligature, which is text in the DOM too.
+        const label = Array.from(clear.childNodes).find(node => node.nodeType === Node.TEXT_NODE && node.textContent?.trim());
+        expect(label?.textContent?.trim()).withContext("Clear all's words").toBe(t('transactions.clearAll'));
+        const box = clear.getBoundingClientRect();
+        expect(box.height).withContext('height vs the 40px floor').toBeGreaterThanOrEqual(40);
+        expect(box.width).withContext('width vs the 40px floor').toBeGreaterThanOrEqual(40);
+        const range = document.createRange();
+        range.selectNodeContents(label!);
+        expect(new Set(Array.from(range.getClientRects()).map(rect => Math.round(rect.top))).size)
+          .withContext("Clear all's words, lines")
+          .toBe(1);
+
+        const container = root.querySelector('.filters-container')!;
+        expect(getComputedStyle(container).overflow).withContext('the container clips').toBe('hidden');
+        const edges = container.getBoundingClientRect();
+        const outline = 2 + 3;
+        expect([box.left - outline - edges.left, edges.right - box.right - outline, box.top - outline - edges.top, edges.bottom - box.bottom - outline]
+          .map(px => px >= -0.5))
+          .withContext('room for the outline on its start, end, top and bottom inside the container')
+          .toEqual([true, true, true, true]);
+      });
+    }
   });
 
   /**
@@ -1805,7 +1887,184 @@ describe('TransactionFiltersComponent', () => {
       bookmark!.click();
       render();
 
+      expectCaptionShown(captionOf((fixture.nativeElement as HTMLElement).querySelector('.save-search-row')));
       expectClearOfFloatedLabels('save-search-row');
+    }));
+  });
+
+  /** The save-search pill's caption: its one `<label>`. */
+  function captionOf(pill: Element | null): HTMLLabelElement | null {
+    const labels = pill ? Array.from(pill.querySelectorAll('label')) : [];
+    expect(labels.length).withContext("the pill's caption, one <label>").toBe(1);
+    return labels[0] ?? null;
+  }
+
+  /**
+   * The caption is on the screen at its full height: no box clipped to a
+   * pixel, as the off-screen text the app keeps for screen readers alone is.
+   */
+  function expectCaptionShown(caption: HTMLElement | null, at = 'the caption'): void {
+    expect(caption).withContext(at).not.toBeNull();
+    if (!caption) return;
+    const style = getComputedStyle(caption);
+    const box = caption.getBoundingClientRect();
+    expect([style.display, style.visibility, style.clipPath])
+      .withContext(`${at}: display, visibility, clip`)
+      .toEqual([jasmine.stringMatching(/^(?!none$)/), 'visible', 'none']);
+    expect(box.height).withContext(`${at}: its height against its font size, px`)
+      .toBeGreaterThanOrEqual(parseFloat(style.fontSize));
+    expect(box.width).withContext(`${at}: its width, px`).toBeGreaterThan(1);
+  }
+
+  /**
+   * The save-search box opens holding the query as the name it offers, so a
+   * placeholder in it showed only once the box was emptied, and was its only
+   * name. A caption stands inside the pill above the box instead, a real
+   * label the box is named by, shown whatever the box holds.
+   */
+  describe("the save-search box's caption (real template)", () => {
+    const root = () => fixture.nativeElement as HTMLElement;
+
+    /** The panel open over `query`, Save search pressed, and the box holding the query. */
+    function openOver(query: string): { pill: HTMLElement; caption: HTMLLabelElement; box: HTMLInputElement } {
+      // filters is a plain object, so it is set before the signal that renders it.
+      component.filters.searchQuery = query;
+      component.expanded.set(true);
+      fixture.detectChanges();
+      const bookmark = root().querySelector<HTMLButtonElement>('.save-search-button');
+      expect(bookmark).withContext('Save search, beside a query').not.toBeNull();
+      bookmark!.click();
+      fixture.detectChanges();
+      TestBed.tick();
+      flush(); // NgModel hands the box its value a microtask after it renders
+      fixture.detectChanges();
+      settleAnimations(document);
+      const pill = root().querySelector<HTMLElement>('.save-search-row');
+      expect(pill).withContext('the save-search pill').not.toBeNull();
+      const box = pill!.querySelector<HTMLInputElement>('.save-label-input');
+      expect(box).withContext('the save-search box').not.toBeNull();
+      expect(box!.value).withContext('the box, holding the query').toBe(query);
+      return { pill: pill!, caption: captionOf(pill)!, box: box! };
+    }
+
+    function inLocale(l: SupportedLocale): (key: string) => string {
+      mockTranslationService.t.and.callFake(catalogTranslator(l));
+      // The translate pipe memoises on the locale and the catalog version.
+      locale.set(l);
+      TestBed.inject(TranslationService).translationsVersion.update(version => version + 1);
+      return catalogTranslator(l, { strict: true });
+    }
+
+    /** `inner`'s box lies inside `outer`'s, to half a pixel. */
+    function expectInside(inner: Element, outer: Element, what: string): void {
+      const a = inner.getBoundingClientRect();
+      const b = outer.getBoundingClientRect();
+      expect([a.left - b.left, b.right - a.right, a.top - b.top, b.bottom - a.bottom].map(px => px >= -0.5))
+        .withContext(`${what}: room on its start, end, top and bottom inside the pill`)
+        .toEqual([true, true, true, true]);
+    }
+
+    for (const l of ['en', 'ja', 'tc'] as const) {
+      it(`names the box by its caption, shown above the query the box holds and after it is emptied, in ${l}`, fakeAsync(() => {
+        const t = inLocale(l);
+        const { caption, box } = openOver('utilities');
+
+        expect(caption.textContent?.trim()).withContext("the caption's words").toBe(t('transactions.saveNameLabel'));
+        expect(box.id).withContext("the box's id").not.toBe('');
+        expect(caption.htmlFor).withContext("the caption's for, the box's id").toBe(box.id);
+        expect(accessibleName(box)).withContext("the box's name").toBe(t('transactions.saveNameLabel'));
+        expect(box.hasAttribute('placeholder')).withContext('a placeholder in the box').toBeFalse();
+        expectCaptionShown(caption, 'the caption, the box holding the query');
+        expect(caption.getBoundingClientRect().bottom)
+          .withContext("the caption's foot against the box's top, px")
+          .toBeLessThanOrEqual(box.getBoundingClientRect().top + 0.5);
+
+        box.value = '';
+        box.dispatchEvent(new Event('input'));
+        fixture.detectChanges();
+        expectCaptionShown(caption, 'the caption, the box emptied');
+        expect(accessibleName(box)).withContext("the emptied box's name").toBe(t('transactions.saveNameLabel'));
+      }));
+
+      // A 375 px phone gives the host 336 px: the panel's 12 px padding on
+      // each side leaves the pill 312. The caption is text, so the face is pinned.
+      it(`keeps the caption whole and Save and Cancel 40px inside the pill at a 336 px host, in ${l}`, fakeAsync(() => {
+        inLocale(l);
+        pinFieldFace();
+        root().style.display = 'block';
+        root().style.width = '336px';
+        const { pill, caption, box } = openOver('utilities');
+
+        expect(pill.getBoundingClientRect().width).withContext("the pill's width, px").toBeCloseTo(312, 0);
+        expectCaptionShown(caption);
+        expect(caption.scrollWidth).withContext("the caption's scroll width against its client width, px")
+          .toBeLessThanOrEqual(caption.clientWidth);
+        expect(caption.scrollHeight).withContext("the caption's scroll height against its client height, px")
+          .toBeLessThanOrEqual(caption.clientHeight);
+        expectInside(caption, pill, 'the caption');
+        expectInside(box, pill, 'the box');
+        const buttons = Array.from(pill.querySelectorAll<HTMLButtonElement>('button'));
+        expect(buttons.length).withContext("the pill's Save and Cancel").toBe(2);
+        for (const [i, button] of buttons.entries()) {
+          const what = i === 0 ? 'Save' : 'Cancel';
+          const own = button.getBoundingClientRect();
+          expect([own.width, own.height]).withContext(`${what}, px`).toEqual([40, 40]);
+          expectInside(button, pill, what);
+        }
+      }));
+    }
+
+    it('paints the caption in --text-muted, at AA on the pill, in the four palettes', fakeAsync(() => {
+      const { caption } = openOver('utilities');
+      for (const { name, classes } of PALETTES) {
+        inPalette(classes, () => expectPainted(caption, '--text-muted', `${name}: the caption`));
+      }
+    }));
+  });
+
+  /**
+   * The focus indicator styles.scss has every Material button draw inside
+   * itself, in its own text colour, read on this template's own surfaces, as
+   * focus-indicator.spec.ts reads it on the rest: Save and Cancel on the
+   * save-search pill's --surface-muted, and each suggestion's remove at the
+   * end of its row, flush with the end of a panel that scrolls and so clips
+   * what reaches past it.
+   */
+  describe('the focus indicator of the search pills\' icon buttons (real template)', () => {
+    const root = () => fixture.nativeElement as HTMLElement;
+
+    it('Save and Cancel in the save-search pill: inside, in their own text colour, 3:1 or better on the pill', fakeAsync(() => {
+      // filters is a plain object, so it is set before the signal that renders it.
+      component.filters.searchQuery = 'utilities';
+      component.expanded.set(true);
+      fixture.detectChanges();
+      root().querySelector<HTMLButtonElement>('.save-search-button')?.click();
+      fixture.detectChanges();
+      TestBed.tick();
+      flush();
+      fixture.detectChanges();
+
+      const buttons = Array.from(root().querySelectorAll<HTMLElement>('.save-search-row button'));
+      expect(buttons.length).withContext("the pill's Save and Cancel").toBe(2);
+      expectIndicatorInEveryPalette(buttons[0] ?? null, 'Save in the save-search pill');
+      expectIndicatorInEveryPalette(buttons[1] ?? null, 'Cancel in the save-search pill');
+    }));
+
+    it("each suggestion's remove: inside, in its own text colour, 3:1 or better on the panel, cut off by nothing", fakeAsync(() => {
+      mockSearchHistory.savedSearches.set([savedSearch('s1', 'utilities', { label: 'Bills' })]);
+      mockSearchHistory.recentSearches.set([savedSearch('r1', 'starbucks')]);
+      component.expanded.set(true);
+      fixture.detectChanges();
+      tick();
+      root().querySelector<HTMLInputElement>('.search-input')?.dispatchEvent(new Event('focus'));
+      fixture.detectChanges();
+
+      const removes = Array.from(root().querySelectorAll<HTMLElement>('.search-suggestions .suggestion-remove'));
+      expect(removes.length).withContext('a saved and a recent suggestion, each with its remove').toBe(2);
+      for (const [i, remove] of removes.entries()) {
+        expectIndicatorInEveryPalette(remove, `the remove of suggestion ${i + 1}`);
+      }
+      flush();
     }));
   });
 
@@ -2354,16 +2613,64 @@ describe('TransactionFiltersComponent', () => {
         .withContext("the From input's adapter is the root's")
         .toBeTrue();
 
-      const toggles = Array.from(
-        (fixture.nativeElement as HTMLElement).querySelectorAll<HTMLButtonElement>('.filter-grid mat-datepicker-toggle button')
-      );
+      // Each calendar button is named for its own field in place of the
+      // shared label, so the labels it reads are checked by where they come
+      // from: the root's, as the calendar it opens reads them.
+      const toggles = fixture.debugElement.queryAll(By.css('.filter-grid mat-datepicker-toggle'));
       expect(toggles.length).withContext('the From and To calendar buttons').toBe(2);
       toggles.forEach((toggle, index) =>
-        expect(toggle.getAttribute('aria-label'))
-          .withContext(`the ${index === 0 ? 'From' : 'To'} calendar button's name`)
-          .toBe('root')
+        expect(toggle.injector.get(MatDatepickerIntl) === TestBed.inject(MatDatepickerIntl))
+          .withContext(`the ${index === 0 ? 'From' : 'To'} calendar button's labels are the root's`)
+          .toBeTrue()
       );
     });
+  });
+
+  /**
+   * The From and To date fields each end in a calendar button, and the two
+   * show side by side in the open panel. Each is named for the field it
+   * fills: the calendar words every other toggle reads, then the field's own
+   * label, so a screen reader hears two names and a voice user can say
+   * either label.
+   */
+  describe('the From and To calendar buttons (real template)', () => {
+    const pinned = {
+      en: ['Open calendar: From', 'Open calendar: To'],
+      ja: ['カレンダーを開く：開始', 'カレンダーを開く：終了'],
+      tc: ['開啟日曆：從', '開啟日曆：至'],
+    } as const;
+
+    for (const l of ['en', 'ja', 'tc'] as const) {
+      it(`names each calendar button for its own date field, in ${l}`, () => {
+        const t = catalogTranslator(l);
+        mockTranslationService.t.and.callFake(catalogTranslator(l));
+        // The translate pipe memoises on the locale and the catalog version.
+        locale.set(l);
+        TestBed.inject(TranslationService).translationsVersion.update(version => version + 1);
+        component.expanded.set(true);
+        fixture.detectChanges();
+
+        const toggles = Array.from(
+          (fixture.nativeElement as HTMLElement).querySelectorAll<HTMLButtonElement>('.filter-grid mat-datepicker-toggle button')
+        );
+        expect(toggles.length).withContext('the From and To calendar buttons').toBe(2);
+        const names = toggles.map(toggle => accessibleName(toggle));
+        toggles.forEach((toggle, i) => {
+          const label = toggle.closest('mat-form-field')!.querySelector('mat-label')!.textContent!.trim();
+          expect(label).withContext(`field ${i}'s label`).toBe(t(['transactions.from', 'transactions.to'][i]));
+          expect(names[i]).withContext(`"${names[i]}" names its field, "${label}"`).toContain(label);
+          expect(names[i]).withContext(`"${names[i]}" says it opens the calendar`).toContain(t('datepicker.openCalendar'));
+        });
+        expect(names[0]).withContext('the two names, apart').not.toBe(names[1]);
+        expect(names).withContext('pinned').toEqual([...pinned[l]]);
+        const strict = catalogTranslator(l, { strict: true });
+        expect(names)
+          .withContext("the one slotted name, filled with each field's label")
+          .toEqual(
+            ['transactions.from', 'transactions.to'].map(field => strict('datepicker.openCalendarFor', { field: strict(field) }))
+          );
+      });
+    }
   });
 
   // A date field's input gets what is left of the field after its 12 px start
@@ -2750,19 +3057,6 @@ describe('TransactionFiltersComponent', () => {
 
   // Not the calendar's income and expense marks, which are the type colours.
   describe('colours', () => {
-    /** What `color: var(token)` computes to under the theme on <html> now. */
-    function tokenColour(token: string): string {
-      const probe = document.createElement('span');
-      probe.style.color = `var(${token})`;
-      document.body.appendChild(probe);
-      try {
-        settleAnimations(document);
-        return getComputedStyle(probe).color;
-      } finally {
-        probe.remove();
-      }
-    }
-
     function expectAA(el: Element, label: string): void {
       expect(ratio(paintedColor(el), paintedBackground(el)))
         .withContext(`${label} at AA on what is under it`)
@@ -2784,21 +3078,21 @@ describe('TransactionFiltersComponent', () => {
           // The quick filters carry `transition: all`, which would hold the
           // other theme's colours for as long as the spec runs.
           settleAnimations(document);
-          const border = tokenColour('--border-primary');
-          expect(getComputedStyle(quick).color).withContext(`${theme} quick filter`).toBe(tokenColour('--text-muted'));
+          const border = tokenValue('--border-primary');
+          expect(getComputedStyle(quick).color).withContext(`${theme} quick filter`).toBe(tokenValue('--text-muted'));
           expectAA(quick, `${theme} quick filter`);
           expect(getComputedStyle(quick).borderBlockStartColor).withContext(`${theme} quick filter border`).toBe(border);
           expect(getComputedStyle(toggle).borderBlockStartColor).withContext(`${theme} toggle border`).toBe(border);
           expect(getComputedStyle(panel).borderBlockStartColor).withContext(`${theme} panel rule`).toBe(border);
 
-          expect(getComputedStyle(input).color).withContext(`${theme} query`).toBe(tokenColour('--text-primary'));
+          expect(getComputedStyle(input).color).withContext(`${theme} query`).toBe(tokenValue('--text-primary'));
           expectAA(input, `${theme} query`);
           const placeholder = getComputedStyle(input, '::placeholder').color;
-          expect(placeholder).withContext(`${theme} placeholder`).toBe(tokenColour('--text-muted'));
+          expect(placeholder).withContext(`${theme} placeholder`).toBe(tokenValue('--text-muted'));
           expect(ratio(channels(placeholder).rgb, paintedBackground(input)))
             .withContext(`${theme} placeholder at AA on the search box`)
             .toBeGreaterThanOrEqual(4.5);
-          expect(getComputedStyle(icon).color).withContext(`${theme} search icon`).toBe(tokenColour('--text-muted'));
+          expect(getComputedStyle(icon).color).withContext(`${theme} search icon`).toBe(tokenValue('--text-muted'));
           expectAA(icon, `${theme} search icon`);
         });
       }
@@ -2814,7 +3108,7 @@ describe('TransactionFiltersComponent', () => {
             settleAnimations(document);
             expect(getComputedStyle(quick).borderBlockStartColor)
               .withContext(`${theme} hovered border`)
-              .toBe(tokenColour('--border-strong'));
+              .toBe(tokenValue('--border-strong'));
           } finally {
             quick.style.removeProperty('border-color');
           }
@@ -2838,7 +3132,7 @@ describe('TransactionFiltersComponent', () => {
         withTheme(theme, () => {
           settleAnimations(document);
           for (const [label, el] of [['heading', heading], ['icon', icon]] as const) {
-            expect(getComputedStyle(el).color).withContext(`${theme} ${label}`).toBe(tokenColour('--text-muted'));
+            expect(getComputedStyle(el).color).withContext(`${theme} ${label}`).toBe(tokenValue('--text-muted'));
             expectAA(el, `${theme} ${label}`);
           }
         });

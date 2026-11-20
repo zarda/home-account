@@ -1,6 +1,7 @@
 @if (!hasData()) {
   <app-empty-state
     icon="show_chart"
+    [headingLevel]="2"
     [title]="'reports.noDataAvailable' | translate"
     [description]="'reports.addTransactionsToSee' | translate"
   />

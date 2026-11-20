@@ -4,7 +4,6 @@ import {
   DestroyRef,
   ElementRef,
   Injector,
-  afterNextRender,
   computed,
   inject,
 } from '@angular/core';
@@ -18,6 +17,7 @@ import { AuthService } from '../../../core/services/auth.service';
 import { TranslationService } from '../../../core/services/translation.service';
 import { DashboardCardId } from '../../../models';
 import { TranslatePipe } from '../../../shared/pipes/translate.pipe';
+import { FocusContext, focusWhenRendered } from '../../../shared/utils/focus-when-rendered';
 import { DashboardLayoutService } from '../../dashboard/dashboard-layout.service';
 import { CARD_ICONS, CARD_TITLE_KEYS } from '../../dashboard/dashboard-layout.utils';
 
@@ -45,9 +45,13 @@ export class DashboardLayoutSettingsComponent {
   private layoutService = inject(DashboardLayoutService);
   private announcer = inject(AnnouncerService);
   private translation = inject(TranslationService);
-  private host = inject<ElementRef<HTMLElement>>(ElementRef);
-  private injector = inject(Injector);
-  private destroyRef = inject(DestroyRef);
+  // The rows re-render after a move, and the move button pressed may be
+  // disabled by then (focusWhenRendered).
+  private readonly focus: FocusContext = {
+    host: inject<ElementRef<HTMLElement>>(ElementRef).nativeElement,
+    injector: inject(Injector),
+    destroyRef: inject(DestroyRef),
+  };
 
   readonly titleKeys = CARD_TITLE_KEYS;
   readonly icons = CARD_ICONS;
@@ -103,7 +107,7 @@ export class DashboardLayoutSettingsComponent {
     // disabled button drops focus, so the card's other button takes it.
     const [pressed, other] = delta === -1 ? ['up', 'down'] : ['down', 'up'];
     const atEnd = delta === -1 ? position === 1 : position === total;
-    this.focusWhenRendered(`[data-card="${id}"] [data-move="${atEnd ? other : pressed}"]`);
+    focusWhenRendered(this.focus, `[data-card="${id}"] [data-move="${atEnd ? other : pressed}"]`);
   }
 
   onDrop(event: Pick<CdkDragDrop<unknown>, 'previousIndex' | 'currentIndex'>): void {
@@ -161,18 +165,6 @@ export class DashboardLayoutSettingsComponent {
     const total = order.length;
     this.announcer.announce(
       this.translation.t('settings.dashboardCardMoveReverted', { card, position, total })
-    );
-  }
-
-  /**
-   * The rows re-render after the move, which is what afterNextRender waits
-   * for; registering on a destroyed injector throws NG0911, hence the guard.
-   */
-  private focusWhenRendered(selector: string): void {
-    if (this.destroyRef.destroyed) return;
-    afterNextRender(
-      () => this.host.nativeElement.querySelector<HTMLElement>(selector)?.focus(),
-      { injector: this.injector }
     );
   }
 }

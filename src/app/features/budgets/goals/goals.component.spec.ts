@@ -11,14 +11,22 @@ import { GoalService } from '../../../core/services/goal.service';
 import { PendingFiltersService } from '../../../core/services/pending-filters.service';
 import { TranslationService } from '../../../core/services/translation.service';
 import { NotificationService } from '../../../core/services/notification.service';
+import { CurrencyService } from '../../../core/services/currency.service';
+import { LocaleFormatService } from '../../../core/services/locale-format.service';
 import { EmptyStateComponent } from '../../../shared/components/empty-state/empty-state.component';
 import { CreateGoalDTO, Goal } from '../../../models';
 import {
+  catalogTranslationStub,
+  createLocaleFormatStub,
+  createTranslationStub,
   expectPainted,
+  headingOutline,
   inPalette,
   PALETTES,
   provideNoMotion,
   standOnThePage,
+  textLines,
+  tokenValue,
 } from '../../../core/services/testing';
 
 describe('GoalsComponent', () => {
@@ -226,6 +234,12 @@ describe('GoalsComponent empty state CTA', () => {
     expect(component.openAddDialog).toHaveBeenCalled();
   });
 
+  // The tab sits directly under the Budgets page's h1, with no heading between.
+  it("heads the empty state one level under the page's own heading", () => {
+    const outline = headingOutline(fixture.nativeElement);
+    expect(outline).toEqual(['h2 goal.emptyTitle']);
+  });
+
   // #533: the tab's hint sits on the page itself, and rests in the muted
   // token, not a fade, which the high-contrast palette could never deepen.
   it('rests its hint in the muted token, at AA on the page, in all four palettes', () => {
@@ -240,4 +254,211 @@ describe('GoalsComponent empty state CTA', () => {
       });
     }
   });
+
+  // The account's text size scales the page's root (AccessibilityService
+  // writes --app-font-scale on <html>); a size in the app's type scale
+  // follows it, a px size does not.
+  it("sets its hint in the app's type scale, so it follows the account's text size", () => {
+    const hint = (fixture.nativeElement as HTMLElement).querySelector('.goals-hint');
+    const root = document.documentElement;
+    const before = root.style.getPropertyValue('--app-font-scale');
+    try {
+      for (const scale of ['1', '1.3']) {
+        root.style.setProperty('--app-font-scale', scale);
+        expect(hint ? getComputedStyle(hint).fontSize : null)
+          .withContext(`the hint at scale ${scale}`)
+          .toBe(tokenValue('--text-sm', 'font-size'));
+      }
+    } finally {
+      if (before) root.style.setProperty('--app-font-scale', before);
+      else root.style.removeProperty('--app-font-scale');
+    }
+  });
+});
+
+/**
+ * On a 320px phone the page leaves the Goals tab 248px, under the 300px a
+ * card was given as its least width: the grid's one column ran 52px past the
+ * page, Delete off the screen and Contribute cut. A column is now at most the
+ * grid's own width, so the cards keep to the page at any width the grid is
+ * given. The real cards render, with a View Transactions in the second.
+ */
+describe('GoalsComponent, its grid at a phone width', () => {
+  let fixture: ComponentFixture<GoalsComponent>;
+
+  const goals: Goal[] = [
+    {
+      id: 'g1',
+      userId: 'user123',
+      kind: 'saving',
+      name: 'Emergency fund',
+      targetAmount: 3000,
+      contributedAmount: 750,
+      currency: 'USD',
+      isActive: true,
+      createdAt: Timestamp.now(),
+      updatedAt: Timestamp.now()
+    },
+    {
+      id: 'g2',
+      userId: 'user123',
+      kind: 'project',
+      name: 'Japan trip',
+      targetAmount: 2000,
+      contributedAmount: 100,
+      linkedAmount: 120,
+      currency: 'USD',
+      isActive: true,
+      createdAt: Timestamp.now(),
+      updatedAt: Timestamp.now()
+    }
+  ];
+
+  beforeEach(async () => {
+    const mockGoalService = jasmine.createSpyObj('GoalService', ['getGoals'], { goals: signal<Goal[]>(goals) });
+    mockGoalService.getGoals.and.returnValue(of(goals));
+    const currency = jasmine.createSpyObj('CurrencyService', ['formatCurrency']);
+    currency.formatCurrency.and.callFake((amount: number, code: string) => `${code} ${amount}`);
+
+    await TestBed.configureTestingModule({
+      imports: [GoalsComponent],
+      providers: [
+        { provide: GoalService, useValue: mockGoalService },
+        { provide: MatDialog, useValue: jasmine.createSpyObj('MatDialog', ['open']) },
+        { provide: NotificationService, useValue: jasmine.createSpyObj('NotificationService', ['success', 'error']) },
+        { provide: TranslationService, useValue: createTranslationStub() },
+        { provide: LocaleFormatService, useValue: createLocaleFormatStub() },
+        { provide: CurrencyService, useValue: currency },
+        { provide: PendingFiltersService, useValue: jasmine.createSpyObj('PendingFiltersService', ['apply']) },
+        { provide: Router, useValue: jasmine.createSpyObj('Router', ['navigate'], { events: EMPTY }) },
+        provideNoMotion()
+      ]
+    }).compileComponents();
+
+    fixture = TestBed.createComponent(GoalsComponent);
+    const host = fixture.nativeElement as HTMLElement;
+    host.style.display = 'block';
+    host.style.width = '248px';
+    fixture.detectChanges();
+  });
+
+  it('keeps every card, and every control on it, inside the 248px the tab is given', () => {
+    const host = fixture.nativeElement as HTMLElement;
+    const grid = host.querySelector<HTMLElement>('.goals-grid');
+    expect(grid).withContext('the grid renders').not.toBeNull();
+    if (!grid) return;
+    const page = host.getBoundingClientRect();
+
+    expect(grid.scrollWidth).withContext('the grid holds its cards').toBeLessThanOrEqual(grid.clientWidth);
+    const cards = Array.from(grid.querySelectorAll<HTMLElement>('.goal-card'));
+    expect(cards.length).withContext('one card per goal').toBe(2);
+    cards.forEach((card, i) => {
+      const box = card.getBoundingClientRect();
+      expect(box.left).withContext(`card ${i + 1} starts on the page`).toBeGreaterThanOrEqual(page.left - 0.5);
+      expect(box.right).withContext(`card ${i + 1} ends on the page`).toBeLessThanOrEqual(page.right + 0.5);
+      for (const button of Array.from(card.querySelectorAll<HTMLElement>('button'))) {
+        const name = button.getAttribute('aria-label') ?? button.textContent?.trim();
+        expect(button.getBoundingClientRect().right)
+          .withContext(`card ${i + 1}: "${name}" ends on the page`)
+          .toBeLessThanOrEqual(page.right + 0.5);
+      }
+    });
+  });
+});
+
+/**
+ * The tab's header holds its hint and Add Goal on one line. At the 248px a
+ * 320px phone leaves the tab, the two shrank side by side and Add Goal
+ * ended at its narrowest: "Add / Goal" in en and one character a line in
+ * ja, in a pill grown tall around the wrapped label. Where the two do not
+ * fit, the hint now takes its own line, as the sibling tabs' description
+ * does, and Add Goal keeps Material's 40px with its label on one line, at
+ * the default text size and at Extra large. The en, ja and tc catalogs' own
+ * words render in a pinned face, as docs/testing.md *Karma serves no fonts*
+ * says.
+ */
+describe('GoalsComponent, its header at a phone width', () => {
+  const FACE = "Verdana, 'DejaVu Sans', sans-serif";
+  const root = document.documentElement;
+  let scaleBefore = '';
+
+  beforeEach(() => {
+    scaleBefore = root.style.getPropertyValue('--app-font-scale');
+  });
+
+  afterEach(() => {
+    if (scaleBefore) root.style.setProperty('--app-font-scale', scaleBefore);
+    else root.style.removeProperty('--app-font-scale');
+  });
+
+  async function renderAt(locale: 'en' | 'ja' | 'tc', width = 248): Promise<HTMLElement> {
+    const mockGoalService = jasmine.createSpyObj('GoalService', ['getGoals'], { goals: signal<Goal[]>([]) });
+    mockGoalService.getGoals.and.returnValue(of([]));
+
+    await TestBed.configureTestingModule({
+      imports: [GoalsComponent],
+      providers: [
+        { provide: GoalService, useValue: mockGoalService },
+        { provide: MatDialog, useValue: jasmine.createSpyObj('MatDialog', ['open']) },
+        { provide: NotificationService, useValue: jasmine.createSpyObj('NotificationService', ['success', 'error']) },
+        { provide: TranslationService, useValue: catalogTranslationStub(locale) },
+        { provide: PendingFiltersService, useValue: jasmine.createSpyObj('PendingFiltersService', ['apply']) },
+        { provide: Router, useValue: jasmine.createSpyObj('Router', ['navigate'], { events: EMPTY }) },
+        provideNoMotion()
+      ]
+    }).compileComponents();
+
+    const fixture = TestBed.createComponent(GoalsComponent);
+    const host = fixture.nativeElement as HTMLElement;
+    host.style.display = 'block';
+    host.style.width = `${width}px`;
+    host.style.fontFamily = FACE;
+    for (const token of ['--mat-sys-body-large-font', '--mat-sys-body-small-font', '--mat-sys-label-large-font']) {
+      host.style.setProperty(token, FACE);
+    }
+    fixture.detectChanges();
+    return host;
+  }
+
+  for (const locale of ['en', 'ja', 'tc'] as const) {
+    for (const scale of ['1', '1.3'] as const) {
+      it(`keeps Add Goal 40px tall, its label on one line, in ${locale} at scale ${scale}`, async () => {
+        root.style.setProperty('--app-font-scale', scale);
+        const host = await renderAt(locale);
+
+        const button = host.querySelector<HTMLElement>('.goals-header button');
+        const label = button?.querySelector<HTMLElement>('.mdc-button__label') ?? null;
+        expect(button).withContext('Add Goal renders in the header').not.toBeNull();
+        expect(label).withContext("Add Goal's label").not.toBeNull();
+        if (!button || !label) return;
+
+        expect(textLines(label)).withContext(`${locale} at ${scale}: label lines`).toBe(1);
+        expect(button.getBoundingClientRect().height).withContext(`${locale} at ${scale}: height, px`).toBe(40);
+        expect(button.getBoundingClientRect().right)
+          .withContext(`${locale} at ${scale}: Add Goal ends inside the tab`)
+          .toBeLessThanOrEqual(host.getBoundingClientRect().right + 0.5);
+      });
+    }
+
+    // Where both fit whole, as on a 640px tab, they still share the line,
+    // Add Goal at its end.
+    it(`keeps the hint and Add Goal on one line on a 640px tab in ${locale} at scale 1.3`, async () => {
+      root.style.setProperty('--app-font-scale', '1.3');
+      const host = await renderAt(locale, 640);
+
+      const hint = host.querySelector<HTMLElement>('.goals-hint');
+      const button = host.querySelector<HTMLElement>('.goals-header button');
+      expect(hint).withContext('the hint renders').not.toBeNull();
+      expect(button).withContext('Add Goal renders').not.toBeNull();
+      if (!hint || !button) return;
+
+      const hintBox = hint.getBoundingClientRect();
+      const buttonBox = button.getBoundingClientRect();
+      expect(textLines(hint)).withContext(`${locale}: hint lines`).toBe(1);
+      expect(buttonBox.left).withContext(`${locale}: Add Goal sits after the hint`).toBeGreaterThan(hintBox.right);
+      expect(buttonBox.right)
+        .withContext(`${locale}: Add Goal ends at the tab's end`)
+        .toBeCloseTo(host.getBoundingClientRect().right, 0);
+    });
+  }
 });

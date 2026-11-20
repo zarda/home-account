@@ -149,11 +149,26 @@ export function allowedRowValid(row) {
 }
 
 /**
+ * An unquoted `url(…)` that closes on its own line, read from where a `url`
+ * starts. Its `//` (`url(http://…)`, `url(//cdn…)`) would open a line comment
+ * that blanks the `)` with it; statements() would then wait for that paren to
+ * close and read the rest of the file as one statement.
+ */
+const UNQUOTED_URL = /\burl\([^)'"\n]*\)/iy;
+
+/**
  * Blanks comments while preserving every byte offset, so a line number taken
  * from the masked text still points at the real line, and a brace inside a
- * comment cannot open or close a block. (Copied from check-motion.mjs, which
- * copied it from check-direction.mjs — each gate script stays runnable on its
- * own.)
+ * comment cannot open or close a block. In code, and only there, it also
+ * steps past an unquoted `url(…)` to its `)`, so the address's `//` opens no
+ * comment, and blanks the address, so an escaped paren in it
+ * (`url(a\(b.png)`) leaves statements() waiting on no paren. A `url(` inside
+ * a comment is comment: the comment still ends where it closes, and a `)`
+ * past that end is never reached for, so a declaration between the two is
+ * read. One pass decides both, so neither can blank the other's end. (Copied
+ * from check-motion.mjs, which copied it from check-direction.mjs — each gate
+ * script stays runnable on its own. The `url(` rule is this copy's alone; the
+ * other copies have none.)
  */
 export function maskComments(source) {
   const out = source.split('');
@@ -165,6 +180,16 @@ export function maskComments(source) {
     if (state === 'code') {
       if (c === '/' && next === '*') { state = 'block'; out[i] = out[i + 1] = ' '; i += 2; continue; }
       if (c === '/' && next === '/') { state = 'line'; out[i] = out[i + 1] = ' '; i += 2; continue; }
+      if (c === 'u' || c === 'U') {
+        UNQUOTED_URL.lastIndex = i;
+        const url = UNQUOTED_URL.exec(source);
+        if (url !== null) {
+          const close = i + url[0].length - 1;
+          for (let k = i + 4; k < close; k += 1) out[k] = ' ';
+          i = close + 1;
+          continue;
+        }
+      }
       if (c === "'") state = 'single';
       else if (c === '"') state = 'double';
       else if (c === '`') state = 'template';
@@ -646,14 +671,6 @@ function utilityFades(text) {
   return fades;
 }
 
-/**
- * An unquoted `url(…)` on one line. Its `//` (`url(http://…)`, `url(//cdn…)`)
- * would open a line comment in maskComments, which blanks the `)` with it;
- * statements() would then wait for that paren to close and read the rest of
- * the file as one statement.
- */
-const UNQUOTED_URL = /\burl\(([^)'"\n]*)\)/gi;
-
 /** The name a `@keyframes` prelude declares. */
 const KEYFRAMES_NAME = /^@(?:-[a-z]+-)?keyframes\s+(['"]?)([\w-]+)\1/i;
 
@@ -743,9 +760,7 @@ export function inHeldFrame(preludes, held) {
  * unless its animation holds it. Each hit names the selectors above it.
  */
 export function scanStylesheet(source) {
-  const masked = maskComments(
-    source.replace(UNQUOTED_URL, (url, address) => `${url.slice(0, 4)}${' '.repeat(address.length)})`)
-  );
+  const masked = maskComments(source);
   const lineAt = lineIndex(masked);
   const parent = new Map();
   const prelude = new Map();
@@ -1310,9 +1325,24 @@ function selfTest() {
     ['4 opacity: 0.5']
   );
   check(
+    'nor does an escaped paren in its address',
+    scanStylesheet('.a { background: url(a\\(b.png); }\n.b { opacity: 0.5; }').map((h) => `${h.line} ${h.text}`),
+    ['2 opacity: 0.5']
+  );
+  check(
     'an unclosed url( in a comment does not reach past its line',
     scanStylesheet('// a url( left open\n.b { opacity: 0.5; }\n.c { width: calc(1px); }').map((h) => `${h.line} ${h.text}`),
     ['2 opacity: 0.5']
+  );
+  check(
+    "a url( in a comment does not reach past the comment's end",
+    scanStylesheet('/* url(x */ .a { opacity: .5; } /* ) */').map((h) => `${h.line} ${h.text}`),
+    ['1 opacity: .5']
+  );
+  check(
+    'one closed inside its comment is blanked with the comment, which still ends at its */',
+    scanStylesheet('/* url(x)*/ .a { opacity: .5; }').map((h) => `${h.line} ${h.where} ${h.text}`),
+    ['1 .a opacity: .5']
   );
   check('a template hit reports its line', scanTemplate('<div>\n\n  <p class="opacity-60">x</p>\n</div>').map((h) => h.line), [3]);
   check(

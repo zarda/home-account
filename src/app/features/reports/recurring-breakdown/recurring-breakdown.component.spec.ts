@@ -10,10 +10,8 @@ import { LocaleFormatService } from '../../../core/services/locale-format.servic
 import {
   createTranslationStub,
   createLocaleFormatStub,
-  paintedBackground,
-  paintedColor,
-  ratio,
-  settleAnimations,
+  expectPainted,
+  headingOutline,
   withTheme,
   provideNoMotion,
 } from '../../../core/services/testing';
@@ -252,7 +250,7 @@ describe('RecurringBreakdownComponent, through its own template', () => {
       expenseTxn({ id: 'b', amount: 100 }),
     ]);
 
-    expect(text('mat-card-title')).toBe('reports.recurringVsOneOff');
+    expect(text('[mat-card-title]')).toBe('reports.recurringVsOneOff');
     const [recurring, oneOff] = rows();
     expect(cell(recurring, '.row-count')).toBe('(1)');
     expect(cell(recurring, '.row-amount')).toBe('USD 300.00');
@@ -288,6 +286,15 @@ describe('RecurringBreakdownComponent, through its own template', () => {
     expect(cell(rows()[0], '.row-amount')).toBe('USD 100.00');
   });
 
+  // The card is one of the Reports page's own sections, so its title is an h2
+  // under the page's h1 and the empty state inside it an h3 under the title.
+  it("titles the card one level under the page's own heading, and its empty state one under the title", () => {
+    render([expenseTxn({ id: 'b', amount: 100 })]);
+
+    const outline = headingOutline(el());
+    expect(outline).toEqual(['h2 reports.recurringVsOneOff', 'h3 reports.noRecurringExpenses']);
+  });
+
   it('formats the amounts in the currency it was given', () => {
     render([expenseTxn({ id: 'b', amount: 100 })], 'JPY');
 
@@ -296,28 +303,6 @@ describe('RecurringBreakdownComponent, through its own template', () => {
 
   describe('colours, as painted', () => {
     const THEMES = ['light', 'dark'] as const;
-
-    /** What `<property>: var(token)` computes to under the theme on <html> now. */
-    function tokenValue(token: string, property = 'color'): string {
-      const probe = document.createElement('span');
-      probe.style.setProperty(property, `var(${token})`);
-      document.body.appendChild(probe);
-      try {
-        settleAnimations(document);
-        return getComputedStyle(probe).getPropertyValue(property);
-      } finally {
-        probe.remove();
-      }
-    }
-
-    /** `node` is `token`, and reads at 4.5:1 or better on what is painted behind it. */
-    function expectPainted(node: HTMLElement | null, token: string, label: string): void {
-      expect(node).withContext(label).toBeTruthy();
-      expect(getComputedStyle(node!).color).withContext(label).toBe(tokenValue(token));
-      expect(ratio(paintedColor(node!), paintedBackground(node!)))
-        .withContext(`${label} on what it sits on`)
-        .toBeGreaterThanOrEqual(4.5);
-    }
 
     beforeEach(() => {
       render([

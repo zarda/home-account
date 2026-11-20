@@ -70,6 +70,14 @@ export class DataHubComponent implements OnInit {
     return states;
   });
 
+  /**
+   * Whether any row shows a dash for its count, so the page says why once,
+   * and each such row points at that line as its description.
+   */
+  readonly anyUnavailable = computed(() =>
+    Object.values(this.states()).some(state => state.status === 'unavailable')
+  );
+
   ngOnInit(): void {
     void this.storedData.loadCounts();
   }

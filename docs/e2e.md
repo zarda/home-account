@@ -33,7 +33,7 @@ deployed rules — and it is the reason for every constraint below. Read the
 whole thing as one rule: **the run is a reader with thirteen permitted writes,
 each named in *What a run may touch*, and it puts back every one it can.**
 
-**The emulators, on port 4300: journeys 68 to 77, and 79 to 120.** A journey that
+**The emulators, on port 4300: journeys 68 to 77, and 79 to 124.** A journey that
 needs several accounts signed in — one sharing rows into a household, another
 reading them there as copies, members counting them toward the household's own
 budgets and goals, and memberships removed, left, dissolved and erased —
@@ -47,10 +47,11 @@ cannot show — the deployed rules and indexes, the callable's public invoker, a
 mail that arrives — is what journey 78 is for, once, on production after the
 merge. Journey 79 needs one account, but it imports into it, and journey 80
 moves one origin's session between accounts under two open tabs, so both run
-there too; neither touches a household or calls a function. Journeys 81 to 120
-need one account as well, and run there for what they write and what they need
-seeded: categories, rules, budgets and a household whose colours the seed
-fixes, a category made and deleted, a rule paused and resumed, rules due in the
+there too; neither touches a household or calls a function. Journeys 81 to 124
+need one account as well, 124 a second with no data, and run there for what
+they write and what they need seeded: categories, rules, budgets and a
+household whose colours the seed fixes, a category made and deleted, a rule
+paused and resumed, rules due in the
 coming days written past the rules, a stored dashboard layout read back the
 same way, the recap and a PIN switched on, overdue rules the app claims, a
 scan queued offline and a drain that fails for want of a provider, a row and
@@ -71,11 +72,16 @@ written in the page in the worker's shape and drained by the app, a review
 card reached through journey 79's hand-off without importing, picks on the
 upload area that import nothing, and a goal, a rule and a row with a note
 and a receipt written past the rules, beside two rows imported from a file,
-a saved search and a recent one. None of
-them calls a function, and only 82, 89, 101 and 103 open a household page:
-82 and 101 to read a dialog they cancel, 89 to read the copy of a posting
-journey 90 shared, and 103 to read how a member with no name is listed,
-where the page's own load rewrites that member's document.
+a saved search and a recent one, rows with receipts written through the
+page's own service, two goals made in the page and a row linked to one,
+rows deleted through the list once their Undo window has run out, a
+dashboard layout moved and reset, and a fourth account, with no data, made
+on the Auth emulator. None of them calls a function, and only 82, 89, 101,
+103, 121 and 124 open a household page: 82, 101 and 121 to read a dialog
+they cancel, 89 to read
+the copy of a posting journey 90 shared, 103 to read how a member with no
+name is listed, where the page's own load rewrites that member's document,
+and 124 to read the page's headings.
 
 **Journeys 58 to 67 are superseded** by 68 to 78 and are not run. They drove
 the household design of PRs #462 and #463 (ADRs 0152–0156), in which every
@@ -112,7 +118,7 @@ import review corrections it is the date button and the *keep it?* question
 chip on a scanned row's review card; for the tag, location and added-row
 controls it is **Add tag** in a scanned row's extras and **Add a row** under
 the list; for the split, merge and worker-reminder surfaces it is **Split**
-in a scanned row's extras — **Merge into…** stands beside it only once a
+in a scanned row's extras — **Merge…** stands beside it only once a
 second filled row shares the currency, so on a one-receipt review it shows
 after journey 15's split — and a `notificationclick` listener in the served
 worker: `await fetch('/share-target-sw.js').then(r => r.text())` contains
@@ -220,7 +226,10 @@ itself, read on the one card any step of journey 118 leaves:
 `document.querySelector('.transactions-list').classList.contains('lone')` is
 `true` on this branch and `false` on `b5ac8a86`; the card of its step 4
 showing `-$11.73`, where `b5ac8a86` shows `-$10.86`, says the same of the
-parser. For
+parser. For the names per item, the still CSV, the shared helpers, the
+focus indicator and Undo it is the served catalog again:
+`(await fetch('/assets/i18n/en.json').then(r => r.json())).transactions.deletedWithUndo`
+is defined on this branch and `undefined` on `16f0ddca`. For
 another branch it is whatever that branch added. A
 stale `.angular/cache`, or a server started before the checkout switched,
 shows yesterday's app with today's confidence.
@@ -601,7 +610,7 @@ to be inferred.
 | The weekly-recap switch | `preferences.enableWeeklyRecap` on the user document | Switched off at the end, and the dashboard checked to confirm the card is gone |
 | The Note Translation provider select | `preferences.llmProviderPreferences.translation` | Set back to the value it held, then reloaded and read back |
 | The dashboard layout editor | `preferences.dashboardLayout` | Reset, then reloaded and read back absent |
-| A purchase split in the form | Three transaction documents — a remainder row and two parts, sharing one `splitGroupId` and one `createdAt` — where an unsplit add would have written one | Each of the three deleted through the list, and a search for the journey's own description confirmed to return none |
+| A purchase split in the form | Three transaction documents — a remainder row and two parts, sharing one `splitGroupId` and one `createdAt` — where an unsplit add would have written one | Each of the three deleted through the list, and, once the last one's Undo window has run out or the page has been left by the app's own navigation, a search for the journey's own description confirmed to return none |
 | Seeding, ageing or clearing the rate cache, and re-entering the ladder over a failing fetch (journey 19, **only on the user's explicit word**) | Nothing on the account. `localStorage['home-account.exchangeRates']` on this browser profile — the same key whether the run seeds a fresh stamp, ages it past the twelve-hour window or removes it — and one extra provider fetch on the next boot when the key is cleared. The re-entry adds no request of its own: it runs under a `window.fetch` wrapper that rejects `open.er-api.com` and passes everything else to the real one, and both the wrapper and the theme it reads the warning colour under live on the page only | The value read before the change is written back verbatim, `window.fetch` and the theme preference restored to what was kept, the page reloaded — which drops the wrapper with the page — and the Settings line read again to confirm the rung it reports is the one it reported at the start |
 | Scanning a receipt | Provider requests of up to three kinds under the account's own key, all before the review step. The extraction, always: one request, and on Gemini a second model only when the first was rate-limited. A categorization call, grounded in the account's recent corrections only where grounding is on, only for the rows the extraction named no category for on their own side and whose merchant the category memory does not answer on that side. A tag-suggestion call only for the rows the extraction and the tag memory left untagged, and only where the account's grounding is on and it has a vocabulary to offer. Either call goes as one request per 25 rows. When analytics consent is on, one `ai_assist_used` event (`receipt_scan`) as the scan starts and one `receipt_import` event with outcome `ok` at extraction; no document | Nothing to undo — the run leaves before Import |
 | Handing the wizard a backup file | Nothing. The parse is local and `checkDuplicates` only reads history; the rows sit on the review step | Nothing to undo — the run leaves before Import |
@@ -609,15 +618,26 @@ to be inferred.
 | Raising one test notification through the worker | Nothing on the account. One OS notification from this browser profile, tagged `e2e-14` | Closed by the journey: `(await navigator.serviceWorker.getRegistration()).getNotifications({ tag: 'e2e-14' }).then(ns => ns.forEach(n => n.close()))` — by tag, so a bill reminder the account's own sweep raised in this profile is left standing |
 | Resuming a rule whose end date has passed (journey 35) | Nothing. The service refuses before any write; the rule's own fields are read back unchanged | Nothing to undo |
 | Exporting a backup (journey 39) | Nothing on the account. Eleven server-only collection reads, and one JSON file in this browser profile's download folder holding the account's full ledger in clear text | The file is deleted at the end of the run. The restore picker is handed the same file and **cancelled** at the preview, so nothing is written back |
-| Draining a receipt captured offline (journey 36) | One provider call under the account's own key, one transaction document, one storage object under that document's id, one queue record that reaches `completed`, and — for an expense row — the `spent` of any budget on its category: the drain's `addTransaction` recomputes `spent` and `spentPeriod` on every active budget on the row's category and stamps its `updatedAt` | The row deleted through the list, which removes its receipt object with it and recomputes the budget; the list count read back; the completed queue entry cleared from the AI settings page. The delete's recompute writes `spent` and `spentPeriod` afresh and stamps `updatedAt` with the time of the delete, so `spent` reads as it did before only where it was current before the run; those stamps, and such a refreshed figure, are what a run leaves changed |
+| Draining a receipt captured offline (journey 36) | One provider call under the account's own key, one transaction document, one storage object under that document's id, one queue record that reaches `completed`, and — for an expense row — the `spent` of any budget on its category: the drain's `addTransaction` recomputes `spent` and `spentPeriod` on every active budget on the row's category and stamps its `updatedAt` | The row deleted through the list, which, once its Undo window has run out or the page has been left by the app's own navigation, removes its receipt object with it and recomputes the budget; the list count read back after that; the completed queue entry cleared from the AI settings page. The delete's recompute writes `spent` and `spentPeriod` afresh and stamps `updatedAt` with the time of the delete, so `spent` reads as it did before only where it was current before the run; those stamps, and such a refreshed figure, are what a run leaves changed |
 | Scanning the device-only refund slips in the iOS simulator, signed in to production (#464's on-device check, [ADR 0162](ADR/0162-a-refund-read-on-the-device-is-filed-as-income-and-the-review-asks-about-it.md)) | No document while a scan reads something: `refund.png`, `refund-tender.png` and `jp.png` ([model-probe/README.md](model-probe/README.md)) each go through the camera dialog's library picker and stop on the review card. When analytics consent is on, one `receipt_import` event per scan. A scan that reads nothing writes one failed Import History record, door `camera`. A native read under the strategy's usable floor (`USABLE_CONFIDENCE`, 0.4, `ai-strategy.service.ts`) may make one cloud request under the account's own key. The form's Scan Receipt is not driven: its only file input carries `capture="environment"`, which on the simulator opens a camera with no scene to shoot, so no fixture reaches it and the run takes no shot there. The in-form refund is covered by `transaction-form.component.spec.ts`, `transaction-form.smoke.spec.ts` and journey 79's step 7 | Nothing is confirmed or saved: each review card is left by **Cancel**. `/import/history` is read before the first scan and after the last, and any new failed record is reported: the user deletes it by its own **Delete** — the run does not — and the list is read back without it. The events and the provider requests cannot be recalled |
 | Driving the Home Screen widget in the iOS simulator, signed in to production (#441's session, [ADR 0183](ADR/0183-the-widget-reaches-the-lock-screen-opens-the-dashboard-names-itself-in-the-devices-language-and-follows-the-accounts-language-currency-and-hidden-cards.md); [widget.md](widget.md#the-run-on-record) holds the record) | Three writes to the account's user document, each through the app's own control, and state on the device alone. **W1**, `preferences.enableAppLock`: a PIN made up for the session and set on this device, where it lives and never reaches the account, then *Require a PIN* switched on, so that the widget's locked sentence and a tap through the lock can be driven; the relock timeout is read and never written. **W2**, `preferences.dashboardLayout`: Budget Progress hidden from its card menu and Upcoming Bills from the editor in Settings, so that the widget file's hidden set can be read; the editor writes the whole order on any change. **W3**, `preferences.language`, only as a fallback when the device's language does not reach the web view: it did on 2026-10-22, and the write was not made. On the device alone: the widgets placed on the Home Screen and the Lock Screen, the App Group's snapshot file, the simulator's language and region (`AppleLanguages` and `AppleLocale`, each change followed by a reboot), the software keyboard's preference where a step needs it, and the app reinstalled over the top, never uninstalled, which would sign the account out. Opening the dashboard runs the account's normal catch-up and snapshot writes, as every open does. Never: the base currency, the relock timeout, a sign-out by the run, or a real credential, password or provider key typed by the run (W1's made-up PIN is the one value typed, and it stays on the device) | Each read before the first write, put back, and read again. W1: the lock state read first (off, with no PIN on this device, on 2026-10-22): *Remove PIN*, which turns the lock off, then *Require a PIN* read off, the PIN gone, and the widget's file back on its figures once the dashboard repaints. W2: the arrangement read first, put back with the editor's own switches and not with **Reset**, which would also bring back a card the account hides (AI Insights, on 2026-10-22), then the dashboard repainted and the file read back with `hidden []`. What stays: the editor writes the whole order on any change, so a layout that was absent may now hold the default order explicitly, the arrangement shown unchanged. A scroll that starts on a drag handle moves the card, as it did once on 2026-10-22, when it was moved back at once: scroll from the right edge, clear of the handles. W3: the value read first, written back and read back. The device's languages written back from the values read first, a reboot, and read back; the keyboard preference the same; the widgets removed from both screens; the app left installed, built from a clean tree. The shots stay out of the repository ([Evidence](#evidence)), and `ios/` is checked after every build and left as it was |
-| Importing a scanned receipt (journeys 46 and 50) | Everything *Scanning a receipt* writes, then at **Import**: one transaction document, one storage object under its id, one import-history record naming it, the `spent` of any budget on its category, and the category memory's entry for the receipt's merchant — with the tag memory's beside it where the row was offered a tag | Three restores, each confirmed by a read: the row deleted through the list, which removes its receipt object with it and recomputes the budget, and a search for its description read back empty; the import-history record the Import wrote deleted on `/import/history` by its own **Delete**, and the list read back without it; and every memory entry the Import added or changed — the category memory's for the merchant, and the tag memory's where one was written — through the two memory services, reached from the wizard before the Import. An entry the Import added is removed with `forget(merchantKey)`, and a server read (`exportAll()`) finds the key gone. An entry the merchant already had is put back with `restore(entry)` from a server read taken before the Import — the category memory's `categoryId`, `sampleDescription` and `count`, the tag memory's `tags`, `suppressed`, `sampleDescription` and `count` — and a second server read finds each of those fields as it was first read. Its `updatedAt` is not put back: the write stamps it with the time of the restore. Nor are a budget's fields: the delete's recompute writes `spent` and `spentPeriod` afresh on every active budget on the row's category and stamps its `updatedAt` with the time of the delete, so `spent` reads as it did before only where it was current before the run. Those stamps, and such a refreshed figure, are what a run leaves changed. Journey 46 has both scripts |
-| Importing the two-row CSV on `/data` (journey 53) | Two transaction documents, and the `spent` of any budget on the expense row's category: the door writes the rows without a recompute each, then recomputes `spent` and `spentPeriod` once on every active budget on that category and stamps its `updatedAt`; the income row moves no budget. No provider call, no import record and no memory | Both deleted through the list, and a search for `e2e-53` read back empty. Deleting the expense row recomputes the same budgets, writing `spent` and `spentPeriod` afresh and stamping `updatedAt` with the time of the delete, so `spent` reads as it did before only where it was current before the run; those stamps, and such a refreshed figure, are what a run leaves changed |
+| Importing a scanned receipt (journeys 46 and 50) | Everything *Scanning a receipt* writes, then at **Import**: one transaction document, one storage object under its id, one import-history record naming it, the `spent` of any budget on its category, and the category memory's entry for the receipt's merchant — with the tag memory's beside it where the row was offered a tag | Three restores, each confirmed by a read: the row deleted through the list, which, once its Undo window has run out, removes its receipt object with it and recomputes the budget, and a search for its description then read back empty; the import-history record the Import wrote deleted on `/import/history` by its own **Delete**, and the list read back without it; and every memory entry the Import added or changed — the category memory's for the merchant, and the tag memory's where one was written — through the two memory services, reached from the wizard before the Import. An entry the Import added is removed with `forget(merchantKey)`, and a server read (`exportAll()`) finds the key gone. An entry the merchant already had is put back with `restore(entry)` from a server read taken before the Import — the category memory's `categoryId`, `sampleDescription` and `count`, the tag memory's `tags`, `suppressed`, `sampleDescription` and `count` — and a second server read finds each of those fields as it was first read. Its `updatedAt` is not put back: the write stamps it with the time of the restore. Nor are a budget's fields: the delete's recompute writes `spent` and `spentPeriod` afresh on every active budget on the row's category and stamps its `updatedAt` with the time of the delete, so `spent` reads as it did before only where it was current before the run. Those stamps, and such a refreshed figure, are what a run leaves changed. Journey 46 has both scripts |
+| Importing the two-row CSV on `/data` (journey 53) | Two transaction documents, and the `spent` of any budget on the expense row's category: the door writes the rows without a recompute each, then recomputes `spent` and `spentPeriod` once on every active budget on that category and stamps its `updatedAt`; the income row moves no budget. No provider call, no import record and no memory | Both deleted through the list, and, once the second one's Undo window has run out or the page has been left by the app's own navigation, a search for `e2e-53` read back empty. Deleting the expense row recomputes the same budgets, writing `spent` and `spentPeriod` afresh and stamping `updatedAt` with the time of the delete, so `spent` reads as it did before only where it was current before the run; those stamps, and such a refreshed figure, are what a run leaves changed |
 | Exporting the transactions CSV (journey 53) | Nothing on the account. One server-only read of every transaction, and one CSV file in this browser profile's download folder holding them all in clear text | The file is deleted at the end of the run |
 | Forming, switching between and dissolving two households (journey 78) | For each household, one commit forming it: a `households/{id}` document, the account's member document under it, and the account's index entry, `users/{uid}/households/{id}`. On this browser profile only: `localStorage['household.selected.<uid>']`, the household last shown, and the ledger sweep's `ledger.journal.<uid>` and `ledger.sweep.<uid>.<id>` entries. When analytics consent is on, `household_action` events: `create` twice, `switch` once, `dissolve` twice | Each dissolved on `/household` with its typed confirmation, which withdraws its invites, removes its members, deletes its own budgets and goals and then the household, takes the account's copies out and its key off the account's rows, and deletes the index entry last. The page reloaded to the setup with no switcher, and both index entries read back from the server as gone (journey 78 has the script). The device keys are listed before step 1, when the account holds no household and none is there, and any left after the dissolves is removed and the list read back empty. The dissolves are the restore, so a run stopped before them leaves live households: finish them from `/household` before anything else |
 | Sharing one row into a household, then stopping (journey 78) | On one existing transaction of this month: the household's key (`households/{id}`) added to its `sharedWith` and its `updatedAt` stamped, in one commit, and one copy at `households/{id}/ledger/{uid}_{txId}` holding the row's type, amount and currency, date, description and category, the category's name, icon and colour, and the budget buckets it counts under — never its note, receipts, tags or place. When analytics consent is on, one `household_action` event for `share` and one for `unshare` | *Stop sharing* from the row's menu, before any dissolve: one commit deletes the copy and takes the key off the row. The copy read back from the server as gone and the row's *Shared* chip gone from the list. What stays: the row holds `sharedWith` as an empty list, and its `updatedAt` carries the time of the unshare |
 | Inviting by email (journey 78, **only when the user names a recipient address at that moment**) | Through the invite callable: one lookup charged to the account's `inviteQuotas` document. For an address that resolves, one `householdInvites/{household}_{invitee}` document, written with `mail: 'failed'` and corrected to `sent` or `held` once the send settles; one count on the recipient's `inviteQuotas` document and one on `mailBudget/daily`, both charged before the send — so a send that fails or runs past its deadline spends them too, while a held mail, or an inviter with no verified email, charges neither; and one real mail from the operator's sender to that address. When analytics consent is on, one `household_action` event for `invite`. An address with no account spends the lookup and writes nothing else | The invite is withdrawn by the dissolve of its household, which deletes the owner's sent invites first; the pending list is read empty after it. The recipient is asked not to accept. One who accepts anyway sees what this account shares into that household — the journey's one row, until its *Stop sharing* — and the household's own budgets and goals, until the dissolve, which removes their member document; their own index entry for the household stays until they next open `/household`, which clears it, and the run cannot put it back. The counters are not put back — no client may write them, and each lapses on its own, 24 hours after it opened for the two quotas, at the end of the UTC day for the budget. The mail cannot be recalled, which is why it goes only to an address the user names |
+
+A row deleted through the list leaves it at once, and its delete waits ten
+seconds for the notice's **Undo** before it is made
+([ADR 0197](ADR/0197-a-deleted-transaction-can-be-brought-back-for-ten-seconds-because-the-delete-waits.md)).
+A second delete, leaving the page by the app's own navigation, hiding the
+page and a sign-out through the app's own controls make a waiting delete
+real sooner, while a reload or a closed tab inside the window can keep the
+row. So each restore above that
+deletes through the list is read back only once its window has run out or
+its page has been left that way: inside the window the list and a search
+read the row gone whether it is gone or not.
 
 The failed-attempt record is written only by the attempt's `failed` and the
 import's own record only by `confirmImport`, so an extraction left
@@ -643,7 +663,7 @@ Import never is.
 Everything else is read-only. Every dialog is closed or **cancelled** — the
 edit dialog in journey 5 opens on a real transaction and is left by Cancel,
 never Save — and nothing else is created, edited, deleted or imported.
-Journeys 68 to 77 and 79 to 120 are not in this table: they write freely, but
+Journeys 68 to 77 and 79 to 124 are not in this table: they write freely, but
 only into the local emulators, and the [teardown](#teardown) takes all of it
 with them.
 Journeys 58 to 67 are superseded and write nothing, because they are not run.
@@ -893,7 +913,8 @@ Alex alone, and imports three rows into his account; journey 80 needs Alex
 and Sam, in two tabs of one origin, and moves the session between them
 ([auth.md](auth.md) describes what it drives).
 
-Journeys 81 to 120 use the same seed as Alex alone, and drive the account's own
+Journeys 81 to 124 use the same seed as Alex alone, 124 with an account of no
+data made beside him, and drive the account's own
 pages: the theme tokens and a category's colour, measured where they are
 painted in both themes (81 and 82, whose last surface is Chen home's budget
 dialog); the papercuts of
@@ -954,7 +975,23 @@ that collates in the account's language, the filter date that says why it is
 refused, the open calendar that takes a new language and the budgets page that
 follows a tab link while open, of
 [ADR 0191](ADR/0191-sorts-reminders-the-filter-dates-and-an-open-calendar-follow-the-readers-language-the-taxonomy-declares-only-what-is-sent-and-the-budgets-page-follows-its-tab-while-open.md)
-(120), which imports three rows of its own.
+(120), which imports three rows of its own; and the controls named by their
+item or by what they act on, each holding the words it shows, of
+[ADR 0192](ADR/0192-a-control-repeated-per-item-names-its-item-in-its-own-text-too-a-button-is-named-in-every-branch-and-an-unlabelled-switch-fails-the-axe-pass.md)
+and
+[ADR 0196](ADR/0196-sibling-controls-say-what-they-act-on-a-name-holds-its-shown-words-a-focused-button-shows-an-indicator-inside-it-focus-stays-in-the-list-after-a-delete-and-a-failed-dashboard-read-is-quiet.md)
+(121), which writes three rows with receipts and two goals and imports two
+rows; the still CSV, the slot a photo will land in and the measured chips of
+[ADR 0193](ADR/0193-a-row-that-is-no-photo-is-no-drag-item-the-receipt-or-statement-chips-are-measured-and-the-upload-area-shows-where-a-photo-will-land.md)
+(122); the focus indicator inside every button, focus after a delete and the
+quiet dashboard of ADR 0196, with the Undo of
+[ADR 0197](ADR/0197-a-deleted-transaction-can-be-brought-back-for-ten-seconds-because-the-delete-waits.md)
+(123), which deletes rows through the list; and the headings one level apart
+and the shared focus hand-off of
+[ADR 0194](ADR/0194-one-painted-contrast-helper-and-one-focus-hand-off-a-card-is-scored-part-by-part-and-no-page-skips-a-heading-level.md),
+with the stylesheet that ships no spec-only rule of
+[ADR 0195](ADR/0195-a-gate-holds-the-test-main-to-the-builders-init-specs-stay-out-of-the-stylesheet-a-lone-date-run-is-silent-and-the-opacity-gate-reads-a-url-in-a-comment-as-a-comment.md)
+(124), which reads an account with no data as well.
 [accessibility.md](accessibility.md), [dashboard.md](dashboard.md),
 [reminders.md](reminders.md), [shortcuts.md](shortcuts.md),
 [pwa.md](pwa.md), [receipt-import.md](receipt-import.md),
@@ -969,9 +1006,10 @@ follows a tab link while open, of
 [csv-format.md](csv-format.md), [data.md](data.md) and
 [ui-overflow.md](ui-overflow.md) describe what they drive.
 
-Journeys 87 to 96 build on one another's writes, 97 to 120 on the language
-each one leaves, 107 on the records 105 and 106 write, and 115 on the goal
-113 writes, so 87 to 120 run in one emulator session, in this order:
+Journeys 87 to 96 build on one another's writes, 97 to 124 on the language
+each one leaves, 107 on the records 105 and 106 write, 115 on the goal 113
+writes, and 123 and 124 on the rows 121 writes, so 87 to 124 run in one
+emulator session, in this order:
 
 1. journey 87's steps 4 and 5, which queue a scan and fail its drain;
 2. journey 88, which reads that drain's record in Import History;
@@ -1052,7 +1090,23 @@ each one leaves, 107 on the records 105 and 106 write, and 115 on the goal
     language the same way with a sort standing and with a calendar open,
     leaves From holding text that is no date and then leaves the page, and
     ends in English;
-35. journey 103, **last**, which empties Alex's name and types one in, and
+35. journey 121, which writes three rows with receipts through the page's
+    own service, makes two goals and links a row to one, imports two rows
+    from a CSV, opens a recurring rule's dialog and a household budget's and
+    cancels both, switches the language to 日本語 and 繁體中文 and back, and
+    ends in English;
+36. journey 122, which picks photos beside a CSV and drags them, imports
+    nothing, and ends in English and light with the palette classes put
+    back;
+37. journey 123, which deletes journey 121's three rows with receipts and
+    two seeded rows through the list, brings one of each back with Undo,
+    pins a stored answer and unpins it, signs Alex out inside an Undo
+    window and in again, and ends with Firestore shut down under the
+    dashboard and a reload;
+38. journey 124, which reads the headings as Alex and as an account with no
+    data, moves a dashboard card and resets the layout, and ends with Alex
+    signed in again;
+39. journey 103, **last**, which empties Alex's name and types one in, and
     whose visit to the household page rewrites his member document there,
     and ends with both restored.
 
@@ -1099,9 +1153,12 @@ edit, with the shots `95-cold-refresh-unknown-ja`,
 `94-refused-after-rows-ja-r3` and `93-edit-day-unset-r3`. Every step it ran
 passed, and it found no further defect.
 
-Journeys 97 to 120 rest on none of the earlier journeys' writes, though 107
-reads the records 105 and 106 write, and 115 the goal 113 writes. A run of
-them alone starts from a fresh seed, in English, and journey 99's Sync Now
+Journeys 97 to 124 rest on none of the earlier journeys' writes, though 107
+reads the records 105 and 106 write, 115 the goal 113 writes, and 123 the
+rows 121 writes, as 124 does the two-image row 123 brings back; 123's pin
+reads a stored answer journeys 92 and 95 leave, and a run without them
+writes one as journey 92's step 4 does. A run of them alone starts from a
+fresh seed, in English, and journey 99's Sync Now
 then drains the one scan it queued; journey 108 then finds the queue as
 journey 99's cleanup leaves it, empty.
 
@@ -1675,7 +1732,10 @@ row's description, and a Japanese subtitle before its last two kana; the
 tags field's chip input, a transparent box 10px past the field's outline at
 375px; the save-search box, named by its placeholder alone, *Name this
 search...*, which shows only once the box is emptied, since the box opens
-holding the query, the search's suggested name; and the share dialog's
+holding the query, the search's suggested name (a caption inside its pill,
+*Name for this search*, has named it since
+[ADR 0196](ADR/0196-sibling-controls-say-what-they-act-on-a-name-holds-its-shown-words-a-focused-button-shows-an-indicator-inside-it-focus-stays-in-the-list-after-a-delete-and-a-failed-dashboard-read-is-quiet.md),
+and the placeholder is gone); and the share dialog's
 **Save** for a row with no description, which it did not press. Its console
 held no error the app raised: the one error-level entry was the old
 session's 400, and a hook on `console.error`, `onerror` and
@@ -1976,9 +2036,154 @@ and
 [ADR 0191](ADR/0191-sorts-reminders-the-filter-dates-and-an-open-calendar-follow-the-readers-language-the-taxonomy-declares-only-what-is-sent-and-the-budgets-page-follows-its-tab-while-open.md)
 record it.
 
+The run of journeys 121 to 124, on 2026-11-19, drove the branch with #542,
+#543, #544, #545, #546 and #555 in this venue, served from that branch's own
+checkout, with the functions emulator left out and the bundle naming
+`demo-home-account` only; the pre-flight's clean found nothing named for the
+live project on the origin. Alex was signed in by the swap
+[Signing in a seeded account](#signing-in-a-seeded-account) describes, his
+session record written into the page's local storage, and journey 124's
+account with no data was a fourth demo account made on the Auth emulator,
+both on the emulators only. The pane was
+1024×768, emulated in an 800×600 view, and painted about four frames a
+second, as a background page does, so every read followed a flush and
+finished animations, and 375px and 320px were reached by emulation. Real
+keys gave `:focus-visible` wherever a step reads it, and the pane's own
+pointer made the upload area's drag and opened the swipe drawer. The
+console held one 404 and three refused connections, the functions emulator
+being absent, in the run and again in the re-check below. Two readings
+needed more than the page's
+flush: the import wizard's stepper and a tab group's open tab are flushed
+on their own, and a chip removal's 40px target, drawn by a pseudo-element,
+is hit-tested rather than measured
+([In a hidden pane](#in-a-hidden-pane) now says both).
+
+Beside the four journeys it walked the screens the branch touched again, at
+320px in light, at 375px in dark and at 1024px in both themes, and in
+Japanese and Traditional Chinese at 320px, reading each finding of the
+branch's audit of those screens, made in this venue on 18 November, where
+it had been found; each fix held. Left open
+as recorded: the review card at a phone's width, 218 of 320px wide, and the
+dashboard cards' two kinds of header link, a Material text button beside a
+plain link. An unavailable count on the Data page could not be reproduced,
+every count being available. In dark, switched through Settings' theme
+control, a sweep of every text against what is painted under it, shown to
+fail on a planted grey line at 2.72:1, found nothing under its bar on the
+pages the branch touched.
+
+It met five defects, each small and of a kind the branch closes elsewhere,
+and each was fixed in a commit of its own with its test beside it:
+
+- On `/ai` the two memory clears were both named *Forget all*, alike in
+  English and Traditional Chinese and apart in Japanese only by chance:
+  *fix: the AI page's two Forget all buttons say what they forget*.
+- The filters' two calendar buttons were both named *Open calendar*, and so
+  were the pairs in the recurring rule's dialog and the household budget
+  dialog: *fix: the filters' two calendar buttons name their date field*,
+  then *refactor: the filters' calendar buttons take the one slotted name*.
+- The period chip's clear was named *Close*: *fix: the period chip's clear
+  button says what it clears*, which also hands focus to the checked
+  quick-range toggle when the clear held it.
+- The category manager's Expenses / Income group had no name: *fix: the
+  category manager's type group has a name*, which named seven more
+  single-choice groups beside it; `icon-labels:check` gained a tenth rule,
+  that such a group carries a name.
+- The sign-in page had no heading: *fix: the sign-in page's title is its
+  heading*.
+
+A re-check the same day, on the fixed tree, in the same venue, in dark and
+in English, Japanese and Traditional Chinese, read each where it had been
+met, and each held (journey 121's steps 8 and 10 to 12, journey 124's step
+5). It read the sign-in title in the app at 22px, weight 400, a 28px line
+and no margin, since the card's own sheet loads after the utilities, where
+Karma, loading them the other way round, gives the utilities' 24px bold
+with a 16px top margin; the title's look was left as it was. The run saw
+two more things it did not count as defects, both left for a follow-up: the
+boxes of the desktop row menu and the form's two dismissals read 32px,
+though the row menu's overhang takes its target to 40px and each dismissal
+keeps Material's 48px touch span, unmeasured; and after **Continue** Material
+moves focus to the review step's header, whose focus state layer reads as a
+grey block in dark. It did not drive the hand-offs of a split purchase's
+parts or of the note lens, since the seed holds no split purchase and no
+note is translated without a provider, nor a key held down across a
+hand-off, which the pane cannot make and `focus-when-rendered.spec.ts`
+holds.
+[ADR 0196](ADR/0196-sibling-controls-say-what-they-act-on-a-name-holds-its-shown-words-a-focused-button-shows-an-indicator-inside-it-focus-stays-in-the-list-after-a-delete-and-a-failed-dashboard-read-is-quiet.md)
+records the first four defects and
+[ADR 0194](ADR/0194-one-painted-contrast-helper-and-one-focus-hand-off-a-card-is-scored-part-by-part-and-no-page-skips-a-heading-level.md)
+the fifth, and each of ADRs 0192 to 0197 records what the run read of its
+own screens.
+
+A second run of journeys 121 to 124, on 2026-11-21, drove the branch at
+26.11.186, at *docs: the records and references follow the last fixes*, in
+this venue, served from that branch's own checkout, with the functions
+emulator left out and the bundle naming `demo-home-account` only. The
+Auth, Firestore and Storage emulators started from the data the first
+run's re-check had exported, and Alex was still signed in from the
+re-check's session record, by the swap
+[Signing in a seeded account](#signing-in-a-seeded-account) describes;
+journey 124's account with no data was the first run's fourth demo account,
+signed in the same way from its own record, both on the emulators only. It
+made its own three rows with receipts, *r2 one image*, *r2 two images* and
+*r2 three images*, and read the first run's two goals and import record.
+The pane was 1024×768, every read followed a flush and finished animations,
+375px and 320px were reached by emulation, and the account's own theme was
+light; dark was switched through Settings' theme control, as the first run
+switched it. It drove all four journeys and read journeys 111 and 112 again,
+whose pass lines had been rewritten from the code, and it read, where each
+shows, the six user-facing fixes made after the first run's re-check that a
+browser can show: *fix: a review row's split is named in the Chinese
+sentence order its merge uses*, *fix: each AI provider's avatar stands at
+the top of its header again*, *fix: the save-search pill's padding follows
+the reading direction*, *fix: a notice stands above the phone's bottom nav
+on iOS 15's first WebViews too*, *fix: undo while choosing rows on a phone
+gives focus to the row's checkbox* and *fix: the Goals tab's Add Goal keeps
+its label on one line on a phone*. Every step it drove passed, journeys 111
+and 112 held, and so did each fix; it met no defect in the app. It did not
+read again what no commit since the first run or its re-check had touched:
+the two dialogs of journey 121's step 10, its steps 11 and 12, and six of
+journey 123's eleven indicators, the five it read giving the first run's
+ratios.
+
+Two rows were lost to the driver, not to the app. In journey 123's steps 2
+and 3, on the first run's *e2e two images*, a **Tab** sent with the menu
+keys reached the list before the confirm had taken focus, and the reads
+between the confirm and **Undo** ran past the ten seconds, so the row was
+deleted for real by its timer, its receipts with it; the **Enter** meant for
+Undo opened *Parking garage*'s menu, closed with Escape with nothing chosen,
+and the announcer's log, armed twice in that load, logged every line twice.
+After a reload the two steps were made again on *r2 two images*, the log
+armed once, and passed. In step 9 the account menu's two real clicks took
+longer than the ten seconds in the pane, so *Farmers market* was deleted for
+real by its timer before the sign-out, and the **Sign Out** click, aimed
+from a rect read before the menu was laid out, landed on the sidebar. The
+step was made again on *Hardware store*, the confirm by real keys and the
+menu's two clicks from the console in one evaluation, and passed: `/login`
+0.16 s after the sign-out started, the document 404 by then.
+
+The rest was not the app's either. Journey 122's step 1 read `lifts` `[]`
+and journey 124's step 3 counted 0 rules, since the flatten both steps gave
+dropped every plain rule in the pane's Chrome; with the flatten corrected,
+the first read its one rule and the second 889 rules, and both steps now
+give the corrected flatten. Journey 121's step 8 read the AI page's labels
+cut at 320px after a live resize and after a live language switch, and
+whole on a page loaded at that width in each language, which the step now
+asks for. In journey 123's step 7 the driver's first three drags started on
+a row's category strip, where a press starts no swipe, and each became a
+tap that opened the edit form, closed by **Cancel** with nothing changed;
+from the description line the drawer opened, and the step now says where to
+press. Journey 124's step 4 met no welcome, the first run having skipped it
+on that account, and the step now says when the welcome shows. In journey
+121's step 5 the driver's script did not find the second **Continue**, so
+its two rows were not imported. Journey 122's held slot read 6.30 in the two
+light palettes and 11.6 in the two dark ones against the list's first
+opaque fill, where the first run's 6.58 and 6.72 were read against another
+fill; each is over 3:1, and step 2 now gives both.
+[In a hidden pane](#in-a-hidden-pane) now holds the pane's lessons.
+
 ### Pre-flight
 
-Journeys 79 to 120 call no function, and neither do 72 and 73. A run of only
+Journeys 79 to 124 call no function, and neither do 72 and 73. A run of only
 those skips checks 2 and 3 and starts the emulators without the functions
 emulator, `--only auth,firestore,storage` in check 4 — which is also how they
 start in a checkout without `functions/.secret.local`, whose functions that
@@ -2214,9 +2419,18 @@ a guard has landed the page on `/dashboard` — as in
 ```js
 for (let i = 0; i < 20; i++) await Promise.resolve();
 ng.applyChanges(ng.getComponent(document.querySelector('app-household, app-transactions, app-data-hub, app-import-wizard, app-import-history, app-budgets, app-settings, app-ai-settings-page, app-reports, app-search-answer-history, app-dashboard')));
+document.querySelectorAll('mat-stepper, .mat-mdc-tab-body-active *')
+  .forEach(el => { const c = ng.getComponent(el); if (c) ng.applyChanges(c); });
 document.querySelectorAll('.mat-mdc-dialog-component-host')
   .forEach(host => ng.applyChanges(ng.getComponent(host)));
 ```
+
+The middle line is for the views the page's own flush can pass over: the
+import wizard's `mat-stepper`, whose steps hold the upload area and the
+review card, and the components of a tab group's open tab, on `/budgets` and
+`/reports`. `ng.getComponent` answers `null` for an element that hosts no
+component, so the line flushes each component it finds there. The first run
+of journeys 121 to 124 added both to its flush.
 
 Nor is a `ResizeObserver` told anything there. Its reports are delivered
 with a frame, and a hidden pane paints none: an observer set on a page in
@@ -2254,7 +2468,8 @@ survive a navigation.
 **A real drag works there.** A drag made with a real pointer at the pane's
 own width moves a CDK drag in a hidden pane: the first run of journeys 111
 to 116 pressed on a photo's handle, moved twice and released above the CSV,
-and the list started the drag and dropped it (journey 112). Read the
+and the list started the drag and dropped it (journey 112, which aims at
+the other photo's row now that the CSV's row is no drag item). Read the
 outcome from the list's `dropped` event and the component's own list, not
 from a screenshot.
 
@@ -2267,6 +2482,24 @@ over a button's `childNodes` that takes each node's `textContent` puts
 *container* into Browse's name. `Element.textContent` skips comments, and
 Material keeps a button's own words in `.mdc-button__label`, so read that
 (journey 111).
+
+**Reading a target a pseudo-element draws.** A control can keep a small box
+and take its 40px target from an `::after` that overhangs it: the review
+card's chip removals, `.extra-remove`, are 28 by 20 with an `::after` at
+`inset: -10px -6px`. The button's rect reads the box, never the target, so
+hit-test the target instead: a point inside the overhang answers the button
+itself.
+
+```js
+const button = document.querySelector('app-transaction-preview-table .extra-remove');
+const r = button.getBoundingClientRect(), x = r.left + r.width / 2, y = r.top + r.height / 2;
+[[x - 19, y], [x + 19, y], [x, y - 19], [x, y + 19]].map(([px, py]) => button.contains(document.elementFromPoint(px, py)));
+```
+
+**Pass:** four `true`s, the target 40px both ways. The first run read the
+box 28 by 20 and hit-tested the target 19px each way from its middle, at a
+320px page. Bring the button into view first: `elementFromPoint` answers
+only inside the window.
 
 **Reading a notice.** A snackbar stays up for a few seconds — three for a
 success, five for an error, two more for each further sentence of an
@@ -2293,7 +2526,11 @@ for (const tone of ['success', 'info', 'error']) {
 ```
 
 Then read `window.e2eNotices` as a separate evaluation. The service has
-those three tones and no other. Arm it once per load: a second arming on the
+those three tones, and one notice with an action, `withAction`, which a
+deleted transaction raises to offer Undo. That notice has no duration of
+its own: it stays for the Undo window, ten seconds, held while the pointer
+or focus is on it, and this log does not catch it; read it from the page,
+as journey 123 does. Arm the log once per load: a second arming on the
 same page wraps the wrapper, and the first run's journey 94 logged its one
 notice twice that way. The service is the root one, so the same object is
 wrapped whichever component it is reached from: arming on `/budgets` and
@@ -2302,6 +2539,30 @@ for #500 saw on journey 93's step 7. A page load drops the log and the
 wrappers with the page; a navigation inside the app keeps both. The log is evidence of the
 call, the sentence and its duration, not of the paint, which a pane in view
 shows.
+
+**The pane's pace, and where a press lands.** The second run of journeys 121
+to 124 met four more traps, none of them the app's:
+
+- **A delete's ten seconds must hold the keys, the confirm and the reads.**
+  A deleted row's Undo window does not wait for the pane: a **Tab** sent
+  with the menu keys can land before the confirm has taken focus, and reads
+  made between the confirm and **Undo** can outlast the window, which then
+  deletes the row for real. Send the menu keys, focus the confirm's
+  **Cancel** from the console and press **Tab** and **Enter**, real keys;
+  then read once, and focus **Undo** at the end of that same evaluation,
+  which holds the window (journey 123's step 2).
+- **Arm the announcer's log once per load.** It wraps `announce` as the
+  notice log above wraps a notice, and a second arming on the same page
+  wraps the wrapper and logs every line twice.
+- **A 320px read of a Material floating label follows a reload, in each
+  language.** The field measures its label's notch from an observer, so
+  after a live resize or a live language switch the first read finds the
+  label cut; load the page at 320px in each language, then read (journey
+  121's step 8).
+- **A swipe starts on a row's description line.** The row's category
+  strip, `.row-category`, scrolls sideways on its own, and a press on it
+  starts no swipe by design: a drag from there is a tap, and opens the edit
+  form (journey 123's step 7).
 
 ### Reading past the rules
 
@@ -2320,7 +2581,11 @@ delete nothing there: 104 to 108 only read back the rows and the import
 records the app itself wrote, and 109 and 110 read nothing there. Journey
 113 writes a goal there, 114 a rule and 115 a row with a note and a
 receipt, each left for the teardown, and 113 and 116 read back the language
-they put back; 111 and 112 read nothing there.
+they put back; 111 and 112 read nothing there. Journey 123 reads back the
+rows it deletes and one row's receipt addresses, lists the Storage
+emulator's objects with the same owner token, and, in a run without
+journeys 92 and 95, writes a stored answer as journey 92 does; 121, 122 and
+124 read nothing there.
 The seeded households are `chen-home` and `trip-fund`; one made in a journey
 is listed under its owner's index, `users/<uid>/households`. A copy's id is
 `<author-uid>_<row-id>`, and the seeded rows this month are `tx-hh-1` onwards
@@ -2453,7 +2718,7 @@ await ng.getComponent(document.querySelector('app-header')).router.navigateByUrl
 ```
 
 Never `/ai`: the page reads the keys through the same patched read
-(`ai-settings-page.component.ts:244`), so its Gemini key field would show
+(`ai-settings-page.component.ts:254`), so its Gemini key field would show
 the made-up value, and a blur there would save it to the emulator account.
 Never `/dashboard`, `/reports`, `/settings` or `/search-history` either, nor
 any other page whose components inject the weekly recap, the AI summary or
@@ -2492,17 +2757,21 @@ back: the fourth run of journeys 111 to 116 cleared a signed-in page and
 then moved its tab, and the static page still listed the Firestore
 database and held its `firestore_online_state_` key, until a second pass
 there read every store empty. The delete also makes Firestore end itself
-under a running page, and on `/dashboard`, whose five live reads have no
-error path, that logs five `[GlobalErrorHandler] FirebaseError: Firestore
-shutting down` errors
+under a running page. On `/dashboard` that logged five
+`[GlobalErrorHandler] FirebaseError: Firestore shutting down` errors
 ([ADR 0187](ADR/0187-repeated-controls-name-their-item-the-upload-area-has-one-button-and-numbers-photos-among-photos-resting-text-is-a-token-sentences-end-in-the-readers-stop-and-a-spec-that-expects-nothing-fails.md)'s
-*Known gaps*); a static page has nothing to end. Nor reload the app to
+*Known gaps*) until *fix: a dashboard read that fails no longer reaches the
+global error handler*, since which its five live reads stop quietly
+([ADR 0196](ADR/0196-sibling-controls-say-what-they-act-on-a-name-holds-its-shown-words-a-focused-button-shows-an-indicator-inside-it-focus-stays-in-the-list-after-a-delete-and-a-failed-dashboard-read-is-quiet.md));
+other pages' reads were not all given that path, and a static page has
+nothing to end. Nor reload the app to
 leave it: check 8 reloads because a sign-in follows, and here a reload
 boots the app again, signed out, and that boot opens its databases and
 writes its keys back. Cookies are out of scope: one set on `localhost` is
 shared by every port on it, and the session is not kept in one. Close the
 tabs, stop the 4300 server and the emulators — nothing is imported or
-exported, so they keep nothing — delete the sessions file, the note of
+exported, so they keep nothing — delete the sessions file, the file holding
+the empty account's session record where journey 124 made one, the note of
 journey 85's test PIN where one was kept, and the emulator log, and run the
 ports check again, both of pre-flight check 1's commands: they print
 nothing. Emulators started with their output left to firebase-tools,
@@ -2632,6 +2901,10 @@ removes the first, and the second is deleted here. Both are gitignored.
 | 116 | Sentences end in the reader's stop (emulators) | A Japanese reader's date sentences joined by 。 on a real review card and on the form's scan flag and its tooltip, read through the provider's real prompt answered from the page, the keep button named first by the words it shows, and focus back on the menu's button once the form its entry opened is cancelled | `116-card-keep-date-ja.png`, `116-form-verify-tooltip-ja.png` |
 | 117 | Totals read by where their figures are printed (emulators, diagnostic-grade) | A coupon, round cash, an unmarked change and a bare total over its parts each reach a real review card as the total with the scan's flag on the amount, in three languages; a spaced sign and a subtotal with its tax reach it unflagged; and the flag stands clear of the figure it asks about | `117-coupon-flag.png`, `117-round-cash.png`, `117-spaced-sign.png` |
 | 118 | Dates that take no price, a total with no mark, asides and a code-only receipt (emulators, diagnostic-grade) | A date printed after a spaced price, wrapped onto two lines or year first with two digits leaves the total its own; a total printed with no currency mark reaches a real review card as the total, asked about; a lost parenthesis and a refund printed as an aside ask about the type; a model that reads the cash on a receipt with a code and no sign is disputed; and a lone card is shown whole at phone width | `118-bare-total.png`, `118-aside-type.png`, `118-lone-card.png` |
+| 121 | Names per item and per sibling, holding the words they show (emulators) | Controls stamped once per item and siblings that show together each named by their item or by what they act on, holding the words they show, on real goal cards, a real review card, import record, insight cards and receipt manager, the dashboard and the AI page, in three languages; the save box's caption on its pill in four palettes; and focus on the checked toggle after a real Enter clears the period chip | `121-goals-1024.png`, `121-review-names.png`, `121-ai-names.png`, `121-save-caption.png`, `121-thumbnails.png` |
+| 122 | The upload area: a CSV that holds still, a slot where a photo will land, and measured chips (emulators) | A CSV's row unmoved while a photo is held past it and a real pointer's drag, the empty slot and the lifted row as a browser paints them in four palettes and at two widths, the handle's and arrows' targets, and the receipt-or-statement chips scored in four palettes, a second press keeping the pick | `122-mid-drag.png`, `122-real-drag.png`, `122-phone-drag.png`, `122-chips.png` |
+| 123 | A focus indicator inside every button, focus and Undo after a delete, and a quiet dashboard (emulators) | Material's indicator inside eleven kinds of button after a real Tab, scored in four palettes; a row deleted by real keys and a real swipe leaving at once with focus on the row now in its place, its notice above a real bottom bar, and Undo bringing it back; the delete made real when the window ends, on leaving and before a sign-out, with no request for an emptied receipt slot; and a real Firestore shutdown under the dashboard reaching no global handler | `123-indicator-fab.png`, `123-deleted-notice.png`, `123-phone-notice.png`, `123-swipe-drawer.png` |
+| 124 | Headings one level apart, focus handed on, and a stylesheet without spec-only rules (emulators) | Every page's and tab's headings one level apart, as Alex and as an account with no data, at two widths and in both themes; the shared focus hand-off after real keys on the layout editor and the receipt viewer; and a served stylesheet with no spec-only rule, its alias utility painting its token, beside the sign-in page's one heading | `124-outline-dashboard.png`, `124-empty-dashboard.png`, `124-login.png` |
 
 Screenshot names are the journey number and what is on screen; a re-run
 overwrites rather than accumulating. A partial re-check after a fix adds
@@ -2905,7 +3178,7 @@ width.
 Two more readings, in journey 15's order: with the split field open on the
 card, and — once the split has made two — with the merge menu open over
 the part. What is pinned is what these controls own: every **Split**,
-**Merge into…** and **Remove** trigger inside its own card's box and 40px
+**Merge…** and **Remove** trigger inside its own card's box and 40px
 tall, and the open split field inside that box too — the 288px probe's own
 reading of them, taken here at the wizard's real width:
 
@@ -2986,11 +3259,16 @@ question already answered by Keep. Everything below is in the card's extras
 row, where the date chip stood.
 
 **Add tag** is the last control in that row, after whatever tags the reader
-suggested. Tap it → the field opens in its place, placeholder *New tag*,
+suggested, named *Add tag to* the row's description around the words it
+shows, as **Add location** and **Notes** name their row
+([ADR 0192](ADR/0192-a-control-repeated-per-item-names-its-item-in-its-own-text-too-a-button-is-named-in-every-branch-and-an-unlabelled-switch-fails-the-axe-pass.md)).
+Tap it → the field opens in its place, placeholder *New tag*,
 pointed at a list of the tags the account already files by, so the browser
 offers them itself and narrows them as the letters go in. Type `lunch` →
 Enter → the tag renders as a chip of its own, its remove button named
-*Remove tag lunch*, and focus is back on **Add tag** for the next one. The
+*Remove tag lunch*, a 40px target round its smaller box, as every chip
+removal on the card is ([In a hidden pane](#in-a-hidden-pane) says how to
+hit-test one), and focus is back on **Add tag** for the next one. The
 field spells what it takes the way the account already spells it — trimmed,
 lowercased, cut at 30 characters — so a capital typed here comes back
 lowered, which is the spelling the transaction filter finds the row by.
@@ -3053,8 +3331,8 @@ is missing from — on this review, August 14th and ¥, so the filled row reads
 no date question of its own; its category is the fallback offered to a row
 nothing suggested one for, wearing the low-confidence dot that says so. While it
 was blank its extras carried **Remove**, **Add location** and **Add tag** and
-nothing else — no Split on a row with no amount, no Merge into… on a blank
-one; filled, it gains **Split**. **Merge into…** joins it only while the
+nothing else — no Split on a row with no amount, no Merge… on a blank
+one; filled, it gains **Split**. **Merge…** joins it only while the
 scanned row shares its currency and carries no duplicate badge of its own —
 a flagged row takes part in no merge, on either side. The location trigger
 is what a row with no location shows in place of the chip journey 11 edits.
@@ -3202,13 +3480,13 @@ the duplicate check, the original for its new amount and the part because
 it is new; a part is exempt from reading as its original's twin within the
 batch, so the batch half of that re-check flags neither.
 
-Then **Merge into…** in the part's extras, after **Split**. The trigger
+Then **Merge…** in the part's extras, after **Split**. The trigger
 exists only while another filled row shares the currency, which until the
 split none did. Open it → the menu lists the original alone, as
 *description · amount · date* — the row's description, *¥359*, *Aug 14,
 2026* — since the two are the only rows. Pick it → one card again, at the
 printed total *-¥538*, the badge still reading photo 1, and focus on the
-survivor's description trigger: its own **Merge into…** left with the last
+survivor's description trigger: its own **Merge…** left with the last
 other row. The survivor is the original — its description, its date and the
 marks the review put on it stand, and the amount is the one thing summed.
 That new figure sends it back through the duplicate check alone, the row
@@ -3221,7 +3499,7 @@ defect, and not on this journey's path.
 
 A blank row and a flagged one are kept off both sides: a card still reading
 *Add a description* or *Add an amount*, or wearing the duplicate badge,
-offers no **Merge into…** and is listed in no other row's menu, so a merge
+offers no **Merge…** and is listed in no other row's menu, so a merge
 never answers a question the reviewer was not shown; a row in another
 currency is not listed either, because nothing here converts.
 
@@ -3294,7 +3572,7 @@ category the provider picked is not part of the pass — it is a real answer
 to a real description, and it is allowed to be anything. All three rows
 carry **Split** in their extras, each worth at least two of its own minor
 units (journey 15's floor). The cent row and the sub-unit row also carry
-**Merge into…** now, since a second filled row shares each one's currency;
+**Merge…** now, since a second filled row shares each one's currency;
 the yen row carries none — nothing else in the batch is in JPY, and nothing
 here converts between currencies.
 
@@ -3955,13 +4233,22 @@ Open one of the parts for edit.
 other parts are edited on their own,"* and the rest of the form still edits
 that one row's own fields normally.
 
-Delete each of the three rows through the list, one at a time.
+Delete each of the three rows through the list, one at a time. Each leaves
+the list at once under a notice offering **Undo**, and its delete waits ten
+seconds for it
+([ADR 0197](ADR/0197-a-deleted-transaction-can-be-brought-back-for-ten-seconds-because-the-delete-waits.md));
+each next delete makes the one before it real. After the third, either
+leave its notice alone, the pointer off it, until it goes ten seconds on,
+or leave the page by the app's own navigation, which makes the delete real
+at once. Read nothing back before then: a row inside its window has left
+the list but is not yet deleted. Nor reload or close the tab inside the
+window, which can keep the row.
 
 **Pass — the confirmation, and the restore.** Each delete reads *"Delete
 this part of \"e2e-27 split\"? Its other parts stay,"* naming the purchase
-rather than the ordinary delete message. After the third, the list shows no
-row for the description, the dashboard chart reads what it did before the
-journey started, and the console shows no errors.
+rather than the ordinary delete message. Once the third delete is real,
+the list shows no row for the description, the dashboard chart reads what
+it did before the journey started, and the console shows no errors.
 
 Three shots: the split section mid-entry with the remainder line showing,
 the list with all three parts and their badges, and one delete confirmation
@@ -4379,7 +4666,13 @@ or failed, so its own figure is the restore's evidence rather than this step's.
 
 **The restore.** Delete the row through the list, which takes the stored
 receipt object with it, then clear the completed entry from the AI settings
-page. That page's **Clear Queue** control is disabled while nothing is
+page. The row leaves the list at once, but its delete waits ten seconds for
+the notice's **Undo**
+([ADR 0197](ADR/0197-a-deleted-transaction-can-be-brought-back-for-ten-seconds-because-the-delete-waits.md)):
+go to the AI settings page by the app's own navigation, which makes the
+delete real as the list's page goes, or wait for the notice to go first;
+never by a reload or a typed address inside the window, which can keep the
+row. That page's **Clear Queue** control is disabled while nothing is
 pending, so the completed record goes through the queue's own seam from the
 page's console:
 
@@ -4388,11 +4681,11 @@ await ng.getComponent(document.querySelector('app-ai-settings-page'))
   .offlineQueue.clearCompleted();
 ```
 
-**Pass — the restore.** The Transactions list shows the count it did before
-the journey, the Offline Queue card reads the pending figure it started at —
-the completed record is the one thing that card never counted, which is why
-it is cleared by name — and no new `error`-level console entry across the
-whole journey.
+**Pass — the restore.** The Transactions list, opened again, shows the
+count it did before the journey, the Offline Queue card reads the pending
+figure it started at — the completed record is the one thing that card
+never counted, which is why it is cleared by name — and no new
+`error`-level console entry across the whole journey.
 
 Two shots: the wizard's queued notice with the app offline, and the drained
 row in the list carrying its receipt icon.
@@ -4711,8 +5004,13 @@ Arm journey 50's observer, and **Import 1 Transaction**.
 
 **Pass — the write.** The wizard lands on `/transactions`, and the row is
 there under the description recorded. Delete it through the list — its receipt
-goes with it — and search for the description: none. Then go to
-`/import/history` through the app's own links — **Your Data** in the
+goes with it — and leave the notice alone, the pointer off it, until it goes:
+the row leaves the list at once, but its delete waits ten seconds for the
+notice's **Undo**
+([ADR 0197](ADR/0197-a-deleted-transaction-can-be-brought-back-for-ten-seconds-because-the-delete-waits.md)),
+and a search inside that window finds none whether or not anything was
+deleted. Once the notice has gone, search for the description: none. Then
+go to `/import/history` through the app's own links — **Your Data** in the
 navigation, then its **View History** button — and delete the record the
 Import wrote by its own **Delete**; the list reads back without it. Both links
 are the app's router, so `window` and what this journey keeps on it survive
@@ -4930,8 +5228,14 @@ this run is authorised to make) → *2 transactions imported*.
 income` and `e2e-53 expense` stand under the two categories copied into the
 file, and the expense row carries **one** tag, `a; b` — not two.
 
-Delete both through the list, and search `e2e-53`: none. Delete the exported
-file at the end of the run.
+Delete both through the list. Each leaves the list at once and waits ten
+seconds for its notice's **Undo** before it is deleted
+([ADR 0197](ADR/0197-a-deleted-transaction-can-be-brought-back-for-ten-seconds-because-the-delete-waits.md));
+the second delete makes the first real. Leave the second's notice alone,
+the pointer off it, until it goes, or leave the page by the app's own
+navigation and come back; then search `e2e-53`: none. A search inside the
+window finds none whatever was deleted, and a reload inside it can keep the
+row. Delete the exported file at the end of the run.
 
 Two shots: the preview, and the two rows in the list.
 
@@ -5902,8 +6206,12 @@ reports that:
 const audit = el => axe.run(el, {
   runOnly: { type: 'tag', values: ['wcag2a', 'wcag2aa'] },
   // The whole-page rules core/services/testing/axe.ts disables for a fragment (DISABLED_RULES).
-  rules: Object.fromEntries(['html-has-lang', 'document-title', 'landmark-one-main', 'landmark-unique',
-    'landmark-banner-is-top-level', 'page-has-heading-one', 'bypass', 'region'].map(id => [id, { enabled: false }])),
+  rules: {
+    ...Object.fromEntries(['html-has-lang', 'document-title', 'landmark-one-main', 'landmark-unique',
+      'landmark-banner-is-top-level', 'page-has-heading-one', 'bypass', 'region'].map(id => [id, { enabled: false }])),
+    // button-name without explicit-label, as axeOptions() runs it: a hidden, empty <label for> names no switch.
+    'button-name': { enabled: true, checks: { 'explicit-label': { enabled: false } } },
+  },
   resultTypes: ['violations'],
 }).then(r => r.violations.map(v => `${v.id} ${v.nodes.length}`));
 await audit(document.querySelector('.select-bar'));  // []
@@ -6161,6 +6469,7 @@ type grade).
      focused: document.activeElement === browse && browse.matches(':focus-visible'),
      ring: parseFloat(style.outlineWidth) + parseFloat(style.outlineOffset),
      own: getComputedStyle(browse).outlineStyle,
+     indicator: getComputedStyle(browse.querySelector(':scope > .mat-focus-indicator'), '::before').display,
      room: [box.top - clip.top, clip.right - box.right, clip.bottom - box.bottom, box.left - clip.left]
        .map(Math.round),
    });
@@ -6169,8 +6478,12 @@ type grade).
    **Pass — the ring shows on all four sides.** `focused` is `true`, Browse
    holding keyboard focus; `ring` is 4, the zone's 2px outline and its 2px
    offset (5 with high contrast on, switched as
-   [Switching the theme](#switching-the-theme) says); `own` is `'none'`, so
-   one ring shows; and every `room` figure — top, right, bottom, left — is
+   [Switching the theme](#switching-the-theme) says); `own` and `indicator`
+   both `'none'`, so one ring shows: Browse's own outline is cleared, and so
+   is the focus indicator every other Material button draws inside itself
+   since
+   [ADR 0196](ADR/0196-sibling-controls-say-what-they-act-on-a-name-holds-its-shown-words-a-focused-button-shows-an-indicator-inside-it-focus-stays-in-the-list-after-a-delete-and-a-failed-dashboard-read-is-quiet.md);
+   and every `room` figure — top, right, bottom, left — is
    at least `ring`, the right and left **5**. The first run of journeys 111
    to 116 read `[8, 5, 149, 5]` with high contrast off and on. Tab used to
    land on the zone itself, then a `role="button"` with a tab stop, and the
@@ -6389,7 +6702,7 @@ every report the app's error handler logs (`global-error-handler.ts:39`).
      user menu names *Sam Lee* in both.
    - Shot: `80-reloaded-as-sam.png`, tab 1.
 2. **A sign-out from tab 2.** Arm both. In tab 2, the header's user menu →
-   **Sign Out** (`header.component.ts:208-211`).
+   **Sign Out** (`header.component.ts:218-223`).
    - **Pass, tab 2:** `{ marker: 'armed', fresh: false, path: '/login' }` —
      its own sign-out took it to the sign-in page and reloaded nothing. Its
      `departing` is recorded as a diagnostic: its own sign-out is not the
@@ -6948,7 +7261,7 @@ curl -s -H 'Authorization: Bearer owner' "$FS/users/<alex-uid>" |
 6. **The rail.** Still at 1024px:
 
    ```js
-   [...document.querySelectorAll('app-recent-transactions .card-title, app-upcoming-bills .card-title, app-budget-progress mat-card-title')]
+   [...document.querySelectorAll('app-recent-transactions .card-title, app-upcoming-bills .card-title, app-budget-progress [mat-card-title]')]
      .map(t => [t.textContent.trim(), Math.round(t.getBoundingClientRect().height),
        Math.round(parseFloat(getComputedStyle(t).lineHeight))]);
    ```
@@ -6956,8 +7269,12 @@ curl -s -H 'Authorization: Bearer owner' "$FS/users/<alex-uid>" |
    **Pass:** each title's height is its one line's, with **View All**, or
    **Manage**, and the trigger on the row below it where they do not fit
    beside it. The first run found Upcoming Bills breaking its title to keep
-   them beside it at this width, while the other two dropped theirs. Shot:
-   `84-rail-1024.png`.
+   them beside it at this width, while the other two dropped theirs. The
+   three titles are `h2`s now, Budget Progress's carrying `mat-card-title`
+   as an attribute
+   ([ADR 0194](ADR/0194-one-painted-contrast-helper-and-one-focus-hand-off-a-card-is-scored-part-by-part-and-no-page-skips-a-heading-level.md)),
+   so the read finds it by the attribute rather than the element it was.
+   Shot: `84-rail-1024.png`.
 7. **Dark.** Switch as [Switching the theme](#switching-the-theme) says, and
    `ratio(document.querySelector('.card-menu-trigger mat-icon'))` with the
    helpers of [Reading a painted colour](#reading-a-painted-colour).
@@ -9002,8 +9319,11 @@ and recorded as such.
    `cloudLLMProvider` and `claudeService` are private and `available`
    protected, TypeScript's words, which the running page does not enforce.
    Flush the page ([In a hidden pane](#in-a-hidden-pane)). **Pass:** the
-   Anthropic Claude card shows a **モデル** (*Model*) select reading
-   *Claude Sonnet 5 (Recommended)*. Open it by its trigger, then:
+   Anthropic Claude card shows a **Claude モデル** (*Claude model*) select
+   reading *Claude Sonnet 5 (Recommended)*, its label naming the provider
+   since
+   [ADR 0196](ADR/0196-sibling-controls-say-what-they-act-on-a-name-holds-its-shown-words-a-focused-button-shows-an-indicator-inside-it-focus-stays-in-the-list-after-a-delete-and-a-failed-dashboard-read-is-quiet.md).
+   Open it by its trigger, then:
 
    ```js
    [...document.querySelectorAll('.cdk-overlay-pane mat-option')].map(o => o.textContent.trim());
@@ -9138,7 +9458,7 @@ real click.
    sign-out's reset, `reinitialize(undefined)`, supersedes both, and the
    Pass reads the same for one load or two.
 2. **The page's own sign-out.** The header's user menu → **Sign Out**
-   (`header.component.ts:208-211`). **Pass:** `location.pathname` reads
+   (`header.component.ts:218-223`). **Pass:** `location.pathname` reads
    `'/login'` and `window.__f` is still defined: the page awaited its
    sign-out and navigated, and reloaded nothing. Then read, in separate
    evaluations, until it holds:
@@ -9262,7 +9582,7 @@ decision (ADR 0180), and nothing here reads them.
 
    The rule starts and points at midnight UTC on the 1st of next month, and
    that is the point of it. Step 2 loads the dashboard, whose catch-up
-   (`dashboard.component.ts:456`) posts every occurrence of an active rule
+   (`dashboard.component.ts:498`) posts every occurrence of an active rule
    that has come due. A rule seeded the way journey 93 seeds its own, on a
    5th already past, would post a row in the orphan category on that load,
    and the journey would be reading a row it did not write. A pointer in
@@ -9536,9 +9856,9 @@ click.
    ```
 
    It reads `true`: the page has read the keys, so a blur saves. Then
-   focus the Gemini card's empty **APIキー** (*API Key*) field and Tab out
-   of it, an empty save with no key typed; with the pane hidden, dispatch
-   its blur instead,
+   focus the Gemini card's empty **Gemini APIキー** (*Gemini API key*) field
+   and Tab out of it, an empty save with no key typed; with the pane
+   hidden, dispatch its blur instead,
    `document.querySelector('app-ai-settings-page input[placeholder="AIza..."]').dispatchEvent(new FocusEvent('blur'))`.
    Press **今すぐ同期** (*Sync Now*): it stays enabled during a save, on
    purpose (ADR 0180), so the press lands. Start a readiness probe beside
@@ -9925,11 +10245,14 @@ through its `MatDatepickerInput`, whose field is private, as above.
 
    **Pass:** `browser` `'en-US'`, `html` `'en'`, `locale` `'en-US'`, `shared`
    `true` — one adapter serves both inputs — and `fields` `[['From',
-   '10/01/2026', 'Open calendar'], ['To', '10/31/2026', 'Open calendar']]`:
+   '10/01/2026', 'Open calendar: From'], ['To', '10/31/2026', 'Open calendar: To']]`:
    the month's own first and last day, in Alex's fixed `MM/DD/YYYY`, October
-   2026 in the first run. The account and the browser agree here, so a page
-   that still followed the browser would read the same; step 2 is where the
-   two part.
+   2026 in the first run, and each calendar button named for its own field.
+   The two read *Open calendar* alike until
+   [ADR 0196](ADR/0196-sibling-controls-say-what-they-act-on-a-name-holds-its-shown-words-a-focused-button-shows-an-indicator-inside-it-focus-stays-in-the-list-after-a-delete-and-a-failed-dashboard-read-is-quiet.md)
+   filled `datepicker.openCalendarFor` with each field's label. The account
+   and the browser agree here, so a page that still followed the browser
+   would read the same; step 2 is where the two part.
 2. **A Japanese account in an English browser.** Write the language past the
    rules, with the mask on that one field:
 
@@ -9944,7 +10267,7 @@ through its `MatDatepickerInput`, whose field is private, as above.
    Reload, which is the issue's own cold path, open the panel, flush the page
    and read step 1's read. **Pass:** `browser` still `'en-US'`, `html`
    `'ja'`, `locale` `'ja-JP'`, and `fields` `[['開始', '10/01/2026',
-   'カレンダーを開く'], ['終了', '10/31/2026', 'カレンダーを開く']]`. The
+   'カレンダーを開く：開始'], ['終了', '10/31/2026', 'カレンダーを開く：終了']]`. The
    labels and the toggles' names are the account's language's, and the dates
    keep the account's fixed order: a language moves the words and the locale,
    never a pattern the account pinned. Shot: `101-filters-ja.png`, the open
@@ -10164,7 +10487,11 @@ step 6's chip as `'本月新增: 電費'` after the switch.
 - **The calendar's words.** `app-datepicker-intl.spec.ts`, under *a rendered
   picker*, reads each label from the catalog; `app.smoke.spec.ts` builds the
   app's own provider graph and reads the filters' two toggles as the
-  `datepicker.openCalendar` key, since Karma serves no catalog.
+  `datepicker.openCalendarFor` key, since Karma serves no catalog, and the
+  calendar's own labels as the root's; with no catalog it cannot tell the
+  two apart, so `transaction-filters.component.spec.ts`, *names each
+  calendar button for its own date field, in* en, ja and tc, reads each
+  one's words.
 - **The forms.** `transaction-filters.component.spec.ts`, the recurring
   dialog's spec (a cleared start, a parse error on the start and on the end,
   **Save** held) and `household-goal-dialog.component.spec.ts`.
@@ -11035,8 +11362,8 @@ diagnostic-grade, and recorded as such.
    ```
 
    Flush the page: the kept refund's chip reads *Groceries*. Then merge the
-   refund into the kept refund, both incomes, with the method the card's
-   **Merge into…** item calls, `(click)="mergeInto(row, target)"`:
+   refund into the kept refund, both incomes, with the method each target
+   in the card's **Merge…** menu calls, `(click)="mergeInto(row, target)"`:
 
    ```js
    const table = ng.getComponent(document.querySelector('app-transaction-preview-table'));
@@ -11870,13 +12197,18 @@ const rows = [...document.querySelectorAll('app-file-dropzone .file-item')];
   badges: rows.map(r => r.querySelector('.image-number')?.textContent.trim() ?? null),
   arrows: rows.map(r => [...r.querySelectorAll('.reorder-btn')].map(b => b.disabled)),
   names: rows.map(r => [...r.querySelectorAll('button')].map(b => b.getAttribute('aria-label'))),
-  drag: rows.map(r => [!r.classList.contains('cdk-drag-disabled'), !!r.querySelector('.drag-handle')]),
+  drag: rows.map(r => [r.classList.contains('cdk-drag') && !r.classList.contains('cdk-drag-disabled'),
+    !!r.querySelector('.drag-handle')]),
   banner: !!document.querySelector('app-file-dropzone .error-banner'),
 });
 ```
 
 `arrows` is each row's up and down arrow, `true` where it is disabled, and
-`drag` whether the row can be dragged and has a handle.
+`drag` whether the row can be dragged and has a handle. A row that is no
+photo is no drag item at all, so it carries neither `cdk-drag` nor
+`cdk-drag-disabled`, and the read asks for the first before the second
+([ADR 0193](ADR/0193-a-row-that-is-no-photo-is-no-drag-item-the-receipt-or-statement-chips-are-measured-and-the-upload-area-shows-where-a-photo-will-land.md)):
+the absent `cdk-drag-disabled` alone read a CSV's row as draggable.
 
 1. **One tab stop.** Focus the stepper's first header from the console,
    `document.querySelector('.mat-step-header').focus()`, then press **Tab**
@@ -11894,6 +12226,7 @@ const rows = [...document.querySelectorAll('app-file-dropzone .file-item')];
      zone: ['role', 'tabindex', 'aria-label'].map(a => zone.getAttribute(a)),
      ring: [style.outlineStyle, style.outlineWidth, style.outlineOffset],
      own: getComputedStyle(browse).outlineStyle,
+     indicator: getComputedStyle(browse.querySelector(':scope > .mat-focus-indicator'), '::before').display,
      name: browse.querySelector('.mdc-button__label').textContent.trim(),
      icon: browse.querySelector('mat-icon').getAttribute('aria-hidden'),
      hint: !!hint && zone.contains(hint) && hint.textContent.trim(),
@@ -11902,12 +12235,16 @@ const rows = [...document.querySelectorAll('app-file-dropzone .file-item')];
 
    **Pass:** `focused` `true`; `zone` `[null, null, null]`, no role, no tab
    stop and no name; `ring` `['solid', '2px', '2px']`, drawn round the zone,
-   and `own` `'none'`, so one ring shows; `name` *Browse Files*, its glyph
-   `'true'`, hidden; and `hint` *Supports CSV, PDF, images, and JSON
-   backups*, the hint inside the zone that Browse's `aria-describedby`
-   names, `dropzone-hint-<n>`. Tab used to land on the zone itself, and a
-   second Tab on Browse. Read Browse's words from `.mdc-button__label`, not
-   by walking its child nodes ([In a hidden pane](#in-a-hidden-pane)). The
+   and `own` and `indicator` both `'none'`, so one ring shows: Browse's own
+   outline is cleared, and so is the focus indicator every other Material
+   button draws inside itself since
+   [ADR 0196](ADR/0196-sibling-controls-say-what-they-act-on-a-name-holds-its-shown-words-a-focused-button-shows-an-indicator-inside-it-focus-stays-in-the-list-after-a-delete-and-a-failed-dashboard-read-is-quiet.md);
+   `name` *Browse Files*, its glyph `'true'`, hidden; and `hint` *Supports
+   CSV, PDF, images, and JSON backups*, the hint inside the zone that
+   Browse's `aria-describedby` names, `dropzone-hint-<n>`. Tab used to land
+   on the zone itself, and a second Tab on Browse. Read Browse's words from
+   `.mdc-button__label`, not by walking its child nodes
+   ([In a hidden pane](#in-a-hidden-pane)). The
    first run read the ring's colour as `rgb(63, 81, 181)`. The read
    finishes the page's animations first: the zone eases every property it
    changes, its outline included, and a hidden pane holds a transition at
@@ -12004,11 +12341,12 @@ const rows = [...document.querySelectorAll('app-file-dropzone .file-item')];
    ```
 
    **Pass:** `focused` `true`, `ring` `['solid', '3px', '2px']`, a ring of 5,
-   `own` `'none'`, and every side of the room at least 5: the first run read
-   `[8, 24, 149, 24]` (journey 79's step 5 reads the same room at 375px,
-   where the sides are 5). A zoom on the zone shows the ring whole, outside
-   its dashed border. Shot: `111-ring-high-contrast.png`. Then
-   `setHighContrast(false)`, and read the class gone.
+   `own` and `indicator` `'none'`, and every side of the room at least 5:
+   the first run read `[8, 24, 149, 24]` (journey 79's step 5 reads the
+   same room at 375px, where the sides are 5). A zoom on the zone shows the
+   ring whole, outside its dashed border. Shot:
+   `111-ring-high-contrast.png`. Then `setHighContrast(false)`, and read the
+   class gone.
 5. **In Japanese.** Switch the language with journey 101's call,
    `{ language: 'ja' }`, in this tab, and read step 1's object again.
    **Pass:** `name` *ファイルを選択*, `hint` *CSV、PDF、画像、JSON
@@ -12036,7 +12374,8 @@ const rows = [...document.querySelectorAll('app-file-dropzone .file-item')];
   key held across the hand-off press nothing where focus lands, so one file
   of three goes and the picker is never asked.
 - **The ring.** *rings the zone while Browse has keyboard focus, 3px under
-  high contrast, and clears Browse's own*. A real keyboard's
+  high contrast, and clears Browse's own*, its outline and its focus
+  indicator both. A real keyboard's
   `:focus-visible` and the clip at a real width are what the journey adds.
 - **The step under axe.** `import-wizard.component.spec.ts`, under *the
   empty upload step, under the axe sweep*: *finds nothing on the step* and
@@ -12082,6 +12421,11 @@ remove reads *Remove file N (name)*, N its place among the files that are
 not photos
 ([ADR 0187](ADR/0187-repeated-controls-name-their-item-the-upload-area-has-one-button-and-numbers-photos-among-photos-resting-text-is-a-token-sentences-end-in-the-readers-stop-and-a-spec-that-expects-nothing-fails.md),
 [receipt-import.md](receipt-import.md), [accessibility.md](accessibility.md)).
+Such a row is no drag item at all now, so a photo dragged past it no longer
+slides it aside until the drop, and a drop's two indices count the photos
+alone
+([ADR 0193](ADR/0193-a-row-that-is-no-photo-is-no-drag-item-the-receipt-or-statement-chips-are-measured-and-the-upload-area-shows-where-a-photo-will-land.md);
+journey 122 reads the row still mid-drag).
 Every pick goes through the dropzone's hidden input, as journey 88's step 6
 hands its file over. The picker is counted as journey 111 counts it, armed
 after each load, and `e2ePicks` reads `[]` after every step: nothing here
@@ -12131,14 +12475,19 @@ the drag are made at the pane's own width.
    zone.onFileDrop = event => { window.e2eDrops.push([event.previousIndex, event.currentIndex]); return drop(event); };
    const rows = [...document.querySelectorAll('app-file-dropzone .file-item')];
    const handle = rows[2].querySelector('.drag-handle').getBoundingClientRect();
-   const first = rows[0].getBoundingClientRect();
+   const onto = rows[1].getBoundingClientRect();
    [[Math.round(handle.left + handle.width / 2), Math.round(handle.top + handle.height / 2)],
-     [Math.round(handle.left + handle.width / 2), Math.round(first.top + 4)]];
+     [Math.round(handle.left + handle.width / 2), Math.round(onto.top + onto.height / 2)]];
    ```
 
-   Drag photo 2 by its handle from the first point to the second, above the
-   CSV's row, as a real pointer: press, move at least twice, release.
-   **Pass:** `window.e2eDrops` `[[2, 0]]`; `rows`
+   Drag photo 2 by its handle from the first point to the second, the
+   middle of photo 1's row, as a real pointer: press, move at least twice,
+   release. Aim at photo 1's row, not the CSV's above it: CDK sorts only
+   among its drag items, and a pointer over a row that is none sorts
+   nothing, so a photo carried onto the CSV's row without crossing photo
+   1's drops where it started, as the dropzone's spec holds.
+   **Pass:** `window.e2eDrops` `[[1, 0]]`, photo 2 to the first place among
+   the photos; `rows`
    `['e2e-112.csv', 'e2e-112-b.png', 'e2e-112-a.png']`, the CSV still at
    index 0 and the two photos swapped; `badges` and `arrows` as before; and
    `names` renumbered, *Move photo 1 (e2e-112-b.png) up* first among the
@@ -12150,9 +12499,12 @@ the drag are made at the pane's own width.
      [...document.querySelectorAll('app-file-dropzone .file-item')].map(r => getComputedStyle(r).transform)];
    ```
 
-   **Pass:** `[0, ['none', 'none', 'none']]`. CDK slides aside every row a
-   dragged photo passes, the CSV's too; the drop writes the photos back into
-   the photos' own rows, and the CSV snaps back. Shot:
+   **Pass:** `[0, ['none', 'none', 'none']]`. CDK slides aside only its drag
+   items, the photos' rows; the CSV's row is none, and holds its place
+   throughout. The drop moves photo 2 to the first place among the photos
+   and writes them back into the photos' own rows. While the CSV's row was a
+   drag item that was only disabled, a photo dragged past it slid it aside,
+   and it snapped back at the drop. Shot:
    `112-after-handle-drag.png`.
 
    **In Japanese and Traditional Chinese.** Switched as journey 109's step
@@ -12258,10 +12610,14 @@ the drag are made at the pane's own width.
   and 2 and the first photo's up arrow is disabled*, *with two photos before
   a CSV, the second photo's down arrow is disabled*, *a photo's arrow steps
   past a CSV and leaves it in place*, *a drop reorders photos among
-  themselves*, *a downward drop reorders photos among themselves*, *a drop
-  on the CSV's row leaves the list as it was*, *offers no drag on a
-  non-photo row*, *names two CSVs of one name apart, and the photo among the
-  photos*, and *names carry the badge's number in* en, ja and tc. Under
+  themselves* and *a downward drop reorders photos among themselves*, each
+  handing `onFileDrop` the photos' own indices, *a drop on the CSV's row
+  leaves the list as it was*, *offers no drag on a non-photo row*, whose
+  drag items are the photos alone, *holds a CSV's row still while a photo
+  is dragged past it* and *moves nothing for a photo dropped on the CSV's
+  row*, both through mouse events the spec dispatches past CDK's start,
+  *names two CSVs of one name apart, and the photo among the photos*, and
+  *names carry the badge's number in* en, ja and tc. Under
   *focus after a photo moves*, its six cases, among them *hands focus to
   Move up when Enter moves a photo to the last place*, *follows a photo a
   click moves past a CSV to the first place* and *moves a photo one place
@@ -12278,7 +12634,9 @@ the drag are made at the pane's own width.
   in badge order once a photo is moved past a CSV*.
   `import-wizard.smoke.spec.ts`: *a mixed pick confirms its photos in the
   order their badges show*, each stored receipt image's bytes read back
-  from the Storage emulator against its photo.
+  from the Storage emulator against its photo, and *a photo dragged by its
+  handle past the CSV is read where it was dropped, the CSV held still*, on
+  the real wizard.
 
 **What it does not drive.** **Process with AI** on the photos, which needs a
 provider, and the order they are read in, which the smoke holds; a touch
@@ -12429,13 +12787,17 @@ same root classes, and its painted ratio.
   reads both as a browser paints them, on the real card.
 - **The fade.** `opacity:check` fails a resting fade written in a
   stylesheet or a template, from one file.
-- **The names.** `goal-progress-card.component.spec.ts`: *names its Edit and
-  Delete by the goal in* en, ja and tc. `icon-labels:check`'s sixth rule
-  reads a component that another template stamps per item, as the Goals tab
-  stamps this card.
+- **The names.** `goal-progress-card.component.spec.ts`: *names its Edit,
+  Delete, View Transactions and Contribute by the goal in* en, ja and tc.
+  `icon-labels:check`'s sixth rule reads a component that another template
+  stamps per item, as the Goals tab stamps this card, and since
+  [ADR 0192](ADR/0192-a-control-repeated-per-item-names-its-item-in-its-own-text-too-a-button-is-named-in-every-branch-and-an-unlabelled-switch-fails-the-axe-pass.md)
+  reads a control's own words as well as its `aria-label`. The card's View
+  Transactions and Contribute, which read the same on every card, now name
+  the goal too, and journey 121's step 3 reads them.
 - **The sweep.** `app.smoke.spec.ts`'s walkthrough writes a goal with every
   part the card draws, through the client, and sweeps the card's header,
-  progress, items and note under axe in view.
+  progress, items, note and actions under axe in view.
 
 **What it does not drive.** A goal reached, whose note keeps the card's own
 colour, which the spec holds; a contribution, a link or a save, none of
@@ -13015,9 +13377,15 @@ read only, by emulation.
   reads the ring as a browser computes it from a real key's or a real
   click's `:focus-visible`.
 - **The gate.** `icon-labels:check`'s sixth rule fails a control a template
-  stamps per item whose name carries none of the item. It reads no plain
-  button whose only words sit inside an `@if`, which is how the filters'
-  toggle went unnamed in one state (ADR 0187's *Known gaps*).
+  stamps per item whose name carries none of the item, and since
+  [ADR 0192](ADR/0192-a-control-repeated-per-item-names-its-item-in-its-own-text-too-a-button-is-named-in-every-branch-and-an-unlabelled-switch-fails-the-axe-pass.md)
+  it reads a control's own words as well as its `aria-label`. The eighth
+  now reads a plain button too, and fails one whose only words sit inside
+  an `@if` with no plain `@else`, an `@switch` with no `@default` or an
+  `@for` with no `@empty`, which is how the filters' toggle went unnamed in
+  one state (ADR 0187's *Known gaps*); and the ninth fails two controls of
+  one template that can show together under one bare `aria-label` key
+  ([ADR 0196](ADR/0196-sibling-controls-say-what-they-act-on-a-name-holds-its-shown-words-a-focused-button-shows-an-indicator-inside-it-focus-stays-in-the-list-after-a-delete-and-a-failed-dashboard-read-is-quiet.md)).
 
 **What it does not drive.** The other per-item names ADR 0187 gives, which
 their specs hold: the camera's, the receipt manager's and the form's image
@@ -13281,9 +13649,9 @@ never two stops together, and no stop after a question's own mark.
   and *leaves focus a dialog no menu opened dropped on the document, for the
   page's own recovery (pin)*; and `transaction-list.component.spec.ts`,
   under *TransactionListComponent focus after a dialog a row menu opened
-  (real template)*, *hands focus back to the row's menu trigger when its
-  Delete confirm is cancelled*, from the desktop actions menu and the
-  phone's trailing menu.
+  (real template)*, *hands focus to the row's menu button when its Delete
+  confirm is cancelled*, from the desktop actions menu, the phone's trailing
+  menu and the phone's swipe drawer.
   The journey reads it on a real menu and a real form.
 - **The gate.** `i18n:check` fails a sentence joined in code with a literal
   stop.
@@ -13772,6 +14140,1039 @@ neither Settings nor a second tab can switch it while one is open.
 The journey leaves three imported rows. Clear From, or leave the page, and
 end in English.
 
+### 121. Names per item and per sibling, holding the words they show
+
+**Emulators**, as Alex, at the pane's own width of 1024px, after journey 120,
+in English ([the run order](#emulator-journeys)), with no provider. Controls
+stamped once per item still read alike where their name was their own text:
+a goal's *View Transactions* and *Contribute*, the review card's *Add
+location*, *Add tag* and *Notes*, an import record's buttons, an insight
+card's, the dashboard's two *View All* and every receipt thumbnail's alt.
+Sibling controls that can show together shared one bare name: the form's two
+*Close* dismissals, and the AI page's three key removals, three links and
+three test buttons. The review card's *Split* and merge triggers were not
+named by the words they show, and the filter panel's two text boxes were
+named by their placeholders alone. Each is now named by its item or by what
+it acts on, and each name holds the words the control shows
+([ADR 0192](ADR/0192-a-control-repeated-per-item-names-its-item-in-its-own-text-too-a-button-is-named-in-every-branch-and-an-unlabelled-switch-fails-the-axe-pass.md),
+[ADR 0196](ADR/0196-sibling-controls-say-what-they-act-on-a-name-holds-its-shown-words-a-focused-button-shows-an-indicator-inside-it-focus-stays-in-the-list-after-a-delete-and-a-failed-dashboard-read-is-quiet.md),
+[accessibility.md](accessibility.md)). The first run met four more of the
+same kind on the way, the AI page's two *Forget all*, the filters' two *Open
+calendar*, the period chip's clear named *Close* and a toggle group with no
+name, and read each again after its fix (steps 8, 10 to 12). Every name is
+read from the DOM ([In a hidden pane](#in-a-hidden-pane)); real clicks, keys
+and typing are made at the pane's own width, and 320px is a read only, by
+emulation. The language is switched through the page's own write, as in
+journey 119's step 3, to `ja`, to `tc` and back to `en`, and a step that
+names Japanese and Traditional Chinese reads again after each switch.
+
+**Reading a name against its words.** Paste these first in every evaluation
+that reads names. `shown` is what the control shows with its glyphs left
+out; `holds` is the house test, the shown words whole inside the name,
+compared in the page's language with any case; a trailing ellipsis is left
+out of the shown words, as *Merge…* shows one:
+
+```js
+const nameOf = el => el.getAttribute('aria-label') ?? (el.getAttribute('aria-labelledby') ?? '')
+  .split(/\s+/).filter(Boolean).map(id => document.getElementById(id)?.textContent.trim()).join(' ');
+const shown = el => {
+  const copy = el.cloneNode(true);
+  copy.querySelectorAll('[aria-hidden="true"], mat-icon').forEach(n => n.remove());
+  return copy.textContent.replace(/\s+/g, ' ').trim();
+};
+const holds = el => {
+  const l = document.documentElement.lang || 'en';
+  return nameOf(el).replace(/\s+/g, ' ').toLocaleLowerCase(l)
+    .includes(shown(el).replace(/…$/, '').toLocaleLowerCase(l));
+};
+const read = (selector, root = document) => [...root.querySelectorAll(selector)].map(el => {
+  const r = el.getBoundingClientRect();
+  return [nameOf(el), shown(el), holds(el), Math.round(r.width), Math.round(r.height)];
+});
+```
+
+1. **Three rows with receipts.** On `/transactions`, through the page's own
+   service, three expense rows of today holding one, two and three images
+   built in the page, their ids kept in the tab for journey 123:
+
+   ```js
+   const tx = ng.getComponent(document.querySelector('app-transactions')).transactionService;
+   const tile = colour => new Promise(done => {
+     const c = Object.assign(document.createElement('canvas'), { width: 16, height: 16 });
+     const g = c.getContext('2d'); g.fillStyle = colour; g.fillRect(0, 0, 16, 16);
+     c.toBlob(done, 'image/png');
+   });
+   const ids = [];
+   for (const [count, description] of [[1, 'e2e one image'], [2, 'e2e two images'], [3, 'e2e three images']]) {
+     const receiptFiles = [];
+     for (let i = 0; i < count; i++) {
+       receiptFiles.push(new File([await tile(['#c62828', '#1565c0', '#2e7d32'][i])], `e2e-121-${count}-${i}.png`, { type: 'image/png' }));
+     }
+     ids.push(await tx.addTransaction({ type: 'expense', amount: count * 5, currency: 'USD',
+       categoryId: 'food_restaurants', description, date: new Date(), receiptFiles }));
+   }
+   sessionStorage.setItem('e2e.receiptRows', JSON.stringify(ids));
+   ids;
+   ```
+
+   **Pass:** three ids, the rows listed after a reload. `transactionService`
+   is private, TypeScript's word, which the running page does not enforce,
+   as journey 14 says.
+2. **The dashboard's two View All.** On `/dashboard`,
+   `read('.view-all-link')`. **Pass:**
+   `[['View All Recent Transactions', 'View All', true, 68, 40], ['View All Upcoming Bills', 'View All', true, 68, 40]]`:
+   each link names its card around the words it shows, at the 40px floor.
+   Both read *View All* alone before, at 68 by 21, under the 24px minimum.
+3. **A goal's four actions.** On `/budgets?tab=goals`, make two goals with
+   real clicks and typing through **Add Goal**, *e2e-121 bike* and *e2e-121
+   trip*, each with a target. On `/transactions`, link *Bookshop* to *e2e-121
+   bike* through its edit form's goal control, and save. Back on the Goals
+   tab, flushed:
+
+   ```js
+   [...document.querySelectorAll('app-goal-progress-card')].map(card => [
+     card.querySelector('.goal-name').tagName,
+     read('.goal-actions button, mat-card-actions button', card),
+     [...card.querySelectorAll('.goal-actions button')].map(b => Math.round(b.getBoundingClientRect().left))]);
+   ```
+
+   **Pass:** each goal's name an `H2`; on *e2e-121 bike*'s card *Edit
+   e2e-121 bike* and *Delete e2e-121 bike*, 40 by 40, then *View
+   Transactions for e2e-121 bike* and *Contribute to e2e-121 bike*; on
+   *e2e-121 trip*'s card the same with no *View Transactions*, which shows
+   only once a row feeds the goal; any other goal's card, such as journey
+   113's, is read the same way; and every `holds` `true`. Edit and Delete
+   stand 8px apart: the first run read them at x 528 and 576, where they had
+   stood at 536 and 576, butting, their touch spans overlapping. In Japanese and
+   Traditional Chinese **Pass:** every `holds` `true`, the names in their
+   catalogs' words, *「e2e-121 bike」の取引を表示* and *「e2e-121 bike」に積み立てる*,
+   *檢視交易：「e2e-121 bike」* and *存入「e2e-121 bike」*. Shot:
+   `121-goals-1024.png`.
+4. **The form's three closes.** On `/transactions`, a real click on **Add
+   Transaction**, and the dialog flushed once it carries `mdc-dialog--open`.
+   Hand the form both offers in its model, as a scan would:
+
+   ```js
+   const form = ng.getComponent(document.querySelector('app-transaction-form'));
+   form.suggestedCurrency.set({ code: 'JPY', reason: 'session' });
+   form.suggestedCoordinates.set({ lat: 35.68, lng: 139.77 });
+   'offered';
+   ```
+
+   Flush the dialog, then
+   `read('app-transaction-form .dialog-header-close, app-transaction-form .suggestion-dismiss')`.
+   **Pass:** three names, each its own: *Close* for the dialog, *Dismiss
+   the currency suggestion* and *Dismiss the location suggestion*; in
+   Japanese *閉じる*, *通貨の提案を閉じる* and *場所の提案を閉じる*; in
+   Traditional Chinese *關閉*, *關閉貨幣建議* and *關閉地點建議*. The two
+   dismissals' boxes read 32 by 32; Material's 48px touch span stays round
+   each, unmeasured, and they are left so. Leave through the form's
+   **Cancel**.
+5. **The review card's six, on two rows.** On `/import/file`, drop a two-row
+   CSV named `rows.csv` as journey 115's step 4 drops its file, both rows
+   dated today:
+
+   ```js
+   const d = new Date().toLocaleDateString('en-CA');
+   const dt = new DataTransfer();
+   dt.items.add(new File([`date,description,amount\n${d},e2e-121 coffee beans,-12.50\n${d},e2e-121 bus pass,-40.00\n`], 'rows.csv', { type: 'text/csv' }));
+   document.querySelector('app-file-dropzone .dropzone')
+     .dispatchEvent(new DragEvent('drop', { bubbles: true, cancelable: true, dataTransfer: dt }));
+   'dropped';
+   ```
+
+   Real clicks on **Process with AI** and **Continue**, then:
+
+   ```js
+   [...document.querySelectorAll('.transaction-card')].map(card =>
+     read('.split-trigger, .merge-trigger, .remove-trigger, .location-add, .tag-add, .add-notes-btn', card));
+   ```
+
+   **Pass:** six entries a card, every `holds` `true` and every height at
+   least 40, each name holding its own card's description, so the two cards
+   read apart: on the first, *Split e2e-121 coffee beans into two rows*
+   showing *Split*, *Merge e2e-121 coffee beans into another row* showing
+   *Merge…*, *Remove e2e-121 coffee beans*, *Add location to e2e-121 coffee
+   beans*, *Add tag to e2e-121 coffee beans*, and *Notes for e2e-121 coffee
+   beans* at 74 by 40, where Notes stood 74 by 36. In Japanese and
+   Traditional Chinese the same, every `holds` `true`. Shot:
+   `121-review-names.png`. Then real clicks on **Continue** and **Import 2
+   Transactions**.
+6. **The import record.** On `/import/history`,
+   `read('app-import-history mat-card-actions button')`. **Pass:** the
+   record's two, *View transactions (2) from rows.csv (11/19/2026 5:33 PM)*
+   on the first run and *Delete rows.csv (…) from import history* with the
+   same date and time, the import's own; each `holds` `true`, in Japanese
+   and Traditional Chinese too.
+7. **Insight cards.** On `/reports`, a real click on the **Insights** tab,
+   and the open tab body flushed ([In a hidden pane](#in-a-hidden-pane));
+   then `read('app-insight-card mat-card-actions button')`. **Pass:** among
+   them *View transactions: Falling (Groceries)* and *Show transactions:
+   Payday effect*, the cards the seed's rows raise, each `holds` `true`, in
+   Japanese and Traditional Chinese too.
+8. **The AI page.** Load `/ai`, and put a made-up value into each key's
+   model, never into its field: nothing is typed, no field loses focus and
+   nothing is pressed, so no key is saved and none is tested:
+
+   ```js
+   const page = ng.getComponent(document.querySelector('app-ai-settings-page'));
+   for (const key of ['geminiApiKey', 'openaiApiKey', 'claudeApiKey']) page[key].set('e2e-121-not-a-key');
+   ng.applyChanges(page);
+   'set';
+   ```
+
+   Then:
+
+   ```js
+   [...document.querySelectorAll('app-ai-settings-page mat-card')].filter(c => c.querySelector('.api-key-field'))
+     .map(card => [card.querySelector('.api-key-field mat-label').textContent.trim(),
+       read('.api-key-field button, mat-card-actions a, mat-card-actions button', card)]);
+   ```
+
+   **Pass:** three cards, their fields labelled *Gemini API key*, *OpenAI
+   API key* and *Claude API key*; on each *Remove the Gemini API key*, *Get
+   API Key for Gemini* showing *Get API Key*, and *Test Key for Gemini*
+   showing *Test Key*, and the same for OpenAI and Claude; every `holds`
+   `true`, in Japanese and Traditional Chinese too. The page's switch,
+   `read('app-ai-settings-page button[role=switch]')`, reads *Auto-sync when
+   online*. Then the memory clears,
+   `read('app-ai-settings-page button[mat-stroked-button]')`. **Pass:**
+   among them *Forget all remembered categories* and *Forget all remembered
+   tags*, each showing *Forget all*, `holds` `true`, 40px tall; in Japanese
+   *記憶したカテゴリをすべて削除* and *記憶されたタグをすべて忘れる*, in Traditional
+   Chinese *將已記住的分類全部忘記* and *將已記住的標籤全部忘記*. The first run met
+   both named *Forget all*, the same in English and in Traditional Chinese
+   and apart in Japanese only by the catalog's chance, before *fix: the AI
+   page's two Forget all buttons say what they forget*; it read them apart
+   after the fix. At 320px, a read only, made on a page reloaded at that
+   width after each language switch:
+   `[...document.querySelectorAll('app-ai-settings-page .api-key-field .mdc-floating-label')].every(l => l.scrollWidth <= l.clientWidth)`
+   is `true` in each language: every label whole. After a live resize or a
+   live language switch the first read finds the labels cut, since the
+   field measures its label's notch from an observer
+   ([In a hidden pane](#in-a-hidden-pane)). Shot: `121-ai-names.png`.
+   Reload: the made-up values go with the page.
+9. **The filter panel's two boxes.** On `/transactions`, open the filters
+   with a real click on their toggle, then:
+
+   ```js
+   const box = document.querySelector('app-transaction-filters .search-input');
+   const before = [box.getAttribute('aria-label'), box.getAttribute('placeholder')];
+   box.removeAttribute('placeholder');
+   [before, box.getAttribute('aria-label')];
+   ```
+
+   **Pass:** `[['Search transactions', 'Search transactions...'], 'Search transactions']`:
+   named in the placeholder's words without its dots, and still named with
+   the placeholder gone; *取引を検索* in Japanese, *搜尋交易* in Traditional
+   Chinese. A reload puts the placeholder back. Type *Parking* into the box
+   and click **Save search**, both real; flush, and with
+   [Reading a painted colour](#reading-a-painted-colour)'s arithmetic pasted:
+
+   ```js
+   const box = document.querySelector('app-transaction-filters .save-label-input');
+   const label = document.querySelector(`app-transaction-filters label[for="${box.id}"]`);
+   [box.value, label.textContent.trim(), getComputedStyle(label).fontSize, ratio(label),
+     read('.save-search-row button', document.querySelector('app-transaction-filters')).map(([name, , , w, h]) => [name, w, h])];
+   ```
+
+   **Pass:** `['Parking', 'Name for this search', '12px', 6.87, [['Save', 40, 40], ['Cancel', 40, 40]]]`:
+   a real label, shown while the box holds the query, where nothing said
+   what the box was for. In the other palettes, switched as journey 122
+   switches them, the caption reads 9.37 with high contrast, 5.84 in dark
+   and 11.12 in dark with high contrast; in Japanese *この検索の名前*, in
+   Traditional Chinese *此搜尋的名稱*. Hold the panel's host at 280px,
+   `document.querySelector('app-transaction-filters').style.width = '280px'`,
+   flush, and in a later evaluation:
+
+   ```js
+   const host = document.querySelector('app-transaction-filters');
+   const label = host.querySelector('.save-name-label');
+   const pill = host.querySelector('.save-search-row').getBoundingClientRect();
+   [label.scrollWidth <= label.clientWidth, Math.round(label.getBoundingClientRect().width),
+     [Math.round(pill.width), Math.round(pill.height)],
+     [...host.querySelectorAll('.save-search-row button')].map(b => (r => [Math.round(r.width), Math.round(r.height),
+       r.left >= pill.left && r.right <= pill.right])(b.getBoundingClientRect()))];
+   ```
+
+   **Pass:** the caption whole, 152px wide, the pill 256 by 60, and Save
+   and Cancel 40 by 40 inside it, as the first run read. Put the width back
+   (`style.width = ''`) and close the box with a real click on **Cancel**.
+   Shot: `121-save-caption.png`. Then
+   `read('app-transaction-filters .clear-btn')`. **Pass:**
+   `[['', 'Clear all', false, 94, 40]]`: the button has no `aria-label`, so
+   `nameOf` reads nothing, and it is named by its own words, *Clear all*,
+   at 94 by 40, where it stood 94 by 33.
+10. **The calendar buttons.** With the filters open,
+    `read('app-transaction-filters mat-datepicker-toggle button')`.
+    **Pass:** *Open calendar: From* and *Open calendar: To*, 40 by 40, each
+    holding its field's label; in Japanese *カレンダーを開く：開始* and
+    *カレンダーを開く：終了*, in Traditional Chinese *開啟日曆：從* and
+    *開啟日曆：至*. On `/budgets?tab=recurring`, **Add** and then **Add end
+    date**, and the same read on the dialog, `mat-datepicker-toggle button`.
+    **Pass:** *Open calendar: Start Date* and *Open calendar: End Date
+    (Optional)*; *：開始日* and *：終了日（任意）* after the same words in
+    Japanese, *：開始日期* and *：結束日期（選填）* in Traditional Chinese.
+    Cancel. On `/household`, **New budget**, and the same read. **Pass:**
+    *Open calendar: Starts on* and *Open calendar: Ends on (optional)*, and
+    in Japanese and Traditional Chinese the rule's two. Cancel. The
+    transaction form's one date field keeps *Open calendar*. The first run
+    met the filters' two both named *Open calendar*, before *fix: the
+    filters' two calendar buttons name their date field*; the two dialogs
+    had the same pair and were named in the same fix.
+11. **The period chip's clear.** On `/dashboard`, choose last month through
+    the period picker: real clicks on **Select Month**, on **Select Month**
+    in its menu and on the month. Then
+    `read('app-period-selector .period-chip .clear-btn')`. **Pass:** the
+    first run's `[['Clear Oct 2026', '', true, 24, 24]]`, the chip's words
+    whole in the name; *2026年10月をクリア* in Japanese and *清除 2026年10月*
+    in Traditional Chinese. It was named *Close* before *fix: the period
+    chip's clear button says what it clears*. Focus the clear from the
+    console, press **Enter**, a real key, flush, and in a later evaluation:
+
+    ```js
+    const toggle = document.activeElement.closest('mat-button-toggle');
+    [!!document.querySelector('app-period-selector .period-chip'), !!toggle && ng.getComponent(toggle).value,
+      toggle?.classList.contains('mat-button-toggle-checked'), document.activeElement.matches(':focus-visible')];
+    ```
+
+    **Pass:** `[false, 'thisMonth', true, true]`: the chip gone and focus on
+    the checked **This Month** toggle, the clear having taken its own focus
+    with it.
+12. **Single-choice groups.** On each page below, flushed, the names of
+    `mat-button-toggle-group, mat-radio-group, [role=radiogroup]` through
+    `nameOf`. **Pass:** none empty: Settings' category manager *Category
+    type* (*カテゴリの種類*, *類別類型*), its Theme and Font size as before;
+    the dashboard's period selector *Period* (*期間*, *期間*); Reports →
+    Categories *Type* (*種類*, *類型*) and Reports → Forecast *Forecast
+    period* (*予測期間*, *預測期間*); in their dialogs, the recurring rule's
+    *Type*, the goal form's *Goal type* (*目標の種類*, *目標類型*), the
+    contribute dialog's *Add or take back* (*追加するか戻すか*, *存入或取回*) and
+    the transaction form's *Type*. The first run met the category manager's
+    Expenses / Income group with no name, before *fix: the category
+    manager's type group has a name*, which named the seven others beside
+    it.
+13. **The receipt manager's thumbnails.** On `/data`, a real click on
+    **Manage receipt images**, and the dialog flushed once open. Then
+    `[...document.querySelectorAll('app-receipt-image-manager img.thumbnail')].map(img => img.alt)`,
+    and the description its link carries, the tooltip's words, through the
+    element its `aria-describedby` names:
+    `document.getElementById(document.querySelector('app-receipt-image-manager .thumbnail-link').getAttribute('aria-describedby'))?.textContent.trim()`.
+    **Pass:** *Receipt image 1 of 3 for e2e three images* and on, each alt
+    naming its row and no two alike; the description *View image*, which
+    does not repeat the row;
+    in Traditional Chinese *「e2e three images」的第 1 張收據圖片（共 3 張）* first,
+    and in Japanese the row's name before the same count. A thumbnail used
+    to read *Receipt image 1 of 3*, its number and nothing of its row, and
+    two rows' thumbnails could read alike. Shot: `121-thumbnails.png`.
+    Close.
+
+**What stays in the specs, and why.** Each surface's spec reads its names in
+en, ja and tc through its real template: `goal-progress-card.component.spec.ts`,
+`transaction-preview-table.component.spec.ts`,
+`receipt-image-manager.component.spec.ts`, `import-history.component.spec.ts`,
+`insight-card.component.spec.ts`, `recent-transactions.component.spec.ts`,
+`upcoming-bills.component.spec.ts`, `ai-settings-page.component.spec.ts`,
+`transaction-filters.component.spec.ts`, `period-selector.component.spec.ts`
+and the group's own spec for each group named; label in name is read with
+`holdsShownWords` (`core/services/testing/axe.ts`). `icon-labels:check`
+holds the same shapes in every template: a repeated control's own text, a
+name in every branch of its blocks, siblings that can show together, and a
+single-choice group's name. `app.smoke.spec.ts` sweeps the goal card's
+actions; `import-wizard.smoke.spec.ts` reads two rows' add buttons apart.
+
+**What it does not drive.** A screen reader's own reading of any name,
+whether it reads the search box's placeholder after its name among them;
+the per-item names whose surfaces need data the seed does not raise, which
+their specs hold; and a saved key, which no step makes.
+
+**Cleanup.** The three rows, the two goals and the link, the two imported
+rows and their record stay for journey 123 and then the
+[teardown](#teardown). The keys were never saved, every dialog was
+cancelled, the panel's width is put back, and the language ends in English.
+
+Five shots: the goal cards, the review card's names, the AI page's names, the
+save box's caption, and the thumbnails' manager.
+
+### 122. The upload area: a CSV that holds still, a slot where a photo will land, and measured chips
+
+**Emulators**, as Alex, at the pane's own width of 1024px, after journey 121,
+in English ([the run order](#emulator-journeys)), with no provider, on
+`/import/file`. A photo dragged past a CSV between two photos slid the CSV's
+row aside until the drop, since CDK slides every item a drag passes, a
+disabled one too. The CSV's row is now no drag item at all, and the drop
+counts the photos alone. While a photo is held the list shows where it will
+land as an empty dashed outline in the primary's text colour; the lifted
+row keeps up with the pointer and its own layout; the handle is a 40px
+target under grab cursors; the reorder arrows' touch targets stop at their
+own 28px; and only a row that can move lifts on hover. The
+receipt-or-statement chips are scored in four palettes in both states, and
+a second press on the picked chip keeps it picked
+([ADR 0193](ADR/0193-a-row-that-is-no-photo-is-no-drag-item-the-receipt-or-statement-chips-are-measured-and-the-upload-area-shows-where-a-photo-will-land.md),
+[receipt-import.md](receipt-import.md), [accessibility.md](accessibility.md)).
+The list is read with journey 111's list read and the photos built with
+journey 112's tile. Real clicks and the real drag are made at the pane's own
+width; 375px is a read and a drag by page events, by emulation.
+
+**The palettes**, in steps 2 and 5, are switched by the root's three classes,
+as the specs' `inPalette` switches them: `light-theme`, `dark-theme` and
+`high-contrast`, in the four sets plain (`['light-theme']`), high contrast
+(`['light-theme', 'high-contrast']`), dark (`['dark-theme']`) and dark with
+high contrast (`['dark-theme', 'high-contrast']`). None of the readers
+[Switching the theme](#switching-the-theme) warns of stands on this screen.
+Note `document.documentElement.className` first, switch in one evaluation,
+
+```js
+const set = ['dark-theme', 'high-contrast'];  // one of the four
+for (const name of ['light-theme', 'dark-theme', 'high-contrast']) document.documentElement.classList.toggle(name, set.includes(name));
+'switched';
+```
+
+and read in a later one, with
+[Reading a painted colour](#reading-a-painted-colour)'s arithmetic pasted;
+put the noted classes back after.
+
+1. **A CSV between two photos.** Hand the input three files in this order,
+   as journey 112's step 2 hands its own:
+
+   ```js
+   const tile = colour => new Promise(done => {
+     const c = Object.assign(document.createElement('canvas'), { width: 16, height: 16 });
+     const g = c.getContext('2d'); g.fillStyle = colour; g.fillRect(0, 0, 16, 16);
+     c.toBlob(done, 'image/png');
+   });
+   const dt = new DataTransfer();
+   dt.items.add(new File([await tile('#c62828')], 'a.png', { type: 'image/png' }));
+   dt.items.add(new File(['date,description,amount\n2026-10-01,e2e-122 coffee,-4.50\n'], 'rows.csv', { type: 'text/csv' }));
+   dt.items.add(new File([await tile('#1565c0')], 'b.png', { type: 'image/png' }));
+   const input = document.querySelector('app-file-dropzone input[type=file]');
+   input.files = dt.files; input.dispatchEvent(new Event('change', { bubbles: true }));
+   'handed';
+   ```
+
+   Flush, then:
+
+   ```js
+   const list = document.querySelector('app-file-dropzone .file-list');
+   const rows = [...list.querySelectorAll(':scope > .file-item')];
+   const box = el => (r => [Math.round(r.width), Math.round(r.height)])(el.getBoundingClientRect());
+   const meets = (a, b) => (p => (q => p.left < q.right && q.left < p.right && p.top < q.bottom && q.top < p.bottom)(b.getBoundingClientRect()))(a.getBoundingClientRect());
+   const arrows = [...list.querySelectorAll('.reorder-btn')];
+   const handle = list.querySelector('.drag-handle');
+   const lifts = [...document.styleSheets].flatMap(s => { try { return [...s.cssRules]; } catch { return []; } })
+     .flatMap(function flat(r) { return [r, ...(r.cssRules ? [...r.cssRules].flatMap(flat) : [])]; })
+     .filter(r => r.selectorText?.includes('.file-item') && r.selectorText.includes(':hover') && r.style.boxShadow)
+     .map(r => r.selectorText.replace(/\[_ng(content|host)-[^\]]*\]/g, ''));
+   ({
+     drag: rows.map(r => [r.classList.contains('cdk-drag'), !!r.querySelector('.drag-handle')]),
+     handle: [...box(handle), getComputedStyle(handle).cursor],
+     zone: getComputedStyle(document.querySelector('app-file-dropzone .dropzone')).cursor,
+     arrows: arrows.map(box),
+     apart: arrows.every(a => arrows.every(b => a === b || !meets(a.querySelector('.mat-mdc-button-touch-target'), b))),
+     lifts,
+   });
+   ```
+
+   The flatten keeps each rule and its children: in current Chrome, 156 on
+   the second run, every style rule carries a `cssRules` list for nesting,
+   empty where nothing nests, so a flatten that kept only the rules without
+   one dropped every plain rule and read `lifts` `[]`.
+
+   **Pass:** `drag` `[[true, true], [false, false], [true, true]]`, the
+   CSV's row no drag item and no handle; `handle` `[40, 40, 'grab']`; `zone`
+   `'default'` once files are picked; `arrows` each `[28, 28]`, and `apart`
+   `true`, no arrow's touch target over the other arrow; and `lifts` one
+   rule, `.file-list:not(.cdk-drop-list-dragging) .file-item.reorderable:hover`.
+   The handle stood 26 by 26 before, the two arrows' touch spans overlapped
+   10px, and the zone kept `cursor: pointer` after a pick.
+2. **Mid-drag, held by page events.** The press and the moves the specs'
+   shared `dragByHandle` makes (`core/services/testing/drag-by-handle.ts`),
+   for the dropzone's spec and the wizard's smoke: a press on b's handle
+   with the button held and a click count, a move 6px toward a's row, past
+   CDK's 5px start, and a move to the middle of a's row, held there. One
+   evaluation:
+
+   ```js
+   const mouse = (target, type, x, y) => target.dispatchEvent(new MouseEvent(type, { bubbles: true,
+     cancelable: true, view: window, clientX: x, clientY: y, button: 0, buttons: type === 'mouseup' ? 0 : 1, detail: 1 }));
+   const rows = [...document.querySelectorAll('app-file-dropzone .file-list > .file-item')];
+   const grip = rows[2].querySelector('.drag-handle').getBoundingClientRect();
+   const onto = rows[0].getBoundingClientRect();
+   const x = grip.left + grip.width / 2, y = grip.top + grip.height / 2, held = onto.top + onto.height / 2;
+   window.e2eDrag = { x, held, csvTop: rows[1].getBoundingClientRect().top };
+   mouse(rows[2].querySelector('.drag-handle'), 'mousedown', x, y);
+   mouse(document, 'mousemove', x, y - 6);
+   mouse(document, 'mousemove', x, held);
+   'held';
+   ```
+
+   In a later evaluation, flushed, with the page's animations finished:
+
+   ```js
+   const list = document.querySelector('app-file-dropzone .file-list');
+   const row = name => [...list.querySelectorAll(':scope > .file-item:not(.cdk-drag-placeholder):not(.cdk-drag-preview)')]
+     .find(r => r.querySelector('.file-name')?.textContent.trim() === name);
+   const preview = document.querySelector('.cdk-drag-preview'), slot = document.querySelector('.cdk-drag-placeholder');
+   const p = getComputedStyle(preview), s = getComputedStyle(slot);
+   ({
+     still: [Math.round(row('rows.csv').getBoundingClientRect().top - window.e2eDrag.csvTop),
+       row('rows.csv').style.transform, row('a.png').style.transform],
+     preview: [preview.parentElement === list, p.transitionProperty, p.boxShadow, p.opacity],
+     cursor: [getComputedStyle(preview.querySelector('.drag-handle')).cursor, getComputedStyle(list).cursor],
+     slot: [s.borderTopStyle, s.borderTopWidth, s.borderTopColor, getComputedStyle(slot.querySelector('.file-name')).visibility],
+   });
+   ```
+
+   **Pass:** `still` `[0, '', 'translate3d(0px, 172px, 0px)']`: the CSV's
+   row has not moved and carries no transform, while photo a slid 172px down
+   to make room; `preview` drawn in the list itself, its transition
+   `'border-color, box-shadow'` and no longer every property, so it keeps up
+   with the pointer, its shadow the first run's `rgba(0,0,0,.15)` at
+   `0 4px 12px`, and opacity `'1'`; `cursor` `['grabbing', 'grabbing']` over
+   the handle and the whole list; and `slot`
+   `['dashed', '1px', 'rgb(63, 81, 181)', 'hidden']`, an empty outline where
+   the photo will land, with nothing of the row shown in it. Shot:
+   `122-mid-drag.png`. Still held, the outline against the zone in each
+   palette:
+
+   ```js
+   const slot = document.querySelector('.cdk-drag-placeholder');
+   const colour = getComputedStyle(slot).borderTopColor;
+   [ratio(slot, colour), getComputedStyle(document.querySelector('.cdk-drag-preview')).borderTopColor === colour];
+   ```
+
+   **Pass:** each over the 3:1 a graphic needs, and the preview's border the
+   slot's colour in each. The first run read 6.58 plain, 6.58 with high
+   contrast, 6.72 dark and 6.72 dark with high contrast, the figures
+   [ADR 0193](ADR/0193-a-row-that-is-no-photo-is-no-drag-item-the-receipt-or-statement-chips-are-measured-and-the-upload-area-shows-where-a-photo-will-land.md)
+   gives for the hovered zone; the second read 6.30, 6.30, 11.6 and 11.6
+   against the list's first opaque fill, `#f5f5f5` and `#121212`, the
+   figures it gives at rest. Put the classes back, then release, in
+   one evaluation with `mouse` pasted again:
+   `mouse(document, 'mouseup', window.e2eDrag.x, window.e2eDrag.held)`. Once
+   no `.cdk-drag-preview` is left, journey 111's list read. **Pass:** `rows`
+   `['b.png', 'rows.csv', 'a.png']`, the photos swapped round the CSV.
+3. **The pane's own drag.** From `[b, csv, a]`, drag a by its handle up onto
+   b's row with a real pointer, the two points taken from the rects as
+   journey 112's step 1 takes them: press, move at least twice, release.
+   **Pass:** `rows` `['a.png', 'rows.csv', 'b.png']`; and the wizard's
+   preview list followed,
+   `[...document.querySelectorAll('.image-previews .preview-name')].map(n => n.textContent.trim())`
+   reading `['a.png', 'b.png']`. The first run pressed at (884, 470) and
+   released at (884, 284). Shot: `122-real-drag.png`.
+4. **At a phone's width, dark.** Set the pane to 375 by 812, load
+   `/import/file` at that width, switch to the dark theme as
+   [Switching the theme](#switching-the-theme) says, and hand the same three
+   files over. **Pass:** the zone's top,
+   `document.querySelector('app-file-dropzone .dropzone').getBoundingClientRect().top`,
+   at 395, on the first screen (both runs read 403, before the word list
+   came to stand 16px over the steps at phone widths); a photo's row, its
+   `display` and
+   `gridTemplateColumns` read, a grid of `40px 129px 40px`, 111px tall, its
+   handle 40 by 40. Press and move as step 2 does, and read
+   the preview's top before and after one more move,
+   `mouse(document, 'mousemove', window.e2eDrag.x, window.e2eDrag.held + 60)`.
+   **Pass:** the preview 60px lower for the pointer's 60px; its parent the
+   list, `display: grid` with the row's own columns, 259 by 111, so the
+   lifted row keeps its two-line layout; the CSV's row 0px from where it
+   stood with no transform; and photo a 194px down. Release. **Pass:**
+   `['b.png', 'rows.csv', 'a.png']`. Shot: `122-phone-drag.png`. Clear the
+   width and put the theme back.
+5. **The chips.** At 1024px with the photos picked, the **Receipts** and
+   **Statement** chips under the list:
+
+   ```js
+   [...document.querySelectorAll('.image-kind mat-chip-option')].map(chip => {
+     const label = chip.querySelector('.mdc-evolution-chip__text-label');
+     const picked = chip.querySelector('[aria-selected]').getAttribute('aria-selected');
+     return [label.textContent.trim(), picked, ratio(label),
+       picked === 'true' ? ratio(chip.querySelector('.mdc-evolution-chip__checkmark')) : null];
+   });
+   ```
+
+   **Pass:** in each palette the picked chip's label 7.22 and its checkmark
+   7.22; the other chip's label 8.56 in the two light palettes and 14.52 in
+   the two dark ones. A real click on **Statement** swaps the states, and the
+   figures with them. A second real click on the picked chip, on **Statement**
+   and then, picked again, on **Receipts**. **Pass:** its `aria-selected`
+   stays `'true'`, and
+   `ng.getComponent(document.querySelector('app-import-wizard')).imageKind()`
+   keeps its value. A second press used to deselect both chips while the
+   wizard still read the photos as before. Shot: `122-chips.png`.
+
+**What stays in the specs, and why.** `file-dropzone.component.spec.ts`,
+*holds a CSV's row still while a photo is dragged past it* and *moves
+nothing for a photo dropped on the CSV's row*, through the real drag the
+journey's step 2 copies, and the slot, the preview, the cursors and the
+reorder targets; `import-wizard.smoke.spec.ts`'s real drag over the real
+wizard; and `import-wizard.component.spec.ts` for the chips in four palettes
+and in both states, and for a second press. The journey adds a real
+pointer, a real layout at two widths and the colours a browser paints.
+
+**What it does not drive.** A touch drag; the hover lift under a real
+pointer, which a pane cannot hold over a row, so the rule is read from the
+stylesheet; a cursor as the eye sees it, read here as computed; and the
+lifted row's motion frame by frame, which a pane painting a few frames a
+second cannot show.
+
+**Cleanup.** Nothing was imported; each load dropped the picks. The theme
+and the palette classes are back as they were.
+
+Four shots: the held drag, the pane's drag, the drag at 375px, and the chips.
+
+### 123. A focus indicator inside every button, focus and Undo after a delete, and a quiet dashboard
+
+**Emulators**, as Alex, at the pane's own width of 1024px, after journey 122,
+in English and light ([the run order](#emulator-journeys)), with no provider.
+A keyboard-focused icon button was marked only by Material's 12% state
+layer, and other buttons by the app's own outline round them. Every
+Material button now shows Material's own indicator, drawn inside it in the
+button's text colour, 2px wide and 3px with high contrast. After a confirmed
+delete focus fell to the page with the menu's trigger. It now lands on the
+same control of the row now in the deleted row's place, else the row before,
+else the empty state's button. A deleted row now leaves the list at once
+and can be brought back for ten seconds: the delete waits, and is made real
+when the window ends, on leaving the page, when the page is hidden, and
+before a sign-out. The sweep of a deleted row's receipts asks storage only
+for the slots that still hold an image. And the dashboard's five live reads,
+which had no error path, keep what they showed when Firestore shuts down
+under them
+([ADR 0196](ADR/0196-sibling-controls-say-what-they-act-on-a-name-holds-its-shown-words-a-focused-button-shows-an-indicator-inside-it-focus-stays-in-the-list-after-a-delete-and-a-failed-dashboard-read-is-quiet.md),
+[ADR 0197](ADR/0197-a-deleted-transaction-can-be-brought-back-for-ten-seconds-because-the-delete-waits.md),
+[accessibility.md](accessibility.md), [dashboard.md](dashboard.md)). It
+deletes journey 121's three rows with receipts, whose ids are in the tab,
+`JSON.parse(sessionStorage.getItem('e2e.receiptRows'))`, in the order one,
+two and three images, and two seeded rows, *Parking garage* (`tx-hh-6`) and
+*Farmers market* (`tx-hh-3`). Every `:focus-visible` read follows a real
+key; the swipe door is the pane's own drag.
+
+**The rows, read after each delete or Undo**, flushed:
+
+```js
+const rows = [...document.querySelectorAll('app-transaction-list [data-tx-id]')];
+const now = document.activeElement;
+const bar = document.querySelector('mat-snack-bar-container');
+const at = bar?.getBoundingClientRect();
+({
+  rows: rows.length,
+  focus: [rows.findIndex(r => r.contains(now)), now.getAttribute('aria-label'), now.matches(':focus-visible')],
+  notice: bar && [bar.querySelector('.mat-mdc-simple-snack-bar .mat-mdc-snack-bar-label')?.textContent.trim(),
+    bar.querySelector('button')?.textContent.trim(), [Math.round(at.width), Math.round(at.height), Math.round(at.top)],
+    bar.querySelector('[aria-live]')?.getAttribute('aria-live')],
+  said: window.e2eSaid,
+});
+```
+
+`said` is what the app's announcer was asked to say, logged as
+[In a hidden pane](#in-a-hidden-pane)'s *Reading a notice* logs a notice,
+since an announcement is gone from the page by the next read. Arm it once
+per load, on `/transactions`:
+
+```js
+const announcer = ng.getComponent(document.querySelector('app-transactions')).announcer;
+window.e2eSaid = [];
+const say = announcer.announce.bind(announcer);
+announcer.announce = (message, ...rest) => { window.e2eSaid.push(message); return say(message, ...rest); };
+'armed';
+```
+
+A row's document is read past the rules
+([Reading past the rules](#reading-past-the-rules)), from a terminal,
+`curl -s -o /dev/null -w '%{http_code}\n' -H 'Authorization: Bearer owner' "$FS/users/<alex-uid>/transactions/<row-id>"`:
+200 while it is stored, 404 once it is gone.
+
+1. **The focus indicator on every button kind.** Focus each control below
+   with a real **Tab** or **Shift+Tab** from its neighbour, then, with
+   [Reading a painted colour](#reading-a-painted-colour)'s arithmetic
+   pasted:
+
+   ```js
+   const b = document.activeElement;
+   const i = getComputedStyle(b.querySelector(':scope > .mat-focus-indicator'), '::before');
+   [b.matches(':focus-visible'), i.display, i.borderTopStyle, i.borderTopWidth, i.marginTop, i.borderTopLeftRadius,
+     i.borderTopColor === getComputedStyle(b).color, getComputedStyle(b).outlineStyle, ratio(b, i.borderTopColor)];
+   ```
+
+   **Pass:** `true`, `'block'`, `'solid'`, `'2px'`, `'0px'`: Material's own
+   indicator, shown, solid, 2px wide and inside the button; in the
+   button's own text colour, `true`; the app's outline `'none'`; and the
+   last value at least 3. The FAB's corner reads `'16px'`, its own. Read
+   each again in the three other palettes, switched by the root's classes
+   as journey 122 switches them; on `/transactions` the category chips'
+   glyphs then keep the colours chosen for the service's theme
+   ([Switching the theme](#switching-the-theme)),
+   which no read here takes. **Pass:** the width `'3px'` in both
+   high-contrast palettes, and the first run's ratios, plain / high
+   contrast / dark / dark with high contrast:
+
+   | Control | Where | Ratios |
+   |---|---|---|
+   | a row's menu, `.action-btn` | `/transactions` | 8.87 / 8.87 / 14.36 / 14.36 |
+   | the FAB, **Add Transaction** | `/transactions` | 5.97 / 5.97 / 5.52 / 5.52 |
+   | a text button, **Select** | `/transactions` | 5.02 / 5.02 / 8.71 / 8.71 |
+   | **Save search**, in its pill | the filters | 8.48 / 8.48 / 10.67 / 10.67 |
+   | the period chip's clear | `/dashboard` | 8.34 / 8.34 / 6.96 / 6.96 |
+   | the month picker, a month chosen | `/dashboard` | 6.29 / 6.29 / 5.95 / 5.95 |
+   | the receipt viewer's header close | the viewer | 8.87 / 8.87 / 14.36 / 14.36 |
+   | the viewer's footer **Close**, a text button | the viewer | 5.19 / 5.19 / 8.57 / 8.57 |
+   | a flat button, **Add Goal** | `/budgets?tab=goals` | 4.95 / 4.95 / 6.29 / 6.29 |
+   | a stroked button, **Contribute** | `/budgets?tab=goals` | 4.94 / 4.94 / 7.77 / 7.77 |
+   | a pinned answer's pin, pressed | `/search-history` | 6.30 / 6.30 / 5.43 / 5.43 |
+
+   The period chip and the month picker's fill need a month chosen, as
+   journey 121's step 11 chooses one; the picker's fill read
+   `rgb(79, 70, 229)`, where the app's old outline in its one colour stood
+   at 1.09:1. The viewer opens from **View receipt for e2e two images** on
+   `/transactions`. The pin needs a stored answer: in a run of the whole
+   order journeys 92 and 95 leave one, and a run of these journeys alone
+   writes one as journey 92's step 4 does. Pin it with a real click on its
+   pin before the read and unpin it the same way after. Put the classes
+   back and clear the month. Shot: `123-indicator-fab.png`.
+2. **Delete from the desktop menu, by keyboard.** On `/transactions`, arm
+   the announcer, focus *e2e two images*'s menu button from the console,
+   `document.querySelector('[aria-label="More actions for e2e two images"]').focus()`,
+   and press **Enter**, **End** and **Enter**, real keys: the menu, its last
+   item Delete, the confirm. In a hidden pane a **Tab** sent with them can
+   land before the confirm takes focus, so focus the confirm's **Cancel**
+   from the console,
+   `document.querySelector('app-confirm-dialog mat-dialog-actions button').focus()`,
+   and press **Tab** and **Enter**, real keys: its Delete. Before the last
+   Enter, the confirm reads *Are you sure you want to delete "e2e two
+   images"?*. Then the rows read, once; where step 3's Undo follows, focus
+   the notice's **Undo** at the end of that same evaluation,
+   `document.querySelector('mat-snack-bar-container button').focus()`,
+   since the window is ten seconds and a hidden pane's evaluations can
+   outlast it ([In a hidden pane](#in-a-hidden-pane)). **Pass:** `rows` one
+   fewer, 15 to 14 on the first run; `focus`
+   `[1, 'More actions for e2e one image', true]`, the menu button of the
+   row now in the deleted row's place; `notice`
+   *Deleted e2e two images* with its **Undo** action, 344 by 48 at 712 of a
+   768px window, its own live region `'off'`; and `said` holding
+   *Deleted e2e two images. Undo is available for a few seconds.* once:
+   the app's announcer says the notice and names its action, since the
+   snackbar's own region is off. The document still answers 200: the
+   delete waits. Shot: `123-deleted-notice.png`.
+3. **Undo.** Focus the notice's **Undo** from the console and press
+   **Enter**, a real key. **Pass:** the row back at index 1, `rows` 15
+   again, focus on its menu button, `said` ending *Restored e2e two images*,
+   and the document 200.
+4. **A window waited out, with an emptied slot.** On `/data`, **Manage
+   receipt images**, a real click on **Remove image 2 of e2e three
+   images** and on its confirm's **Remove**; close. Past the rules, the
+   row's `receiptUrls` holds its first and third addresses with `''`
+   between them, and its `receiptCount` is 2.
+   Log the storage requests on `/transactions`, after its load:
+
+   ```js
+   window.e2eStorage = [];
+   const open = XMLHttpRequest.prototype.open;
+   XMLHttpRequest.prototype.open = function (method, url, ...rest) {
+     if (String(url).includes('/v0/b/')) window.e2eStorage.push([method, decodeURIComponent(String(url).split('/o/')[1] ?? '').split('?')[0]]);
+     return open.call(this, method, url, ...rest);
+   };
+   'logging';
+   ```
+
+   Delete *e2e three images* as step 2 does, stay on the page with the
+   pointer off the notice, and read the document from a terminal every
+   second or so: a notice that is hovered or focused holds the window.
+   **Pass:** 200 until the window ends and 404 after it: the first run read
+   200 at 7.7 s, 8.9 s and 10.1 s and 404 at 11.3 s. Then
+   `window.e2eStorage`. **Pass:** two `DELETE`s,
+   `users/<alex-uid>/receipts/<row-id>` and
+   `users/<alex-uid>/receipts/<row-id>_2`, and nothing for slot 1, whose
+   image was gone; the sweep used to ask for it, and storage answered 404.
+   Then the Storage emulator's listing, past its rules with the same owner
+   token:
+
+   ```bash
+   curl -s -H 'Authorization: Bearer owner' \
+     'http://127.0.0.1:9199/v0/b/demo-home-account.appspot.com/o?prefix=users%2F<alex-uid>%2Freceipts%2F' |
+     grep -o '<row-id>[^"]*'
+   ```
+
+   **Pass:** it prints nothing: no object of the row is left.
+5. **A window cut short by leaving.** Delete *e2e one image* the same way.
+   **Pass:** the document 200 while the page stands. Open `/dashboard`
+   through the header's router inside the window,
+   `ng.getComponent(document.querySelector('app-header')).router.navigateByUrl('/dashboard')`.
+   **Pass:** 404 straight after, 0.6 s after the delete on the first run;
+   one more `DELETE` in `window.e2eStorage`, the row's one image; the
+   notice gone; and no error notice.
+6. **The phone's menu, dark.** Set the pane to 375 by 812, load
+   `/transactions` at that width and switch to the dark theme. Arm the
+   announcer, focus *Parking garage*'s `.row-menu-btn` from the console and
+   delete as step 2 does, by keyboard. **Pass:** `rows` one fewer, 13 to 12
+   on the first run; the totals line, `.period-totals-line`, one figure
+   lower by the row's amount, $2,550.98 to $2,538.98 on the first run;
+   `focus` on the `.row-menu-btn` of the row now at index 1; and the notice
+   359 by 48, from 692 to 740, above the bottom navigation, whose top is at
+   748, its text 10.15:1 and its **Undo** 5.01:1 and 64 by 40. Undo as
+   step 3 does. **Pass:** the row back at index 1, the totals back, focus on
+   its menu button, and *Restored Parking garage*. Shot:
+   `123-phone-notice.png`.
+7. **The swipe door.** Still at 375px, drag the first row from right to left
+   with the pane's own pointer, from x 234 to x 84 on the first run,
+   pressing on its description line, `.row-description`: the category strip
+   under it, `.row-category`, scrolls sideways on its own and by design
+   starts no swipe, so a drag begun there is a tap that opens the edit form,
+   to be closed by **Cancel**. **Pass:** the drawer open, its **Edit** and
+   **Delete** 72 by 83 and named for the row, *Edit …* and *Delete …*. A
+   real click on **Delete**, and the confirm's **Delete**. **Pass:** the row
+   gone, and focus on the `.row-menu-btn` of the row now at index 0, since
+   the drawer's own button is hidden once it closes. Undo as step 3 does.
+   **Pass:** the row back at index 0 with focus on its menu button, the
+   drawer closed. Shot: `123-swipe-drawer.png`. Clear the width and switch
+   back to light.
+8. **After a reload.** **Pass:** the two rows deleted for real, *e2e one
+   image* and *e2e three images*, are not listed, and the rows Undo brought
+   back, *e2e two images* and *Parking garage*, are.
+9. **A sign-out inside the window.** Delete *Farmers market* as step 2
+   does. **Pass:** the document 200 while the notice is up. Then the
+   header's account menu, **Sign Out**, real clicks. In a slow pane the two
+   clicks may not fit the window, and the row is then deleted by its timer
+   before the sign-out; so they may be made from the console instead, in one
+   evaluation straight after the confirm, `click()` on
+   `app-header .user-menu-button` and then on the menu's **Sign Out**, since
+   what the step proves is the flush before the sign-out. **Pass:** `/login`
+   0.4 s later on the first run and 0.16 s on the second, the document 404
+   by then, and no console error: a sign-out makes the waiting delete real
+   first. Sign Alex back in
+   ([Signing in a seeded account](#signing-in-a-seeded-account)).
+10. **Last: a Firestore shutdown under the dashboard.** On `/dashboard`,
+    note the cards' words, log the page's own failures,
+
+    ```js
+    window.e2eErrors = [];
+    addEventListener('error', e => window.e2eErrors.push(String(e.message)));
+    addEventListener('unhandledrejection', e => window.e2eErrors.push(String(e.reason)));
+    'listening';
+    ```
+
+    and delete the origin's databases with pre-flight check 8's two
+    IndexedDB lines. **Pass:** the console holds Firestore's own warnings,
+    *Terminating Firestore due to IndexedDb database deletion* among them,
+    and the app's *[OfflineQueue] Closing so a newer version can open* and
+    *[RowSharing] The account's households were not read; no share controls
+    are offered*, and no `[GlobalErrorHandler]` line and no error-level line;
+    `window.e2eErrors` `[]`; no *Error* notice; and the cards show what they
+    showed. The session stays: it lives in local storage. The same deletion
+    used to log five `[GlobalErrorHandler] FirebaseError: Firestore shutting
+    down` errors and raise the *Error* notice. Reload before journey 124:
+    the page's Firestore is gone until a load opens it again.
+
+**What stays in the specs, and why.** `focus-indicator.spec.ts` holds the
+indicator on every kind of Material button, its width, its colour and its
+place inside, and the component specs of the filters, the dropzone and the
+saved answers hold it on their own surfaces. `transaction-list.component.spec.ts`
+and `transactions.component.spec.ts` hold focus after a row leaves from each
+of its three doors; `pending-delete.service.spec.ts` the one pending delete,
+its single flush and the sign-out doors; and
+`features/transactions/delete-undo.smoke.spec.ts` the same delete, focus and
+Undo against the emulators, through to the household copy.
+`transaction.service.spec.ts` and `transaction-receipts.smoke.spec.ts` hold
+the sweep's slots. `dashboard.component.spec.ts`, under *a live read that
+fails*, errors each of the five reads; no emulator case does, since a
+shutdown would break the app every later smoke case shares.
+
+**What it does not drive.** A delete that fails and brings the row back,
+which the specs hold; the notice's timer held while it is hovered or
+focused, which `pending-delete.service.spec.ts` holds; the totals line on a
+delete and an Undo from the desktop menu and the swipe door, which the
+first run read at the phone's menu alone (step 6); a tab closed inside the
+window; a held key; and a screen reader's own reading of the notice.
+
+**Cleanup.** *e2e one image*, *e2e three images* and *Farmers market* are
+deleted for real, their receipts with them; *e2e two images* and *Parking
+garage* are back. The answer's pin and the period are as they were, the
+width, the theme and the palette classes too, and Alex is signed in after a
+reload. A stored answer written for step 1 goes with the emulators at the
+[teardown](#teardown).
+
+Four shots: the FAB's indicator, the desktop notice, the phone's notice above
+the bottom bar, and the open drawer.
+
+### 124. Headings one level apart, focus handed on, and a stylesheet without spec-only rules
+
+**Emulators**, as Alex and as an account with no data, at the pane's own
+width of 1024px, after journey 123, in English and light
+([the run order](#emulator-journeys)), with no provider. The dashboard's
+card titles, the budget card's name, the Data page's sections and the first
+empty state under a page's title sat two levels under the page's `h1`, a
+goal's name was no heading, and the sign-in page had none. Each page's
+headings now step one level at a time, and the walkthrough fails a page that
+skips one. The private copies of one focus hand-off are one helper, and the
+stylesheet ships no utility that only a spec names
+([ADR 0194](ADR/0194-one-painted-contrast-helper-and-one-focus-hand-off-a-card-is-scored-part-by-part-and-no-page-skips-a-heading-level.md),
+[ADR 0195](ADR/0195-a-gate-holds-the-test-main-to-the-builders-init-specs-stay-out-of-the-stylesheet-a-lone-date-run-is-silent-and-the-opacity-gate-reads-a-url-in-a-comment-as-a-comment.md),
+[accessibility.md](accessibility.md), [performance.md](performance.md)).
+Real clicks and keys at the pane's own width.
+
+**The empty account.** Before the journey, make a fourth account on the
+Auth emulator with no data, the way `docs/ui-audit/tools/seed-household.mjs`
+makes each seeded one (`accounts:signInWithIdp`, with a Google id token the
+emulator takes unsigned), under a `sub`, a name and an address no seeded
+account uses, and write its session record, in the seed's shape, to a file
+outside the repository that only its owner can read: it carries live
+emulator tokens, as the sessions file does. Nothing is written for it in
+Firestore. It is signed in and out the way
+[Signing in a seeded account](#signing-in-a-seeded-account) swaps a seeded
+one in.
+
+**The outline**, read on each page and in each tab, flushed, the open tab
+body's components with it ([In a hidden pane](#in-a-hidden-pane)):
+
+```js
+const heads = [...document.querySelectorAll('h1, h2, h3, h4, h5, h6, [role=heading]')]
+  .filter(h => h.checkVisibility() && !h.closest('[aria-hidden="true"]'))
+  .map(h => [Number(h.getAttribute('aria-level') ?? (/^H\d$/.test(h.tagName) ? h.tagName[1] : 2)), h.textContent.trim().slice(0, 30)]);
+[heads.map(([level, text]) => `H${level} ${text}`), heads.every(([level], i) => i === 0 || level <= heads[i - 1][0] + 1)];
+```
+
+The second value is `true` where no heading sits more than one level under
+the one before it; a `role="heading"` with no `aria-level` counts as level
+2, as ARIA reads it. An open dialog leaves the page `aria-hidden`, so the
+read gives the dialog's own outline then.
+
+1. **Alex's pages.** The outline of `/dashboard`, `/budgets` in each of its
+   three tabs, `/data`, `/settings`, `/reports` in each of its five tabs,
+   `/household`, `/about`, `/import/file`, `/import/history`,
+   `/search-history` and `/ai`. **Pass:** each opens with its `H1` and reads
+   `true`. The dashboard reads `H1`, its four cards' titles `H2` and
+   Upcoming Bills' day headers `H3` under theirs, where the titles were
+   `H3`; the Data page `H1` over five `H2` sections; a goal's name `H2`.
+   Wherever a page shows an empty state, the first under the page's `h1`
+   reads `H2` and one under a card's title `H3`: the first run read *No
+   goals yet*, *No saved answers yet* and *No sign-ins recorded yet* at
+   `H2`, and *No countries recorded yet* at `H3`. Shot:
+   `124-outline-dashboard.png`.
+2. **The shared hand-off.** On `/settings?panel=dashboard`, arm the
+   announcer as journey 123 does, on `app-dashboard-layout-settings` in
+   place of `app-transactions`. Focus **Move Recent Transactions down** from
+   the console and press **Enter**, a real key; flush, and in a later
+   evaluation read `document.activeElement.getAttribute('aria-label')` and
+   `window.e2eSaid`. **Pass:** focus still on *Move Recent Transactions
+   down*, on the moved row, and *Recent Transactions moved to position 2 of
+   5* said. Focus **Move Recent Transactions up** and press **Enter**.
+   **Pass:** the row back at the top, its Move up disabled, and focus on
+   its *Move Recent Transactions down*. Press **Reset**, as journey 25
+   does, so no layout stays stored. Then the receipt viewer: on
+   `/transactions`, a real click on **View receipt for e2e two images**,
+   flushed once open, and **Next image** focused and pressed with **Enter**
+   until the last image. **Pass:** Next disabled there and focus on
+   **Previous image**. Close.
+3. **The stylesheet.** On a signed-in page, two probes, one wearing the
+   alias utility and one painted with its token:
+
+   ```js
+   const rules = [...document.styleSheets].flatMap(s => { try { return [...s.cssRules]; } catch { return []; } })
+     .flatMap(function flat(r) { return [r, ...(r.cssRules ? [...r.cssRules].flatMap(flat) : [])]; })
+     .filter(r => r.selectorText);
+   const probe = style => Object.assign(document.body.appendChild(document.createElement('span')), style);
+   const [alias, token] = [probe({ className: 'text-fg-secondary' }), probe({})];
+   token.style.color = 'var(--text-secondary)';
+   const read = [rules.length, rules.filter(r => /\.ring(?![\w-])/.test(r.selectorText)).length,
+     rules.some(r => r.selectorText === '.text-fg-secondary'), getComputedStyle(alias).color, getComputedStyle(token).color];
+   alias.remove(); token.remove();
+   read;
+   ```
+
+   **Pass:** `0` rules name the bare `.ring`; `.text-fg-secondary` is in
+   the sheet, though no template on the page may wear it; and the two
+   probes paint one colour, `rgb(55, 65, 81)` in light on the first run,
+   the colour `--text-secondary` resolves to. The flatten is journey 122's
+   step 1's, which keeps each rule and its children. The first run counted
+   792 rules, on a development serve, and the second 889: the count is the
+   page's and the venue's, and the absence is the reading, so long as the
+   count is not 0, which is a flatten that dropped the rules, as the old
+   flatten did on the second run.
+4. **An account with no data.** Swap the empty account in, its record
+   written into local storage and the page reloaded. The welcome shows only
+   to an account that has never closed it, its
+   `preferences.onboardingCompleted` unset: on a new empty account,
+   **Pass:** its welcome dialog reads `['H2 …', 'H3 …']` in order, `true`;
+   **Skip** it. An empty account reused from an earlier run that closed its
+   welcome shows none, as on the second run, and there is nothing to read.
+   Then the outline of `/dashboard`, `/transactions`, `/budgets` in its
+   three tabs, `/reports` in its five, `/data`, `/import/history`,
+   `/search-history` and `/household`. **Pass:** `true` everywhere: on the
+   dashboard the cards' titles `H2` and their empty states `H3`, and on
+   every other page the first empty state `H2` under the page's `H1`.
+   Nothing on them is unnamed, with journey 121's helpers pasted:
+
+   ```js
+   [...document.querySelectorAll('.content-wrapper :is(button, a[href], input, [role=combobox], [role=switch])')]
+     .filter(el => el.checkVisibility())
+     .filter(el => !(nameOf(el) || shown(el) || [...(el.labels ?? [])].map(l => l.textContent.trim()).join(' ')))
+     .map(el => el.outerHTML.slice(0, 80));
+   ```
+
+   reads `[]`; and
+   [Reading a painted colour](#reading-a-painted-colour)'s
+   `lowest(document.querySelector('.content-wrapper'))` lists nothing under
+   its bar. Shot: `124-empty-dashboard.png`.
+5. **The sign-in page.** Sign the empty account out through the header's
+   account menu. On `/login`, the outline, and:
+
+   ```js
+   const title = document.querySelector('app-login h1');
+   const s = getComputedStyle(title);
+   [title.classList.contains('mat-mdc-card-title'), s.fontSize, s.fontWeight, s.lineHeight, s.margin,
+     document.documentElement.scrollWidth === innerWidth];
+   ```
+
+   **Pass:** the outline `['H1 Home Account']`, `true`; and
+   `[true, '22px', '400', '28px', '0px', true]`: one heading, the card's
+   own title, in the look the title had, since the card's own sheet loads
+   after the utilities in the app. Karma loads the sheets the other way
+   round, and there the utilities win, 24px / 700 / 32px with a 16px top
+   margin; `login.component.spec.ts` reads the title in both orders. The
+   page had no heading before *fix: the sign-in
+   page's title is its heading*. The lead line,
+   `app-login p.text-fg-secondary`, paints the colour of step 3's token
+   probe in each of the four palettes, switched by the root's classes as
+   journey 122 switches them; and step 3's rule read finds no `.ring` among
+   the page's 493 rules on the first run and 447 on the second. Shot:
+   `124-login.png`. Sign Alex back in.
+6. **At a phone's width, dark.** Set the pane to 375 by 812, load
+   `/dashboard` at that width and switch to the dark theme as
+   [Switching the theme](#switching-the-theme) says, moving on through the
+   header's router. On `/dashboard`, `/data`, `/ai`, `/reports`,
+   `/settings`, `/search-history`, `/import/history`, `/household` and
+   `/about`, the outline and
+   `document.documentElement.scrollWidth === innerWidth`. **Pass:** `true`
+   and `true` on each, as the first run read them. Clear the width and
+   switch back to light.
+
+**What stays in the specs, and why.** The walkthrough in `app.smoke.spec.ts`
+runs a one-rule `heading-order` pass on every page it opens, with the
+wizard's guard against a page that holds no heading, and holds the login
+page's lead line and the absent `.ring` rule; `axe.spec.ts`, under *the
+heading run*, shows the pass fail on a skipped level; and the tabs the
+walkthrough does not open are held by their components' outline cases and
+by this journey. `focus-when-rendered.spec.ts` holds the shared hand-off,
+its guard and its held-key drop, and each caller's spec its own hand-off.
+`theme-aliases.spec.ts` holds each alias utility painting its token in every
+palette, and
+`login.component.spec.ts` the one `h1` and its look in either sheet order.
+
+**What it does not drive.** The hand-offs of a split purchase's parts and of
+the note lens, since the seed has no split purchase and no note is
+translated without a provider; a key held down across a hand-off, which a
+pane cannot make, so a burst of presses is recorded unjudged as journey
+112's step 4 says, and the helper's spec holds it; the headings a model
+writes into the AI summary and the insight narrative; and the strips' own
+scroll in a tab, which a hidden pane's observer does not run.
+
+**Cleanup.** The layout is reset (step 2), the empty account is signed out,
+Alex is signed in again, and the width and the theme are as they were. The
+empty account itself goes with the emulators, and the file holding its
+session record is deleted with the sessions file at the
+[teardown](#teardown).
+
+Three shots: the dashboard's outline, the empty account's dashboard, and the
+sign-in page.
+
 ## Evidence
 
 Screenshots go to a scratch folder **outside the repo**, named as above, and
@@ -13844,7 +15245,17 @@ clip, photos dragged and moved by a real pointer past a CSV between them,
 resting text painted in four palettes on a real card and beside a real
 chart, names read in a real layout and one at a real phone's width, and a
 Japanese reader's sentences joined on a real card and form (journeys 111 to
-116).
+116); and the shipped parser's reading of a printed total and of a date
+carried onto a real review card (journeys 117 and 118); and a real card's
+sentence naming where its grade came from, and a sort, a filter date and an
+open calendar following a late switch of language, with a tab link on a
+budgets page already open (journeys 119 and 120); and names read against
+the words a real page shows in three languages, a CSV that holds still
+under a real drag with chips painted in four palettes, a focus indicator
+after a real Tab, a real Undo window and a delete made real on leaving and
+before a sign-out, a real Firestore shutdown under the dashboard, and each
+page's headings as Alex and as an account with no data (journeys 121 to
+124).
 
 A journey that could be a spec should be deleted from here and written as one.
 
@@ -13868,7 +15279,7 @@ review card's type or category, the camera's converter, or the form's scanned
 type, and journey 80 on one that touches the session: the auth listener and
 its reload (`auth.service.ts`, `page-reload.ts`), where the web keeps the
 session (`appAuthFactory` in `app.config.ts`), the route guards
-(`auth.guard.ts`), or this protocol's session writes. Journeys 81 to 120 follow
+(`auth.guard.ts`), or this protocol's session writes. Journeys 81 to 124 follow
 it on a branch that touches what each one drives: 81 a theme token, a
 stylesheet's colours or the chart palette; 82 a category colour's reader —
 the category chip, the `categoryGlyph` and `readableOn` pipes, a category
@@ -13946,9 +15357,9 @@ the device reads a receipt's text (`receipt-text-parser.ts`,
 (`verificationTooltip`); 111 the upload area's controls, the host's click
 (`onZoneClick`) or the ring it draws (`frame-ring` in
 `src/theme/_a11y.scss`); 112 a photo's number, move or drop in a pick that
-mixes kinds (`places`, `photoNumber`, `swapWithPhoto`, `onFileDrop`) or the
-rows' button names; 113 the goal card's or the Goals tab's resting colours,
-or the card's Edit and Delete; 114 the forecast's notes and caption or their
+mixes kinds (`places`, `photoNumber`, `swapWithPhoto`, or `onFileDrop` and
+the photo indices it takes) or the rows' button names; 113 the goal card's
+or the Goals tab's resting colours, or the card's Edit and Delete; 114 the forecast's notes and caption or their
 colours; 115 a control named by its label or by its item on a surface it
 reads, or `visually-hidden` in `src/theme/_a11y.scss`; 116 how two
 sentences join (`joinSentences`, `common.sentenceSeparator`) or a caller's
@@ -13956,11 +15367,29 @@ translator; 117 how the device's parser picks its total
 (`tenderedDemotion`, `discountDemotion`, `countsThatMayBeTotal`,
 `settleSharedSigns` in `receipt-text-parser.ts`), how the device lane grades
 it (`agreedAmountGrade`, `disputedAmountGrade`), or the amount flag's place
-on the review card; and 118 how the parser reads a date (`readDate`,
+on the review card; 118 how the parser reads a date (`readDate`,
 `yearLastRuns`, `takesInMoney`), a total with no currency mark
 (`unmarkedTotal`), an aside (`isAside`, `signPatterns`) or a direction
 beside one, how the device lane disputes a model on a receipt that prints a
-code and no sign (`printsACodeAndNoSign`), or the review list's fold.
+code and no sign (`printsACodeAndNoSign`), or the review list's fold; 121 a
+name that holds its item or what it acts on — a goal's, an import record's,
+an insight card's or a dashboard link's, the review card's row actions
+(`splitLabel`, `mergeLabel`, `removeLabel`), a receipt thumbnail's alt
+(`receiptImages.imageNumberOf`), the form's dismissals, the AI page's key
+fields, links, test buttons and memory clears, the filter boxes' names and
+the save box's caption, a date field's calendar button
+(`datepicker.openCalendarFor`), the period chip's clear or a single-choice
+group's name — or a rule of `icon-labels:check`; 122 the upload area's rows
+and drag — its two row templates, `onFileDrop`, the slot and the lifted row
+(`cdk-drag-placeholder`, `cdk-drag-preview`), its cursors and its targets —
+or the receipt-or-statement chips (`chooseImageKind`); 123 a button's focus
+indicator (`.mat-mdc-button-base` in `styles.scss`), where focus lands after
+a row leaves the list, the deferred delete and its notice
+(`PendingDeleteService`, `NotificationService.withAction`) or what flushes
+it, the receipt sweep (`receiptImageSlots`), or the error paths of the
+dashboard's live reads; and 124 a page's heading levels or an empty state's
+`headingLevel`, `focusWhenRendered` or a caller of it, Tailwind's `content`
+or `safelist`, or the sign-in page's title.
 **Journey 78 runs once**, on production, after the merge — when the deploys
 it checks have finished — because what it proves is the deployed rules,
 indexes and callable, which exist only then.

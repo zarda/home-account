@@ -4,11 +4,8 @@ import { Router, provideRouter } from '@angular/router';
 import { SidebarComponent } from './sidebar.component';
 import { TranslationService } from '../../../core/services/translation.service';
 import {
-  paintedBackground,
-  paintedColor,
+  expectPainted,
   provideNoMotion,
-  ratio,
-  settleAnimations,
   withTheme,
 } from '../../../core/services/testing';
 
@@ -129,29 +126,6 @@ describe('SidebarComponent', () => {
   // The current page's row is the marker on every desktop route: its label
   // and icon sit on --surface-active, a mid indigo in dark.
   describe('colours, as painted', () => {
-    /** What `color: var(token)` computes to under the theme on <html> now. */
-    function tokenValue(token: string): string {
-      const probe = document.createElement('span');
-      probe.style.color = `var(${token})`;
-      document.body.appendChild(probe);
-      try {
-        return getComputedStyle(probe).color;
-      } finally {
-        probe.remove();
-      }
-    }
-
-    /** `node` is painted in `token`, and reads at `floor` or better on what is painted behind it. */
-    function expectPainted(node: Element | null, token: string, label: string, floor = 4.5): void {
-      expect(node).withContext(label).toBeTruthy();
-      if (!node) return;
-      settleAnimations(document);
-      expect(getComputedStyle(node).color).withContext(label).toBe(tokenValue(token));
-      expect(ratio(paintedColor(node), paintedBackground(node)))
-        .withContext(`${label} on what it sits on`)
-        .toBeGreaterThanOrEqual(floor);
-    }
-
     it("paints the current page's label and icon in --color-primary-text, the label at AA and the icon at 3:1 on its row, in both themes", async () => {
       await TestBed.inject(Router).navigateByUrl('/budgets');
       fixture.detectChanges();

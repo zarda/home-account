@@ -1,22 +1,37 @@
 import { DestroyRef, Injector, afterNextRender } from '@angular/core';
 
+import { focusDropped } from '../../core/utils/focus.utils';
+
 /** What a component needs to move focus within its own markup. */
-export interface ImportFocusContext {
+export interface FocusContext {
   host: HTMLElement;
   injector: Injector;
   destroyRef: DestroyRef;
+}
+
+export interface FocusOptions {
+  /**
+   * Move focus only when it was left on the document itself (focusDropped),
+   * or inside `from`: wherever else the viewer has put it by then, it stays.
+   * Without it, focus moves wherever it is, which a control that keeps focus
+   * as it disables itself needs: a photo's arrow that a move disables can
+   * keep focus in Chrome, and focus is meant to leave it.
+   */
+  onlyIfDropped?: boolean;
+  /**
+   * The control, or the region, an action was taken from, when it stays on
+   * screen through the swap: focus left in it moves too, as focus left on the
+   * document does. Read only with `onlyIfDropped`.
+   */
+  from?: Element | null;
 }
 
 /**
  * Focuses the first of `selectors` found under the host once the next render
  * has settled. The target of a swap does not exist until the swap has
  * rendered, which is what afterNextRender waits for; registering on a
- * destroyed injector throws NG0911, hence the guard.
- *
- * Focus moves wherever it is by then, unlike household-focus.ts's helper,
- * which moves it only off the document or the control the swap was chosen
- * in: a photo's arrow that a move disables can keep focus in Chrome, and
- * focus is meant to leave it.
+ * destroyed injector throws NG0911, hence the guard, and a component that
+ * goes before that render takes the hand-off with it.
  *
  * Several selectors rather than one because a control's usual landing place
  * is not always on screen. A selector that matches nothing drops focus at the
@@ -28,13 +43,16 @@ export interface ImportFocusContext {
  * (dropHeldRepeats).
  */
 export function focusWhenRendered(
-  { host, injector, destroyRef }: ImportFocusContext,
-  ...selectors: readonly string[]
+  { host, injector, destroyRef }: FocusContext,
+  selectors: string | readonly string[],
+  { onlyIfDropped = false, from = null }: FocusOptions = {}
 ): void {
   if (destroyRef.destroyed) return;
+  const landings = typeof selectors === 'string' ? [selectors] : selectors;
   afterNextRender(
     () => {
-      for (const selector of selectors) {
+      if (onlyIfDropped && !focusDropped() && !holdsFocus(from)) return;
+      for (const selector of landings) {
         const target = host.querySelector<HTMLElement>(selector);
         if (target) {
           target.focus();
@@ -47,6 +65,12 @@ export function focusWhenRendered(
   );
 }
 
+/** Whether focus is on `region` or inside it. */
+function holdsFocus(region: Element | null): boolean {
+  const active = region?.ownerDocument.activeElement;
+  return !!region && !!active && region.contains(active);
+}
+
 /** The guard standing on each window, so arming one releases the last. */
 const standing = new WeakMap<Window, () => void>();
 
@@ -57,9 +81,10 @@ const standing = new WeakMap<Window, () => void>();
  * control it landed on pressed by every repeat after: Clear all's filter
  * toggle closed and opened the panel, Save search opened the box a close
  * had just shut, a remove walked down the list to Browse and the picker,
- * and a photo's arrow sent it to one end and back. A held Space's repeat
- * presses nothing itself, but it arms the button it reaches, and the keyup
- * that ends the hold presses that button.
+ * a photo's arrow sent it to one end and back, a card's Move down took it
+ * to the last row, and a member's Remove asked about the next member. A
+ * held Space's repeat presses nothing itself, but it arms the button it
+ * reaches, and the keyup that ends the hold presses that button.
  *
  * Until that key is let go, the repeats of Enter and Space are cancelled, so
  * no keypress follows and no button is armed, and stopped ahead of every

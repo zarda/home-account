@@ -131,10 +131,21 @@ An arrived translation renders as a panel: a marker line — *Translated from
 is `role="status"`, so it is announced without stealing focus.
 
 Focus does move on each press, because each press removes the control that was
-pressed. Translate is replaced by the panel, so focus lands on Show original;
-Show original removes the panel, so focus goes back to Translate. Without it a
-keyboard reader is dropped on `<body>` and has to walk the whole surface again
-to get back to the note they were reading.
+pressed. Translate is replaced by the panel, so focus lands on Show original,
+or on Retry when the request fails; Show original removes the panel, so focus
+goes back to Translate. Without it a keyboard reader is dropped on `<body>` and
+has to walk the whole surface again to get back to the note they were reading.
+
+The hand-off is the app's one `focusWhenRendered`
+(`src/app/shared/utils/focus-when-rendered.ts`), asked to move only focus the
+lens abandoned: on `<body>` because the pressed button went, or still inside
+the lens. A model can take seconds to answer, and whoever is typing in the
+note field when the answer lands keeps the caret. An Enter or Space held
+through the hand-off has its repeats dropped until the key comes up or is
+pressed afresh, so the button focus lands on is not pressed again by them. An
+answer that lands after the lens has gone, its dialog closed mid-request,
+moves nothing
+([ADR 0194](ADR/0194-one-painted-contrast-helper-and-one-focus-hand-off-a-card-is-scored-part-by-part-and-no-page-skips-a-heading-level.md)).
 
 Re-showing costs nothing — the answer is still in the component — which is
 what makes flipping back and forth reasonable.
@@ -230,7 +241,13 @@ returns to whatever asked for it.
 
 `receiptImageSlots(transaction)` is the model helper that lists live images
 with their slots. Use it rather than walking `receiptUrls`, which carries
-positional tombstones.
+positional tombstones. The three Storage sweeps take their slots from it too —
+deleting a transaction, wiping the account's transactions and removing every
+receipt of one — so Storage is asked only for the slots that still hold an
+image: a tombstone's object went with its image, and asking for it again
+answered not-found and logged an error
+([ADR 0196](ADR/0196-sibling-controls-say-what-they-act-on-a-name-holds-its-shown-words-a-focused-button-shows-an-indicator-inside-it-focus-stays-in-the-list-after-a-delete-and-a-failed-dashboard-read-is-quiet.md),
+applying [ADR 0007](ADR/0007-transactional-receipt-edits.md)).
 
 ### The doors
 
@@ -309,7 +326,10 @@ answer arrives (or on Retry when it fails); Hide translation → back to
 Translate; an arrow pressed at either end of the strip disables itself, so
 focus goes to the other arrow. It is only moved when it was actually
 abandoned — on `<body>`, or still inside the dialog — so a pointer user's
-caret stays where they put it.
+caret stays where they put it. The viewer hands focus on through the same
+`focusWhenRendered` the note lens uses, so a key held through the hand-off
+presses nothing where focus lands, and an answer that arrives after the
+dialog was closed moves nothing.
 
 ### When it fails
 
@@ -351,6 +371,14 @@ download is usually a storage bucket without CORS configuration
 - **The held buttons are written twice.** Each lens holds Translate and
   Retry with `disabledInteractive`, its own hint id sequence and its own
   early return in the handler. Change one and change the other.
+- **The focus hand-off is written once.** Both lenses call
+  `focusWhenRendered` with `{ onlyIfDropped: true, from: this.focus.host }`,
+  the lens's own element, and land on a control by its class
+  (`.show-original-button`, `.hide-translation-button`, `.retry-button`,
+  `.translate-button`, and the arrows' `.previous-button` and
+  `.next-button`). A control that takes a pressed one's place keeps its
+  class: a landing that matches nothing drops focus at the document root, as
+  no call would.
 - The two lenses are deliberately separate components. The note lens stands
   its answer in for the text and reports `showingTranslation` outward; this
   one adds a panel beside an image that never moves, and resets per image

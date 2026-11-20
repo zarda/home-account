@@ -31,6 +31,9 @@ import {
   channels,
   contentWidthPx,
   echoTranslation,
+  expectEachContrastScored,
+  expectPainted,
+  holdsShownWords,
   hoverValue,
   paintedBackground,
   paintedColor,
@@ -3405,6 +3408,76 @@ describe('TransactionPreviewTableComponent, the offer chip through its own templ
   });
 
   /**
+   * Split, Merge and Remove each show a word beside their icon and are
+   * named by the row they act on. A speech-input user says the word shown
+   * (WCAG 2.5.3), so each name holds it whole, read without regard to case
+   * in the reader's own locale; where in the name it stands is the
+   * language's own order, since a Japanese verb ends its sentence. The
+   * icon's ligature is a glyph, not a word, and Merge's ellipsis says only
+   * that a menu follows, so neither is held. A row with no description is
+   * named by the words its controls show, and is offered no Merge.
+   */
+  describe("a row action's name holds the words it shows", () => {
+    const actions = ['.split-trigger', '.merge-trigger', '.remove-trigger'] as const;
+    // On the Coffee Shop row: the words each shows, then its name.
+    const pinned = {
+      en: [['Split', 'Merge…', 'Remove'], ['Split Coffee Shop into two rows', 'Merge Coffee Shop into another row', 'Remove Coffee Shop']],
+      ja: [['分割', '結合…', '削除'], ['Coffee Shopを2つの行に分割', 'Coffee Shopを別の行に結合', 'Coffee Shopを削除']],
+      tc: [['分割', '合併…', '移除'], ['將「Coffee Shop」分割成兩列', '將「Coffee Shop」合併到其他列', '移除「Coffee Shop」']],
+    } as const;
+
+    /** What a control shows: its text, its icons' ligatures left out. */
+    function shownText(control: Element): string {
+      const copy = control.cloneNode(true) as Element;
+      copy.querySelectorAll('mat-icon').forEach(icon => icon.remove());
+      return (copy.textContent ?? '').replace(/\s+/g, ' ').trim();
+    }
+
+    /** The words a speech-input user says: the shown text, a trailing ellipsis folded away. */
+    function spokenWords(shown: string): string {
+      return shown.replace(/(?:…|\.\.\.)$/, '').trim();
+    }
+
+    for (const l of ['en', 'ja', 'tc'] as const) {
+      it(`holds Split's, Merge's and Remove's shown words in their names, on a titled row and a blank one, in ${l}`, () => {
+        spyOn(TestBed.inject(TranslationService), 't').and.callFake(catalogTranslator(l));
+        component.transactions = [
+          makeRow({ id: 'coffee', description: 'Coffee Shop', amount: 5.5 }),
+          makeRow({ id: 'lunch', description: 'Lunch', amount: 12 }),
+          makeRow({ id: 'blank', description: '', amount: 8 }),
+        ];
+        component.categories = [];
+        fixture.detectChanges();
+
+        const read = (id: string) => actions.flatMap(selector => {
+          const control = fixture.nativeElement.querySelector(`[data-row-id="${id}"] ${selector}`) as HTMLElement | null;
+          if (id === 'blank' && selector === '.merge-trigger') {
+            expect(control).withContext('Merge on the blank row').toBeNull();
+            return [];
+          }
+          expect(control).withContext(`${selector} on the ${id} row`).not.toBeNull();
+          if (!control) return [];
+          const shown = shownText(control);
+          const name = accessibleName(control);
+          expect(holdsShownWords(name, spokenWords(shown), l))
+            .withContext(`${selector} on the ${id} row: "${name}" holds "${spokenWords(shown)}" whole`)
+            .toBeTrue();
+          return [{ shown, name }];
+        });
+
+        const coffee = read('coffee');
+        const lunch = read('lunch');
+        read('blank');
+        coffee.forEach(({ name }, i) =>
+          expect(name).withContext(`${actions[i]} reads the two titled rows apart`).not.toBe(lunch[i]?.name));
+        expect([coffee.map(({ shown }) => shown), coffee.map(({ name }) => name)])
+          .withContext('pinned: the words shown, then the names')
+          .toEqual([[...pinned[l][0]], [...pinned[l][1]]]);
+      });
+    }
+  });
+
+  /**
    * Every one of these is stamped once per card, so a name that is only what
    * the control does — "Notes", "Remove suggested location" — reads the same
    * on every card, and a list of them says nothing about which row each one
@@ -3516,6 +3589,56 @@ describe('TransactionPreviewTableComponent, the offer chip through its own templ
             .toEqual([]);
           expect(tooltip('blank')).withContext("the overrule's tooltip, which a sighted reader sees, is its name")
             .toBe(names[0]);
+        });
+      }
+    });
+
+    /**
+     * Add location, Add tag and Notes show words of their own, so each name
+     * names its row beside those words and holds them whole: a voice user
+     * says what the button shows (WCAG 2.5.3), and the name is read without
+     * regard to case in the reader's own locale. They render on a row with no
+     * location, no tag being typed and no notes, and two such rows read apart.
+     */
+    describe('the add buttons keep the words they show', () => {
+      const adds = [
+        ['.location-add', 'import.addLocation', 'import.addLocationTo'],
+        ['.tag-add', 'import.addTag', 'import.addTagTo'],
+        ['.add-notes-btn', 'import.notes', 'import.notesLabel'],
+      ] as const;
+      const pinned = {
+        en: ['Add location to Coffee Shop', 'Add tag to Coffee Shop', 'Notes for Coffee Shop'],
+        ja: ['Coffee Shopに場所を追加', 'Coffee Shopにタグを追加', 'Coffee Shopのメモ'],
+        tc: ['為「Coffee Shop」新增地點', '為「Coffee Shop」新增標籤', '「Coffee Shop」的備註'],
+      } as const;
+
+      for (const l of ['en', 'ja', 'tc'] as const) {
+        it(`name their row and hold their shown words, on two rows, in ${l}`, () => {
+          const words = catalogTranslator(l, { strict: true });
+          spyOn(TestBed.inject(TranslationService), 't').and.callFake(catalogTranslator(l));
+          component.transactions = rows.map(([id, description]) => makeRow({ id, description }));
+          component.categories = [];
+          fixture.detectChanges();
+
+          const item = { titled: words('common.quotedName', { name: 'Coffee Shop' }), blank: words('import.untitledRow') };
+          const read = (id: 'titled' | 'blank') => adds.map(([selector, shownKey]) => {
+            const name = nameOf(id, selector);
+            const shown = card(id)?.querySelector(`${selector} span`)?.textContent?.trim() ?? '';
+            expect(shown).withContext(`${selector} on the ${id} row shows its words`).toBe(words(shownKey));
+            expect(name).withContext(`${selector} on the ${id} row names it`).toContain(item[id]);
+            expect(holdsShownWords(name, shown, l)).withContext(`"${name}" holds "${shown}" whole`).toBeTrue();
+            return name;
+          });
+          const titled = read('titled');
+          const blank = read('blank');
+
+          adds.forEach(([selector], i) =>
+            expect(titled[i]).withContext(`${selector} reads the two rows apart`).not.toBe(blank[i]));
+          expect(blank.filter(name => QUOTATION_MARKS.test(name))).withContext('a quotation mark round the stand-in')
+            .toEqual([]);
+          expect(titled).withContext('pinned').toEqual([...pinned[l]]);
+          expect(titled).toEqual(adds.map(([, , key]) => words(key, { description: item.titled })));
+          expect(blank).toEqual(adds.map(([, , key]) => words(key, { description: item.blank })));
         });
       }
     });
@@ -5939,28 +6062,6 @@ describe('TransactionPreviewTableComponent, the offer chip through its own templ
       return day;
     };
 
-    /** What `color: var(token)` computes to under the theme on <html> now. */
-    function tokenValue(token: string): string {
-      const probe = document.createElement('span');
-      probe.style.color = `var(${token})`;
-      document.body.appendChild(probe);
-      try {
-        return getComputedStyle(probe).color;
-      } finally {
-        probe.remove();
-      }
-    }
-
-    /** `node` is painted in `token`, and reads at `floor` or better on what is painted behind it. */
-    function expectPainted(node: Element | null, token: string, label: string, floor = 4.5): void {
-      expect(node).withContext(label).toBeTruthy();
-      if (!node) return;
-      expect(getComputedStyle(node).color).withContext(label).toBe(tokenValue(token));
-      expect(ratio(paintedColor(node), paintedBackground(node)))
-        .withContext(`${label} on what it sits on`)
-        .toBeGreaterThanOrEqual(floor);
-    }
-
     function render(rows: CategorizedImportTransaction[], attention: string[] = []): void {
       component.transactions = rows;
       component.categories = [];
@@ -6131,13 +6232,13 @@ describe('TransactionPreviewTableComponent, the offer chip through its own templ
 
   // The smoke walkthrough opens /import/file only with nothing picked, so no
   // axe pass there meets the review card. Its controls are swept here, over a
-  // card carrying every kind of row the review shows: a plain one, one whose
-  // amount and date are doubted, a refund whose type is, a duplicate, and one
-  // added by hand, in both schemes.
+  // card carrying every kind of row the review shows: a plain one with a
+  // place and a tag, one whose amount and date are doubted, a refund whose
+  // type is, a duplicate, and one added by hand, in both schemes.
   describe('under the axe sweep', () => {
     function renderEveryKind(): void {
       component.transactions = [
-        makeRow({ id: 'plain' }),
+        makeRow({ id: 'plain', location: { name: 'Shibuya' }, tags: ['coffee'] }),
         makeRow({ id: 'doubted', fieldConfidence: { amount: 0.6, date: 0.6 } }),
         makeRow({ id: 'refund', type: 'income', suggestedCategoryId: 'other_income', fieldConfidence: { type: 0.5 } }),
         makeRow({ id: 'duplicate', isDuplicate: true, duplicateOf: 'stored-1', selected: false }),
@@ -6162,11 +6263,42 @@ describe('TransactionPreviewTableComponent, the offer chip through its own templ
       });
     }
 
-    it('scores the card\'s contrast rather than skipping it', async () => {
-      renderEveryKind();
-      const results = await withEveryCardShown(fixture.nativeElement, () => runAxe(fixture.nativeElement));
-      expect(results.passes.map(result => result.id)).toContain('color-contrast');
-    });
+    /**
+     * What holds words on a card, apart from any glyph beside them. The date
+     * chip's day, the currency chip's code and the duplicate badge's word sit
+     * in spans of their own: a bare text node beside a glyph cannot be
+     * pointed at apart from it, and Karma serves no icon font, so axe reads
+     * the glyph's ligature as text whose pass would hold the part by itself.
+     */
+    const WORDS = [
+      '.description-text',
+      '.amount-text',
+      '.extra-text',
+      '.date-chip-text',
+      '.currency-chip-code',
+      '.duplicate-label',
+    ] as const;
+
+    // Each part's pass is read back to its words (expectEachContrastScored):
+    // one pass over the whole card held color-contrast as soon as any one
+    // node there cleared it, whether or not the rest were measured.
+    for (const scheme of AUDIT_SCHEMES) {
+      it(`scores the words of each part of a card of every kind of row, in the ${scheme} scheme`, async () => {
+        renderEveryKind();
+        const root = fixture.nativeElement as HTMLElement;
+
+        await withScheme(TestBed.inject(ThemeService), scheme, async () => {
+          fixture.detectChanges();
+          await withEveryCardShown(root, () =>
+            expectEachContrastScored(WORDS.flatMap(part => {
+              const nodes = [...root.querySelectorAll(part)];
+              expect(nodes.length).withContext(`${part} is on the card`).toBeGreaterThan(0);
+              return nodes.map((node, i) => [node, `${part} ${i + 1}`] as const);
+            }))
+          );
+        });
+      });
+    }
   });
 });
 

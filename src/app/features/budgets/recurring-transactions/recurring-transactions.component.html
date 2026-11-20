@@ -13,6 +13,7 @@
   } @else if (recurringTransactions().length === 0) {
     <app-empty-state
       icon="repeat"
+      [headingLevel]="2"
       [title]="'settings.noRecurring' | translate"
       [description]="'settings.noRecurringDescription' | translate"
       [actionLabel]="'settings.addRecurring' | translate"

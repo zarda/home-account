@@ -6,7 +6,6 @@ import { MatSnackBar } from '@angular/material/snack-bar';
 import { MatStepper } from '@angular/material/stepper';
 import { provideNativeDateAdapter } from '@angular/material/core';
 import { By } from '@angular/platform-browser';
-import axe from 'axe-core';
 
 import { ImportWizardComponent } from './import-wizard.component';
 import { FileDropzoneComponent } from '../file-dropzone/file-dropzone.component';
@@ -28,9 +27,12 @@ import {
   MockAuthService,
   channels,
   expectEachContrastScored,
+  expectHeadingsInOrder,
   type ContrastPart,
   expectOneRule,
   expectPainted,
+  inPalette,
+  PALETTES,
   paintedBackground,
   paintedColor,
   ratio,
@@ -50,6 +52,7 @@ import {
   createTranslationStub,
   echoKey,
   echoTranslation,
+  type TranslationStub,
   type Translator,
 } from '../../../../core/services/testing';
 import { ThemeService } from '../../../../core/services/theme.service';
@@ -4417,21 +4420,6 @@ describe('ImportWizardComponent', () => {
       }));
     });
 
-    /**
-     * Runs axe's heading-order alone over the whole wizard, whose h1 heads the
-     * page, so a heading on a step sits one level under it: the stepper's
-     * labels are no headings. heading-order is best practice, outside the
-     * wcag2a/wcag2aa tags axeOptions runs, so the steps' sweeps never ask it.
-     */
-    async function expectHeadingsInOrder(): Promise<void> {
-      const results = await axe.run(realFixture.nativeElement as HTMLElement, {
-        runOnly: { type: 'rule', values: ['heading-order'] },
-        resultTypes: ['violations'],
-      });
-      expect(summarizeViolations(results)).withContext('heading-order').toEqual([]);
-      expect(results.passes.map(result => result.id)).withContext('headings were found to order').toContain('heading-order');
-    }
-
     // The same step with nothing picked, the state a reader meets first: the
     // zone, its hint, the four file types and Browse. The zone was a
     // role="button" around Browse, axe's nested-interactive, and no pass had
@@ -4506,7 +4494,7 @@ describe('ImportWizardComponent', () => {
 
           await withScheme(TestBed.inject(ThemeService), scheme, async () => {
             realFixture.detectChanges();
-            await expectHeadingsInOrder();
+            await expectHeadingsInOrder(realFixture.nativeElement as HTMLElement, 'the wizard');
           });
         });
       }
@@ -4549,6 +4537,86 @@ describe('ImportWizardComponent', () => {
           .toBe('import.imageKindQuestion');
       });
 
+      // axe leaves the chips unscored (see the contrast case below), so they
+      // are measured here as painted. Each label is read in the token Material
+      // gives it and on what is painted behind it: the selected chip's on its
+      // own fill, --mat-sys-secondary-container, the other's on the page,
+      // through a body Material leaves clear; the selected chip's checkmark, a
+      // graphic, at 3:1. A click on the other chip flips the selection, and all
+      // of it is read again, at rest. The click also focuses that chip, and a
+      // focused chip paints a state layer over its fill: a sibling of the
+      // label, which the walk does not see. It brings the selected label to
+      // about 6.0:1 in light and 5.4:1 in dark, still AA, worked by hand and
+      // not pinned. So focus is let go before the second reading, and each
+      // reading first holds that layer clear. High contrast leaves
+      // --mat-sys-* alone (styles.scss's .high-contrast bumps only the app's
+      // own border tokens and its secondary, muted and disabled text), so its
+      // two palettes paint the chips as plain and dark do; they are measured
+      // all the same, in case that changes. A pin. Mutation: the selected chip's
+      // --mat-chip-selected-label-text-color set to
+      // var(--mat-sys-secondary-container), its own fill, which fails the
+      // selected label in every palette (1:1 on the fill).
+      it('reads each receipt-or-statement chip\'s label at AA and the checkmark at 3:1 in the four palettes, in both states', async () => {
+        // The listbox writes its value to the chips in a microtask once its
+        // content is in.
+        await Promise.resolve();
+        realFixture.detectChanges();
+        const listbox = uploadStep()?.querySelector('mat-chip-listbox');
+        const chips = [...(listbox?.querySelectorAll<HTMLElement>('mat-chip-option') ?? [])];
+        const label = (chip: HTMLElement) => chip.querySelector('.mdc-evolution-chip__text-label');
+        expect(chips.map(chip => label(chip)?.textContent?.trim()))
+          .withContext('the two chips, receipt first')
+          .toEqual(['import.imageKindReceipt', 'import.imageKindStatement']);
+        const [receipt, statement] = chips;
+        if (!listbox || !receipt || !statement) return;
+
+        const measure = (picked: HTMLElement, other: HTMLElement, state: string) => {
+          expect(picked.classList).withContext(`${state}: the picked chip is selected`).toContain('mdc-evolution-chip--selected');
+          expect(other.classList).withContext(`${state}: the other is not`).not.toContain('mdc-evolution-chip--selected');
+          const [pickedLabel, otherLabel] = [label(picked), label(other)];
+          const overlay = picked.querySelector('.mat-mdc-chip-focus-overlay');
+          // This is the chips' only contrast reading, so a part that stops
+          // matching fails here rather than skipping every palette.
+          expect(pickedLabel).withContext(`${state}: the selected chip's label`).not.toBeNull();
+          expect(otherLabel).withContext(`${state}: the other chip's label`).not.toBeNull();
+          expect(overlay).withContext(`${state}: the selected chip's focus overlay`).not.toBeNull();
+          if (!pickedLabel || !otherLabel || !overlay) return;
+          for (const { name, classes } of PALETTES) {
+            inPalette(classes, () => {
+              const where = `${name}, ${state}`;
+              expect(getComputedStyle(overlay).opacity)
+                .withContext(`${where}: nothing lies over the selected chip's fill`)
+                .toBe('0');
+              expect(paintedBackground(pickedLabel))
+                .withContext(`${where}: the selected chip's label stands on the chip's fill`)
+                .toEqual(channels(tokenValue('--mat-sys-secondary-container', 'background-color')).rgb);
+              expect(paintedBackground(otherLabel))
+                .withContext(`${where}: the other chip's label stands on the page`)
+                .toEqual(paintedBackground(listbox));
+              expectPainted(pickedLabel, '--mat-sys-on-secondary-container', `${where}: the selected chip's label`);
+              expectPainted(otherLabel, '--mat-sys-on-surface-variant', `${where}: the other chip's label`);
+              expectPainted(
+                picked.querySelector('.mdc-evolution-chip__checkmark'),
+                '--mat-sys-on-secondary-container',
+                `${where}: the selected chip's checkmark`,
+                3
+              );
+            });
+          }
+        };
+
+        measure(receipt, statement, 'receipt picked');
+
+        statement.querySelector<HTMLElement>('.mdc-evolution-chip__action--primary')?.click();
+        realFixture.detectChanges();
+        expect(realFixture.componentInstance.imageKind()).withContext('the click picked statement').toBe('statement');
+        // The click focused the chip; let focus go so it is read at rest.
+        (document.activeElement as HTMLElement | null)?.blur();
+        realFixture.detectChanges();
+        expect(statement.classList).withContext('focus has left the picked chip').not.toContain('cdk-focused');
+        measure(statement, receipt, 'statement picked');
+      });
+
       for (const scheme of AUDIT_SCHEMES) {
         it(`finds nothing on the step in the ${scheme} scheme`, async () => {
           const step = uploadStep();
@@ -4564,8 +4632,11 @@ describe('ImportWizardComponent', () => {
 
         // Each part's pass is read back to its words (expectEachContrastScored),
         // so it can only come from them, not from a glyph beside them.
-        // Left out: the chips, whose background axe reports as overlapped
-        // (bgOverlap) and leaves unscored, and the previews' captions, which
+        // Left out: the chips, whose labels axe finds overlapped (bgOverlap)
+        // by the focus indicator span Material puts inside each label, and
+        // leaves unscored (with that span hidden, it scores both); they are
+        // measured as painted instead, in the four palettes and both states,
+        // by the chips' own case above. And the previews' captions, which
         // sit on the photo and are held at AA over white paper under
         // *colours, as painted*. A pin. Mutations: .image-kind-hint given
         // visibility: hidden; the page's fill dropped (standOnThePage), which
@@ -4595,8 +4666,178 @@ describe('ImportWizardComponent', () => {
 
           await withScheme(TestBed.inject(ThemeService), scheme, async () => {
             realFixture.detectChanges();
-            await expectHeadingsInOrder();
+            await expectHeadingsInOrder(realFixture.nativeElement as HTMLElement, 'the wizard');
           });
+        });
+      }
+    });
+
+    // Material lets a press on the chip already picked take the pick away,
+    // and the listbox then reports no value at all. The question always has
+    // an answer: the wizard reads the photos by it and the hint under the
+    // chips says which. So the picked chip keeps its fill, its checkmark and
+    // aria-selected, by pointer and by either key, whichever of the two is
+    // picked. With Receipts picked the press used to leave neither chip
+    // selected while the photos were still read as receipts; with Statement
+    // picked it switched the photos to receipts without a word.
+    describe('a second press on the receipt-or-statement chip already picked', () => {
+      const chips = () => [...(uploadStep()?.querySelectorAll<HTMLElement>('mat-chip-listbox mat-chip-option') ?? [])];
+      const action = (chip: HTMLElement) => chip.querySelector<HTMLElement>('.mdc-evolution-chip__action--primary');
+
+      /**
+       * A key on the focused chip as the browser sends it. Material reads the
+       * legacy keyCode, which a constructed event leaves at 0, and takes the
+       * key itself (preventDefault), so no click follows.
+       */
+      function keyOn(target: HTMLElement, key: 'Enter' | ' ', keyCode: number): void {
+        target.focus();
+        const keydown = new KeyboardEvent('keydown', { key, bubbles: true, cancelable: true });
+        Object.defineProperty(keydown, 'keyCode', { get: () => keyCode });
+        target.dispatchEvent(keydown);
+        expect(keydown.defaultPrevented).withContext(`the chip took ${key === ' ' ? 'Space' : key} itself`).toBeTrue();
+      }
+
+      const PRESSES: readonly (readonly [string, (target: HTMLElement) => void])[] = [
+        ['a click', target => target.click()],
+        ['Space', target => keyOn(target, ' ', 32)],
+        ['Enter', target => keyOn(target, 'Enter', 13)],
+      ];
+
+      /** Photos dropped, and the listbox's value on its chips, which it writes a microtask after they render. */
+      async function photosPicked(): Promise<void> {
+        drop(photo('a.png'));
+        await Promise.resolve();
+        realFixture.detectChanges();
+      }
+
+      for (const [kind, index, hint] of [
+        ['receipt', 0, 'import.imageKindReceiptHint'],
+        ['statement', 1, 'import.imageKindStatementHint'],
+      ] as const) {
+        for (const [how, pressOn] of PRESSES) {
+          it(`keeps ${kind} picked when ${how} lands on it again`, async () => {
+            await photosPicked();
+            const options = chips();
+            expect(options.length).withContext('the two chips, receipt first').toBe(2);
+            const [picked, other] = [options[index], options[1 - index]];
+            const [pickedAction, otherAction] = [picked && action(picked), other && action(other)];
+            expect(pickedAction && otherAction).withContext('each chip\'s option').toBeTruthy();
+            if (!pickedAction || !otherAction) return;
+            if (kind === 'statement') {
+              pickedAction.click();
+              realFixture.detectChanges();
+            }
+
+            const expectPicked = (when: string) => {
+              expect(picked.classList).withContext(`${when}: the chip's fill and checkmark`).toContain('mdc-evolution-chip--selected');
+              expect(pickedAction.getAttribute('aria-selected')).withContext(`${when}: picked, as heard`).toBe('true');
+              expect(otherAction.getAttribute('aria-selected')).withContext(`${when}: the other chip`).toBe('false');
+              expect(realFixture.componentInstance.imageKind()).withContext(`${when}: what the photos are read as`).toBe(kind);
+              expect(uploadStep()?.querySelector('.image-kind-hint')?.textContent?.trim()).withContext(`${when}: the hint`).toBe(hint);
+            };
+            expectPicked('before the press');
+
+            pressOn(pickedAction);
+            realFixture.detectChanges();
+            await Promise.resolve();
+            realFixture.detectChanges();
+
+            expectPicked(`after ${how}`);
+          });
+        }
+      }
+    });
+
+    // The four things the import can do, over the steps. They were chips,
+    // outlined pills with a glyph each: the shape of the step's own
+    // receipt-or-statement chips, which are pressed, where these never were.
+    // And at a 320px phone they stood a row each in en, 168px of them, which
+    // with the header and the stepper put the upload area under the first
+    // screen. Now they are a list of words, which wrap as words do.
+    describe('what the import can do, over the steps', () => {
+      const FEATURES = [
+        'import.featureReceipts',
+        'import.featureBankStatements',
+        'import.featureAutoCategory',
+        'import.featureDuplicateDetection',
+      ] as const;
+      const host = () => realFixture.nativeElement as HTMLElement;
+      const list = () => host().querySelector<HTMLElement>('.features-list');
+      const items = () => [...(list()?.querySelectorAll<HTMLElement>(':scope > li') ?? [])];
+      const words = (item: HTMLElement) => item.querySelector<HTMLElement>(':scope > span');
+
+      it('lists them as words, with nothing about them that a chip has', () => {
+        expect(host().querySelectorAll('.mat-mdc-chip').length).withContext('no chip on the empty step').toBe(0);
+        expect(list()?.tagName).withContext('a list').toBe('UL');
+        // WebKit drops the list role from a list drawn without markers, so
+        // it is given back.
+        expect(list()?.getAttribute('role')).withContext('a list to VoiceOver as well').toBe('list');
+        expect(items().map(item => words(item)?.textContent?.trim())).withContext('the words, in order').toEqual([...FEATURES]);
+        for (const [i, node] of [list(), ...items()].entries()) {
+          if (!node) continue;
+          const where = i === 0 ? 'the list' : `item ${i}`;
+          const style = getComputedStyle(node);
+          expect(style.backgroundColor).withContext(`${where}: no fill`).toBe('rgba(0, 0, 0, 0)');
+          expect([style.borderTopWidth, style.borderRightWidth, style.borderBottomWidth, style.borderLeftWidth])
+            .withContext(`${where}: no outline`)
+            .toEqual(['0px', '0px', '0px', '0px']);
+          expect(style.cursor).withContext(`${where}: no pointer`).toBe('auto');
+        }
+        for (const [i, item] of items().entries()) {
+          expect(item.querySelector('mat-icon')?.getAttribute('aria-hidden')).withContext(`item ${i + 1}'s glyph`).toBe('true');
+        }
+      });
+
+      // A pin. Mutation: the words painted in --text-disabled, under AA on
+      // the page in every palette.
+      it('paints the words in --text-muted at AA on the page, in the four palettes', () => {
+        standOnThePage(host());
+        expect(items().length).withContext('the four items').toBe(FEATURES.length);
+        for (const { name, classes } of PALETTES) {
+          inPalette(classes, () => {
+            for (const [i, item] of items().entries()) {
+              expectPainted(words(item), '--text-muted', `${name}: feature ${i + 1}`);
+            }
+          });
+        }
+      });
+
+      // A 320px-wide phone is 568px tall. Above the page stand the app bar
+      // (64px) and the page's own top gutter (16px), and the bottom nav takes
+      // the last 64px, so the wizard's first screen is the 424px under its
+      // top. The page is 288px wide there, inside the shell's 16px gutters.
+      // Karma's 756px window is under the wizard's 768px rule, as a phone is;
+      // the 600px rule it is not under hides the step labels and trims side
+      // padding, which leaves every height above the upload area as it is.
+      // The upload area has to start on that screen with its frame and the
+      // 40px of padding over its contents in view. With the chips, en's
+      // stood 480px under the wizard's top and ja's 434.
+      const FIRST_SCREEN = 568 - 64 - 16 - 64;
+      const ZONE_PADDING = 40;
+      for (const locale of ['en', 'ja', 'tc'] as const) {
+        it(`starts the upload area on a 320 x 568 phone's first screen, in ${locale}`, () => {
+          const face = "Verdana, 'DejaVu Sans', sans-serif";
+          host().style.cssText = `display: block; width: 288px; font-family: ${face}`;
+          for (const token of ['--mat-sys-body-large-font', '--mat-sys-body-medium-font', '--mat-sys-label-large-font']) {
+            host().style.setProperty(token, face);
+          }
+          const translations = TestBed.inject(TranslationService) as unknown as TranslationStub;
+          mockTranslationService.t.and.callFake(catalogTranslator(locale));
+          translations.currentLocale.set(locale);
+          translations.translationsVersion.update(version => version + 1);
+          realFixture.detectChanges();
+
+          const wizard = host().querySelector('.import-wizard');
+          const zone = host().querySelector('app-file-dropzone .dropzone');
+          expect(wizard && zone).withContext('the wizard and its upload area').toBeTruthy();
+          if (!wizard || !zone) return;
+          expect(wizard.querySelector('h1')?.textContent?.trim())
+            .withContext('the words are the catalog\'s')
+            .toBe(catalogTranslator(locale)('import.title'));
+          const top = zone.getBoundingClientRect().top - wizard.getBoundingClientRect().top;
+          expect(top + ZONE_PADDING)
+            .withContext(`the upload area's top, ${top}px under the wizard's, and its padding, against the first screen`)
+            .toBeLessThanOrEqual(FIRST_SCREEN);
         });
       }
     });
@@ -4780,6 +5021,22 @@ describe('ImportWizardComponent', () => {
         realFixture.detectChanges();
       }
 
+      /** The stepper's steps, by the index each is shown at. */
+      const STEP = { processing: 1, review: 2, confirm: 3 } as const;
+
+      /**
+       * Shows the step at `index`, with the stepper free to jump to it, as
+       * the camera's hand-off has it. Only the step shown is drawn: another
+       * step's content computes its colours all the same, and a reading of
+       * it would hold words nobody sees.
+       */
+      function showStep(index: number): void {
+        const stepper = realFixture.componentInstance.stepper;
+        stepper.linear = false;
+        stepper.selectedIndex = index;
+        realFixture.detectChanges();
+      }
+
       // The wizard sits on the page itself.
       beforeEach(() => {
         standOnThePage(realFixture.nativeElement as HTMLElement);
@@ -4787,6 +5044,7 @@ describe('ImportWizardComponent', () => {
 
       // A glyph is a graphic, so its floor is 3:1 (WCAG 1.4.11).
       it('paints each kind of failure in its own token, the icon at 3:1 or better on the page, in both themes', () => {
+        showStep(STEP.processing);
         const kinds: readonly (readonly [string, string])[] = [
           ['quota', '--color-warning-text'],
           ['server', '--color-error-text'],
@@ -4850,6 +5108,7 @@ describe('ImportWizardComponent', () => {
       });
 
       it('reads the hint under a failure in --text-secondary at AA, in both themes', () => {
+        showStep(STEP.processing);
         const real = realFixture.componentInstance;
         real.processingError.set('slow down');
         real.processingErrorType.set('rate_limit');
@@ -4864,6 +5123,7 @@ describe('ImportWizardComponent', () => {
 
       it('paints each summary card in its token, the icon at 3:1 on its tile and the figure at AA on the card, in both themes', () => {
         landEveryCard();
+        showStep(STEP.confirm);
         // Figure, then icon. The figure is 18px bold below 768px, which is not
         // large text, so it owes 4.5:1 there.
         const cards: readonly (readonly [string, string, string])[] = [
@@ -4888,6 +5148,7 @@ describe('ImportWizardComponent', () => {
       });
 
       it('names the merged items on a badge in --text-primary on --color-info-light, at AA, in both themes', () => {
+        showStep(STEP.processing);
         landEveryCard();
         const banner = part('.success-card .multi-image-info');
         const badge = banner?.querySelector('.merged-badge') as HTMLElement | null;
@@ -4910,6 +5171,7 @@ describe('ImportWizardComponent', () => {
       // light page, so a finished step reads in its text step. The step
       // fades between its states, so it is settled before it is read.
       it('paints each finished step in --color-success-text, its label at AA and its glyph at 3:1 on the step, in both themes', () => {
+        showStep(STEP.processing);
         mockImportService.isProcessing.set(true);
         mockImportService.processingProgress.set(100);
         realFixture.detectChanges();
@@ -4930,6 +5192,7 @@ describe('ImportWizardComponent', () => {
       // Mid-way, one step is under way and not yet finished: its label and
       // glyph are the indigo the active fill was given, on that fill.
       it('paints the step under way in --color-primary-text, its label at AA and its glyph at 3:1 on the step, in both themes', () => {
+        showStep(STEP.processing);
         mockImportService.isProcessing.set(true);
         mockImportService.processingProgress.set(40);
         realFixture.detectChanges();
@@ -4948,6 +5211,7 @@ describe('ImportWizardComponent', () => {
       });
 
       it('paints the success glyph in --color-success-text at 3:1 or better on the page, in both themes', () => {
+        showStep(STEP.processing);
         realFixture.componentInstance.extractedTransactions.set([{ ...mockTransactions[0] }]);
         realFixture.detectChanges();
 
@@ -4962,6 +5226,7 @@ describe('ImportWizardComponent', () => {
       // The amber the warning family is named for is a fill, under 2:1 on the
       // notice's own 5% tint of it in light.
       it('paints the cut-off notice\'s glyph in --color-warning-text at 3:1 or better on the notice, in both themes', () => {
+        showStep(STEP.review);
         realFixture.componentInstance.answerIncomplete.set(true);
         realFixture.detectChanges();
 

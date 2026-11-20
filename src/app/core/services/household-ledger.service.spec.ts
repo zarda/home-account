@@ -18,6 +18,7 @@ import { PwaService } from './pwa.service';
 import { TranslationService } from './translation.service';
 import { MockFirestoreService } from './testing/mock-firestore.service';
 import { createTranslationStub } from './testing/translation-stub';
+import { consoleLines, expectEveryHeldLineRead, quietConsole } from './testing/console-quiet';
 import {
   HouseholdMember,
   HouseholdMemberIdentity,
@@ -152,11 +153,10 @@ describe('HouseholdLedgerService', () => {
   const memberReads = () => firestore.getDocumentFromServerSpy.calls.map(call => call.args[0]);
 
   /**
-   * Only the calls the ledger itself logged (its "[HouseholdLedger]" prefix),
-   * so other services' warnings cannot fail a case.
+   * The ledger's own lines start with it: the console spy holds them back for
+   * each case to expect, and passes any other service's line on.
    */
-  const ledgerLogs = (spy: jasmine.Spy) =>
-    spy.calls.allArgs().filter(args => String(args[0]).startsWith('[HouseholdLedger]'));
+  const LEDGER_PREFIX = '[HouseholdLedger]';
 
   beforeEach(async () => {
     // A rates cache leaked from another spec file would outrank the table
@@ -197,7 +197,7 @@ describe('HouseholdLedgerService', () => {
       opened.push({ path, options, subject });
       return subject.asObservable();
     }) as never);
-    consoleWarn = spyOn(console, 'warn').and.callThrough();
+    consoleWarn = quietConsole('warn', [LEDGER_PREFIX]);
     consoleError = spyOn(console, 'error').and.callThrough();
 
     // Provided below the root, as the household page provides it, so its
@@ -213,6 +213,7 @@ describe('HouseholdLedgerService', () => {
 
   afterEach(() => {
     if (!destroyed) injector.destroy();
+    expectEveryHeldLineRead(consoleWarn);
   });
 
   describe('its listener', () => {
@@ -381,7 +382,7 @@ describe('HouseholdLedgerService', () => {
       // copies; it runs out here, while the case's fakes and injector stand.
       await settle();
       expect(sharing.purgeMember.calls.allArgs()).toEqual([[HOME.id, GONE]]);
-      expect(ledgerLogs(consoleWarn)).toEqual([]);
+      expect(consoleLines(consoleWarn, LEDGER_PREFIX)).toEqual([]);
     });
 
     it('gives every listed member a line in list order, one with nothing shared at zero', () => {
@@ -701,7 +702,7 @@ describe('HouseholdLedgerService', () => {
 
       expect(ledger.windowIncomplete()).toBeTrue();
       expect(ledger.incomplete()).withContext("the overview's figures are whole").toBeFalse();
-      expect(ledgerLogs(consoleWarn)).toEqual([["[HouseholdLedger] The budgets' ledger listener stopped:", failure]]);
+      expect(consoleLines(consoleWarn, LEDGER_PREFIX)).toEqual([["[HouseholdLedger] The budgets' ledger listener stopped:", failure]]);
     });
 
     it('reads a listener that stopped afresh at the next change of dates', () => {
@@ -709,11 +710,17 @@ describe('HouseholdLedgerService', () => {
       const augustToSeptember: DateWindow = { start: AUGUST.start, end: SEPTEMBER.end };
       ledger.setPlanWindow(augustToSeptember);
       const [period, plans] = open();
+      const periodFailure = firebaseError('unavailable');
+      const plansFailure = firebaseError('unavailable');
 
-      period.subject.error(firebaseError('unavailable'));
-      plans.subject.error(firebaseError('unavailable'));
+      period.subject.error(periodFailure);
+      plans.subject.error(plansFailure);
       expect(ledger.incomplete()).toBeTrue();
       expect(ledger.windowIncomplete()).toBeTrue();
+      expect(consoleLines(consoleWarn, LEDGER_PREFIX)).toEqual([
+        ['[HouseholdLedger] The ledger listener stopped:', periodFailure],
+        ["[HouseholdLedger] The budgets' ledger listener stopped:", plansFailure]
+      ]);
 
       ledger.setPeriod(SEPTEMBER);
 
@@ -775,7 +782,7 @@ describe('HouseholdLedgerService', () => {
       expect(latest().subject.observed).toBeFalse();
       expect(ledger.rows().map(row => row.sourceId)).toEqual(['shown']);
       expect(ledger.incomplete()).toBeFalse();
-      expect(ledgerLogs(consoleWarn)).toEqual([]);
+      expect(consoleLines(consoleWarn, LEDGER_PREFIX)).toEqual([]);
       expect(errorHandler.handleError).not.toHaveBeenCalled();
       expect(consoleError).not.toHaveBeenCalled();
       expect(opened.length).withContext('not asked again').toBe(1);
@@ -788,7 +795,7 @@ describe('HouseholdLedgerService', () => {
 
       latest().subject.error(failure);
 
-      expect(ledgerLogs(consoleWarn)).toEqual([['[HouseholdLedger] The ledger listener stopped:', failure]]);
+      expect(consoleLines(consoleWarn, LEDGER_PREFIX)).toEqual([['[HouseholdLedger] The ledger listener stopped:', failure]]);
       expect(ledger.rows().map(row => row.sourceId)).toEqual(['shown']);
       expect(ledger.incomplete()).toBeFalse();
       expect(errorHandler.handleError).not.toHaveBeenCalled();
@@ -796,12 +803,14 @@ describe('HouseholdLedgerService', () => {
 
     it('says the figures may be incomplete when it failed before it answered, and stops waiting', () => {
       follow();
+      const failure = firebaseError('unavailable');
 
-      latest().subject.error(firebaseError('unavailable'));
+      latest().subject.error(failure);
 
       expect(ledger.loading()).toBeFalse();
       expect(ledger.incomplete()).toBeTrue();
       expect(ledger.rows()).toEqual([]);
+      expect(consoleLines(consoleWarn, LEDGER_PREFIX)).toEqual([['[HouseholdLedger] The ledger listener stopped:', failure]]);
 
       ledger.setPeriod(SEPTEMBER);
       expect(ledger.incomplete()).withContext('a period read afresh').toBeFalse();
@@ -819,7 +828,7 @@ describe('HouseholdLedgerService', () => {
       expect(ledger.loading()).toBeFalse();
       expect(ledger.fromCache()).withContext('still only what this device held').toBeTrue();
       expect(ledger.rows().map(row => row.sourceId)).toEqual(['cached']);
-      expect(ledgerLogs(consoleWarn)).toEqual([['[HouseholdLedger] The ledger listener stopped:', failure]]);
+      expect(consoleLines(consoleWarn, LEDGER_PREFIX)).toEqual([['[HouseholdLedger] The ledger listener stopped:', failure]]);
       // A failure is no server answer: nobody is judged from the cache.
       expect(memberReads()).toEqual([]);
       expect(sharing.purgeMember).not.toHaveBeenCalled();
@@ -828,12 +837,14 @@ describe('HouseholdLedgerService', () => {
     it('says the same when the cache answered with nothing before it failed', () => {
       follow();
       answer([], true);
+      const failure = firebaseError('failed-precondition');
 
-      latest().subject.error(firebaseError('failed-precondition'));
+      latest().subject.error(failure);
 
       expect(ledger.incomplete()).toBeTrue();
       expect(ledger.loading()).toBeFalse();
       expect(ledger.rows()).toEqual([]);
+      expect(consoleLines(consoleWarn, LEDGER_PREFIX)).toEqual([['[HouseholdLedger] The ledger listener stopped:', failure]]);
     });
 
     it('stays quiet on a refusal after only the cache answered', () => {
@@ -843,7 +854,7 @@ describe('HouseholdLedgerService', () => {
       latest().subject.error(firebaseError('permission-denied'));
 
       expect(ledger.incomplete()).toBeFalse();
-      expect(ledgerLogs(consoleWarn)).toEqual([]);
+      expect(consoleLines(consoleWarn, LEDGER_PREFIX)).toEqual([]);
     });
   });
 
@@ -911,7 +922,7 @@ describe('HouseholdLedgerService', () => {
       await settle();
 
       expect(sharing.purgeMember).toHaveBeenCalledOnceWith('h1', GONE);
-      expect(ledgerLogs(consoleWarn)).toEqual([]);
+      expect(consoleLines(consoleWarn, LEDGER_PREFIX)).toEqual([]);
     });
 
     it("judges nothing from the cache: only the server's answer can say an account is gone", async () => {
@@ -960,7 +971,7 @@ describe('HouseholdLedgerService', () => {
       await settle();
 
       expect(sharing.purgeMember).toHaveBeenCalledTimes(1);
-      expect(ledgerLogs(consoleWarn)).toEqual([["[HouseholdLedger] A removed member's copies were not purged:", failure]]);
+      expect(consoleLines(consoleWarn, LEDGER_PREFIX)).toEqual([["[HouseholdLedger] A removed member's copies were not purged:", failure]]);
       expect(errorHandler.handleError).not.toHaveBeenCalled();
     });
 
@@ -971,7 +982,7 @@ describe('HouseholdLedgerService', () => {
 
       answer([copy(GONE, 'g1')]);
       await settle();
-      expect(ledgerLogs(consoleWarn)).toEqual([["[HouseholdLedger] A removed member's copies were not judged; the next answer asks again:", failure]]);
+      expect(consoleLines(consoleWarn, LEDGER_PREFIX)).toEqual([["[HouseholdLedger] A removed member's copies were not judged; the next answer asks again:", failure]]);
       expect(sharing.purgeMember).not.toHaveBeenCalled();
 
       read.and.resolveTo(null);
@@ -988,7 +999,7 @@ describe('HouseholdLedgerService', () => {
       answer([copy(GONE, 'g1')]);
       await settle();
 
-      expect(ledgerLogs(consoleWarn)).toEqual([["[HouseholdLedger] A removed member's copies were not purged:", failure]]);
+      expect(consoleLines(consoleWarn, LEDGER_PREFIX)).toEqual([["[HouseholdLedger] A removed member's copies were not purged:", failure]]);
       expect(errorHandler.handleError).not.toHaveBeenCalled();
     });
   });

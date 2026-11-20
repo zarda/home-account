@@ -452,6 +452,82 @@ button.mdc-button {
   --text-disabled: #d1d5db;    // gray-300 (was gray-500)
 }
 
+/* A keyboard-focused Material button of any kind (text, flat, stroked,
+   raised, tonal, icon, the FAB) shows Material's own focus indicator, which
+   it draws as the ::before of a span inside every button and leaves hidden
+   until asked: a solid line 2px wide, 3px under high contrast, in the
+   button's own text colour, inside the button.
+
+   The text colour, because it is what the button's label or glyph already
+   reads in against what the button sits on, so the indicator reads wherever
+   the button does. No one colour does that on every surface a button sits
+   on: the app's --color-primary outline scored 2.60:1 round the clear
+   button on the dark period chip, and 1.09:1 inside the filled picker
+   button.
+
+   Inside, because a line drawn outside a button meets whatever is round it.
+   Material draws this one a few px past the edge of a flat, raised, stroked
+   or tonal button and the FAB, where the label's colour meets the page and
+   not the fill (a flat button's white on a white card is 1:1), and a parent
+   that clips its overflow cuts a line out there off (the search suggestions
+   end flush with their remove buttons). The margin rules below take
+   Material's offset back at (0,3,1), over its own (0,2,1), the FAB keeping
+   its own corner; text and icon buttons already draw it inside.
+
+   An icon button's 12% focus state layer goes: it tints the fill under the
+   indicator, and took a primary pin on dark --surface-muted from 3.99:1 to
+   2.86:1. The app's own outline (:focus-visible below, at (0,1,0)) gives
+   way to the indicator at (0,2,0), whichever stylesheet reaches the page
+   first; forced-colours mode keeps the outline Material draws there. Chips,
+   menu items, tabs, switches, checkboxes, radios and button toggles keep
+   their own focus look, and hand-rolled controls the app's outline.
+   Pinned by focus-indicator.spec.ts. */
+.mat-mdc-button-base {
+  --mat-focus-indicator-display: block;
+  --mat-focus-indicator-border-color: currentColor;
+  --mat-focus-indicator-border-width: 2px;
+}
+
+.high-contrast .mat-mdc-button-base {
+  --mat-focus-indicator-border-width: 3px;
+}
+
+/* A held button, disabled but kept focusable (disabledInteractive) so a
+   keyboard user reaches it and the hint that says why it is held, reads its
+   label at 38% of --mat-sys-on-surface; an indicator in that colour scored
+   2.2:1 to 2.7:1. Its indicator is drawn in --mat-sys-on-surface-variant
+   instead. Both classes, because Material sets the disabled-interactive one
+   whether the button is held or not. */
+.mat-mdc-button-base.mat-mdc-button-disabled.mat-mdc-button-disabled-interactive {
+  --mat-focus-indicator-border-color: var(--mat-sys-on-surface-variant);
+}
+
+.mat-mdc-icon-button {
+  --mat-icon-button-focus-state-layer-opacity: 0;
+}
+
+@media (forced-colors: none) {
+  .mat-mdc-button-base:focus-visible {
+    outline: none;
+  }
+}
+
+.mat-mdc-button-base.mat-mdc-unelevated-button .mat-focus-indicator::before,
+.mat-mdc-button-base.mat-mdc-raised-button .mat-focus-indicator::before,
+.mat-mdc-button-base.mat-mdc-outlined-button .mat-focus-indicator::before,
+.mat-mdc-button-base.mat-tonal-button .mat-focus-indicator::before {
+  margin: 0;
+}
+
+.mat-mdc-button-base.mat-mdc-fab-base .mat-focus-indicator::before {
+  margin: 0;
+  border-radius: var(--mat-fab-container-shape, var(--mat-sys-corner-large));
+}
+
+.mat-mdc-button-base.mat-mdc-mini-fab .mat-focus-indicator::before {
+  border-radius: var(--mat-fab-small-container-shape, var(--mat-sys-corner-medium));
+}
+
 /* Wider focus ring wherever high contrast is on, light or dark. */
 .high-contrast :focus-visible {
   outline-width: 3px;
@@ -490,8 +566,10 @@ textarea::placeholder {
   color: var(--text-muted);
 }
 
-/* Keyboard focus: one visible, token-driven ring app-wide. Material
-   components keep their own focus treatment; this covers hand-rolled
+/* Keyboard focus: one visible, token-driven ring app-wide. A Material
+   button shows the focus indicator above instead, drawn inside it, and the
+   other Material controls (chips, menu items, tabs, switches, checkboxes,
+   radios, button toggles) keep their own focus look; this covers hand-rolled
    interactive elements (drawer links, the Data page's backup upload area,
    custom rows) that previously stripped or never defined an outline. A
    frame that is no control but holds one, the import upload area round
@@ -641,6 +719,17 @@ textarea::placeholder {
 
 .snackbar-info .mdc-snackbar__surface {
   border-inline-start: 4px solid var(--color-info);
+}
+
+/* While the phone's bottom nav is shown, a notice opens above it rather than
+   over it: over it, the notice covers the tabs, and the Undo a deleted
+   transaction's notice carries sits where a thumb reaches for them. The bar
+   is 64px over the home-indicator inset (main-layout.component.scss), and
+   the notice keeps its own 8px gap above that. The shell marks the body
+   while the bar is shown; a :has() on the bar would be dropped whole by
+   iOS 15's WebView before 15.4, which does not parse it. */
+body.bottom-nav-shown .mat-mdc-snack-bar-container {
+  margin-bottom: calc(64px + var(--safe-bottom) + 8px);
 }
 
 /* Scrollbar styling */

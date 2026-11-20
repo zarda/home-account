@@ -49,6 +49,16 @@ into [`docs/ui-audit/`](../).
    session or a Firestore cache with a production serve on :4200. Never run the emulators here
    while `npm run smoke` is running: they take the same ports.
 
+   The capture scripts do not follow it to :4300. Each `capture*.mjs` names its app in a
+   constant, `http://127.0.0.1:4200` (`http://localhost:4200` in `capture-overflow.mjs`), and
+   reads no port from its arguments or the environment, so a run against :4300 means editing
+   that constant. :4200 is also where `npm start` serves the app against the production
+   project, whose data is read-only and never a venue for these scripts: before a run, confirm
+   that what answers on :4200 is the `emulators` serve started above, from this checkout
+   (`lsof -a -p <pid> -d cwd` names the server's directory), and not `npm start`. The UX
+   audit of 18 November 2026 and the browser run of 19 November were walked on :4300 in a
+   browser pane ([e2e.md](../../e2e.md)).
+
 ## Files
 
 | File | Purpose |

@@ -1,4 +1,4 @@
-import { ComponentFixture, TestBed, fakeAsync, tick } from '@angular/core/testing';
+import { ComponentFixture, TestBed, fakeAsync, flushMicrotasks, tick } from '@angular/core/testing';
 import { Component, NO_ERRORS_SCHEMA, NgZone, input, output } from '@angular/core';
 import { By } from '@angular/platform-browser';
 import { BreakpointObserver, BreakpointState } from '@angular/cdk/layout';
@@ -25,15 +25,20 @@ import { CurrencyService } from '../../core/services/currency.service';
 import { LocaleFormatService } from '../../core/services/locale-format.service';
 import { TranslationService } from '../../core/services/translation.service';
 import { NotificationService } from '../../core/services/notification.service';
+import { UNDO_WINDOW_MS } from '../../core/services/pending-delete.service';
 import { AnnouncerService } from '../../core/services/announcer.service';
 import { QuickAddService } from '../../core/services/quick-add.service';
 import { TransactionFormComponent } from './transaction-form/transaction-form.component';
+import { TransactionListComponent } from './transaction-list/transaction-list.component';
 import { Category, Transaction, TransactionFilters, User } from '../../models';
 import { TypeTotals } from '../../core/utils/transaction-aggregation.utils';
 import {
+  FakeNotice,
+  catalogTranslationStub,
   createTransaction,
   createCategory,
   createTranslationStub,
+  keepThePageWhereFound,
   provideNoMotion,
 } from '../../core/services/testing';
 
@@ -73,6 +78,7 @@ function createMockPeriodTotals() {
   return {
     status: signal<PeriodTotalsStatus>({ kind: 'idle' }),
     totals: signal<TypeTotals | null>(null),
+    exclude: signal<ReadonlySet<string>>(new Set()),
     reset: jasmine.createSpy('reset').and.resolveTo(undefined),
     refresh: jasmine.createSpy('refresh').and.resolveTo(undefined),
     calculate: jasmine.createSpy('calculate').and.resolveTo(true),
@@ -105,6 +111,9 @@ describe('TransactionsComponent', () => {
   let queryParams$: Subject<Record<string, string>>;
   let routeSnapshotParams: Record<string, string>;
   let mutationSeq: number;
+  let notifications: jasmine.SpyObj<NotificationService>;
+  /** Every Undo notice the page's deletes opened, oldest first. */
+  let notices: FakeNotice[];
 
   function build() {
     const fixture = TestBed.createComponent(TransactionsComponent);
@@ -139,6 +148,13 @@ describe('TransactionsComponent', () => {
     const translation = jasmine.createSpyObj('TranslationService', ['t']);
     translation.t.and.callFake((k: string) => k);
     announcer = jasmine.createSpyObj('AnnouncerService', ['announce']);
+    notices = [];
+    notifications = jasmine.createSpyObj('NotificationService', ['success', 'error', 'info', 'withAction']);
+    notifications.withAction.and.callFake((message: string, action: string) => {
+      const notice = new FakeNotice(message, action);
+      notices.push(notice);
+      return notice;
+    });
     dialog = jasmine.createSpyObj('MatDialog', ['open']);
     dialog.open.and.returnValue({ afterClosed: () => of(undefined) } as never);
     quickAdd = jasmine.createSpyObj('QuickAddService', [
@@ -160,7 +176,7 @@ describe('TransactionsComponent', () => {
       providers: [
         { provide: TransactionService, useValue: transactionService },
         { provide: CategoryService, useValue: categoryService },
-        { provide: AuthService, useValue: { currentUser: authUser } },
+        { provide: AuthService, useValue: { currentUser: authUser, userId: signal<string | null>('user-1') } },
         {
           provide: CurrencyService,
           useValue: { formatCurrency: (value: number, code: string) => `${code} ${value}` }
@@ -170,10 +186,7 @@ describe('TransactionsComponent', () => {
           useValue: { formatRange: jasmine.createSpy('formatRange').and.returnValue('RANGE') }
         },
         { provide: TranslationService, useValue: translation },
-        {
-          provide: NotificationService,
-          useValue: jasmine.createSpyObj('NotificationService', ['success', 'error', 'info'])
-        },
+        { provide: NotificationService, useValue: notifications },
         { provide: AnnouncerService, useValue: announcer },
         { provide: MatDialog, useValue: dialog },
         { provide: QuickAddService, useValue: quickAdd },
@@ -346,7 +359,6 @@ describe('TransactionsComponent', () => {
       fixture.componentInstance.onFiltersChanged({});
       tick();
 
-      const notifications = TestBed.inject(NotificationService) as jasmine.SpyObj<NotificationService>;
       expect(notifications.info).toHaveBeenCalledWith('import.linkedTransactionGone');
       expect(dialog.open).not.toHaveBeenCalled();
       expect(windowSource.requestScrollTo).not.toHaveBeenCalled();
@@ -361,7 +373,6 @@ describe('TransactionsComponent', () => {
       fixture.componentInstance.onFiltersChanged({});
       tick();
 
-      const notifications = TestBed.inject(NotificationService) as jasmine.SpyObj<NotificationService>;
       expect(notifications.error).toHaveBeenCalledWith('common.error');
       expect(dialog.open).not.toHaveBeenCalled();
     }));
@@ -712,22 +723,212 @@ describe('TransactionsComponent', () => {
     }));
   });
 
-  it('onDeleteTransaction deletes via the service', async () => {
-    const component = build().componentInstance;
-    await component.onDeleteTransaction(createTransaction({ id: 'x' }));
-    expect(transactionService.deleteTransaction).toHaveBeenCalledWith('x');
-  });
+  /**
+   * A confirmed delete waits out its Undo window on the app's own clock
+   * (PendingDeleteService, real here), so every case runs on fake timers and
+   * ends with the window run out or the page gone: no timer outlives a case.
+   */
+  describe('a deleted row', () => {
+    const coffee = createTransaction({ id: 'coffee', description: 'Coffee' });
+    const rent = createTransaction({ id: 'rent', description: 'Rent' });
+    const tea = createTransaction({ id: 'tea', description: 'Tea' });
+    let list: jasmine.SpyObj<Pick<TransactionListComponent, 'deleteFailed' | 'deleteUndone'>>;
+    let fixture: ComponentFixture<TransactionsComponent>;
+    let component: TransactionsComponent;
 
-  it('onDeleteTransaction reports a failed delete instead of swallowing it', async () => {
-    transactionService.deleteTransaction.and.rejectWith(new Error('nope'));
-    spyOn(console, 'error');
-    const component = build().componentInstance;
+    /** The rows as the window holds them, with no client-only filter between it and the list. */
+    function load(rows: Transaction[]): void {
+      windowSource.window.set(rows);
+      windowSource.visibleWindow.set(rows);
+      fixture.detectChanges();
+    }
 
-    await expectAsync(component.onDeleteTransaction(createTransaction())).toBeResolved();
+    const listed = (): string[] => component.transactions().map(row => row.id);
 
-    const notifications = TestBed.inject(NotificationService) as jasmine.SpyObj<NotificationService>;
-    expect(notifications.error).toHaveBeenCalledWith('common.error');
-    expect(console.error).toHaveBeenCalled();
+    beforeEach(() => {
+      list = jasmine.createSpyObj('list', ['deleteFailed', 'deleteUndone']);
+      fixture = build();
+      component = fixture.componentInstance;
+      windowSource.totalCount.set(3);
+      load([coffee, rent, tea]);
+    });
+
+    it('leaves the list, the count and the totals the moment it is confirmed, and is not deleted yet', fakeAsync(() => {
+      expect(component.transactionCount()).withContext('the count, before').toBe('3');
+
+      void component.onDeleteTransaction(rent, list);
+
+      expect(listed()).toEqual(['coffee', 'tea']);
+      expect(component.transactionCount()).withContext('the server count, less the row it still holds').toBe('2');
+      expect([...periodTotals.exclude()]).withContext('the rows the totals leave out').toEqual(['rent']);
+      expect(notices.map(notice => [notice.message, notice.action])).toEqual([['transactions.deleted', 'common.undo']]);
+      expect(transactionService.deleteTransaction).not.toHaveBeenCalled();
+
+      tick(UNDO_WINDOW_MS);
+    }));
+
+    it('comes back on Undo, heard as restored, with focus offered to it, and is never deleted', fakeAsync(() => {
+      void component.onDeleteTransaction(rent, list);
+
+      notices[0].press();
+      flushMicrotasks();
+
+      expect(listed()).toEqual(['coffee', 'rent', 'tea']);
+      expect(component.transactionCount()).toBe('3');
+      expect(periodTotals.exclude().size).withContext('the rows the totals leave out').toBe(0);
+      expect(announcer.announce).toHaveBeenCalledWith('transactions.restored', 'polite');
+      expect(announcer.announce.calls.allArgs().filter(([message]) => message === 'transactions.restored').length)
+        .withContext('heard once')
+        .toBe(1);
+      expect(list.deleteUndone).toHaveBeenCalledOnceWith('rent');
+      expect(list.deleteFailed).not.toHaveBeenCalled();
+
+      tick(UNDO_WINDOW_MS);
+      expect(transactionService.deleteTransaction).not.toHaveBeenCalled();
+    }));
+
+    it('is deleted once, as the window runs out', fakeAsync(() => {
+      void component.onDeleteTransaction(rent, list);
+
+      tick(UNDO_WINDOW_MS - 1);
+      expect(transactionService.deleteTransaction).not.toHaveBeenCalled();
+
+      tick(1);
+      flushMicrotasks();
+      expect(transactionService.deleteTransaction).toHaveBeenCalledOnceWith('rent');
+      expect(notices[0].dismissCalls).withContext('the notice, taken down').toBe(1);
+
+      tick(UNDO_WINDOW_MS);
+      expect(transactionService.deleteTransaction).toHaveBeenCalledTimes(1);
+      expect(list.deleteUndone).not.toHaveBeenCalled();
+      expect(list.deleteFailed).not.toHaveBeenCalled();
+    }));
+
+    it('leaves the count while its delete waits, even once the window has let it go', fakeAsync(() => {
+      void component.onDeleteTransaction(rent, list);
+
+      // A scroll trimmed the window past the row, or a jump re-seeded it
+      // elsewhere: the row is still on the server, under the same filters.
+      load([coffee, tea]);
+      expect(component.transactionCount()).withContext('a server count that still holds it').toBe('2');
+
+      tick(UNDO_WINDOW_MS);
+    }));
+
+    it('stays hidden while its delete waits, even through a window that left it out for a while', fakeAsync(() => {
+      void component.onDeleteTransaction(rent, list);
+
+      // Another filter, whose rows and server count do not hold the row.
+      component.onFiltersChanged({ type: 'income' });
+      windowSource.totalCount.set(2);
+      load([coffee, tea]);
+      expect(component.transactionCount()).withContext('a server count that never held it').toBe('2');
+
+      // And back.
+      component.onFiltersChanged({});
+      windowSource.totalCount.set(3);
+      load([coffee, rent, tea]);
+      expect(listed()).toEqual(['coffee', 'tea']);
+      expect([...periodTotals.exclude()]).toEqual(['rent']);
+      expect(component.transactionCount()).toBe('2');
+
+      tick(UNDO_WINDOW_MS);
+    }));
+
+    it('stays hidden after its delete through a refresh that failed, and is let go once the window lacks it', fakeAsync(() => {
+      void component.onDeleteTransaction(rent, list);
+      tick(UNDO_WINDOW_MS);
+      flushMicrotasks();
+      expect(transactionService.deleteTransaction).toHaveBeenCalledOnceWith('rent');
+
+      // The refresh that would take the row out failed: the window and the
+      // server count still hold it.
+      emitMutation({ kind: 'delete', id: 'rent' });
+      fixture.detectChanges();
+      tick();
+      expect(windowSource.refresh).toHaveBeenCalled();
+      expect(listed()).toEqual(['coffee', 'tea']);
+      expect(component.transactionCount()).toBe('2');
+      expect([...periodTotals.exclude()]).toEqual(['rent']);
+
+      // The next refresh lands without it.
+      windowSource.totalCount.set(2);
+      load([coffee, tea]);
+      expect(periodTotals.exclude().size).withContext('the rows the totals leave out').toBe(0);
+      expect(component.transactionCount()).toBe('2');
+
+      // Nothing hides it any more: a window holding it again would list it.
+      load([coffee, rent, tea]);
+      expect(listed()).toEqual(['coffee', 'rent', 'tea']);
+    }));
+
+    it('is made real at once when the page goes', fakeAsync(() => {
+      void component.onDeleteTransaction(rent, list);
+
+      fixture.destroy();
+
+      expect(transactionService.deleteTransaction).toHaveBeenCalledOnceWith('rent');
+      expect(notices[0].dismissCalls).withContext('the notice, taken down with the page').toBe(1);
+      tick(UNDO_WINDOW_MS);
+      flushMicrotasks();
+      expect(transactionService.deleteTransaction).toHaveBeenCalledTimes(1);
+      expect(list.deleteUndone).not.toHaveBeenCalled();
+      expect(list.deleteFailed).not.toHaveBeenCalled();
+    }));
+
+    it('is made real at once when the page is hidden, not when it shows', fakeAsync(() => {
+      const visibility = spyOnProperty(document, 'visibilityState').and.returnValue('visible');
+      void component.onDeleteTransaction(rent, list);
+
+      document.dispatchEvent(new Event('visibilitychange'));
+      expect(transactionService.deleteTransaction).withContext('shown').not.toHaveBeenCalled();
+
+      visibility.and.returnValue('hidden');
+      document.dispatchEvent(new Event('visibilitychange'));
+      expect(transactionService.deleteTransaction).toHaveBeenCalledOnceWith('rent');
+
+      tick(UNDO_WINDOW_MS);
+      flushMicrotasks();
+      expect(transactionService.deleteTransaction).toHaveBeenCalledTimes(1);
+    }));
+
+    it('comes back with the error notice naming it when its delete fails', fakeAsync(() => {
+      transactionService.deleteTransaction.and.rejectWith(new Error('nope'));
+      spyOn(console, 'error');
+      void component.onDeleteTransaction(rent, list);
+
+      tick(UNDO_WINDOW_MS);
+      flushMicrotasks();
+
+      expect(listed()).toEqual(['coffee', 'rent', 'tea']);
+      expect(component.transactionCount()).toBe('3');
+      expect(periodTotals.exclude().size).withContext('the rows the totals leave out').toBe(0);
+      expect(notifications.error).toHaveBeenCalledOnceWith('transactions.deleteFailed');
+      expect(console.error).toHaveBeenCalled();
+      expect(list.deleteFailed).withContext('the list, told the delete failed').toHaveBeenCalledOnceWith('rent');
+      expect(list.deleteUndone).not.toHaveBeenCalled();
+    }));
+
+    it('comes back when its delete fails under the next row\'s Undo, which stays up and keeps its own window', fakeAsync(() => {
+      transactionService.deleteTransaction.and.callFake((id: string) =>
+        id === 'coffee' ? Promise.reject(new Error('nope')) : Promise.resolve()
+      );
+      spyOn(console, 'error');
+      void component.onDeleteTransaction(coffee, list);
+      void component.onDeleteTransaction(rent, list);
+      flushMicrotasks();
+
+      expect(listed()).withContext('the row whose delete failed, back').toEqual(['coffee', 'tea']);
+      expect(list.deleteFailed).toHaveBeenCalledOnceWith('coffee');
+      expect(notifications.error).withContext('while the next Undo is up').not.toHaveBeenCalled();
+      expect(notices[1].dismissCalls).toBe(0);
+      expect(transactionService.deleteTransaction).not.toHaveBeenCalledWith('rent');
+
+      tick(UNDO_WINDOW_MS);
+      flushMicrotasks();
+      expect(transactionService.deleteTransaction).toHaveBeenCalledWith('rent');
+      expect(notifications.error).toHaveBeenCalledOnceWith('transactions.deleteFailed');
+    }));
   });
 
   it('navigateToImportFile delegates to the quick-add service', () => {
@@ -1017,6 +1218,231 @@ describe('TransactionsComponent, through its own template', () => {
     mobile(true);
 
     expect(el().querySelector('.period-totals-line')).toBeNull();
+  });
+
+  /**
+   * The phone's line wraps between its parts, and a dot separates each part
+   * from the next. Each dot was a part of its own, so a wrap could fall
+   * before it: at 320px the second line read "· Net Balance". The line is
+   * read here as a reader sees it: a dot that shows stands after a part on
+   * its own line, never first on one, and nothing runs past the line's end.
+   * A dot drawn outside the line's box, where the line clips it, shows
+   * nowhere. The face is pinned, as Karma serves none.
+   *
+   * What the clip cuts is read by hit testing, which Chrome clips where it
+   * clips painting: a clip margin the browser does not apply still reads
+   * back from getComputedStyle, so a declared value proves nothing.
+   */
+  describe("the phone's totals line, wrapped", () => {
+    const RANGES = { en: 'Mar 1 – 31, 2026', ja: '2026年3月1日～31日', tc: '2026年3月1日至31日' } as const;
+    /** A 320px screen's page: less the main container's 8px scrollbar and the layout's 16px gutter a side. */
+    const PHONE_PAGE_PX = 320 - 8 - 2 * 16;
+    /** The app's focus outline at its widest, under high contrast: 2px out and 3px wide. */
+    const OUTLINE_OFFSET_PX = 2;
+    const OUTLINE_WIDTH_PX = 3;
+
+    /** The page laid out as on a phone, its gutter kept, so the room before the line is inside the window. */
+    function phonePage(): HTMLElement {
+      const host = el();
+      host.style.display = 'block';
+      host.style.width = `${PHONE_PAGE_PX}px`;
+      host.style.marginInlineStart = '16px';
+      host.style.fontFamily = "Verdana, 'DejaVu Sans', sans-serif";
+      return host;
+    }
+
+    /**
+     * Brings the page's host to the window's top, or as near as the page
+     * scrolls, once its line is laid out. A full run stands jasmine's report
+     * above the fixture, as tall as the specs before made it, and leaves the
+     * page wherever they scrolled it; this file alone stands it near the top.
+     * Each case puts the page's scroll back where it found it.
+     */
+    function intoTheWindow(): void {
+      el().scrollIntoView({ block: 'start', inline: 'nearest', behavior: 'instant' });
+    }
+    keepThePageWhereFound();
+
+    /**
+     * Runs `body` with `px` of page standing above the fixture, as a full run
+     * stands jasmine's report there, which this file alone does not. The
+     * spacer goes on the page before `body` renders, so the fixture lands
+     * below it, and comes off when `body` ends.
+     */
+    function withPageAbove(px: number, body: () => void): void {
+      const spacer = document.body.appendChild(document.createElement('div'));
+      spacer.style.height = `${px}px`;
+      try {
+        body();
+      } finally {
+        spacer.remove();
+      }
+    }
+
+    /** The element a pointer reaches at a point inside the window. */
+    function reached(x: number, y: number): Element | null {
+      expect(x >= 0 && y >= 0 && x < window.innerWidth && y < window.innerHeight)
+        .withContext(`the point (${Math.round(x)}, ${Math.round(y)}), inside the window`)
+        .toBeTrue();
+      return document.elementFromPoint(x, y);
+    }
+
+    function renderLine(l: 'en' | 'ja' | 'tc', captioned: boolean): HTMLElement {
+      TestBed.overrideProvider(TranslationService, { useValue: catalogTranslationStub(l) });
+      render();
+      phonePage();
+      totals.totals.set({ expense: 1234.56, income: 4000, balance: 2765.44 } as TypeTotals);
+      totals.status.set({ kind: 'ready' });
+      if (captioned) {
+        (TestBed.inject(LocaleFormatService).formatRange as jasmine.Spy).and.returnValue(RANGES[l]);
+        component.onFiltersChanged({ startDate: new Date('2026-03-01'), endDate: new Date('2026-03-31') } as never);
+      }
+      mobile(true);
+      const line = el().querySelector('.period-totals-line') as HTMLElement;
+      expect(line).withContext('the subtitle line').not.toBeNull();
+      return line;
+    }
+
+    /** Whether two boxes stand on one line: they share most of their height. */
+    const oneLine = (a: DOMRect, b: DOMRect) => Math.min(a.bottom, b.bottom) - Math.max(a.top, b.top) > Math.min(a.height, b.height) / 2;
+
+    function expectNoDotLeads(line: HTMLElement, where: string): void {
+      intoTheWindow();
+      const edges = line.getBoundingClientRect();
+      const parts = Array.from(line.querySelectorAll<HTMLElement>('.period-caption, .period-figure')).map(part => part.getBoundingClientRect());
+      const dotEls = Array.from(line.querySelectorAll<HTMLElement>('.period-sep'));
+      const dots = dotEls.map(dot => dot.getBoundingClientRect());
+      expect(dots.length).withContext(`${where}: dots, one between each two parts at least`).toBeGreaterThanOrEqual(parts.length - 1);
+
+      const lineTops = parts.map(part => part.top).sort((a, b) => a - b).filter((top, i, all) => i === 0 || top - all[i - 1] > 4);
+      expect(lineTops.length).withContext(`${where}: the lines the parts stand on, so the line does wrap`).toBeGreaterThan(1);
+
+      for (const [i, part] of parts.entries()) {
+        expect(part.right).withContext(`${where}: part ${i + 1}'s end against the line's`).toBeLessThanOrEqual(edges.right + 0.5);
+        expect(part.left).withContext(`${where}: part ${i + 1}'s start against the line's`).toBeGreaterThanOrEqual(edges.left - 0.5);
+      }
+      for (const [i, dot] of dots.entries()) {
+        const middle = (dot.top + dot.bottom) / 2;
+        const shown = dot.right > edges.left + 0.5 && dot.left < edges.right - 0.5;
+        if (!shown) {
+          // Its edge nearest the line, where a clip that let any of it show would.
+          const nearest = dot.right <= edges.left + 0.5 ? dot.right - 0.5 : dot.left + 0.5;
+          const hit = reached(nearest, middle);
+          expect(hit !== null && dotEls[i].contains(hit))
+            .withContext(`${where}: dot ${i + 1}, outside the line, reached at its edge nearest the line`)
+            .toBeFalse();
+          continue;
+        }
+        const hit = reached((dot.left + dot.right) / 2, middle);
+        expect(hit !== null && dotEls[i].contains(hit)).withContext(`${where}: dot ${i + 1}, shown, reached at its middle`).toBeTrue();
+        expect(dot.right).withContext(`${where}: dot ${i + 1}'s end against the line's`).toBeLessThanOrEqual(edges.right + 0.5);
+        expect(parts.some(part => oneLine(part, dot) && part.right <= dot.left + 0.5))
+          .withContext(`${where}: dot ${i + 1}, shown at [${Math.round(dot.left)}, ${Math.round(dot.top)}], after a part on its line`)
+          .toBeTrue();
+      }
+    }
+
+    for (const l of ['en', 'ja', 'tc'] as const) {
+      it(`starts no line with a dot at a 320px page, the range before the figures, in ${l}`, () => {
+        const line = renderLine(l, true);
+        // Narrow enough at 320px that the range and the figures take more than one line.
+        expectNoDotLeads(line, `${l} at 320px`);
+      });
+
+      // The width at which a part fits its line and the dot after it does
+      // not: the line is the first figure's width and 6px more, under the
+      // 8px gap and the dot that follow it.
+      it(`starts no line with a dot where the first figure fills its line, in ${l}`, () => {
+        const line = renderLine(l, false);
+        const first = line.querySelector('.period-figure') as HTMLElement;
+        line.style.width = `${first.getBoundingClientRect().width + 6}px`;
+        expectNoDotLeads(line, `${l}, the line as wide as the first figure`);
+      });
+    }
+
+    it('reads its line inside the window with 3000px of page above the fixture', () => {
+      withPageAbove(3000, () => expectNoDotLeads(renderLine('en', true), 'en at 320px, 3000px down the page'));
+    });
+
+    /**
+     * A line clips what stands outside it, so an action at either end of a
+     * line must keep the app's focus outline inside the clip. An outline is
+     * not hit-tested, so a probe laid over the band it is drawn in stands in
+     * for it: reached at the band's outer edge, the outline is painted whole
+     * on that side.
+     */
+    function expectOutlineBandReached(action: HTMLElement, side: 'start' | 'end', where: string): void {
+      const band = document.createElement('span');
+      band.style.position = 'absolute';
+      band.style.insetBlock = '0';
+      band.style.setProperty(`inset-inline-${side}`, `-${OUTLINE_OFFSET_PX + OUTLINE_WIDTH_PX}px`);
+      band.style.inlineSize = `${OUTLINE_WIDTH_PX}px`;
+      band.style.zIndex = '1';
+      action.appendChild(band);
+      const box = action.getBoundingClientRect();
+      const outer = side === 'start'
+        ? box.left - OUTLINE_OFFSET_PX - OUTLINE_WIDTH_PX + 0.5
+        : box.right + OUTLINE_OFFSET_PX + OUTLINE_WIDTH_PX - 0.5;
+      expect(reached(outer, (box.top + box.bottom) / 2))
+        .withContext(`${where}: the outline's ${side} side, reached at its outer edge`)
+        .toBe(band);
+      band.remove();
+    }
+
+    // Each outline case runs as this file stands its fixture, near the top,
+    // and again with 3000px of page above it, where only the case's own
+    // scroll brings its points inside the window.
+    for (const above of [0, 3000] as const) {
+      const where = above ? `, with ${above}px of page above the fixture` : '';
+
+      // With no range, Calculate is the line's one part, so it starts the line.
+      it(`keeps the whole focus outline of an action that starts the line, and its tap overhang${where}`, () => {
+        withPageAbove(above, () => {
+          TestBed.overrideProvider(TranslationService, { useValue: catalogTranslationStub('en') });
+          render();
+          phonePage();
+          totals.status.set({ kind: 'over-cap', serverCount: 1200 } as PeriodTotalsStatus);
+          mobile(true);
+
+          const line = el().querySelector('.period-totals-line') as HTMLElement;
+          const action = line.querySelector('.period-totals-calc-link') as HTMLElement;
+          intoTheWindow();
+          const box = action.getBoundingClientRect();
+          expect(box.left).withContext('Calculate, first on the line').toBeCloseTo(line.getBoundingClientRect().left, 0);
+          expectOutlineBandReached(action, 'start', 'Calculate, first on the line');
+
+          // The 40px tap target overhangs the line above and below: the clip
+          // leaves it whole.
+          const overhang = (40 - box.height) / 2;
+          const middle = (box.left + box.right) / 2;
+          for (const [what, y] of [['above', box.top - overhang + 0.5], ['below', box.bottom + overhang - 0.5]] as const) {
+            const hit = reached(middle, y);
+            expect(hit !== null && action.contains(hit)).withContext(`Calculate's tap target, reached ${what} the line`).toBeTrue();
+          }
+        });
+      });
+
+      // Retry ends the unavailable part, and a line as wide as that part ends with it.
+      it(`keeps the whole focus outline of an action that ends the line${where}`, () => {
+        withPageAbove(above, () => {
+          TestBed.overrideProvider(TranslationService, { useValue: catalogTranslationStub('en') });
+          render();
+          phonePage();
+          totals.status.set({ kind: 'unavailable' });
+          mobile(true);
+
+          const line = el().querySelector('.period-totals-line') as HTMLElement;
+          const action = line.querySelector('.period-totals-retry-link') as HTMLElement;
+          line.style.width = `${Math.ceil(action.getBoundingClientRect().right - line.getBoundingClientRect().left)}px`;
+          intoTheWindow();
+          const box = action.getBoundingClientRect();
+          const edges = line.getBoundingClientRect();
+          expect(edges.right - box.right).withContext('Retry, last on the line, px before its end').toBeLessThan(1);
+          expect(box.top).withContext('Retry, still on the first line').toBeLessThan(edges.top + box.height / 2);
+          expectOutlineBandReached(action, 'end', 'Retry, last on the line');
+        });
+      });
+    }
   });
 
   // The phone's two actions read as words in the subtitle line, so their box

@@ -33,10 +33,13 @@ import {
   yearWindow,
 } from '../../../core/utils/transaction-date.utils';
 import { TranslatePipe } from '../../../shared/pipes/translate.pipe';
-import { ImportFocusContext, focusWhenRendered } from '../../ai/import/import-focus';
+import { FocusContext, focusWhenRendered } from '../../../shared/utils/focus-when-rendered';
 
 /** Numbers each filter panel's date descriptions, so two panels on one page never share an id. */
 let nextDateErrorId = 0;
+
+/** Numbers each filter panel's save-search box, so its label's `for` names that panel's box alone. */
+let nextSaveNameId = 0;
 
 @Component({
   selector: 'app-transaction-filters',
@@ -65,6 +68,8 @@ export class TransactionFiltersComponent implements OnInit, OnChanges, OnDestroy
   /** The ids of the off-screen text that says why From or To is refused; each input is described by its own. */
   readonly startDateErrorId = `filters-from-error-${nextDateErrorId}`;
   readonly endDateErrorId = `filters-to-error-${nextDateErrorId++}`;
+  /** The save-search box's id, which its label's `for` names. */
+  readonly saveNameId = `filters-save-name-${nextSaveNameId++}`;
 
   private transactionService = inject(TransactionService);
   private cdr = inject(ChangeDetectorRef);
@@ -77,7 +82,7 @@ export class TransactionFiltersComponent implements OnInit, OnChanges, OnDestroy
 
   // Where focus goes once Clear all, a suggestion or the save-search box
   // takes the control holding it off the page (focusWhenRendered).
-  private readonly focus: ImportFocusContext = {
+  private readonly focus: FocusContext = {
     host: this.elementRef.nativeElement,
     injector: inject(Injector),
     destroyRef: inject(DestroyRef),
@@ -449,7 +454,7 @@ export class TransactionFiltersComponent implements OnInit, OnChanges, OnDestroy
    */
   closeSaveMode(): void {
     this.saveMode.set(false);
-    focusWhenRendered(this.focus, '.save-search-button', '.search-input');
+    focusWhenRendered(this.focus, ['.save-search-button', '.search-input']);
   }
 
   private setupDatepickerListeners(picker: MatDatepicker<Date>): void {

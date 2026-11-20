@@ -1099,12 +1099,15 @@ describe('NativeReceiptService', () => {
     });
 
     it('should fall back to the regex parser when the model fails', async () => {
-      appleMock.parseReceiptText.and.rejectWith(new Error('model busy'));
+      const failure = new Error('model busy');
+      appleMock.parseReceiptText.and.rejectWith(failure);
+      const consoleWarn = spyOn(console, 'warn');
 
       const result = await service.processImage(imageFile());
 
       expect(result.transactions[0].description).toBe('Starbucks');
       expect(result.transactions[0].amount).toBe(12.5);
+      expect(consoleWarn).toHaveBeenCalledOnceWith('[NativeReceipt] Apple Intelligence parsing failed, using basic parser:', failure);
     });
   });
 

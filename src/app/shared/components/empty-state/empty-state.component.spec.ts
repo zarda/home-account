@@ -1,12 +1,14 @@
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { EmptyStateComponent } from './empty-state.component';
 import {
+  headingOutline,
   iconBox,
   iconSquare,
   paintedBackground,
   paintedColor,
   provideNoMotion,
   ratio,
+  tokenValue,
   withTheme,
 } from '../../../core/services/testing';
 
@@ -42,15 +44,13 @@ describe('EmptyStateComponent', () => {
   });
 
   it('titles itself with a third-level heading unless told another level', () => {
-    const headings = (): string[] =>
-      Array.from(fixture.nativeElement.querySelectorAll('h1, h2, h3, h4, h5, h6') as NodeListOf<Element>)
-        .map(heading => `${heading.tagName}:${heading.textContent?.trim()}`);
-    expect(headings()).toEqual(['H3:No data']);
+    const headings = (): string[] => headingOutline(fixture.nativeElement);
+    expect(headings()).toEqual(['h3 No data']);
 
     for (const level of [2, 4] as const) {
       fixture.componentRef.setInput('headingLevel', level);
       fixture.detectChanges();
-      expect(headings()).toEqual([`H${level}:No data`]);
+      expect(headings()).toEqual([`h${level} No data`]);
     }
   });
 
@@ -103,18 +103,6 @@ describe('EmptyStateComponent', () => {
 
     afterEach(() => host.remove());
 
-    /** What `color: var(token)` computes to under the palette on <html> now. */
-    function tokenColour(token: string): string {
-      const probe = document.createElement('span');
-      probe.style.color = `var(${token})`;
-      document.body.appendChild(probe);
-      try {
-        return getComputedStyle(probe).color;
-      } finally {
-        probe.remove();
-      }
-    }
-
     it('paints the icon at AA or better on its circle, at both sizes, in both themes', () => {
       for (const size of ['md', 'sm'] as const) {
         fixture.componentRef.setInput('size', size);
@@ -140,10 +128,10 @@ describe('EmptyStateComponent', () => {
         withTheme(theme, () => {
           expect(getComputedStyle(title).color)
             .withContext(`${theme} title`)
-            .toBe(tokenColour('--text-primary'));
+            .toBe(tokenValue('--text-primary'));
           expect(getComputedStyle(description).color)
             .withContext(`${theme} description`)
-            .toBe(tokenColour('--text-muted'));
+            .toBe(tokenValue('--text-muted'));
         });
       }
     });

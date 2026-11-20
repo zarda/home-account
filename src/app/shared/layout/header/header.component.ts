@@ -10,6 +10,7 @@ import { MatDialog } from '@angular/material/dialog';
 import { MatMenuModule } from '@angular/material/menu';
 import { MatTooltipModule } from '@angular/material/tooltip';
 import { AuthService } from '../../../core/services/auth.service';
+import { PendingDeleteService } from '../../../core/services/pending-delete.service';
 import { KeyboardShortcutService } from '../../../core/services/keyboard-shortcut.service';
 import { TranslationService } from '../../../core/services/translation.service';
 import { accountDisplayName } from '../../../core/utils/person-name.utils';
@@ -44,6 +45,7 @@ export class HeaderComponent implements OnInit, OnDestroy, AfterViewInit {
   @Output() toggleSidebar = new EventEmitter<void>();
 
   private authService = inject(AuthService);
+  private pendingDelete = inject(PendingDeleteService);
   private router = inject(Router);
   private ngZone = inject(NgZone);
   private breakpointObserver = inject(BreakpointObserver);
@@ -214,6 +216,8 @@ export class HeaderComponent implements OnInit, OnDestroy, AfterViewInit {
   }
 
   async logout(): Promise<void> {
+    // A transaction delete still inside its Undo window is made real first.
+    await this.pendingDelete.flushBeforeSignOut();
     await this.authService.signOut();
     this.router.navigate(['/login']);
   }

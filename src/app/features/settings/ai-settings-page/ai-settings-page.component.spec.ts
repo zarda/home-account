@@ -1,5 +1,5 @@
 import { ComponentFixture, TestBed } from '@angular/core/testing';
-import { signal } from '@angular/core';
+import { WritableSignal, signal } from '@angular/core';
 import { RouterTestingModule } from '@angular/router/testing';
 import { HttpClientTestingModule } from '@angular/common/http/testing';
 
@@ -18,6 +18,7 @@ import { TranslationService } from '../../../core/services/translation.service';
 import {
   accessibleName,
   catalogTranslator,
+  holdsShownWords,
   provideNoMotion,
   runAxe,
   settleAnimations,
@@ -38,6 +39,9 @@ describe('AiSettingsPageComponent', () => {
   let providerKeysMock: jasmine.SpyObj<ProviderKeyService>;
   let categoryMemoryMock: jasmine.SpyObj<CategoryMemoryService>;
   let tagMemoryMock: jasmine.SpyObj<TagMemoryService>;
+  // How many merchants each memory holds, which a case can raise.
+  let rememberedCategories: WritableSignal<number>;
+  let rememberedTags: WritableSignal<number>;
   let providerKeysLoadFailed: ReturnType<typeof signal<boolean>>;
   let providerKeysStored: ReturnType<typeof signal<ProviderSecrets | null>>;
   let announcerMock: jasmine.SpyObj<AnnouncerService>;
@@ -99,18 +103,20 @@ describe('AiSettingsPageComponent', () => {
     providerKeysMock.getKey.and.resolveTo(undefined);
     providerKeysMock.setKey.and.resolveTo(undefined);
 
+    rememberedCategories = signal(0);
     categoryMemoryMock = jasmine.createSpyObj<CategoryMemoryService>(
       'CategoryMemoryService',
       ['ensureLoaded', 'clear'],
-      { rememberedCount: signal(0) }
+      { rememberedCount: rememberedCategories }
     );
     categoryMemoryMock.ensureLoaded.and.resolveTo(undefined);
     categoryMemoryMock.clear.and.resolveTo(undefined);
 
+    rememberedTags = signal(0);
     tagMemoryMock = jasmine.createSpyObj<TagMemoryService>(
       'TagMemoryService',
       ['ensureLoaded', 'clear'],
-      { rememberedCount: signal(0) }
+      { rememberedCount: rememberedTags }
     );
     tagMemoryMock.ensureLoaded.and.resolveTo(undefined);
     tagMemoryMock.clear.and.resolveTo(undefined);
@@ -203,10 +209,8 @@ describe('AiSettingsPageComponent', () => {
         expect(toggle).withContext('the switch').not.toBeNull();
         if (!row || !toggle) return;
         expect(accessibleName(toggle)).toBe(catalogTranslator(locale, { strict: true })('aiPage.autoSync'));
-        // Material renders an empty <label for> beside the button, and axe's
-        // button-name takes any label it cannot see as a name, so an unnamed
-        // switch would pass. Without it, axe reads only the button's own names.
-        row.querySelector(`label[for="${toggle.id}"]`)?.remove();
+        // Material's empty <label for> stays: the shared pass no longer takes
+        // a label it cannot see as the switch's name.
         const violations = summarizeViolations(await runAxe(row));
         expect(violations.filter(line => line.startsWith('button-name'))).withContext(locale).toEqual([]);
       });
@@ -472,8 +476,8 @@ describe('AiSettingsPageComponent', () => {
   });
 
   describe('provider API keys', () => {
-    // The button carries no name of its own in either state, so the
-    // spinner is hidden rather than named — see check-icon-labels.mjs.
+    // The button's own aria-label names it in both states, so the spinner
+    // is hidden rather than named — see check-icon-labels.mjs.
     it('hides the test-button spinner from the accessibility tree', () => {
       component.isTestingGemini.set(true);
       fixture.detectChanges();
@@ -484,29 +488,168 @@ describe('AiSettingsPageComponent', () => {
       expect(button.querySelector('mat-spinner')?.getAttribute('aria-hidden')).toBe('true');
     });
 
-    it('names the busy test button with its idle key, and carries neither while idle', () => {
+    it('names the test button by its provider while busy and while idle alike', () => {
+      const translation = TestBed.inject(TranslationService);
+      spyOn(translation, 't').and.callFake(catalogTranslator('en'));
+      translation.translationsVersion.update(version => version + 1);
       const providers: {
         flag: 'isTestingGemini' | 'isTestingOpenai' | 'isTestingClaude';
         cardIndex: number;
+        name: string;
       }[] = [
-        { flag: 'isTestingGemini', cardIndex: 0 },
-        { flag: 'isTestingOpenai', cardIndex: 1 },
-        { flag: 'isTestingClaude', cardIndex: 2 },
+        { flag: 'isTestingGemini', cardIndex: 0, name: 'Test Key for Gemini' },
+        { flag: 'isTestingOpenai', cardIndex: 1, name: 'Test Key for OpenAI' },
+        { flag: 'isTestingClaude', cardIndex: 2, name: 'Test Key for Claude' },
       ];
 
-      for (const { flag, cardIndex } of providers) {
+      for (const { flag, cardIndex, name } of providers) {
         const card = fixture.nativeElement.querySelectorAll('.provider-card')[cardIndex] as HTMLElement;
         const button = card.querySelector('mat-card-actions button') as HTMLButtonElement;
 
         component[flag].set(true);
         fixture.detectChanges();
         expect(button.getAttribute('aria-busy')).withContext(flag).toBe('true');
-        expect(button.getAttribute('aria-label')).withContext(flag).toBe('settings.testApiKey');
+        expect(button.getAttribute('aria-label')).withContext(`${flag} busy`).toBe(name);
 
         component[flag].set(false);
         fixture.detectChanges();
         expect(button.getAttribute('aria-busy')).withContext(flag).not.toBe('true');
-        expect(button.hasAttribute('aria-label')).withContext(flag).toBeFalse();
+        expect(button.getAttribute('aria-label')).withContext(`${flag} idle`).toBe(name);
+      }
+    });
+
+    /**
+     * The three provider cards stand side by side, each with a key field, a
+     * remove for its key, a Get API Key link and a Test Key button, so each
+     * of the four names its provider and none reads as another card's. The
+     * link and the button keep the words they show inside the name, so a
+     * voice user can say what they see (WCAG 2.5.3); the field is named by
+     * its label, which shows the provider. Every key is set, so every card
+     * shows its remove and an enabled Test Key. Once its provider is
+     * configured, the OpenAI card and the Claude card each show a model
+     * select too, named by its label as the field is; the Gemini card's two
+     * say what each picks a model for, and no other card has them.
+     */
+    describe('each card names its provider (real template)', () => {
+      const PROVIDERS = ['Gemini', 'OpenAI', 'Claude'];
+      /** The providers whose card holds one model select. */
+      const MODEL_PROVIDERS = ['OpenAI', 'Claude'];
+      const pinned = {
+        en: {
+          remove: ['Remove the Gemini API key', 'Remove the OpenAI API key', 'Remove the Claude API key'],
+          field: ['Gemini API key', 'OpenAI API key', 'Claude API key'],
+          link: ['Get API Key for Gemini', 'Get API Key for OpenAI', 'Get API Key for Claude'],
+          test: ['Test Key for Gemini', 'Test Key for OpenAI', 'Test Key for Claude'],
+          model: ['OpenAI model', 'Claude model'],
+        },
+        ja: {
+          remove: ['GeminiのAPIキーを削除', 'OpenAIのAPIキーを削除', 'ClaudeのAPIキーを削除'],
+          field: ['Gemini APIキー', 'OpenAI APIキー', 'Claude APIキー'],
+          link: ['GeminiのAPIキーを取得', 'OpenAIのAPIキーを取得', 'ClaudeのAPIキーを取得'],
+          test: ['Geminiのキーをテスト', 'OpenAIのキーをテスト', 'Claudeのキーをテスト'],
+          model: ['OpenAI モデル', 'Claude モデル'],
+        },
+        tc: {
+          remove: ['移除 Gemini API 金鑰', '移除 OpenAI API 金鑰', '移除 Claude API 金鑰'],
+          field: ['Gemini API 金鑰', 'OpenAI API 金鑰', 'Claude API 金鑰'],
+          link: ['前往 Gemini 取得 API 金鑰', '前往 OpenAI 取得 API 金鑰', '前往 Claude 取得 API 金鑰'],
+          test: ['測試金鑰：Gemini', '測試金鑰：OpenAI', '測試金鑰：Claude'],
+          model: ['OpenAI 模型', 'Claude 模型'],
+        },
+      } as const;
+
+      /** Renders `locale`'s words, with a key set for every provider. */
+      function speak(locale: 'en' | 'ja' | 'tc'): HTMLElement[] {
+        const translation = TestBed.inject(TranslationService);
+        spyOn(translation, 't').and.callFake(catalogTranslator(locale));
+        // The translate pipe memoises on the locale and the catalog version.
+        translation.currentLocale.set(locale);
+        translation.translationsVersion.update(version => version + 1);
+        component.geminiApiKey.set('g-key');
+        component.openaiApiKey.set('o-key');
+        component.claudeApiKey.set('c-key');
+        fixture.detectChanges();
+        const cards = Array.from((fixture.nativeElement as HTMLElement).querySelectorAll<HTMLElement>('.provider-card'));
+        expect(cards.length).withContext('the provider cards').toBe(3);
+        return cards;
+      }
+
+      /** The words a control shows: its label's text, an icon's ligature left out. */
+      const shownBy = (control: Element) =>
+        (control.querySelector('.mdc-button__label') ?? control).textContent!.replace(/\s+/g, ' ').trim();
+
+      for (const locale of ['en', 'ja', 'tc'] as const) {
+        it(`names each key's remove by its provider, in ${locale}`, () => {
+          const cards = speak(locale);
+          const removes = cards.map(card => card.querySelector('.api-key-field button'));
+          expect(removes.every(remove => remove !== null)).withContext('a remove on every card').toBeTrue();
+          const names = removes.map(remove => accessibleName(remove!));
+          names.forEach((name, i) => expect(name).withContext(`remove ${i} names ${PROVIDERS[i]}`).toContain(PROVIDERS[i]));
+          expect(new Set(names).size).withContext(`three names: ${names.join(' / ')}`).toBe(3);
+          expect(names).withContext('pinned').toEqual([...pinned[locale].remove]);
+          const t = catalogTranslator(locale, { strict: true });
+          expect(names).toEqual(PROVIDERS.map(provider => t('settings.removeApiKey', { provider })));
+        });
+
+        it(`names each field, Get API Key link and Test Key button by its provider, holding the words it shows, in ${locale}`, () => {
+          const cards = speak(locale);
+          const t = catalogTranslator(locale, { strict: true });
+          const read = (kind: 'field' | 'link' | 'test', control: (card: HTMLElement) => Element | null, shown: (control: Element) => string) => {
+            const controls = cards.map(control);
+            expect(controls.every(found => found !== null)).withContext(`a ${kind} on every card`).toBeTrue();
+            const names = controls.map(found => accessibleName(found!));
+            names.forEach((name, i) => {
+              const words = shown(controls[i]!);
+              expect(name).withContext(`${kind} ${i} names ${PROVIDERS[i]}`).toContain(PROVIDERS[i]);
+              expect(holdsShownWords(name, words, locale)).withContext(`"${name}" holds "${words}" whole`).toBeTrue();
+            });
+            expect(new Set(names).size).withContext(`three ${kind} names: ${names.join(' / ')}`).toBe(3);
+            expect(names).withContext(`${kind}, pinned`).toEqual([...pinned[locale][kind]]);
+            return names;
+          };
+
+          const fields = read(
+            'field',
+            card => card.querySelector('.api-key-field input'),
+            input => input.closest('mat-form-field')!.querySelector('mat-label')!.textContent!.trim(),
+          );
+          const links = read('link', card => card.querySelector('mat-card-actions a'), shownBy);
+          const tests = read('test', card => card.querySelector('mat-card-actions button'), shownBy);
+          expect(cards.map(card => [card.querySelector('mat-card-actions a')!, card.querySelector('mat-card-actions button')!].map(shownBy)))
+            .withContext('each link and Test Key shows its words as before')
+            .toEqual(PROVIDERS.map(() => [t('settings.getApiKey'), t('settings.testApiKey')]));
+
+          // Busy, a Test Key shows a spinner in place of its words and keeps its name.
+          component.isTestingGemini.set(true);
+          component.isTestingOpenai.set(true);
+          component.isTestingClaude.set(true);
+          fixture.detectChanges();
+          expect(cards.map(card => accessibleName(card.querySelector('mat-card-actions button')!)))
+            .withContext('busy')
+            .toEqual([...pinned[locale].test]);
+
+          expect(fields).toEqual(PROVIDERS.map(provider => t('settings.apiKeyFor', { provider })));
+          expect(links).toEqual(PROVIDERS.map(provider => t('settings.getApiKeyFor', { provider })));
+          expect(tests).toEqual(PROVIDERS.map(provider => t('settings.testApiKeyFor', { provider })));
+        });
+
+        it(`names the OpenAI and Claude model selects by their provider, in ${locale}`, () => {
+          // A card shows its model select once its provider is configured.
+          cloudLLMProviderMock.isProviderAvailable.and.returnValue(true);
+          const cards = speak(locale);
+          const selects = cards.slice(1).map(card => card.querySelector('.model-field mat-select'));
+          expect(selects.every(select => select !== null)).withContext('a model select on the OpenAI and Claude cards').toBeTrue();
+          const names = selects.map(select => accessibleName(select!));
+          names.forEach((name, i) => {
+            const label = selects[i]!.closest('mat-form-field')!.querySelector('mat-label')!.textContent!.trim();
+            expect(name).withContext(`model ${i} names ${MODEL_PROVIDERS[i]}`).toContain(MODEL_PROVIDERS[i]);
+            expect(name).withContext(`model ${i} is named by the label it shows`).toBe(label);
+          });
+          expect(new Set(names).size).withContext(`two model names: ${names.join(' / ')}`).toBe(2);
+          expect(names).withContext('model, pinned').toEqual([...pinned[locale].model]);
+          const t = catalogTranslator(locale, { strict: true });
+          expect(names).toEqual(MODEL_PROVIDERS.map(provider => t('settings.modelFor', { provider })));
+        });
       }
     });
 
@@ -1070,6 +1213,80 @@ describe('AiSettingsPageComponent', () => {
       expect(notifications.error).toHaveBeenCalledWith('common.error');
       expect(component.clearingCategoryMemory()).toBeFalse();
     });
+  });
+
+  /**
+   * The remembered-categories card and the remembered-tags card each end in a
+   * clear, and the two show together. Their words are the same in en and tc
+   * ("Forget all") and differ in ja only by chance, so each is named for what
+   * it forgets: its card's title, with the words it shows whole inside the
+   * name (WCAG 2.5.3), whether there is anything to forget or not.
+   */
+  describe('the two memory clears (real template)', () => {
+    const CLEARS = [
+      { title: 'aiPage.categoryMemoryTitle', shows: 'aiPage.categoryMemoryClear', label: 'aiPage.categoryMemoryClearLabel' },
+      { title: 'aiPage.tagMemoryTitle', shows: 'aiPage.tagMemoryClear', label: 'aiPage.tagMemoryClearLabel' },
+    ] as const;
+    const pinned = {
+      en: ['Forget all remembered categories', 'Forget all remembered tags'],
+      ja: ['記憶したカテゴリをすべて削除', '記憶されたタグをすべて忘れる'],
+      tc: ['將已記住的分類全部忘記', '將已記住的標籤全部忘記'],
+    } as const;
+
+    /** The words a button shows: its label's text, the icon's ligature left out. */
+    const shownBy = (button: Element) =>
+      button.querySelector('.mdc-button__label')!.textContent!.replace(/\s+/g, ' ').trim();
+
+    for (const locale of ['en', 'ja', 'tc'] as const) {
+      it(`names each clear for what it forgets, holding the words it shows, in ${locale}`, () => {
+        const translation = TestBed.inject(TranslationService);
+        spyOn(translation, 't').and.callFake(catalogTranslator(locale));
+        // The translate pipe memoises on the locale and the catalog version.
+        translation.currentLocale.set(locale);
+        translation.translationsVersion.update(version => version + 1);
+        const t = catalogTranslator(locale);
+        fixture.detectChanges();
+
+        /** The clear on the card whose title reads `titleKey`'s words. */
+        const clearOn = (titleKey: string): HTMLButtonElement => {
+          const card = Array.from((fixture.nativeElement as HTMLElement).querySelectorAll('mat-card')).find(
+            found => found.querySelector('mat-card-title')?.textContent?.trim() === t(titleKey)
+          );
+          const button = card?.querySelector<HTMLButtonElement>('mat-card-actions button') ?? null;
+          expect(button).withContext(`the clear on the card titled ${t(titleKey)}`).not.toBeNull();
+          return button!;
+        };
+
+        const read = (state: string, disabled: boolean) => {
+          const clears = CLEARS.map(clear => clearOn(clear.title));
+          const names = clears.map(clear => accessibleName(clear));
+          clears.forEach((clear, i) => {
+            const shown = shownBy(clear);
+            const title = t(CLEARS[i].title);
+            expect(clear.disabled).withContext(`${state}: clear ${i} disabled`).toBe(disabled);
+            expect(shown).withContext(`${state}: clear ${i} shows its words as before`).toBe(t(CLEARS[i].shows));
+            expect(holdsShownWords(names[i], shown, locale))
+              .withContext(`${state}: "${names[i]}" holds "${shown}" whole`)
+              .toBeTrue();
+            expect(holdsShownWords(names[i], title, locale))
+              .withContext(`${state}: "${names[i]}" says what it forgets, "${title}"`)
+              .toBeTrue();
+          });
+          expect(names[0]).withContext(`${state}: the two names, apart`).not.toBe(names[1]);
+          expect(names).withContext(`${state}, pinned`).toEqual([...pinned[locale]]);
+          const strict = catalogTranslator(locale, { strict: true });
+          expect(names).withContext(state).toEqual(CLEARS.map(clear => strict(clear.label)));
+        };
+
+        // Nothing remembered: both clears are disabled and keep their names.
+        read('nothing to forget', true);
+
+        rememberedCategories.set(4);
+        rememberedTags.set(2);
+        fixture.detectChanges();
+        read('something to forget', false);
+      });
+    }
   });
 
   describe('saving a preference', () => {

@@ -180,7 +180,20 @@ const PAIRS = [
       "transaction row's location link. Two hovered labels of the import review step sit on the primary's own " +
       "tint instead, 5% in light and 10% in dark: a review card's add-notes label over its card, and the list " +
       "footer's add-row label over the table's --surface-card. The preview spec holds both at 4.5:1 in both " +
-      'themes, the add-notes label on a hovered unchecked card',
+      "themes, the add-notes label on a hovered unchecked card. The upload area's drop slot, a dashed outline " +
+      "owed a graphic's 3:1, shows this fill through it while a mouse drags over the zone; under a finger the " +
+      'zone rests, as the --surface-background row below says',
+  },
+  {
+    fg: '--color-primary-text',
+    bg: '--surface-background',
+    threshold: 3,
+    why: "the upload area's drop slot under a finger: a dashed outline, a graphic, so 3:1, as --color-ai, drawn on " +
+      "the zone's resting fill, which shows through it. It clears 6.30:1 in light and 11.60:1 in dark, and the " +
+      'dropzone spec measures it in the four palettes. The ' +
+      "budgets tab's count badge sits on a 16% primary tint mixed into the page instead, a color-mix() fill this " +
+      'script cannot read; the budgets spec holds its count at 4.5:1 on that tint in both themes (4.99:1 in ' +
+      'light, 9.45:1 in dark)',
   },
   { fg: '--color-income-text', bg: '--color-income-light', why: 'the income chip: stat cards, weekly recap' },
   { fg: '--color-income-text', bg: '--surface-card', why: 'an income amount as running text' },
@@ -329,13 +342,6 @@ const EXEMPT = [
     fg: '--text-inverse',
     bg: '--color-success',
     why: 'nothing paints it, as the --color-info row above',
-  },
-  {
-    fg: '--color-primary-text',
-    bg: '--surface-background',
-    why: "nothing paints it straight on the page. The budgets tab's count badge sits on a 16% primary tint mixed " +
-      'into the page, a color-mix() fill this script cannot read; the budgets spec holds its count at 4.5:1 ' +
-      'on that tint in both themes (4.99:1 in light, 9.45:1 in dark)',
   },
 ];
 
@@ -664,6 +670,13 @@ function selfTest() {
     Object.keys(NOT_PAINTED).filter(token =>
       [...PAIRS, ...KNOWN_FAILURES].some(pair => pair.fg === token || pair.bg === token)
     ),
+    []
+  );
+  const pairKey = pair => `${pair.fg} on ${pair.bg}`;
+  const scoredPairs = new Set([...PAIRS, ...KNOWN_FAILURES].map(pairKey));
+  check(
+    'nothing is exempt and scored at the same time',
+    EXEMPT.map(pairKey).filter(key => scoredPairs.has(key)),
     []
   );
   check(

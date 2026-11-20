@@ -211,7 +211,13 @@ Material's own Intl formats in the reader's language, so a ja or tc day cell
 reads `19日`. The toggle's name and the calendar's buttons and labels
 (*Open calendar*, *Previous month*, *Choose month and year*, *Previous 24
 years* and the rest) come from the `datepicker.*` keys through
-`AppDatepickerIntl`.
+`AppDatepickerIntl`. Where two date fields stand together, as in the
+transaction filters, the recurring-rule dialog and the household budget
+dialog, each toggle is named by its field instead, through its `aria-label`
+input: `datepicker.openCalendarFor`, *Open calendar: {{field}}*, filled with
+the field's own label, so *Open calendar: From* and *Open calendar: To*
+read apart
+([ADR 0196](ADR/0196-sibling-controls-say-what-they-act-on-a-name-holds-its-shown-words-a-focused-button-shows-an-indicator-inside-it-focus-stays-in-the-list-after-a-delete-and-a-failed-dashboard-read-is-quiet.md)).
 
 **What it reads.** Typed text goes through `DateFormatService.parseDate`,
 which hands `parseTypedDate` ([dates.md](dates.md#keys)) the order the

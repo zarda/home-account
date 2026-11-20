@@ -17,11 +17,12 @@ import { RecapFigures } from '../../../core/utils/weekly-recap.utils';
 import { DateWindow, addDays } from '../../../core/utils/transaction-date.utils';
 import { BudgetAlert, Category, RecurringOccurrence } from '../../../models';
 import {
+  headingOutline,
   paintedBackground,
   paintedColor,
   provideNoMotion,
   ratio,
-  settleAnimations,
+  tokenValue,
   withTheme,
 } from '../../../core/services/testing';
 
@@ -184,6 +185,14 @@ describe('WeeklyRecapComponent', () => {
     // Still asked: the gate is the service's, and it needs the composition to
     // decide — a hidden card that never loads never becomes a visible one.
     expect(recap.load).toHaveBeenCalled();
+  });
+
+  // The dashboard's h1 heads the page, so the card's title is an h2.
+  it('titles the card one level under the page', () => {
+    render();
+
+    const outline = headingOutline(fixture.nativeElement);
+    expect(outline).toEqual(['h2 recap.title']);
   });
 
   it('heads the card with the recapped week and the spend', () => {
@@ -438,19 +447,6 @@ describe('WeeklyRecapComponent', () => {
   // Not the up and down deltas: those were already the expense and income
   // tones on their own tints.
   describe('colours', () => {
-    /** What `color: var(token)` computes to under the palette on <html> now. */
-    function tokenColour(token: string): string {
-      const probe = document.createElement('span');
-      probe.style.color = `var(${token})`;
-      document.body.appendChild(probe);
-      try {
-        settleAnimations(document);
-        return getComputedStyle(probe).color;
-      } finally {
-        probe.remove();
-      }
-    }
-
     function expectLines(lines: readonly (readonly [string, string, string])[]): void {
       for (const theme of ['light', 'dark'] as const) {
         withTheme(theme, () => {
@@ -462,7 +458,7 @@ describe('WeeklyRecapComponent', () => {
               .toBeGreaterThanOrEqual(4.5);
             expect(getComputedStyle(el).color)
               .withContext(`${theme} ${label}`)
-              .toBe(tokenColour(token));
+              .toBe(tokenValue(token));
           }
         });
       }

@@ -27,7 +27,19 @@
       {{ 'aiSearch.historyComputedAt' | translate: { date: formatComputedAt(at) } }}
     </p>
   }
-  <button mat-stroked-button (click)="onViewTransactions()">
+  <!-- The saved answers stamp one card per expanded answer, so the button
+       names the answer by what it asked for and its period, around the
+       words it shows. A count's label says what the button already says, so
+       a count is named by its period alone. -->
+  <button
+    mat-stroked-button
+    (click)="onViewTransactions()"
+    [attr.aria-label]="
+      answer().operation === 'count'
+        ? ('aiSearch.viewTransactionsIn' | translate: { period: periodLabel(answer().scope) })
+        : ('aiSearch.viewTransactionsFor' | translate: { answer: answerLabel(answer()), period: periodLabel(answer().scope) })
+    "
+  >
     <mat-icon>filter_list</mat-icon>
     {{ 'aiSearch.viewTransactions' | translate }}
   </button>

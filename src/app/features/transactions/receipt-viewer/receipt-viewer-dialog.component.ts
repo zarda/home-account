@@ -4,12 +4,9 @@ import {
   DestroyRef,
   ElementRef,
   Injector,
-  Signal,
-  afterNextRender,
   computed,
   inject,
   signal,
-  viewChild,
 } from '@angular/core';
 import { MatDialog, MatDialogModule, MatDialogRef, MAT_DIALOG_DATA } from '@angular/material/dialog';
 import { MatButtonModule } from '@angular/material/button';
@@ -22,6 +19,7 @@ import { transactionDisplayName } from '../../../core/utils/transaction-display.
 import { DialogHeaderComponent } from '../../../shared/components/dialog-header/dialog-header.component';
 import { LoadingSpinnerComponent } from '../../../shared/components/loading-spinner/loading-spinner.component';
 import { TranslatePipe } from '../../../shared/pipes/translate.pipe';
+import { FocusContext, FocusOptions, focusWhenRendered } from '../../../shared/utils/focus-when-rendered';
 import { Transaction, receiptImageSlots } from '../../../models';
 
 /** One hint id per viewer, so a description never resolves to another dialog's hint. */
@@ -98,20 +96,29 @@ export class ReceiptViewerDialogComponent {
   private dialogRef = inject(MatDialogRef<ReceiptViewerDialogComponent>);
   private receiptTranslation = inject(ReceiptTranslationService);
   private translationService = inject(TranslationService);
-  private injector = inject(Injector);
-  private destroyRef = inject(DestroyRef);
-  private host = inject(ElementRef<HTMLElement>);
   readonly data: ReceiptViewerDialogData = inject(MAT_DIALOG_DATA);
 
-  // Read as elements, not as the MatButton/MatIconButton directives the refs
-  // would otherwise resolve to — focus() lives on the DOM node.
-  private previousButton = viewChild('previousButton', { read: ElementRef<HTMLElement> });
-  private nextButton = viewChild('nextButton', { read: ElementRef<HTMLElement> });
-  private translateButton = viewChild('translateButton', { read: ElementRef<HTMLElement> });
-  private hideTranslationButton = viewChild('hideTranslationButton', {
-    read: ElementRef<HTMLElement>,
-  });
-  private retryButton = viewChild('retryButton', { read: ElementRef<HTMLElement> });
+  /**
+   * Focus goes to the control that takes the place of the one just pressed.
+   * Translate is gone as soon as a request starts, Hide translation goes
+   * with the panel holding it, and an end arrow disables itself the moment
+   * it is pressed: each leaves focus on `<body>` with no way back to the
+   * dialog short of tabbing through it again. A translation can arrive after
+   * the dialog is closed mid-request, and then nothing moves.
+   */
+  private readonly focus: FocusContext = {
+    host: inject<ElementRef<HTMLElement>>(ElementRef).nativeElement,
+    injector: inject(Injector),
+    destroyRef: inject(DestroyRef),
+  };
+
+  /**
+   * Only focus this dialog abandoned, on `<body>` because the pressed
+   * control was just removed or still somewhere inside this host, is focus
+   * this dialog may move. A pointer user's focus is never yanked from
+   * wherever they last put it.
+   */
+  private readonly abandoned: FocusOptions = { onlyIfDropped: true, from: this.focus.host };
 
   /** Live images with the slots they are stored at; tombstones are not images. */
   readonly slots = receiptImageSlots(this.data.transaction);
@@ -162,7 +169,7 @@ export class ReceiptViewerDialogComponent {
     // focus from an element that becomes disabled) — the other arrow is
     // always there to take it, since both render whenever the row does.
     if (target === 0) {
-      this.focusWhenRendered(this.nextButton);
+      focusWhenRendered(this.focus, '.next-button', this.abandoned);
     }
   }
 
@@ -170,7 +177,7 @@ export class ReceiptViewerDialogComponent {
     const target = this.index() + 1;
     this.show(target);
     if (target === this.total - 1) {
-      this.focusWhenRendered(this.previousButton);
+      focusWhenRendered(this.focus, '.previous-button', this.abandoned);
     }
   }
 
@@ -192,13 +199,13 @@ export class ReceiptViewerDialogComponent {
         return;
       }
       this.translation.set(translated);
-      this.focusWhenRendered(this.hideTranslationButton);
+      focusWhenRendered(this.focus, '.hide-translation-button', this.abandoned);
     } catch (error) {
       if (token !== this.requestToken) {
         return;
       }
       this.errorKey.set(this.receiptTranslation.failureKey(error));
-      this.focusWhenRendered(this.retryButton);
+      focusWhenRendered(this.focus, '.retry-button', this.abandoned);
     } finally {
       // Guarded like the two branches above: a move between images already
       // cleared this flag, and a request started for the new image may be
@@ -216,7 +223,7 @@ export class ReceiptViewerDialogComponent {
    */
   hideTranslation(): void {
     this.translation.set(null);
-    this.focusWhenRendered(this.translateButton);
+    focusWhenRendered(this.focus, '.translate-button', this.abandoned);
   }
 
   close(): void {
@@ -232,37 +239,5 @@ export class ReceiptViewerDialogComponent {
     this.translation.set(null);
     this.errorKey.set(null);
     this.isLoading.set(false);
-  }
-
-  /**
-   * Put focus on the control that takes the place of the one just pressed.
-   *
-   * Translate is gone as soon as a request starts, Hide translation goes with
-   * the panel holding it, and an end arrow disables itself the moment it is
-   * pressed — each leaves focus on `<body>` with no way back to the dialog
-   * short of tabbing through it again. afterNextRender is the first moment
-   * the replacement exists to receive it.
-   */
-  private focusWhenRendered(target: Signal<ElementRef<HTMLElement> | undefined>): void {
-    // A translation can arrive after the dialog is closed mid-request.
-    // Registering on the destroyed injector throws NG0911, and there is
-    // nothing left to focus anyway.
-    if (this.destroyRef.destroyed) return;
-    afterNextRender(
-      () => {
-        // Only focus this dialog abandoned — on <body> because the pressed
-        // control was just removed, or still somewhere inside this host —
-        // is focus this dialog may move. A pointer user's focus is never
-        // yanked from wherever they last put it.
-        const active = document.activeElement;
-        const abandoned =
-          active === null ||
-          active === document.body ||
-          this.host.nativeElement.contains(active);
-        if (!abandoned) return;
-        target()?.nativeElement.focus();
-      },
-      { injector: this.injector }
-    );
   }
 }

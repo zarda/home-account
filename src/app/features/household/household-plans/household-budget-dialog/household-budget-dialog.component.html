@@ -78,7 +78,14 @@
     <mat-form-field appearance="outline" class="plan-dialog-field">
       <mat-label>{{ 'household.planForm.startDate' | translate }}</mat-label>
       <input matInput [matDatepicker]="startPicker" formControlName="startDate" />
-      <mat-datepicker-toggle matIconSuffix [for]="startPicker" />
+      <!-- The start and end dates each end in a calendar button, and the two
+           always show together, so each is named for its own field in place
+           of the calendar's shared label. -->
+      <mat-datepicker-toggle
+        matIconSuffix
+        [for]="startPicker"
+        [aria-label]="'datepicker.openCalendarFor' | translate: { field: ('household.planForm.startDate' | translate) }"
+      />
       <mat-datepicker #startPicker />
       @if (form.controls.startDate.hasError('matDatepickerParse')) {
         <mat-error>{{ 'datepicker.dateInvalid' | translate }}</mat-error>
@@ -102,7 +109,11 @@
           <mat-icon>close</mat-icon>
         </button>
       }
-      <mat-datepicker-toggle matIconSuffix [for]="endPicker" />
+      <mat-datepicker-toggle
+        matIconSuffix
+        [for]="endPicker"
+        [aria-label]="'datepicker.openCalendarFor' | translate: { field: ('household.planForm.endDate' | translate) }"
+      />
       <mat-datepicker #endPicker />
       @if (form.controls.endDate.hasError('endBeforeStart')) {
         <mat-error>{{ 'household.planForm.endBeforeStart' | translate }}</mat-error>

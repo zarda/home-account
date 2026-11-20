@@ -16,14 +16,18 @@ import { DashboardLayoutService } from '../dashboard-layout.service';
 import { DashboardCardMenuComponent } from '../dashboard-card-menu/dashboard-card-menu.component';
 import { Transaction } from '../../../models';
 import {
+  accessibleName,
+  catalogTranslator,
   createUser,
+  headingOutline,
+  holdsShownWords,
   hoverValue,
   paintedBackground,
   paintedColor,
   provideNoMotion,
   ratio,
-  settleAnimations,
   textLines,
+  tokenValue,
   withTheme,
 } from '../../../core/services/testing';
 import { parseDayKey } from '../../../core/utils/transaction-date.utils';
@@ -148,6 +152,19 @@ describe('RecentTransactionsComponent', () => {
     expect(navSpy.calls.allArgs()).toEqual([opened, opened]);
   });
 
+  // The dashboard's h1 heads the page, so the card's title is an h2 and the
+  // empty state under it an h3.
+  it('titles the card one level under the page, and its empty state one under the title', () => {
+    const outline = () => headingOutline(fixture.nativeElement);
+    expect(outline()).toEqual(['h2 dashboard.recentTransactions', 'h3 transactions.noTransactions']);
+
+    fixture.componentRef.setInput('transactions', [
+      { id: 't1', description: 'Coffee', amount: 5, currency: 'USD', type: 'expense', categoryId: 'c1', date: Timestamp.now() } as Transaction,
+    ]);
+    fixture.detectChanges();
+    expect(outline()).toEqual(['h2 dashboard.recentTransactions']);
+  });
+
   it('onAddTransaction navigates to the transactions page in add mode', () => {
     const navSpy = spyOn(router, 'navigate');
     component.onAddTransaction();
@@ -169,19 +186,6 @@ describe('RecentTransactionsComponent', () => {
   });
 
   describe('colours', () => {
-    /** What `color: var(token)` computes to under the palette on <html> now. */
-    function tokenColour(token: string): string {
-      const probe = document.createElement('span');
-      probe.style.color = `var(${token})`;
-      document.body.appendChild(probe);
-      try {
-        settleAnimations(document);
-        return getComputedStyle(probe).color;
-      } finally {
-        probe.remove();
-      }
-    }
-
     it('paints the title in the primary text token, at AA or better on the card, in both themes', () => {
       const title = fixture.nativeElement.querySelector('.card-title') as HTMLElement;
       for (const theme of ['light', 'dark'] as const) {
@@ -191,7 +195,7 @@ describe('RecentTransactionsComponent', () => {
             .toBeGreaterThanOrEqual(4.5);
           expect(getComputedStyle(title).color)
             .withContext(`${theme} title`)
-            .toBe(tokenColour('--text-primary'));
+            .toBe(tokenValue('--text-primary'));
         });
       }
     });
@@ -205,7 +209,7 @@ describe('RecentTransactionsComponent', () => {
               .withContext(`${theme} link at rest on the card`)
               .toBeGreaterThanOrEqual(4.5);
             const rest = getComputedStyle(link).color;
-            expect(rest).withContext(`${theme} link at rest`).toBe(tokenColour('--color-accent'));
+            expect(rest).withContext(`${theme} link at rest`).toBe(tokenValue('--color-accent'));
 
             link.style.color = hoverValue(link, '.view-all-link', 'color');
             expect(ratio(paintedColor(link), paintedBackground(link)))
@@ -219,6 +223,36 @@ describe('RecentTransactionsComponent', () => {
       }
     });
   });
+
+  /**
+   * The dashboard renders this card and Upcoming Bills side by side, each
+   * with a View All of its own, so each names the card it belongs to by the
+   * card's title, around the words it shows (WCAG 2.5.3), read without
+   * regard to case in the reader's own locale. A fresh render: the pipe in
+   * the card above already holds an echoed key.
+   */
+  const viewAllNames = { en: 'View All Recent Transactions', ja: '最近の取引をすべて表示', tc: '查看全部最近交易' } as const;
+  for (const locale of ['en', 'ja', 'tc'] as const) {
+    it(`names View All by the card's title in ${locale}`, () => {
+      const t = catalogTranslator(locale, { strict: true });
+      const translation = TestBed.inject(TranslationService) as unknown as jasmine.SpyObj<TranslationService>;
+      translation.t.and.callFake(catalogTranslator(locale));
+      const card = TestBed.createComponent(RecentTransactionsComponent);
+      card.detectChanges();
+      const el = card.nativeElement as HTMLElement;
+
+      const link = el.querySelector('.view-all-link') as HTMLAnchorElement;
+      const shown = t('dashboard.viewAll');
+      const title = t('dashboard.recentTransactions');
+      const name = accessibleName(link);
+      expect(el.querySelector('.card-title')?.textContent?.trim()).withContext("the card's title").toBe(title);
+      expect(link.textContent).withContext('View All shows its words').toContain(shown);
+      expect(name).withContext(`"${name}" names the card`).toContain(title);
+      expect(holdsShownWords(name, shown, locale)).withContext(`"${name}" holds "${shown}" whole`).toBeTrue();
+      expect(name).withContext('pinned').toBe(viewAllNames[locale]);
+      expect(name).toBe(t('dashboard.viewAllNamed', { name: title }));
+    });
+  }
 
   // At 1024 px the dashboard's rail is about 229 px wide, too narrow for the
   // title, View all and the menu on one line. The title may wrap; the link
@@ -266,6 +300,26 @@ describe('RecentTransactionsComponent', () => {
       expect(triggerBox.right)
         .withContext('trigger inside the card')
         .toBeLessThanOrEqual(host.querySelector('mat-card')!.getBoundingClientRect().right);
+    });
+
+    // Its words are a 21px line, and the link was no taller: under the 40px
+    // floor every target in the app keeps. The menu's 48px touch span reaches
+    // 4px past its trigger, and the app's focus outline sits 2px out from the
+    // link and is 2px wide, 3px under high contrast, inside a card that clips.
+    it('gives View All a 40px target, clear of the menu beside it, its focus outline inside the card', () => {
+      const link = host.querySelector('.view-all-link') as HTMLElement;
+      const box = link.getBoundingClientRect();
+      expect(box.height).withContext('height vs the 40px floor').toBeGreaterThanOrEqual(40);
+      expect(box.width).withContext('width vs the 40px floor').toBeGreaterThanOrEqual(40);
+
+      const span = host.querySelector('.card-menu-trigger .mat-mdc-button-touch-target')!.getBoundingClientRect();
+      expect(span.left).withContext("the menu's touch span begins after the link").toBeGreaterThanOrEqual(box.right - 0.5);
+
+      const card = host.querySelector('mat-card')!.getBoundingClientRect();
+      const outline = 2 + 3;
+      expect(box.top - outline).withContext('outline top inside the card').toBeGreaterThanOrEqual(card.top);
+      expect(box.left - outline).withContext('outline left inside the card').toBeGreaterThanOrEqual(card.left);
+      expect(box.right + outline).withContext('outline right inside the card').toBeLessThanOrEqual(card.right);
     });
 
     // Three cards stack in the rail, and Budget Progress keeps its title whole

@@ -14,14 +14,20 @@ import {
   catalogTranslator,
   channels,
   createTranslationStub,
+  dragByHandle,
   expectOneRule,
   expectPainted,
+  fileRowOf,
   hoverValue,
+  inPalette,
+  mouse,
   paintedBackground,
   paintedColor,
+  PALETTES,
   pressKey,
   provideNoMotion,
   ratio,
+  selectorsOf,
   settleAnimations,
   styleRules,
   textLines,
@@ -624,6 +630,9 @@ describe('FileDropzoneComponent, through its own template', () => {
     TestBed.tick();
   }
 
+  /** The listed row that shows `name`; never the slot or the preview a drag leaves. */
+  const rowOf = (name: string) => fileRowOf(el(), name);
+
   beforeEach(async () => {
     await TestBed.configureTestingModule({
       imports: [FileDropzoneComponent],
@@ -786,7 +795,8 @@ describe('FileDropzoneComponent, through its own template', () => {
   // keyboard focus, at the 2px outline and 2px offset of every other ring (3px
   // under high contrast, which styles.scss widens by :focus-visible alone):
   // the room the wizard leaves round its step, 5px, is cut to that ring.
-  // Browse's own ring is cleared, so one ring shows.
+  // Browse's own ring is cleared, and so is the focus indicator styles.scss
+  // has every Material button draw inside itself, so one ring shows.
   it('rings the zone while Browse has keyboard focus, 3px under high contrast, and clears Browse\'s own', () => {
     fixture.detectChanges();
     const rules = styleRules()
@@ -813,6 +823,9 @@ describe('FileDropzoneComponent, through its own template', () => {
     expect(wide[0]?.style.outlineWidth).withContext('the zone\'s ring under high contrast').toBe('3px');
     expectOneRule(browseRing);
     expect(browseRing[0]?.style.outlineStyle).withContext('Browse\'s own ring').toBe('none');
+    expect(browseRing[0]?.style.getPropertyValue('--mat-focus-indicator-display').trim())
+      .withContext('Browse\'s own focus indicator')
+      .toBe('none');
   });
 
   it('renders a dropped file as a row carrying its name, size and type', () => {
@@ -1004,63 +1017,68 @@ describe('FileDropzoneComponent, through its own template', () => {
         .toEqual(['a.png', 'rows.csv', 'b.png']);
     });
 
-    // CDK sorts every row the pointer passes, a CSV's too, and reports only
-    // where the dragged row started and where it landed. The zone reads the
-    // photos off in the order CDK left them and writes them back into the
-    // photos' own rows.
+    // Only a photo's row is a drag item, so CDK counts the photos alone: a
+    // drop reports where the dragged photo started and where it landed among
+    // the photos. The zone moves it there among the photos and writes them
+    // back into the photos' own rows; every other file keeps its row.
     it('a drop reorders photos among themselves', () => {
       const emitted: File[][] = [];
       component.filesSelected.subscribe(files => emitted.push(files));
       fixture.detectChanges();
       dropFiles([imageFile('a.png'), csvFile(), imageFile('b.png')]);
 
-      component.onFileDrop({ previousIndex: 2, currentIndex: 0 } as CdkDragDrop<File[]>);
+      component.onFileDrop({ previousIndex: 1, currentIndex: 0 } as CdkDragDrop<File[]>);
       fixture.detectChanges();
 
       expect(rowNames()).withContext('the rows').toEqual(['b.png', 'rows.csv', 'a.png']);
       expect(emitted.at(-1)?.map(f => f.name)).withContext('what the zone emits').toEqual(['b.png', 'rows.csv', 'a.png']);
     });
 
-    // A pin. Mutation: onFileDrop back to a plain moveItemInArray on the list.
-    // CDK leaves a dragged down past the CSV and b as [csv, b, a]; the photos
-    // read b then a, and go back into the photos' rows.
+    // A pin. Mutation: onFileDrop moving the list's own rows by the photos'
+    // indices, which takes the CSV up past a and leaves b where it was.
     it('a downward drop reorders photos among themselves', () => {
       const emitted: File[][] = [];
       component.filesSelected.subscribe(files => emitted.push(files));
       fixture.detectChanges();
       dropFiles([imageFile('a.png'), csvFile(), imageFile('b.png')]);
 
-      component.onFileDrop({ previousIndex: 0, currentIndex: 2 } as CdkDragDrop<File[]>);
+      component.onFileDrop({ previousIndex: 0, currentIndex: 1 } as CdkDragDrop<File[]>);
       fixture.detectChanges();
 
       expect(rowNames()).withContext('the rows').toEqual(['b.png', 'rows.csv', 'a.png']);
       expect(emitted.at(-1)?.map(f => f.name)).withContext('what the zone emits').toEqual(['b.png', 'rows.csv', 'a.png']);
     });
 
-    // A pin. Mutation: onFileDrop back to a plain moveItemInArray on the list.
-    // A photo dropped on the CSV's own row passes no other photo: CDK leaves
-    // b in the CSV's slot, [a, b, csv], and the photos still read a then b.
-    // So the list is unchanged, and the CSV keeps its row.
+    // A photo held over the CSV's row passes no other photo, so CDK reports
+    // the same place twice (the real drag below shows it does), and the list
+    // stays as it was.
     it('a drop on the CSV\'s row leaves the list as it was', () => {
       const emitted: File[][] = [];
       component.filesSelected.subscribe(files => emitted.push(files));
       fixture.detectChanges();
       dropFiles([imageFile('a.png'), csvFile(), imageFile('b.png')]);
 
-      component.onFileDrop({ previousIndex: 2, currentIndex: 1 } as CdkDragDrop<File[]>);
+      component.onFileDrop({ previousIndex: 1, currentIndex: 1 } as CdkDragDrop<File[]>);
       fixture.detectChanges();
 
       expect(rowNames()).withContext('the rows').toEqual(['a.png', 'rows.csv', 'b.png']);
       expect(emitted.at(-1)?.map(f => f.name)).withContext('what the zone emits').toEqual(['a.png', 'rows.csv', 'b.png']);
     });
 
+    // A disabled cdkDrag is still one of the list's items, and CDK slides
+    // every item a drag passes: the CSV's row is no drag item at all.
     it('offers no drag on a non-photo row', () => {
-      const dragsDisabled = () =>
-        fixture.debugElement.queryAll(By.directive(CdkDrag)).map(row => row.injector.get(CdkDrag).disabled);
+      const drags = () => fixture.debugElement.queryAll(By.directive(CdkDrag));
+      const dragged = () =>
+        drags().map(row => (row.nativeElement as HTMLElement).querySelector('.file-name')?.textContent?.trim());
+      const disabled = () => drags().map(row => row.injector.get(CdkDrag).disabled);
       fixture.detectChanges();
       dropFiles([imageFile('a.png'), csvFile(), imageFile('b.png')]);
 
-      expect(dragsDisabled()).withContext('two photos and a CSV').toEqual([false, true, false]);
+      expect(dragged()).withContext('the drag items, two photos and a CSV').toEqual(['a.png', 'b.png']);
+      expect(disabled()).withContext('the photos\' drags, two photos and a CSV').toEqual([false, false]);
+      expect(rowOf('rows.csv')?.classList.contains('cdk-drag'))
+        .withContext('the CSV\'s row, a cdk-drag, two photos and a CSV').toBeFalse();
 
       arrows(2)[0]?.click();
       fixture.detectChanges();
@@ -1068,7 +1086,93 @@ describe('FileDropzoneComponent, through its own template', () => {
       fixture.detectChanges();
 
       expect(rowNames()).withContext('the rows left').toEqual(['b.png', 'rows.csv']);
-      expect(dragsDisabled()).withContext('one photo and a CSV').toEqual([true, true]);
+      expect(dragged()).withContext('the drag items, one photo and a CSV').toEqual(['b.png']);
+      expect(disabled()).withContext('the photo\'s drag, one photo and a CSV').toEqual([true]);
+      expect(rowOf('rows.csv')?.classList.contains('cdk-drag'))
+        .withContext('the CSV\'s row, a cdk-drag, one photo and a CSV').toBeFalse();
+    });
+
+    // CDK slid every item the dragged photo passed, a CSV's too: b dragged
+    // up onto a pushed the CSV down under it, and the CSV snapped back only
+    // at the drop. Mutation: cdkDrag back on the CSV's row: its transform
+    // reads a translate3d mid-drag, and it is drawn 90px lower than before.
+    it('holds a CSV\'s row still while a photo is dragged past it', async () => {
+      const list = () => el().querySelector('.file-list') as HTMLElement;
+      /** Where the row that shows `name` is drawn, from the list's top: what a user sees move. */
+      const offsetOf = (name: string) =>
+        (rowOf(name)?.getBoundingClientRect().top ?? NaN) - list().getBoundingClientRect().top;
+      fixture.detectChanges();
+      dropFiles([imageFile('a.png'), csvFile(), imageFile('b.png')]);
+      const before = offsetOf('rows.csv');
+      const aBefore = offsetOf('a.png');
+
+      await dragByHandle(fixture, 'b.png', 'a.png', () => {
+        expect(rowOf('rows.csv')?.style.transform).withContext('the CSV\'s transform, mid-drag').toBe('');
+        expect(offsetOf('rows.csv')).withContext('the CSV\'s offset from the list, mid-drag').toBe(before);
+        expect(el().querySelector('.cdk-drag-placeholder')).withContext('the dragged photo\'s slot').not.toBeNull();
+        expect(rowOf('a.png')?.style.transform).withContext('a, slid aside for b').toContain('translate3d');
+        expect(offsetOf('a.png')).withContext('a, drawn lower where it slid').toBeGreaterThan(aBefore);
+      });
+
+      expect(rowNames()).withContext('the rows, b dropped on a').toEqual(['b.png', 'rows.csv', 'a.png']);
+    });
+
+    // A pin. Mutation: as above; CDK then takes the CSV's slot for b's and
+    // reports a move.
+    it('moves nothing for a photo dropped on the CSV\'s row', async () => {
+      const drop = spyOn(component, 'onFileDrop').and.callThrough();
+      // The preview, which follows the pointer, is no listed row; the slot is
+      // one, and a slot that is offset shows a sort.
+      const offset = () =>
+        all('.file-list > .file-item:not(.cdk-drag-preview)')
+          .filter(row => row.style.transform !== '')
+          .map(row => row.querySelector('.file-name')?.textContent?.trim());
+      fixture.detectChanges();
+      dropFiles([imageFile('a.png'), csvFile(), imageFile('b.png')]);
+
+      await dragByHandle(fixture, 'b.png', 'rows.csv', () => {
+        expect(el().querySelector('.cdk-drag-placeholder')).withContext('the dragged photo\'s slot').not.toBeNull();
+        expect(offset()).withContext('the rows offset, mid-drag').toEqual([]);
+      });
+
+      expect(rowNames()).withContext('the rows, b dropped on the CSV').toEqual(['a.png', 'rows.csv', 'b.png']);
+      expect(drop).withContext('the drops').toHaveBeenCalledTimes(1);
+      const landed = drop.calls.mostRecent()?.args[0];
+      expect(landed?.currentIndex).withContext('where b landed, against where it started').toBe(landed?.previousIndex);
+    });
+
+    // The drag helper drags as a mouse does, so it refuses a handle a pointer
+    // could not press, and a drag that never started, rather than reading
+    // either as a drag.
+    it('refuses to drag by a handle the pointer cannot press', async () => {
+      fixture.detectChanges();
+      dropFiles([imageFile('a.png'), imageFile('b.png')]);
+      const handle = rowOf('b.png')?.querySelector<HTMLElement>('.drag-handle');
+      expect(handle).withContext("b's drag handle").toBeTruthy();
+      if (!handle) return;
+      handle.style.pointerEvents = 'none';
+
+      const during = jasmine.createSpy('during');
+      await expectAsync(dragByHandle(fixture, 'b.png', 'a.png', during)).toBeRejectedWithError(/presses/);
+      expect(during).withContext('the reading mid-drag').not.toHaveBeenCalled();
+      expect(rowNames()).withContext('the rows, nothing dropped').toEqual(['a.png', 'b.png']);
+    });
+
+    it('refuses a drag that never started', async () => {
+      fixture.detectChanges();
+      dropFiles([imageFile('a.png'), imageFile('b.png')]);
+      const rowB = rowOf('b.png');
+      const drag = fixture.debugElement
+        .queryAll(By.directive(CdkDrag))
+        .find(debug => debug.nativeElement === rowB)
+        ?.injector.get(CdkDrag);
+      expect(drag).withContext("b's drag").toBeTruthy();
+      if (!drag) return;
+      drag.disabled = true;
+
+      const during = jasmine.createSpy('during');
+      await expectAsync(dragByHandle(fixture, 'b.png', 'a.png', during)).toBeRejectedWithError(/did not start/);
+      expect(during).withContext('the reading mid-drag').not.toHaveBeenCalled();
     });
 
     // A pin. Mutation: otherNumber counting every file listed, so the second
@@ -1583,6 +1687,103 @@ describe('FileDropzoneComponent, through its own template', () => {
   });
 
   /**
+   * What the pointer is told over the zone, read from the CSSOM: Karma can
+   * neither hover nor press. The list's dragging class is the one CDK's drop
+   * list binds while a photo is held, set here by hand; the real drags below
+   * show CDK sets it.
+   */
+  describe('the pointer over the upload area', () => {
+    /** The list as it is while a photo is held. */
+    function whileHeld(fn: () => void): void {
+      const list = el().querySelector('.file-list') as HTMLElement;
+      list.classList.add('cdk-drop-list-dragging');
+      try {
+        fn();
+      } finally {
+        list.classList.remove('cdk-drop-list-dragging');
+      }
+    }
+
+    /**
+     * The `cursor` each `:active` rule that styles `node` declares, as
+     * declared: a selector counts when `node` matches it with every `:active`
+     * taken to hold. A rule's list is split at its top-level commas only, as
+     * hoverValue splits it, so a selector written inside `:is()` or `:not()`
+     * is read whole.
+     */
+    function cursorsWhenPressed(node: Element): string[] {
+      const found = new Set<string>();
+      for (const { rule } of styleRules()) {
+        const cursor = rule.style.getPropertyValue('cursor').trim();
+        if (!cursor || !rule.selectorText.includes(':active')) continue;
+        for (const selector of selectorsOf(rule.selectorText)) {
+          if (selector.includes(':active') && node.matches(selector.replace(/:active/g, ':is(*)'))) found.add(cursor);
+        }
+      }
+      return [...found];
+    }
+
+    // Mutations: the zone's own cursor kept on a zone that holds files; the
+    // handle's :active rule dropped; the dragging rule written for the list
+    // alone, so the rows' own default and the buttons' pointer show through.
+    it('shows grab on a handle, grabbing once it is pressed and across the list while a photo is held, and no pointer on a zone that holds files', () => {
+      fixture.detectChanges();
+      const zone = () => el().querySelector('.dropzone') as HTMLElement;
+      expect(getComputedStyle(zone()).cursor).withContext('the empty zone, which opens the picker').toBe('pointer');
+
+      dropFiles([imageFile('first.png'), csvFile(), imageFile('second.png')]);
+      expect(getComputedStyle(zone()).cursor).withContext('the zone that holds files, which opens nothing').toBe('default');
+      const handle = rowOf('first.png')?.querySelector<HTMLElement>('.drag-handle') as HTMLElement;
+      expect(handle).withContext('the first photo\'s handle').toBeTruthy();
+      expect(getComputedStyle(handle).cursor).withContext('the handle').toBe('grab');
+      expect(cursorsWhenPressed(handle)).withContext('the handle, pressed').toEqual(['grabbing']);
+
+      whileHeld(() => {
+        const across: [string, Element | null | undefined][] = [
+          ['the list', el().querySelector('.file-list')],
+          ['a photo\'s row', rowOf('second.png')],
+          ['the CSV\'s row', rowOf('rows.csv')],
+          ['a move arrow', rowOf('second.png')?.querySelector('.reorder-btn')],
+          ['a remove button', rowOf('rows.csv')?.querySelector('.remove-btn')],
+        ];
+        for (const [what, node] of across) {
+          expect(node).withContext(what).toBeTruthy();
+          if (node) expect(getComputedStyle(node).cursor).withContext(`${what}, while a photo is held`).toBe('grabbing');
+        }
+      });
+    });
+
+    // A row that cannot move does not answer the pointer as if it could: a
+    // CSV, and a photo with no other photo to change places with. Nothing
+    // lifts while a photo is held either: a row CDK slides aside passes under
+    // the held pointer and would flash the lift mid-glide; the slot itself
+    // takes no pointer (CDK sets pointer-events: none on it). Mutations: the
+    // lift keyed on .file-item alone (the CSV lifts); the
+    // :not(.cdk-drop-list-dragging) clause dropped (a photo lifts while one
+    // is held).
+    it('lifts a row under the pointer only when it can move, and none while a photo is held', () => {
+      fixture.detectChanges();
+      dropFiles([imageFile('first.png'), csvFile(), imageFile('second.png')]);
+      const lift = (row: Element | undefined) => (row ? hoverValue(row, '.file-item', 'box-shadow') : null);
+      const edge = (row: Element | undefined) => (row ? hoverValue(row, '.file-item', 'border-color') : null);
+
+      expect(lift(rowOf('first.png'))).withContext('a photo of two, its shadow').toBe('var(--shadow-sm)');
+      expect(edge(rowOf('first.png'))).withContext('a photo of two, its edge').toBe('var(--color-primary)');
+      expect(() => lift(rowOf('rows.csv'))).withContext('the CSV, its shadow').toThrowError(/no :hover rule/);
+      expect(() => edge(rowOf('rows.csv'))).withContext('the CSV, its edge').toThrowError(/no :hover rule/);
+      whileHeld(() => {
+        expect(() => lift(rowOf('first.png'))).withContext('a photo of two while one is held').toThrowError(/no :hover rule/);
+      });
+
+      rowOf('second.png')?.querySelector<HTMLButtonElement>('.remove-btn')?.click();
+      fixture.detectChanges();
+      expect(rowNames()).withContext('the rows left').toEqual(['first.png', 'rows.csv']);
+      expect(() => lift(rowOf('first.png'))).withContext('a lone photo, its shadow').toThrowError(/no :hover rule/);
+      expect(() => edge(rowOf('first.png'))).withContext('a lone photo, its edge').toThrowError(/no :hover rule/);
+    });
+  });
+
+  /**
    * At 375px the wizard leaves the zone 303px beside the browser's 8px
    * scrollbar (311px on a phone), and a row of a multi-image pick lent its
    * name 51px beside the preview, the arrows, the remove button and the
@@ -1694,6 +1895,77 @@ describe('FileDropzoneComponent, through its own template', () => {
       const row = all('.file-item')[0];
       expect(getComputedStyle(row).display).withContext('the row').toBe('flex');
       expect(box(row, '.file-info').width).withContext('the name\'s column').toBeGreaterThanOrEqual(100);
+    });
+
+    // The lifted row is drawn inside the list, where the list's query
+    // reaches it, so a phone's two-line row is lifted as it lay rather than
+    // squeezed onto one line at the page's end. It has no transition on its
+    // transform, so it keeps up with the pointer, and it moves up and down
+    // only: a sideways move leaves it where it is. The list, which CDK marks
+    // as dragging, says grabbing. Mutations: the row's
+    // `transition: all` back (the preview trails the pointer by 200ms);
+    // the preview container attribute dropped (the preview is a one-line
+    // flex row at the end of the page); the axis attribute dropped.
+    it('lifts a dragged photo in its own two-line row, on the pointer and on the up-and-down axis', async () => {
+      narrow(303);
+      fixture.detectChanges();
+      dropFiles([imageFile('e2e-109-shared.png'), imageFile('image.jpg')]);
+      const list = el().querySelector('.file-list') as HTMLElement;
+      const dragged = rowOf('image.jpg') as HTMLElement;
+      const handle = box(dragged, '.drag-handle');
+      const onto = (rowOf('e2e-109-shared.png') as HTMLElement).getBoundingClientRect();
+      const left = dragged.getBoundingClientRect().left;
+
+      await dragByHandle(fixture, 'image.jpg', 'e2e-109-shared.png', () => {
+        const preview = document.querySelector<HTMLElement>('.cdk-drag-preview');
+        expect(preview).withContext('the lifted row').not.toBeNull();
+        if (!preview) return;
+        expect(preview.parentElement).withContext('the lifted row\'s parent').toBe(list);
+        expect(getComputedStyle(preview).display).withContext('the lifted row, at a 303px list').toBe('grid');
+        const transitioned = getComputedStyle(preview).transitionProperty.split(',').map(part => part.trim());
+        expect(transitioned).withContext('what the lifted row transitions').not.toContain('all');
+        expect(transitioned).withContext('what the lifted row transitions').not.toContain('transform');
+        expect(getComputedStyle(list).cursor).withContext('the list, while the photo is held').toBe('grabbing');
+
+        // Where the harness holds the pointer, 60px to the side.
+        mouse(document, 'mousemove', handle.left + handle.width / 2 + 60, onto.top + onto.height / 2);
+        expect(preview.getBoundingClientRect().left).withContext('the lifted row, moved sideways').toBeCloseTo(left, 0);
+      });
+    });
+
+    // A 40px target for the handle, the app's floor; each arrow's touch
+    // target held to the arrow's own 28px, since Material's 48px one reached
+    // 10px over the other arrow. Mutations: the handle back to its glyph and
+    // 4px padding (26px); the arrows' touch target left at Material's size.
+    it('gives the drag handle a 40px box and keeps each arrow\'s touch target off the other arrow, at 303px and 600px', () => {
+      narrow(303);
+      fixture.detectChanges();
+      dropFiles([imageFile('e2e-109-shared.png'), imageFile('image.jpg'), imageFile('third.png')]);
+
+      for (const width of [303, 600]) {
+        narrow(width);
+        for (const row of all('.file-item')) {
+          const label = `${width}px, ${row.querySelector('.file-name')?.textContent?.trim()}`;
+          const handle = box(row, '.drag-handle');
+          expect(handle.width).withContext(`${label}: the handle's width`).toBeGreaterThanOrEqual(40);
+          expect(handle.height).withContext(`${label}: the handle's height`).toBeGreaterThanOrEqual(40);
+
+          const [up, down] = Array.from(row.querySelectorAll<HTMLElement>('.reorder-btn'));
+          for (const [arrow, other, what] of [[up, down, 'up'], [down, up, 'down']] as const) {
+            const target = arrow.querySelector('.mat-mdc-button-touch-target')?.getBoundingClientRect();
+            expect(target).withContext(`${label}: the ${what} arrow's touch target`).toBeTruthy();
+            if (!target) continue;
+            const own = arrow.getBoundingClientRect();
+            const theOther = other.getBoundingClientRect();
+            expect(target.left <= own.left + 0.5 && target.right >= own.right - 0.5
+              && target.top <= own.top + 0.5 && target.bottom >= own.bottom - 0.5)
+              .withContext(`${label}: the ${what} arrow's touch target covers the arrow`).toBeTrue();
+            const overlaps = Math.min(target.right, theOther.right) - Math.max(target.left, theOther.left) > 0.5
+              && Math.min(target.bottom, theOther.bottom) - Math.max(target.top, theOther.top) > 0.5;
+            expect(overlaps).withContext(`${label}: the ${what} arrow's touch target over the other arrow`).toBeFalse();
+          }
+        }
+      }
     });
   });
 
@@ -1965,6 +2237,69 @@ describe('FileDropzoneComponent, through its own template', () => {
           expectPainted(row.querySelector<HTMLElement>('.file-type-label'), '--text-muted', `${theme} the type`);
         });
       }
+    });
+
+    /**
+     * The slot a dragged photo will land in is an empty outline, dashed in
+     * the primary's text step, which a graphic's 3:1 holds on the zone it
+     * shows through: at rest, as under a finger, and hovered, as under a
+     * mouse. The lifted row carries the overlay shadow and the same edge.
+     * Mutations: the slot back to a faded copy of the row (0.3 opacity on
+     * --surface-hover); the 0.3 opacity alone, on the clear fill; the
+     * preview's edge left --border-primary.
+     */
+    it('outlines a dragged photo\'s slot, empty and dashed, in --color-primary-text at 3:1 on the zone, and edges the lifted row alike over the overlay shadow, in the four palettes', async () => {
+      fixture.detectChanges();
+      dropFiles([imageFile('first.png'), imageFile('second.png')]);
+      const zone = el().querySelector('.dropzone') as HTMLElement;
+      const hovered = hoverValue(zone, '.dropzone', 'background');
+      expect(hovered).withContext('the zone\'s hover rule').toBe('var(--surface-hover)');
+
+      await dragByHandle(fixture, 'second.png', 'first.png', () => {
+        const slot = el().querySelector<HTMLElement>('.file-list > .cdk-drag-placeholder');
+        const preview = document.querySelector<HTMLElement>('.cdk-drag-preview');
+        expect(slot).withContext('the slot').not.toBeNull();
+        expect(preview).withContext('the lifted row').not.toBeNull();
+        if (!slot || !preview) return;
+
+        for (const { name, classes } of PALETTES) {
+          inPalette(classes, () => {
+            settleAnimations(document);
+            const edge = tokenValue('--color-primary-text');
+            const outline = getComputedStyle(slot);
+            expect(outline.borderStyle).withContext(`${name}: the slot's edge`).toBe('dashed');
+            expect(outline.borderColor).withContext(`${name}: the slot's edge colour`).toBe(edge);
+            expect(getComputedStyle(slot.querySelector('.file-name') as HTMLElement).visibility)
+              .withContext(`${name}: the slot's file name`).toBe('hidden');
+            // The edge is read as painted: for the reading the slot takes the
+            // edge's colour as its text colour, so paintedColor composites
+            // that colour's alpha, the slot's own opacity and every
+            // ancestor's over the zone. A faded slot on a clear fill still
+            // shows the zone through, so what is under it cannot catch the
+            // fade; only the edge's own reading can.
+            const drawn = outline.borderColor;
+            for (const [state, fill] of [['at rest', ''], ['hovered', hovered]] as const) {
+              zone.style.background = fill;
+              slot.style.color = drawn;
+              try {
+                const under = paintedBackground(slot);
+                expect(under).withContext(`${name}, ${state}: what shows through the slot`).toEqual(paintedBackground(zone));
+                expect(ratio(paintedColor(slot), under))
+                  .withContext(`${name}, ${state}: the slot's edge on the zone`)
+                  .toBeGreaterThanOrEqual(3);
+              } finally {
+                zone.style.background = '';
+                slot.style.color = '';
+              }
+            }
+
+            const lifted = getComputedStyle(preview);
+            expect(lifted.boxShadow).withContext(`${name}: the lifted row's shadow`)
+              .toBe(tokenValue('--shadow-overlay', 'box-shadow'));
+            expect(lifted.borderColor).withContext(`${name}: the lifted row's edge colour`).toBe(edge);
+          });
+        }
+      });
     });
 
     // The rest of a photo's row reads in tokens that clear text's bar; the

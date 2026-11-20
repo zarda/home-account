@@ -28,9 +28,9 @@ export function transactionDisplayName(description: string, t: (key: string) => 
  * when it is the catalog's words for an untitled transaction, which in
  * quotes would read as its name. The keys it fills hold no quotation marks
  * of their own; a sentence every catalog quotes keeps its marks and reads
- * isUntitled for a sentence of its own. The list's note and receipt buttons
- * and the receipt manager's image controls read it. The parameter is named
- * `t` so the i18n gate sees the key.
+ * isUntitled for a sentence of its own. The list's note and receipt buttons,
+ * the row's swipe Edit and Delete and the receipt manager's image controls
+ * read it. The parameter is named `t` so the i18n gate sees the key.
  */
 export function quotedTransactionName(
   description: string,

@@ -7,15 +7,19 @@ import { AuthService } from '../../../core/services/auth.service';
 import { TranslationService } from '../../../core/services/translation.service';
 import { Transaction, Category, User } from '../../../models';
 import {
+  accessibleName,
+  catalogTranslationStub,
+  catalogTranslator,
   createTransaction,
   createCategory,
   createUser,
   createTranslationStub,
+  expectPainted,
+  holdsShownWords,
   hoverValue,
   paintedBackground,
   paintedColor,
   ratio,
-  settleAnimations,
   withTheme,
 } from '../../../core/services/testing';
 
@@ -402,29 +406,6 @@ describe('TransactionRowComponent', () => {
   // A row sits on a list card and lifts to --surface-hover under the
   // pointer, so whatever is hovered inside it is read on that lift.
   describe('colours, as painted', () => {
-    /** What `color: var(token)` computes to under the theme on <html> now. */
-    function tokenValue(token: string): string {
-      const probe = document.createElement('span');
-      probe.style.color = `var(${token})`;
-      document.body.appendChild(probe);
-      try {
-        return getComputedStyle(probe).color;
-      } finally {
-        probe.remove();
-      }
-    }
-
-    /** `node` is painted in `token`, and reads at `floor` or better on what is painted behind it. */
-    function expectPainted(node: Element | null, token: string, label: string, floor = 4.5): void {
-      expect(node).withContext(label).toBeTruthy();
-      if (!node) return;
-      settleAnimations(document);
-      expect(getComputedStyle(node).color).withContext(label).toBe(tokenValue(token));
-      expect(ratio(paintedColor(node), paintedBackground(node)))
-        .withContext(`${label} on what it sits on`)
-        .toBeGreaterThanOrEqual(floor);
-    }
-
     beforeEach(() => {
       (fixture.nativeElement as HTMLElement).style.backgroundColor = 'var(--surface-card)';
     });
@@ -1015,4 +996,143 @@ describe('TransactionRowComponent with swipe actions', () => {
     row.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
     expect(row.classList).withContext('Escape put it back').not.toContain('swipe-open');
   });
+});
+
+/**
+ * Two rows as the transactions list stamps them, one with a description and
+ * one without, each with the swipe drawer.
+ */
+@Component({
+  standalone: true,
+  imports: [TransactionRowComponent],
+  template: `
+    @for (transaction of transactions; track transaction.id) {
+      <app-transaction-row [transaction]="transaction" [categories]="categories" [swipeActions]="true" />
+    }
+  `,
+})
+class SwipeRowsProbeComponent {
+  transactions = [
+    createTransaction({ id: 't1', categoryId: 'food', description: 'Weekly shop' }),
+    createTransaction({ id: 't2', categoryId: 'food', description: '  ' }),
+  ];
+  categories = new Map<string, Category>([
+    ['food', createCategory({ id: 'food', name: 'Groceries', icon: 'shopping_cart', color: '#ff5722' })],
+  ]);
+}
+
+/**
+ * The lists stamp one row per transaction, so the drawer's Edit and Delete
+ * name the transaction they act on, around the words they show: a speech
+ * user says what they see (WCAG 2.5.3), read without regard to case in the
+ * reader's own locale. The transaction is named as the row's other per-item
+ * controls name it (quotedTransactionName): in tc's quotation marks when it
+ * has a description, and as the catalog's words, bare, when it has none.
+ * The catalog stub goes in before the first render, so the pipe never caches
+ * an echoed key.
+ */
+describe("TransactionRowComponent's swipe drawer, in three languages", () => {
+  let translation: ReturnType<typeof createTranslationStub>;
+  let host: HTMLElement;
+
+  const drawerNames = {
+    en: [
+      ['Edit Weekly shop', 'Delete Weekly shop'],
+      ['Edit an untitled transaction', 'Delete an untitled transaction'],
+    ],
+    ja: [
+      ['Weekly shopを編集', 'Weekly shopを削除'],
+      ['名前のない取引を編集', '名前のない取引を削除'],
+    ],
+    tc: [
+      ['編輯「Weekly shop」', '刪除「Weekly shop」'],
+      ['編輯未命名的交易', '刪除未命名的交易'],
+    ],
+  } as const;
+
+  beforeEach(async () => {
+    const currency = jasmine.createSpyObj('CurrencyService', ['formatCurrency', 'amountInBase']);
+    currency.formatCurrency.and.callFake((amount: number, code: string) => `${code} ${amount.toFixed(2)}`);
+    currency.amountInBase.and.callFake(
+      (t: { amount: number; amountInBaseCurrency?: number }) => t.amountInBaseCurrency ?? t.amount
+    );
+    translation = createTranslationStub();
+
+    await TestBed.configureTestingModule({
+      imports: [SwipeRowsProbeComponent],
+      providers: [
+        { provide: CurrencyService, useValue: currency },
+        {
+          provide: AuthService,
+          useValue: {
+            currentUser: signal(createUser({ preferences: { baseCurrency: 'USD' } as User['preferences'] })),
+          },
+        },
+        { provide: TranslationService, useValue: translation },
+      ],
+    }).compileComponents();
+  });
+
+  afterEach(() => host?.remove());
+
+  function pointer(target: HTMLElement, type: string, x: number, y: number): void {
+    target.dispatchEvent(
+      new PointerEvent(type, {
+        pointerId: 1,
+        pointerType: 'touch',
+        isPrimary: true,
+        clientX: x,
+        clientY: y,
+        bubbles: true,
+        cancelable: true,
+      })
+    );
+  }
+
+  /** Opens a row's drawer the way a thumb does, so its buttons join the accessibility tree. */
+  function swipeOpen(row: HTMLElement): void {
+    const surface = row.querySelector('.row-surface') as HTMLElement;
+    pointer(row.querySelector('.row-description') as HTMLElement, 'pointerdown', 300, 20);
+    pointer(surface, 'pointermove', 288, 21);
+    pointer(surface, 'pointermove', 140, 22);
+    pointer(surface, 'pointerup', 140, 22);
+  }
+
+  for (const locale of ['en', 'ja', 'tc'] as const) {
+    it(`names each row's Edit and Delete by its transaction, around the words they show, in ${locale}`, () => {
+      const t = catalogTranslator(locale, { strict: true });
+      Object.assign(translation, catalogTranslationStub(locale));
+      const fixture = TestBed.createComponent(SwipeRowsProbeComponent);
+      host = fixture.nativeElement as HTMLElement;
+      document.body.appendChild(host);
+      fixture.detectChanges();
+
+      const rows = Array.from(host.querySelectorAll<HTMLElement>('.transaction-row'));
+      expect(rows.length).withContext('one row per transaction').toBe(2);
+      const items = ['Weekly shop', t('transactions.untitledRow')];
+      const quoted = [t('common.quotedName', { name: 'Weekly shop' }), t('transactions.untitledRow')];
+      const shown = [t('common.edit'), t('common.delete')];
+
+      rows.forEach((row, r) => {
+        swipeOpen(row);
+        fixture.detectChanges();
+        expect(row.classList).withContext(`row ${r}'s drawer opened`).toContain('swipe-open');
+
+        const buttons = [row.querySelector('.swipe-action-edit')!, row.querySelector('.swipe-action-delete')!];
+        const names = buttons.map(accessibleName);
+        buttons.forEach((button, i) => {
+          expect(button.textContent).withContext(`row ${r}'s button ${i} shows its words`).toContain(shown[i]);
+          expect(names[i]).withContext(`"${names[i]}" names row ${r}'s transaction`).toContain(items[r]);
+          expect(holdsShownWords(names[i], shown[i], locale))
+            .withContext(`"${names[i]}" holds "${shown[i]}" whole`)
+            .toBeTrue();
+        });
+        expect(names).withContext(`row ${r}, pinned`).toEqual([...drawerNames[locale][r]]);
+        expect(names).toEqual([
+          t('transactions.editNamed', { description: quoted[r] }),
+          t('transactions.deleteNamed', { description: quoted[r] }),
+        ]);
+      });
+    });
+  }
 });

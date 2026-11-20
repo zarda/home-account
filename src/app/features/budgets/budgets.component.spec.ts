@@ -25,6 +25,7 @@ import {
   createBudget,
   createCategory,
   createTranslationStub,
+  headingOutline,
   paintedBackground,
   paintedColor,
   provideNoMotion,
@@ -470,6 +471,17 @@ describe('BudgetsComponent, through its own template', () => {
     (empty.querySelector('button') as HTMLButtonElement).click();
 
     expect(dialogSpy.open).toHaveBeenCalled();
+  });
+
+  // No heading sits between the page's h1 and the tab's empty state.
+  it("heads the empty state one level under the page's own heading", () => {
+    render();
+    component.isLoading.set(false);
+    budgets.set([]);
+    fixture.detectChanges();
+
+    const outline = headingOutline(el());
+    expect(outline).toEqual(['h1 budget.title', 'h2 budget.noBudgets']);
   });
 
   it('shows the budget grid once there is a budget', () => {

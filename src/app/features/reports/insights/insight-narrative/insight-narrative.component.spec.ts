@@ -8,7 +8,7 @@ import { TranslationService } from '../../../../core/services/translation.servic
 import { InsightFacts, User } from '../../../../models';
 import { createUser } from '../../../../core/services/testing/test-data';
 import {
-  channels, createTranslationStub, paintedBackground, paintedColor, ratio, settleAnimations, withTheme,
+  channels, createTranslationStub, paintedBackground, paintedColor, ratio, tokenValue, withTheme,
 } from '../../../../core/services/testing';
 
 function factsFor(overrides: Partial<InsightFacts> = {}): InsightFacts {
@@ -423,19 +423,6 @@ describe('InsightNarrativeComponent, through its own template', () => {
   describe('colours', () => {
     const THEMES = ['light', 'dark'] as const;
 
-    /** What `color: var(token)` computes to under the palette on <html> now. */
-    function tokenColour(token: string): string {
-      const probe = document.createElement('span');
-      probe.style.color = `var(${token})`;
-      document.body.appendChild(probe);
-      try {
-        settleAnimations(document);
-        return getComputedStyle(probe).color;
-      } finally {
-        probe.remove();
-      }
-    }
-
     function find(selector: string): HTMLElement {
       const found = el().querySelector(selector) as HTMLElement | null;
       expect(found).withContext(selector).toBeTruthy();
@@ -548,7 +535,7 @@ describe('InsightNarrativeComponent, through its own template', () => {
             expectOnItsBackground(part, floor, `${theme} error ${label} on its tint`);
             expect(getComputedStyle(part).color)
               .withContext(`${theme} error ${label}`)
-              .toBe(tokenColour('--color-error-text'));
+              .toBe(tokenValue('--color-error-text'));
           }
         });
       }

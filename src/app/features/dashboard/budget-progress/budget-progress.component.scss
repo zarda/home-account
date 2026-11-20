@@ -7,6 +7,19 @@ mat-card-header {
   row-gap: 4px;
 }
 
+// The title wears every other dashboard card's title look: --text-lg,
+// semibold, on a line one and a half times its size, in the primary text
+// colour. The h2 is Material's card title, whose rule sets the theme's title
+// font; Material's class rather than the element, so the look holds whichever
+// tag carries it, and with the component's attribute it outranks Material's.
+.mat-mdc-card-title {
+  font-size: var(--text-lg);
+  font-weight: 600;
+  line-height: 1.5;
+  letter-spacing: normal;
+  color: var(--text-primary);
+}
+
 .header-actions {
   display: flex;
   align-items: center;

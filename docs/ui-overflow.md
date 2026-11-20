@@ -43,6 +43,18 @@ narrowest container the row ships in. Write the arithmetic in a comment; see
 the top of `transaction-row.component.scss`, which shows where its 112px floor
 comes from.
 
+The Data page's rows broke it at 320px: the icon, the label, the count and
+the chevron side by side left a row's description a column of about 60px, a
+word or two a line (*Every / income / and / expense / you have /
+recorded*). Below a 480px list (`container: kind-list / inline-size`) the row
+is a grid: the label and the description take its middle whole, the count
+comes under them, and the icon and the chevron stand beside all three, with
+`.kind-content` at `display: contents` so that the row still reads in the
+DOM's order. The threshold is in px, since one in `rem` would grow with the
+very font size it answers. At a 320px page the description is 128px wide,
+on three lines
+([ADR 0194](ADR/0194-one-painted-contrast-helper-and-one-focus-hand-off-a-card-is-scored-part-by-part-and-no-page-skips-a-heading-level.md)).
+
 **Scale.** That arithmetic is in px, so the floor it produces has to be in px
 too. A floor in `rem` grows with the account's own font scale — the very
 thing it exists to resist — so at Extra-large (1.3) a `7rem` description floor
@@ -141,6 +153,19 @@ Getting that backwards makes things worse, and the app has a worked example.
 5×44 + 4×8 = 252px, and the dialog is 288px wide on a 320px screen before its
 own padding. `minmax(0, 1fr)` gives 41.6px tracks and clips every button.
 `auto-fill` drops a column instead, and the button keeps its touch target.
+
+**`auto-fill` stops dropping at one column, so a floor wider than the
+narrowest container overflows it.** The goals grid's
+`repeat(auto-fill, minmax(300px, 1fr))` kept one 300px column in the 248px
+the Goals tab leaves on a 320px phone: each card ended at x 332 of 320,
+*Delete* off the page and *Contribute* cut. Its track is
+`minmax(min(100%, 300px), 1fr)` now, a column of 300px or the grid's whole
+width where that is less. `min()` reads the grid's own width, so the floor
+gives way in any container, and a spec can show it at a 248px host, which a
+viewport query could not, since Karma's window is 756px
+([ADR 0192](ADR/0192-a-control-repeated-per-item-names-its-item-in-its-own-text-too-a-button-is-named-in-every-branch-and-an-unlabelled-switch-fails-the-axe-pass.md)).
+At 320px the grid is 248px in 248 and the cards end at x 280. The recurring
+and budget grids fit 320px through their own media rules.
 
 **And `minmax()` cannot be the max of another `minmax()`.**
 `repeat(3, minmax(0, minmax(0, 1fr)))` is not a stricter version of the fix,
@@ -279,6 +304,22 @@ indicator, and no interactive element sits in the clipped region.
 - An overflow indicator (`+3`, a fade) gets `flex-shrink: 0`. It has to outlive
   the things it counts, or a visible truncation becomes a silent one.
 
+**A clip may cut a separator, and nothing else.** The phone's period totals
+on Transactions wrap between their parts, and a dot of its own was a part
+the wrap could put first on a line: at 320px the second line read *· Net
+Balance*. Each part now leads with its dot, a 0.5em box and the 8px gap
+after it, which the parts' start margin takes back, so the dot of whichever
+part starts a line stands outside the line's box, and the line's
+`clip-path: inset(-24px -6px)` cuts it there. The clip stands 6px out at
+either end, room for the focus outline (2px out, 3px wide under high
+contrast) of an action that starts or ends a line and none for the dot, and
+24px out above and below, past the 20px at most that the actions' 40px tap
+overhang reaches. `overflow-x: clip` with a margin would not do: Chrome
+applies `overflow-clip-margin` only where both axes clip, and the iOS 15
+WebView knows no `clip` value, so every dot would show there. No browser on
+iOS 15 has drawn the line yet
+([ADR 0196](ADR/0196-sibling-controls-say-what-they-act-on-a-name-holds-its-shown-words-a-focused-button-shows-an-indicator-inside-it-focus-stays-in-the-list-after-a-delete-and-a-failed-dashboard-read-is-quiet.md)).
+
 **A control is not reachable if its target is under 40px, and the ink is not
 the target.** Where the glyph can grow, grow it — the budget card's menu
 button went from `w-7` to `w-10`. Where it cannot, because the row or the
@@ -311,6 +352,56 @@ ships a 48px `.mat-mdc-button-touch-target` span of its own, so an overhang
 on one of those is belt-and-braces rather than the fix. A plain `<button>`
 wrapped around a bare `mat-icon` has no target at all, and measures the
 icon's own em box — which is where this earns its keep.
+
+**40px is the floor, and it stays 40px**: no control moves to 44px
+([ADR 0193](ADR/0193-a-row-that-is-no-photo-is-no-drag-item-the-receipt-or-statement-chips-are-measured-and-the-upload-area-shows-where-a-photo-will-land.md)).
+24px is the minimum under which nothing goes. Two kinds of target are not
+the control's own box, and a probe reads them as they are drawn:
+
+- **A chip's removal on the review card** is a 28 × 20px box whose target is
+  its `::after`, `inset: -10px -6px`: 40 × 40. The overhang takes 10px over
+  and under the box but only 6px sideways, the most there is room for:
+  further, it would reach past `.card-extras`'s 6px column gap into the next
+  chip, or back into the control before it. So the box itself is 28px wide
+  round its 16px glyph, where it was 20, and a chip with a removal is 8px
+  wider, not taller.
+  Hit-test the `::after` box; the button's own rect reads 28 × 20
+  ([ADR 0192](ADR/0192-a-control-repeated-per-item-names-its-item-in-its-own-text-too-a-button-is-named-in-every-branch-and-an-unlabelled-switch-fails-the-axe-pass.md)).
+- **The upload area's two reorder arrows** are 28px buttons stacked with no
+  gap between them, and each holds its touch target to its own 28px
+  (`--mat-icon-button-touch-target-size: 28px`): Material's 48px span
+  reached 10px over the other arrow, so a tap meant for one could land on
+  the other. They stay under the floor and over the minimum. The drag handle
+  beside them is a 40 × 40 box round its glyph, the floor for a control
+  ([ADR 0193](ADR/0193-a-row-that-is-no-photo-is-no-drag-item-the-receipt-or-statement-chips-are-measured-and-the-upload-area-shows-where-a-photo-will-land.md)).
+
+The UX audit of 18 November 2026 measured the screens that ADRs 0192 to 0196
+touch against the floor, and each target it found under it, or overlapping
+another, now holds it:
+
+| Control | Found | Now |
+|---|---|---|
+| The dashboard's two *View All* links | 68 × 21 | 68 × 40 (`min-height: 40px` on `.view-all-link`), clear of the card menu's touch span ([ADR 0196](ADR/0196-sibling-controls-say-what-they-act-on-a-name-holds-its-shown-words-a-focused-button-shows-an-indicator-inside-it-focus-stays-in-the-list-after-a-delete-and-a-failed-dashboard-read-is-quiet.md)) |
+| The header's shortcuts-hint dismiss | 32 × 32 | 40 × 40 ([ADR 0196](ADR/0196-sibling-controls-say-what-they-act-on-a-name-holds-its-shown-words-a-focused-button-shows-an-indicator-inside-it-focus-stays-in-the-list-after-a-delete-and-a-failed-dashboard-read-is-quiet.md)) |
+| The filter panel's *Clear all* | 94 × 33 | 94 × 40, its words centred and its focus outline inside the panel's clip ([ADR 0196](ADR/0196-sibling-controls-say-what-they-act-on-a-name-holds-its-shown-words-a-focused-button-shows-an-indicator-inside-it-focus-stays-in-the-list-after-a-delete-and-a-failed-dashboard-read-is-quiet.md)) |
+| The review card's *Notes* | 74 × 36 | 74 × 40 ([ADR 0192](ADR/0192-a-control-repeated-per-item-names-its-item-in-its-own-text-too-a-button-is-named-in-every-branch-and-an-unlabelled-switch-fails-the-axe-pass.md)) |
+| The review card's chip removals | a 40px-tall, 32px-wide hit area | 40 × 40, as above ([ADR 0192](ADR/0192-a-control-repeated-per-item-names-its-item-in-its-own-text-too-a-button-is-named-in-every-branch-and-an-unlabelled-switch-fails-the-axe-pass.md)) |
+| The upload area's drag handle | 26 × 26 | 40 × 40 ([ADR 0193](ADR/0193-a-row-that-is-no-photo-is-no-drag-item-the-receipt-or-statement-chips-are-measured-and-the-upload-area-shows-where-a-photo-will-land.md)) |
+| The upload area's two arrows | each 48px touch span reaching 10px over the other arrow | each its own 28px, as above ([ADR 0193](ADR/0193-a-row-that-is-no-photo-is-no-drag-item-the-receipt-or-statement-chips-are-measured-and-the-upload-area-shows-where-a-photo-will-land.md)) |
+| The goal card's *Edit* and *Delete* | 40px each and touching, their 48px touch spans overlapping by 8px | 8px apart, the two 4px edges of the spans, so a press meant for *Edit* never reaches *Delete* ([ADR 0192](ADR/0192-a-control-repeated-per-item-names-its-item-in-its-own-text-too-a-button-is-named-in-every-branch-and-an-unlabelled-switch-fails-the-axe-pass.md)) |
+
+The browser run of 19 November read three more boxes under the floor and
+left them as they are: the transaction list's desktop row menu
+(`.action-btn`) and the transaction form's two `.suggestion-dismiss`
+buttons, 32 × 32, and the period chip's clear, 24 × 24. Each reading is of
+the box, not of the target. `.action-btn` carries the overhang above to
+40px, as the note and receipt buttons in the same table row do, and the
+transaction list's cases in the table below hold it there. All three are
+`mat-icon-button`s, which at the theme's density 0 keep Material's 48px
+touch span round the box, since no rule in their stylesheets holds it in;
+no spec measures the dismissals' or
+the clear's span, so where it reaches is unread
+([ADR 0196](ADR/0196-sibling-controls-say-what-they-act-on-a-name-holds-its-shown-words-a-focused-button-shows-an-indicator-inside-it-focus-stays-in-the-list-after-a-delete-and-a-failed-dashboard-read-is-quiet.md)).
 
 **Material's touch target reaches past its button.** That 48px span is
 centred on a 40px icon button, 4px past it on every side, and it counts
@@ -404,7 +495,13 @@ the browser run found squeezing (the Smart Import card's actions, a provider
 card's and the Offline Queue card's) also wrap now, so a label that fits its
 row on one line keeps it and the button moves to a line of its own. Each
 button keeps `flex: 0 1 auto`, so lines are collected at content width (G1)
-and only a label wider than the row on its own reaches the net.
+and only a label wider than the row on its own reaches the net. The goal
+card's foot was one more such row: at 320px it squeezed *View Transactions*
+onto two lines and pushed *Contribute* past the card. Its
+`.mat-mdc-card-actions` wraps now, with an 8px gap, so each button keeps its
+label on one line and takes a line of its own, still at the end, where the
+two do not fit side by side
+([ADR 0192](ADR/0192-a-control-repeated-per-item-names-its-item-in-its-own-text-too-a-button-is-named-in-every-branch-and-an-unlabelled-switch-fails-the-axe-pass.md)).
 
 **Check:** no `scrollbar-width: none` or `::-webkit-scrollbar { display: none }`
 on a scrolling element.
@@ -501,6 +598,23 @@ this rule stacked the menu under the tile in a fixed-width column, which
 bought the same position at 100px on every row; issue #219 tracked that cost
 and [ADR 0017](ADR/0017-the-row-stacks-and-actions-ride-behind-a-swipe.md)
 retired it.
+
+**Out of the flow, a box needs the room it covers kept for it.** The row
+pays for its corner; the AI page's *Recommended* chip paid for nothing. It
+stood at `position: absolute; right: 0` over the Gemini card's header, and
+at 320px it sat on the provider's title, which read *Google
+[RECOMMENDED]*. It stands in the header's own row now, which wraps: at the
+row's end, level with the avatar, where the title and the chip fit, and on
+a line of its own where they do not. The title block is capped at the room
+beside Material's 40px avatar, so the row breaks before the chip and never
+before the title: a first wrap without the cap dropped each provider's title
+under its avatar at 320px. The chip ends at the header's padding. The row
+keeps Material's own alignment, so each provider's avatar stands at the top
+of its header beside its title's first line, and only the chip is centred
+in its row, level with the avatar: the fix that first centred the whole row
+for the chip's sake moved every avatar down beside a wrapped title's second
+line, at 320px 8px lower at the default text size and 31px at Extra large
+([ADR 0196](ADR/0196-sibling-controls-say-what-they-act-on-a-name-holds-its-shown-words-a-focused-button-shows-an-indicator-inside-it-focus-stays-in-the-list-after-a-delete-and-a-failed-dashboard-read-is-quiet.md)).
 
 **Check:** in any wrapping flex row, no trailing item carries `margin-left:
 auto` while a sibling that must stay beside it does not. And assert the
@@ -623,7 +737,7 @@ swipe keeps a non-gesture route — the pinned menu.
 |---|---|
 | `shared/directives/fit-text.directive.spec.ts` | the directive: scales, floors at 12px, writes nothing when the value fits, does not oscillate |
 | `shared/overflow-guard.spec.ts` | a hostile row keeps its menu, amount and `+N` inside the clipping card — and an ordinary row still does not reflow at 375px, bounded hard at 88px. Also positional, since containment was not enough: the menu pins to the row's top-right corner, the tile stays on the body's line, the strip stays one line and ends left of the menu, the dashboard shape reclaims the reserved corner, and the insight drill-down row does not truncate |
-| `features/ai/import/transaction-preview-table/transaction-preview-table.overflow.spec.ts` | the import review card at 288px with everything a receipt can put on it: the amount stays whole beside the currency menu, the fallen-back marker, the suggestion chips and their remove buttons stay reachable, and the bulk currency button wraps rather than shoving the count badge off the header. Also every control the review step added — the date button and the currency chip keep their 6px gap along whichever axis the meta row wrapped onto, and the picker they open has no box in that row at all; the inline amount and description editors stay inside the clip with their triggers' width; the question chip's Keep and calendar halves are 40px controls that never reach into the row of chips below; and the duplicate badge's overrule is a 40px control on the badge that stays clear of the description. Also the controls that add rather than correct — the **Add tag** trigger, which is on every row, and its editor stay inside the clip (both probe rows carry a location, so **Add location**, which stands only where nothing was suggested, is not measured here), the **Add a row** control sits under the list and outside the rows' own scroller, the location chip's name and country reach 40px through an overhang the way its removal does, and (the file's one measurement taken at a desktop width, because at 288px the chips never stand beside it) the add trigger does not carry the chips sharing its line up to its own height. Also the two controls that change how many rows there are — **Split**, whose trigger stands on a filled row worth at least two of its currency's minor units and whose open editor is measured on the widest row the way the amount and description editors are, and **Merge into…**, whose trigger renders only once two rows share a currency, so its case first overrules the second fixture row's flag through the badge's own control and re-denominates the row through its own currency menu (real edits, leaving the standing fixture and the offer chips it pins untouched) and then measures both triggers inside the clip, at 40px, and clear of the chips' hit boxes below them — by their own boxes, since an add trigger has no `::after` overhang for the chips' pass to read. Also the two things the 288px fixture cannot see on its own — the category suggestion chip measured on the 240px card journey 10 recorded (a 262px clip less the container's border and the list's padding), carrying a long real category name rather than the fixture's *Unknown* fallback, with the chip inside the clip, the card's `scrollWidth` inside its `clientWidth`, and the label's own `scrollWidth` inside its box at a font size no smaller than the 12px floor — and, at that width, the caret's computed `display` reading `none` while the desktop case reads it standing, with the label's own text measured at no more than three lines (five with the caret) by `Range.getClientRects()`. That pair is readable in a probe only because the rule is a container query on the card: a viewport query reads Karma's window, never a card clipped narrower than it, so the probe could neither see it nor be trusted when it did; and every chip hit box and add trigger measured a second time under `dir="rtl"` on the clip, each inset checked finite before it is compared, with the location chip's name trigger and country button read directly — the pair whose overhangs would meet if the insets were still physical |
+| `features/ai/import/transaction-preview-table/transaction-preview-table.overflow.spec.ts` | the import review card at 288px with everything a receipt can put on it. 288px is a 320px phone less the layout's 16px gutter a side, and 32px more than such a phone gives the card: the wizard keeps a 16px gutter of its own inside the layout's, so a 320px page leaves the table 256px, or 248px beside the main container's 8px scrollbar, and the spec's header says so ([ADR 0192](ADR/0192-a-control-repeated-per-item-names-its-item-in-its-own-text-too-a-button-is-named-in-every-branch-and-an-unlabelled-switch-fails-the-axe-pass.md), Known gaps). In that box: the amount stays whole beside the currency menu, the fallen-back marker, the suggestion chips and their remove buttons stay reachable, and the bulk currency button wraps rather than shoving the count badge off the header. Also every control the review step added — the date button and the currency chip keep their 6px gap along whichever axis the meta row wrapped onto, and the picker they open has no box in that row at all; the inline amount and description editors stay inside the clip with their triggers' width; the question chip's Keep and calendar halves are 40px controls that never reach into the row of chips below; and the duplicate badge's overrule is a 40px control on the badge that stays clear of the description. Also the controls that add rather than correct — the **Add tag** trigger, which is on every row, and its editor stay inside the clip (both probe rows carry a location, so **Add location**, which stands only where nothing was suggested, is not measured here), the **Add a row** control sits under the list and outside the rows' own scroller, the location chip's name and country reach 40px through an overhang the way its removal does, and (the file's one measurement taken at a desktop width, because at 288px the chips never stand beside it) the add trigger does not carry the chips sharing its line up to its own height. Also the two controls that change how many rows there are — **Split**, whose trigger stands on a filled row worth at least two of its currency's minor units and whose open editor is measured on the widest row the way the amount and description editors are, and **Merge…**, whose trigger renders only once two rows share a currency, so its case first overrules the second fixture row's flag through the badge's own control and re-denominates the row through its own currency menu (real edits, leaving the standing fixture and the offer chips it pins untouched) and then measures both triggers inside the clip, at 40px, and clear of the chips' hit boxes below them — by their own boxes, since an add trigger has no `::after` overhang for the chips' pass to read. Every chip removal's `::after` target is read at 40px both ways, its box 28px wide, once the overhang is held to be generated and absolutely placed against a positioned button, since its insets read back from the rule even where no box is drawn, under *gives every new control a 40px tap target without fattening the chips*, and *Notes* is a 40px target with room for its focus outline inside the card. Also the two things the 288px fixture cannot see on its own — the category suggestion chip measured on the 240px card journey 10 recorded (a 262px clip less the container's border and the list's padding), carrying a long real category name rather than the fixture's *Unknown* fallback, with the chip inside the clip, the card's `scrollWidth` inside its `clientWidth`, and the label's own `scrollWidth` inside its box at a font size no smaller than the 12px floor — and, at that width, the caret's computed `display` reading `none` while the desktop case reads it standing, with the label's own text measured at no more than three lines (five with the caret) by `Range.getClientRects()`. That pair is readable in a probe only because the rule is a container query on the card: a viewport query reads Karma's window, never a card clipped narrower than it, so the probe could neither see it nor be trusted when it did; and every chip hit box and add trigger measured a second time under `dir="rtl"` on the clip, each inset checked finite before it is compared, with the location chip's name trigger and country button read directly — the pair whose overhangs would meet if the insets were still physical |
 | `shared/directives/swipe-reveal.directive.spec.ts` | the gesture: axis lock, strip exclusion, click suppression — the click after a drag a key was held down through included — one open row app-wide, snap and fling, pointercancel recovery, a disabled directive doing nothing, and the sticky `+N` staying pinned on a translated surface. Also the ways out of an open drawer, none of which activates the row: a tap on the surface, Escape from the row button, a pointerdown outside, and Enter on the row button, which puts the drawer back and leaves the next Enter to activate. `transaction-row.component.spec.ts` pins the same Enter stand-down on the real row, and Escape from any control in it |
 | `shared/safe-area.spec.ts` | `max()` not sum; one owner per inset, and the iOS web view never a second one; the Home Screen app's `html` and `body` floored at `100lvh`, and only there |
 | `features/transactions/add-affordance.spec.ts` | the transactions header's add FAB keeps its 48px while the period totals sharing its row yield — and, at every width, exactly one add affordance is on screen |
@@ -638,16 +752,22 @@ swipe keeps a non-gesture route — the pinned menu.
 | `scripts/check-grid-tracks.mjs` | both halves of G2 across the whole source — the nested `minmax()` and a bare `fr` track with no floor — `npm run grid:check` |
 | `shared/layout/bottom-nav/bottom-nav.overflow.spec.ts`, `shared/components/period-selector/period-selector.overflow.spec.ts` | the two rows the account's own font scale breaks: a gutter between two fitted nav labels at 1.3 and at the default, and the calendar button staying beside the toggle group at 1.3 while the group stops at its content width on a desktop row |
 | `shared/layout/sidebar/sidebar.overflow.spec.ts`, `shared/layout/header/header.overflow.spec.ts` | the drawer never scrolls sideways to reach a nav row; the header avatar falls back to its placeholder on a load failure and recovers when the URL changes (the settings card's own case is in `settings.component.spec.ts`) |
-| `features/settings/ai-settings-page/ai-settings-page.overflow.spec.ts` | the longest catalog model name wraps in the select trigger instead of ellipsizing, at both font scales |
+| `features/settings/ai-settings-page/ai-settings-page.overflow.spec.ts` | the longest catalog model name wraps in the select trigger instead of ellipsizing, at both font scales. And, under *overflow guard: the AI settings Recommended chip beside the provider's title*, the *Recommended* chip off the avatar, the title and the status at 320px in en, ja and tc, at the end of the title row and inside the header's padding where the two fit, and each provider's title beside its avatar at 320px, Gemini's at the largest text size too; and each provider's avatar at the top of its header, at the header's padding and at or above its title's top, at 320px in en at text sizes 1 and 1.3 (G6) |
 | cases in `transaction-filters.component.spec.ts`, *a compact field's label* and *a select's label in a narrow compact field* | the filter grid's labels as rendered: an empty compact field's resting label within 2px of its 40px box's centre, with a floated one on the top edge; and, in a 108px select with the fonts pinned, a floated *Category* and *Currency* drawn whole while a resting label keeps the arrow's 60px |
 | cases in `data-management.component.spec.ts`, *a Material button whose label wraps* and *the Smart Import actions at phone width*, in `ai-settings-page.overflow.spec.ts`, *the AI settings card actions at phone width*, in `about.component.spec.ts`, *the donate button*, and in `camera-capture.component.spec.ts`, *keeps Take photo at Material's 40 px* | the button net as rendered, with the fonts pinned: in a 90px row, a wrapped label's ink inside a button that grew from 40px to hold it, in each of Material's five text-label appearances with and without an icon, and at least 4px inside its edge wherever the net's padding applies; a one-line label's button at exactly 40px at the default scale and at 1.3; in an open expansion panel at 1.15 and 1.3, a one-line outlined button at exactly 40px and one styled as the duplicate warning's at exactly 34px; the About page's donate button and the camera's *Take photo* at 40px at the default scale and at 1.3; an icon button and both FABs left to Material's sizing. And the three action rows the browser run found squeezing, in English: the Smart Import card's in its 261px row at 375px, and a provider card's and the Offline Queue card's at 320px, each label on one line inside its row, with each pair side by side where its row holds it, and stacked at 320px with the two 48px touch targets apart |
 | cases in `transaction-list.component.spec.ts`, `budget-progress-card.component.spec.ts`, `import-history.component.spec.ts`, `transactions.component.spec.ts` | the 40px targets — the note button, the receipt icon and the row actions trigger reaching it through the overhang while their glyph boxes stay 32px and unsized, the phone subtitle's inline **Retry** and **Calculate totals** reaching it the same way while their boxes stay the text's, and the budget card's menu trigger reaching it by its own box — plus the desktop table fitting its floor width without a sideways scrollbar, and an attachment id and an error message carrying a URL wrapping inside their cards |
 | cases in `camera-capture.component.spec.ts`, *keeps its content inside a 500px dialog's 452px content box* and *sets no min-width on the container at any width* | the camera dialog's body in a 452px box, the content box of its 500px dialog, with the fonts pinned and the scan badge showing: with no photo and with four, the container no wider than the box, no element ending past its right edge and no sideways scroll; and, since Karma's window is 756px and the 768px query never applies, the container's rules read from the stylesheet, none of them setting a min-width |
 | cases in `transaction-form.component.spec.ts`, *keeps the toggle group and the checked segment's label where they stood when the type flag appears*, in the 500px dialog and at a 375px phone | the form's income/expense toggle with the fonts pinned, in the 500px dialog's column (24px padding) and in a 375px phone's 356px one (the form's own 16px phone padding, with no scrollbar, so a 324px column): the group at its 320px cap, and the group and the checked segment's label at the same left edge and width before and after the scan's type flag appears, with the flag drawn inside the group. The flag takes the trend icon's 24px box in the checked segment rather than standing beside the group, which at 375px fills the real dialog's 316px column, its content 348px beside the 8px scrollbar the spec's column does not draw (journey 104), and leaves no room for it. Karma's window is 756px, so the phone case sets the column and the padding inline; the dialog itself at 375px is journey 104's to measure |
 | cases in `import-history.component.spec.ts`, *keeps every tile of a record with photo counters inside the card at 343px* | an Import History card at 343px, #451's narrowest reported width, with the fonts pinned and every label its key, an unbroken run: a record carrying duplicates and both photo counters draws six tiles, the card does not scroll sideways, and every tile, its caption and its figure stay inside the card and the tile. The caption breaks anywhere (`overflow-wrap: anywhere`) and is centred over its figure. The two type tiles are not in this case; journey 107 reads every tile at 375px |
-| cases in `file-dropzone.component.spec.ts`, *at a phone's width* | the upload area's rows in a 303px zone, the width the wizard leaves at 375px beside an 8px scrollbar, with the fonts pinned: a row of a multi-image pick keeps its name a column of at least 100px on at most two lines, its size and type inside that column, its arrows, remove button and handle clear of the column and inside the row, and its buttons on screen in the order Tab reaches them; a lone photo's row, and a 600px zone's rows, keep their one line. The rule is a container query on the list (`container: file-list / inline-size`), which below a 400px list puts the arrows and the remove button on a second line under the name, the handle beside the name, so the narrow host reaches it; the 480px viewport query that trims the row's padding and preview does not, so the case measures the harder row, a 113px column against 129px on a phone. iOS 15's WebView has no container queries: there the row keeps its one line, with the name in a narrow column, and only the size and type's wrap, which sits outside the query, still holds. The line count is read in the pinned face; the browser's PT Sans can take one line where Verdana takes two, while the column's width does not depend on the font ([ADR 0186](ADR/0186-a-date-stops-at-a-currency-sign-and-a-line-break-a-total-read-past-an-aside-or-under-a-count-is-flagged-and-a-shared-file-lands-in-the-upload-area.md), where the browser run found it) |
+| cases in `file-dropzone.component.spec.ts`, *at a phone's width*, and *gives the drag handle a 40px box and keeps each arrow's touch target off the other arrow, at 303px and 600px* and *lifts a dragged photo in its own two-line row, on the pointer and on the up-and-down axis* under *the pointer over the upload area* | the upload area's rows in a 303px zone, the width the wizard leaves at 375px beside an 8px scrollbar, with the fonts pinned: a row of a multi-image pick keeps its name a column of at least 100px on at most two lines, its size and type inside that column, its arrows, remove button and handle clear of the column and inside the row, and its buttons on screen in the order Tab reaches them; a lone photo's row, and a 600px zone's rows, keep their one line. The handle is a 40px box and neither arrow's 28px touch target reaches over the other, at 303px and at 600px. The rule is a container query on the list (`container: file-list / inline-size`), which below a 400px list puts the arrows and the remove button on a second line under the name, the handle beside the name, so the narrow host reaches it, and so does a photo lifted to be moved, which is drawn inside the list (`cdkDragPreviewContainer="parent"`) and keeps its two-line row; the 480px viewport query that trims the row's padding and preview does not, so the case measures the harder row, a 113px column against 129px on a phone. iOS 15's WebView has no container queries: there the row keeps its one line, and beside the 40px handle the name is a 37px column at 375px, where a 26px handle would leave it 51px. No `@supports not (container-type: inline-size)` rule gives that WebView the 26px handle back, since it would keep a target under the floor there alone; only the size and type's wrap, which sits outside the query, still holds ([ADR 0193](ADR/0193-a-row-that-is-no-photo-is-no-drag-item-the-receipt-or-statement-chips-are-measured-and-the-upload-area-shows-where-a-photo-will-land.md)). The line count is read in the pinned face; the browser's PT Sans can take one line where Verdana takes two, while the column's width does not depend on the font ([ADR 0186](ADR/0186-a-date-stops-at-a-currency-sign-and-a-line-break-a-total-read-past-an-aside-or-under-a-count-is-flagged-and-a-shared-file-lands-in-the-upload-area.md), where the browser run found it) |
 | cases in `budget-form.component.spec.ts`, *the period and the start date (real template)*, in `transaction-preview-table.component.spec.ts`, *the split field's hint*, and in `transaction-filters.component.spec.ts` and `transaction-form.component.spec.ts`, *the Tags field's hint* | three squeezes the browser runs found, each read in en, ja and tc with the fonts pinned: the budget dialog's period and start date, which wrap on their row's own room, read live with the host sized as the dialog is and the account's text size on the root, so in a phone's 356px dialog, and in the 480px desktop dialog at Large and Extra large, they stack, each as wide as the row with no gap between them, with the start date's label whole and none of it under its calendar button and its hint whole, while the 480px dialog at the default size keeps them side by side and a 560px host at Extra large still stacks them in en, which holds the basis's `rem` term; the review card's split hint on one line inside its 7em input, in a phone's 311px table and a 1280px window's 864px; and the Tags hint inside the room its input has, in the filter grid at 312px, at 944px and in the narrowest grid that keeps two columns, and in the form at 375px. A placeholder cannot wrap and its input's `scrollWidth` does not count it, so the hints are measured by the shared `placeholderWidthPx` against the room `contentWidthPx` reads (`core/services/testing/placeholder-width.ts`). What no case can read: at the default size in the 480px dialog, en's label meets the calendar button's box, 152.1px of words in PT Sans in the 152px its basis gives them, and Verdana sets it wider, so only a browser's reading holds it, and the third browser run read it, side by side in 1024px and 540px windows, as a 0.1px meet with the button's box, 7.9px clear of its glyph; on a 320px phone at Extra large, en's label stays about 12px under the button even stacked, its field too narrow for it; and the transaction and recurring forms' `.amount-row` still stacks on a `max-width: 480px` viewport rule that ignores the text size ([ADR 0187](ADR/0187-repeated-controls-name-their-item-the-upload-area-has-one-button-and-numbers-photos-among-photos-resting-text-is-a-token-sentences-end-in-the-readers-stop-and-a-spec-that-expects-nothing-fails.md), where the browser runs found them) |
 | cases in `transaction-filters.component.spec.ts`, *keeps each 40px suggestion remove and its touch target on its own row, and the panel never scrolls sideways* | the search box's saved and recent searches as rendered, two saved rows and one recent, with the face pinned, in the 712px host a 1024px pane gives (a 686px panel, whose `scrollWidth` the second browser run read as 690) and the 336px host a 375px phone gives: the panel's `scrollWidth` within its `clientWidth`, each row's scroll box within its client box both ways, each remove 40px square, and each remove's `.mat-mdc-button-touch-target` inside its row at the top, the bottom and the end, and clear of the row's apply at the start. Material's 48px touch target, centred on the remove at the panel's end, had scrolled the panel 4px (G4) |
+| cases in `transaction-filters.component.spec.ts`, *the save-search box's caption (real template)* and *Clear all at the 40px floor (real template)* | the save box's caption inside its pill, in en, ja and tc at a 336px host, the width a 375px phone gives: the caption whole, wrapping rather than cut (`overflow-wrap: anywhere`), and Save and Cancel 40 × 40 inside the pill. The caption makes the pill 60px tall where it was 48: 8px of padding, an 18px caption, a 2px gap and a 24px box; at that host it is 312 × 60, and the browser run read it 256 × 60 at a 280px host with the caption whole ([ADR 0196](ADR/0196-sibling-controls-say-what-they-act-on-a-name-holds-its-shown-words-a-focused-button-shows-an-indicator-inside-it-focus-stays-in-the-list-after-a-delete-and-a-failed-dashboard-read-is-quiet.md)). And *Clear all* a 40px target on one line, its focus outline inside the clipping container, in each language |
+| cases in `goal-progress-card.component.spec.ts`, *at the width the Goals tab gives a card on a 320px phone*, and in `goals.component.spec.ts`, *GoalsComponent, its grid at a phone width* and *GoalsComponent, its header at a phone width* | the goal card at the width a 320px phone leaves it: *Edit* and *Delete* each a 40px target with the touch spans round them clear of each other, their focus indicators drawn whole inside them in every palette, and *View Transactions* and *Contribute* whole on the card, each label on one line, in en, ja and tc; the goals grid keeping every card, and every control on it, inside the 248px the tab is given (G2); and the tab's header at that 248px, in en, ja and tc at text sizes 1 and 1.3 with the face pinned: *Add Goal* at Material's 40px, its label on one line and inside the tab. The header wraps (`flex-wrap: wrap` on `.goals-header`), so there the hint takes a line of its own and *Add Goal* the next, at its start; unwrapped, the hint and *Add Goal* shrank side by side and the label broke a word a line in en and a character a line in ja. At 640px the two still share one line, *Add Goal* at its end |
+| cases in `recent-transactions.component.spec.ts` and `upcoming-bills.component.spec.ts`, *gives View All a 40px target, clear of the menu beside it, its focus outline inside the card*, and in `header.component.spec.ts`, *gives the hint's dismiss a 40px target inside the toolbar, its focus indicator whole in every palette* | the targets the audit found under the floor on the dashboard and in the header, each at 40px, clear of its neighbour's touch span and with its focus mark inside what clips it |
+| cases in `data-hub.component.spec.ts`, *DataHubComponent, in the words a reader sees* | the Data page's rows at a 320px page in en, ja and tc, the fonts pinned: each row's description given at least half the row and nothing running out of its box; and, at a tablet's page, the count kept at the row's end, level with its middle (G1) |
+| cases in `transactions.component.spec.ts`, *the phone's totals line, wrapped* | the phone's period totals: no line starts with a dot at a 320px page or where the first figure fills its line, in en, ja and tc, and an action that starts or ends a line keeps its whole focus outline, the first its tap overhang too. A hit test reads only a point inside the window, so the describe brings its line inside the window first and puts the page back after, and proves it again with 3000px of page above the fixture (G4) |
+| cases in `import-wizard.component.spec.ts`, *starts the upload area on a 320 x 568 phone's first screen*, under *what the import can do, over the steps* | the import's first screen on a phone: a 320 by 568 screen leaves 424px under the wizard's top, between the app bar, the page's gutter and the bottom nav, and at a 288px page the upload area and its 40px of padding start within it, in en, ja and tc, with the fonts pinned. The four features over the steps were Material chips, whose set wraps inside its own `.mdc-evolution-chip-set__chips`, so a `flex-wrap: nowrap` on the host never held and en's four stood one 32px row each; they are a list of words now, wrapping as words do, and in the pinned face, Verdana on the Mac, the upload area starts 358px under the wizard's top in en, 330 in ja and 294 in tc, where en's started at 480 and ja's at 434; the runner's DejaVu Sans wraps en's subtitle a line more, so under the wizard's 768px rule the word list stands 16px over the steps, not 24 ([ADR 0193](ADR/0193-a-row-that-is-no-photo-is-no-drag-item-the-receipt-or-statement-chips-are-measured-and-the-upload-area-shows-where-a-photo-will-land.md)) |
 | `docs/ui-audit/tools/capture-overflow.mjs` | five pages × seven widths × (en, ja, faked insets), run before/after a layout change |
 
 Every row but the harness runs in CI: the unit specs through `test:ci`, the
@@ -685,7 +805,16 @@ and its content 189px. That rule is a viewport query and Karma's window is
 the card itself and never goes through the stepper.
 Journey 79's 375px step in [e2e.md](e2e.md) is what measures it
 ([ADR 0162](ADR/0162-a-refund-read-on-the-device-is-filed-as-income-and-the-review-asks-about-it.md),
-where the browser run found it).
+where the browser run found it). At 320px it is still narrow: the UX audit
+of 18 November 2026 read the card 218px of the page, and one row about 610px
+tall with every control on a line of its own; at 375px the browser run of
+19 November read it 281px of 375, with every control at 40px and nothing off
+the page. Trimming the card's own gutters still leaves every control on a
+line of its own: the rest of the width goes to the wizard's 16px gutter
+inside the shell's 16px and to the card's 40px checkbox column and its 10px
+gap beside the content. Widening it takes two components and a re-layout of
+that column, and is left open
+([ADR 0192](ADR/0192-a-control-repeated-per-item-names-its-item-in-its-own-text-too-a-button-is-named-in-every-branch-and-an-unlabelled-switch-fails-the-axe-pass.md)).
 
 ## Using `appFitText`
 

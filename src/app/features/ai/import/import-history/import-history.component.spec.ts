@@ -20,14 +20,18 @@ import { NotificationService } from '../../../../core/services/notification.serv
 import { CurrencyService } from '../../../../core/services/currency.service';
 import { AuthService } from '../../../../core/services/auth.service';
 import {
+  accessibleName,
+  catalogTranslator,
   channels,
   createLocaleFormatStub,
   createTranslationStub,
+  expectPainted,
+  headingOutline,
+  holdsShownWords,
   paintedBackground,
-  paintedColor,
   provideNoMotion,
-  ratio,
   settleAnimations,
+  tokenValue,
   withTheme,
 } from '../../../../core/services/testing';
 
@@ -541,6 +545,13 @@ describe('ImportHistoryComponent transaction shortcut', () => {
     fixture = TestBed.createComponent(ImportHistoryComponent);
   });
 
+  it("heads the empty state one level under the page's own heading", () => {
+    render([]);
+
+    const outline = headingOutline(fixture.nativeElement);
+    expect(outline).toEqual(['h1 import.history', 'h2 import.noHistory']);
+  });
+
   it('renders each record\'s day and time of day through the locale formatter', () => {
     render([itemWith(undefined)]);
 
@@ -610,6 +621,119 @@ describe('ImportHistoryComponent transaction shortcut', () => {
       .map(li => (li as HTMLElement).textContent?.trim());
     expect(lines).toEqual(['import.rowFailedAmount']);
   });
+
+  /**
+   * The history stamps one card per record, so its View transaction and
+   * Delete name the record they act on by what its header shows: the file's
+   * name and when it was imported. Two photos from an iPhone are both
+   * image.jpg, so the name alone would read the same on both cards. Each
+   * name holds the words its button shows (WCAG 2.5.3), read without regard
+   * to case in the reader's own locale.
+   */
+  const recordNames = {
+    en: [
+      ['View transaction from image.jpg (2024-01-01 00:00)', 'Delete image.jpg (2024-01-01 00:00) from import history'],
+      ['View transaction from image.jpg (2024-02-03 09:30)', 'Delete image.jpg (2024-02-03 09:30) from import history'],
+    ],
+    ja: [
+      ['「image.jpg」（2024-01-01 00:00）の取引を表示', '「image.jpg」（2024-01-01 00:00）をインポート履歴から削除'],
+      ['「image.jpg」（2024-02-03 09:30）の取引を表示', '「image.jpg」（2024-02-03 09:30）をインポート履歴から削除'],
+    ],
+    tc: [
+      ['查看交易：「image.jpg」（2024-01-01 00:00）', '從匯入歷史刪除「image.jpg」（2024-01-01 00:00）'],
+      ['查看交易：「image.jpg」（2024-02-03 09:30）', '從匯入歷史刪除「image.jpg」（2024-02-03 09:30）'],
+    ],
+  } as const;
+  for (const locale of ['en', 'ja', 'tc'] as const) {
+    it(`names each record's View transaction and Delete by its file and when it came in, in ${locale}`, () => {
+      const t = catalogTranslator(locale, { strict: true });
+      const translation = TestBed.inject(TranslationService) as jasmine.SpyObj<TranslationService>;
+      translation.t.and.callFake(catalogTranslator(locale));
+      const at = (millis: number) => ({ toDate: () => new Date(millis) }) as Timestamp;
+      const records: ImportHistory[] = [
+        { ...baseRecord, id: 'import1', fileName: 'image.jpg', importedAt: at(Date.UTC(2024, 0, 1)), transactionIds: ['tx-1'] },
+        { ...baseRecord, id: 'import2', fileName: 'image.jpg', importedAt: at(Date.UTC(2024, 1, 3, 9, 30)), transactionIds: ['tx-2'] },
+      ];
+      render(records);
+
+      const cards = Array.from(fixture.nativeElement.querySelectorAll('mat-card.history-item')) as HTMLElement[];
+      expect(cards.length).withContext('one card per record').toBe(2);
+      const shown = [t('import.viewTransaction'), t('common.delete')];
+      const dates = ['2024-01-01 00:00', '2024-02-03 09:30'];
+
+      cards.forEach((card, c) => {
+        const buttons = Array.from(card.querySelectorAll<HTMLButtonElement>('mat-card-actions button'));
+        expect(buttons.length).withContext(`card ${c}: View transaction and Delete`).toBe(2);
+        const names = buttons.map(accessibleName);
+        buttons.forEach((button, i) => {
+          expect(button.textContent).withContext(`card ${c}'s button ${i} shows its words`).toContain(shown[i]);
+          expect(names[i]).withContext(`"${names[i]}" names the file`).toContain('image.jpg');
+          expect(names[i]).withContext(`"${names[i]}" says when it came in`).toContain(dates[c]);
+          expect(holdsShownWords(names[i], shown[i], locale))
+            .withContext(`"${names[i]}" holds "${shown[i]}" whole`)
+            .toBeTrue();
+        });
+        expect(names).withContext(`card ${c}, pinned`).toEqual([...recordNames[locale][c]]);
+        expect(names).toEqual([
+          t('import.viewTransactionFrom', { name: 'image.jpg', date: dates[c] }),
+          t('import.deleteFromHistory', { name: 'image.jpg', date: dates[c] }),
+        ]);
+      });
+    });
+  }
+
+  /**
+   * A record that created several transactions opens them from a menu, and
+   * its trigger shows how many. Two receipts that each made two transactions
+   * would both read "View transactions (2)", so the trigger names its record
+   * as its siblings do, by the file and when it came in, around the words it
+   * shows.
+   */
+  const triggerNames = {
+    en: [
+      'View transactions (2) from image.jpg (2024-01-01 00:00)',
+      'View transactions (2) from image.jpg (2024-02-03 09:30)',
+    ],
+    ja: [
+      '「image.jpg」（2024-01-01 00:00）の2件の取引を表示',
+      '「image.jpg」（2024-02-03 09:30）の2件の取引を表示',
+    ],
+    tc: [
+      '查看 2 筆交易：「image.jpg」（2024-01-01 00:00）',
+      '查看 2 筆交易：「image.jpg」（2024-02-03 09:30）',
+    ],
+  } as const;
+  for (const locale of ['en', 'ja', 'tc'] as const) {
+    it(`names each record's View transactions menu by its file and when it came in, in ${locale}`, () => {
+      const t = catalogTranslator(locale, { strict: true });
+      const translation = TestBed.inject(TranslationService) as jasmine.SpyObj<TranslationService>;
+      translation.t.and.callFake(catalogTranslator(locale));
+      const at = (millis: number) => ({ toDate: () => new Date(millis) }) as Timestamp;
+      render([
+        { ...baseRecord, id: 'import1', fileName: 'image.jpg', importedAt: at(Date.UTC(2024, 0, 1)), transactionIds: ['tx-1', 'tx-2'] },
+        { ...baseRecord, id: 'import2', fileName: 'image.jpg', importedAt: at(Date.UTC(2024, 1, 3, 9, 30)), transactionIds: ['tx-3', 'tx-4'] },
+      ]);
+
+      const triggers = Array.from(
+        fixture.nativeElement.querySelectorAll('mat-card.history-item mat-card-actions button[aria-haspopup]')
+      ) as HTMLButtonElement[];
+      expect(triggers.length).withContext('one menu trigger per record').toBe(2);
+      const shown = t('import.viewTransactions', { count: 2 });
+      const dates = ['2024-01-01 00:00', '2024-02-03 09:30'];
+
+      const names = triggers.map((trigger, c) => {
+        const name = accessibleName(trigger);
+        expect(trigger.textContent).withContext(`card ${c}'s trigger shows its words`).toContain(shown);
+        expect(name).withContext(`"${name}" names the file`).toContain('image.jpg');
+        expect(name).withContext(`"${name}" says when it came in`).toContain(dates[c]);
+        expect(holdsShownWords(name, shown, locale)).withContext(`"${name}" holds "${shown}" whole`).toBeTrue();
+        return name;
+      });
+
+      expect(names).withContext('pinned').toEqual([...triggerNames[locale]]);
+      expect(names).toEqual(dates.map(date => t('import.viewTransactionsFrom', { count: 2, name: 'image.jpg', date })));
+    });
+  }
 });
 
 // A third sibling suite, for the same reason as the one above: this needs
@@ -783,29 +907,6 @@ describe('ImportHistoryComponent, colours as painted', () => {
 
   const el = () => fixture.nativeElement as HTMLElement;
   const cards = () => Array.from(el().querySelectorAll('.history-item')) as HTMLElement[];
-
-  /** What `<property>: var(token)` computes to under the theme on <html> now. */
-  function tokenValue(token: string, property = 'color'): string {
-    const probe = document.createElement('span');
-    probe.style.setProperty(property, `var(${token})`);
-    document.body.appendChild(probe);
-    try {
-      settleAnimations(document);
-      return getComputedStyle(probe).getPropertyValue(property);
-    } finally {
-      probe.remove();
-    }
-  }
-
-  /** `node` is `token`, and reads at `floor` or better on what is painted behind it. */
-  function expectPainted(node: HTMLElement | null, token: string, label: string, floor = 4.5): void {
-    expect(node).withContext(label).toBeTruthy();
-    if (!node) return;
-    expect(getComputedStyle(node).color).withContext(label).toBe(tokenValue(token));
-    expect(ratio(paintedColor(node), paintedBackground(node)))
-      .withContext(`${label} on what it sits on`)
-      .toBeGreaterThanOrEqual(floor);
-  }
 
   beforeEach(async () => {
     historyService = jasmine.createSpyObj('ImportHistoryService', ['getImportHistory']);

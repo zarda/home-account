@@ -32,7 +32,9 @@ import {
   ratio,
   runAxe,
   settleAnimations,
+  standOnThePage,
   summarizeViolations,
+  tokenValue,
   withTheme
 } from '../../../core/services/testing';
 import { defaultBudgetStart, startOfDay } from '../../../core/utils/transaction-date.utils';
@@ -336,19 +338,6 @@ describe('HouseholdPlansComponent', () => {
         expect(signals()).toEqual([[], [], '']);
       });
 
-      /** What `color: var(token)` computes to under the theme on <html> now. */
-      function tokenColour(token: string): string {
-        const probe = document.createElement('span');
-        probe.style.color = `var(${token})`;
-        document.body.appendChild(probe);
-        try {
-          settleAnimations(document);
-          return getComputedStyle(probe).color;
-        } finally {
-          probe.remove();
-        }
-      }
-
       // Each severity at a spend of the 400 limit that reaches it under the
       // default threshold. Material paints the indicator as the inner bar's
       // top border. It is a graphic, so its floor is 3:1 (WCAG 1.4.11),
@@ -373,7 +362,7 @@ describe('HouseholdPlansComponent', () => {
               const label = `${theme} ${severity.name} bar`;
               const indicator = getComputedStyle(part('.mdc-linear-progress__bar-inner')).borderTopColor;
               painted.set(severity.name, indicator);
-              expect(indicator).withContext(label).toBe(tokenColour(severity.token));
+              expect(indicator).withContext(label).toBe(tokenValue(severity.token));
               expect(ratio(channels(indicator).rgb, paintedBackground(part('.mdc-linear-progress__buffer-bar'))))
                 .withContext(`${label} on its track`)
                 .toBeGreaterThanOrEqual(3);
@@ -646,6 +635,34 @@ describe('HouseholdPlansComponent', () => {
         await settle();
         expect(document.activeElement?.id).toBe('household-goal-g-new-name');
       } finally {
+        host.remove();
+      }
+    });
+
+    it("leave focus where the viewer moved it while a new budget's card was on its way", async () => {
+      const host = element();
+      document.body.appendChild(host);
+      const elsewhere = document.body.appendChild(document.createElement('button'));
+      elsewhere.type = 'button';
+      try {
+        const origin = button('.plans-new-budget');
+        origin.focus();
+        origin.click();
+        const ref = openDialog<HouseholdBudgetDialogComponent>();
+        ref.componentInstance.form.patchValue({ name: 'Home', categoryIds: ['food', 'bills'], amount: 900 });
+        await ref.componentInstance.submit();
+        await settle();
+        expect(document.activeElement).withContext('the dialog hands focus back to its button').toBe(origin);
+        elsewhere.focus();
+
+        plans.budgets.update(budgets => [...budgets, budgetFigures({ id: 'b-new', name: 'Home' })]);
+        render();
+        await settle();
+
+        expect(card('Home')).withContext("the new budget's card").toBeDefined();
+        expect(document.activeElement).toBe(elsewhere);
+      } finally {
+        elsewhere.remove();
         host.remove();
       }
     });
@@ -1251,6 +1268,11 @@ describe('HouseholdPlansComponent', () => {
       expect(all('.plan-counting').length).toBe(1);
       expect(all('.plan-edit, .plan-delete, .plan-contribute, .contribution-delete').length).toBeGreaterThan(0);
       const host = fixture.nativeElement as HTMLElement;
+      // The section runs on far below body's box, and its two subtitles and
+      // its New budget and New goal labels sit on the page with no fill of
+      // their own: unpainted, axe left all four undecided and the pass read
+      // clean.
+      standOnThePage(host);
       document.documentElement.classList.add(theme);
       document.body.appendChild(host);
 

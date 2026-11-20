@@ -3,7 +3,7 @@ import { signal } from '@angular/core';
 import { CHART_TOKEN_FALLBACKS, ChartPalette, ChartThemeService, hexToRgba } from './chart-theme.service';
 import { ThemeService } from './theme.service';
 import { AccessibilityService } from './accessibility.service';
-import { AUDIT_SCHEMES, channels, ratio, settleAnimations, withScheme } from './testing';
+import { AUDIT_SCHEMES, channels, ratio, settleAnimations, tokenValue, withScheme } from './testing';
 
 describe('ChartThemeService', () => {
   let service: ChartThemeService;
@@ -151,8 +151,6 @@ describe('ChartThemeService, on the real theme and accessibility services', () =
       probe.remove();
     }
   }
-
-  const tokenValue = (token: string) => computed(`var(${token})`);
 
   /** The surface Material paints a mat-card on, which every report chart sits in. */
   const card = () => channels(tokenValue('--mat-sys-surface-container-low')).rgb;

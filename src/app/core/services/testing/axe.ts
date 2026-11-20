@@ -2,6 +2,7 @@ import { NgZone } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import axe, { type AxeResults, type RunOptions, type Result } from 'axe-core';
 import type { EffectiveTheme, ThemeService } from '../theme.service';
+import { INTL_LOCALES, type SupportedLocale } from '../translation.service';
 
 /**
  * An axe-core pass a Karma spec can run over one rendered route.
@@ -65,7 +66,11 @@ import type { EffectiveTheme, ThemeService } from '../theme.service';
  *     `transaction-list.component.spec.ts` and friends, at the widths they
  *     were designed for.
  *   - **best-practice.** Not a conformance level; it would make this a
- *     matter of opinion.
+ *     matter of opinion. One of its rules is run, apart from the pass:
+ *     `heading-order`, by `headingsOutOfOrder`. A reader who moves by
+ *     headings takes a skipped level for a missing section, and the
+ *     walkthrough asks it once per page, since the scheme cannot move a
+ *     heading.
  */
 export const DISABLED_RULES = [
   // Karma's debug.html is the document: these all judge a whole page.
@@ -110,11 +115,33 @@ export const KNOWN_VIOLATION_REASONS: Readonly<Record<string, string>> = {};
  */
 export const KNOWN_VIOLATIONS: Readonly<Record<string, readonly string[]>> = {};
 
-/** The options every pass shares, so the smoke run and the fixture agree. */
+/**
+ * The options every pass shares, so the smoke run and the fixture agree.
+ *
+ * `button-name` runs without its `explicit-label` check. That check names a
+ * button by any `<label for>` pointing at it, and passes outright when the
+ * label is out of sight, whatever it says. Material's slide toggle renders
+ * such a label beside its `role="switch"` button and hides it while it
+ * projects nothing (`label:empty { display: none }`), so a switch nobody named
+ * passed every sweep. A named switch still passes: Material points the
+ * button's `aria-labelledby` at that label, and so at the words it projects,
+ * unless the page gives an `aria-label` or names other words. The entry is
+ * scoped to the one rule: explicit-label is shared with the rules that name
+ * fields, and a field named by its `<label for>` alone must keep that name.
+ * Nothing else here labels a `<button>` that way.
+ *
+ * The entry is a plain const because axe's `RuleObject` declares `enabled`
+ * alone, though axe reads a rule's `checks` too; a const is not held to the
+ * object-literal check that would refuse the extra key.
+ */
 export function axeOptions(): RunOptions {
+  const buttonName = { enabled: true, checks: { 'explicit-label': { enabled: false } } };
   return {
     runOnly: { type: 'tag', values: ['wcag2a', 'wcag2aa'] },
-    rules: Object.fromEntries(DISABLED_RULES.map(id => [id, { enabled: false }])),
+    rules: {
+      ...Object.fromEntries(DISABLED_RULES.map(id => [id, { enabled: false }])),
+      'button-name': buttonName,
+    },
     resultTypes: ['violations'],
   };
 }
@@ -304,6 +331,55 @@ export function accessibleDescription(el: Element): string {
   });
 }
 
+/**
+ * Whether a control's accessible `name` holds the words it `shows` whole, so
+ * a voice user can say what they see (WCAG 2.5.3, Label in Name). Both are
+ * read without regard to case in the reader's own locale, and a run of white
+ * space reads as one space, as it does in a computed name. The words must
+ * stand as words in the name: "Edit" inside "Credit" is not held, since a
+ * voice user saying "Edit" would not reach that control. Japanese and
+ * Chinese put no space between words, so beside a Han or kana character the
+ * edge is not read. A control that shows no words has nothing to hold, and
+ * every name would pass, so that throws.
+ */
+export function holdsShownWords(name: string, shown: string, locale: SupportedLocale): boolean {
+  const intl = INTL_LOCALES[locale];
+  const read = (text: string) => text.replace(/\s+/g, ' ').trim().toLocaleLowerCase(intl);
+  const words = read(shown);
+  if (!words) {
+    throw new Error(`holdsShownWords: the control shows no words, so "${name}" has nothing to hold`);
+  }
+  const whole = read(name);
+  const first = /^[\s\S]/u.exec(words)?.[0] ?? '';
+  const last = /[\s\S]$/u.exec(words)?.[0] ?? '';
+  for (let at = whole.indexOf(words); at !== -1; at = whole.indexOf(words, at + 1)) {
+    const before = /[\s\S]$/u.exec(whole.slice(0, at))?.[0];
+    const after = /^[\s\S]/u.exec(whole.slice(at + words.length))?.[0];
+    if (standsApart(first, before) && standsApart(last, after)) return true;
+  }
+  return false;
+}
+
+/** A letter or a digit, in any script. */
+const WORD_CHARACTER = /[\p{L}\p{N}]/u;
+/** A script written without spaces between its words. */
+const UNSPACED_CHARACTER = /[\p{Script_Extensions=Han}\p{Script_Extensions=Hiragana}\p{Script_Extensions=Katakana}]/u;
+
+/**
+ * Whether shown words ending in `edge` stand apart from the name's
+ * `beside` character: nothing is there, either is not a letter or digit,
+ * or either is from a script with no spaces between its words.
+ */
+function standsApart(edge: string, beside: string | undefined): boolean {
+  return (
+    beside === undefined ||
+    !WORD_CHARACTER.test(edge) ||
+    !WORD_CHARACTER.test(beside) ||
+    UNSPACED_CHARACTER.test(edge) ||
+    UNSPACED_CHARACTER.test(beside)
+  );
+}
+
 /** header.component.scss's toolbar height; the header is fixed over the viewport's top. */
 const HEADER_PX = 64;
 
@@ -446,6 +522,63 @@ export function summarizeViolations(results: AxeResults): string[] {
       return `${violation.id} (${violation.nodes.length}): ${targets}${more}`;
     })
     .sort();
+}
+
+/**
+ * The heading run: `heading-order` alone, by a rule-type runOnly with no
+ * rules map. Nothing of the shared pass rides along with it. A tag run spread
+ * over `axeOptions()` would carry `button-name`, whose entry there says
+ * `enabled: true`, since axe honours a rule's own flag ahead of its tags.
+ */
+function headingOrderOptions(): RunOptions {
+  return {
+    runOnly: { type: 'rule', values: ['heading-order'] },
+    resultTypes: ['violations'],
+  };
+}
+
+/** The line {@link headingsOutOfOrder} gives for a root with no heading to order. */
+const NO_HEADING_FOUND = 'heading-order: no heading found';
+
+/**
+ * Runs `heading-order` over `root` and gives one line per heading that sits
+ * more than one level under the heading before it, in `summarizeViolations`'
+ * form. An empty list means `root` holds headings and none skips a level.
+ *
+ * A root with no heading leaves the rule inapplicable, and an inapplicable
+ * rule reports no violation: a page whose headings had all gone would read
+ * as ordered. So a run that neither passed nor failed a heading gives the
+ * line `heading-order: no heading found`.
+ *
+ * axe orders every heading of the document and judges those inside `root`,
+ * so the first heading in `root` is judged against the last one before it
+ * anywhere in the document. Karma's page has none, and the first heading of
+ * the document passes at any level.
+ */
+export async function headingsOutOfOrder(root: Element): Promise<string[]> {
+  const results = await axe.run(root, headingOrderOptions());
+  const lines = summarizeViolations(results);
+  const judged = [...results.passes, ...results.violations].some(result => result.id === 'heading-order');
+  return judged ? lines : [...lines, NO_HEADING_FOUND];
+}
+
+/**
+ * Expects `root` to hold headings, none more than one level under the
+ * heading before it. `where` names the root in a failure.
+ */
+export async function expectHeadingsInOrder(root: Element, where = 'the root'): Promise<void> {
+  expect(await headingsOutOfOrder(root)).withContext(`heading-order on ${where}`).toEqual([]);
+}
+
+/**
+ * The headings under `root`, in document order, each as its level's tag and
+ * its trimmed text: `h2 Budget Progress`. What a reader moving by heading
+ * hears, for a spec to hold the outline whole.
+ */
+export function headingOutline(root: Element): string[] {
+  return Array.from(root.querySelectorAll('h1, h2, h3, h4, h5, h6'), heading =>
+    `${heading.tagName.toLowerCase()} ${heading.textContent?.trim()}`
+  );
 }
 
 /** The same lines, with every violation this route already carried dropped. */

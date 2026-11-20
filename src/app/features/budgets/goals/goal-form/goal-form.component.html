@@ -7,7 +7,11 @@
   <form [formGroup]="form" (ngSubmit)="onSubmit()">
     <mat-dialog-content class="!px-6 !py-4">
       <!-- Kind -->
-      <mat-button-toggle-group formControlName="kind" class="kind-toggle w-full mb-4">
+      <mat-button-toggle-group
+        formControlName="kind"
+        class="kind-toggle w-full mb-4"
+        [attr.aria-label]="'goal.kindLabel' | translate"
+      >
         @for (kind of kinds; track kind.value) {
           <mat-button-toggle [value]="kind.value" class="flex-1">
             <mat-icon>{{ kind.value === 'saving' ? 'savings' : 'flag' }}</mat-icon>

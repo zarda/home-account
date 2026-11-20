@@ -8,7 +8,7 @@ import en from '../../../../../assets/i18n/en.json';
 import ja from '../../../../../assets/i18n/ja.json';
 import tc from '../../../../../assets/i18n/tc.json';
 import {
-  channels, createTranslationStub, paintedBackground, paintedColor, ratio, settleAnimations, withTheme,
+  channels, createTranslationStub, paintedBackground, paintedColor, ratio, tokenValue, withTheme,
 } from '../../../../core/services/testing';
 
 /**
@@ -350,19 +350,6 @@ describe('SnapshotTimelineComponent, through its own template', () => {
   describe('colours', () => {
     const THEMES = ['light', 'dark'] as const;
 
-    /** What `color: var(token)` computes to under the palette on <html> now. */
-    function tokenColour(token: string): string {
-      const probe = document.createElement('span');
-      probe.style.color = `var(${token})`;
-      document.body.appendChild(probe);
-      try {
-        settleAnimations(document);
-        return getComputedStyle(probe).color;
-      } finally {
-        probe.remove();
-      }
-    }
-
     function find(selector: string): HTMLElement {
       const found = el().querySelector(selector) as HTMLElement | null;
       expect(found).withContext(selector).toBeTruthy();
@@ -387,7 +374,7 @@ describe('SnapshotTimelineComponent, through its own template', () => {
           const icon = find('.stale-strip mat-icon');
           expect(getComputedStyle(icon).color)
             .withContext(`${theme} stale icon`)
-            .toBe(tokenColour('--color-warning-text'));
+            .toBe(tokenValue('--color-warning-text'));
           expectOnItsBackground(icon, 3, `${theme} stale icon on its tint`);
 
           expectOnItsBackground(find('.stale-title'), 4.5, `${theme} stale title on its tint`);

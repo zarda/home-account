@@ -58,6 +58,7 @@ import {
   Goal,
   SplitPart,
   receiptImageCount,
+  receiptImageSlots,
   baseCurrencyOf,
   roundToMinorUnit,
   householdIndexPath,
@@ -1489,27 +1490,27 @@ export class TransactionService {
     const count = receiptImageCount(transaction);
     if (!transaction || count === 0) return;
 
-    // "Remove what existed when clicked": the sweep covers only the span
-    // seen at read time. An appender always targets slots at or past this
-    // length, so the sweep cannot hit a racing append's fresh object — its
-    // entries survive the clear instead. Storage before Firestore for the
-    // same reason as removeReceiptAt.
-    const slotSpan = transaction.receiptUrls?.length ?? 1;
-    await this.storageService.deleteReceiptSlots(
-      userId,
-      id,
-      Array.from({ length: slotSpan }, (_, slot) => slot)
-    );
+    // "Remove what existed when clicked": the sweep asks only for the slots
+    // that held an image at read time (an emptied slot's object went with its
+    // image), and the tombstones below cover those slots alone. Another
+    // device can append past the span seen here or, once its removal has
+    // truncated trailing tombstones, into a slot that was empty here; either
+    // way that image is neither swept nor tombstoned, so it survives the
+    // clear together with its object. Storage before Firestore for the same
+    // reason as removeReceiptAt.
+    const sweptSlots = receiptImageSlots(transaction).map(image => image.slot);
+    await this.storageService.deleteReceiptSlots(userId, id, sweptSlots);
 
     const docRef = this.firestoreService.getDocRef(path);
     const removed = await this.firestoreService.runTransaction(async tx => {
       const snapshot = await tx.get(docRef);
       if (!snapshot.exists()) return 0;
 
+      // Only the slots swept: each lies inside the span read above.
       const slots = this.receiptSlotsOf(snapshot.data() as Transaction);
       let tombstoned = 0;
-      for (let slot = 0; slot < slotSpan && slot < slots.length; slot++) {
-        if (slots[slot]) {
+      for (const slot of sweptSlots) {
+        if (slot < slots.length && slots[slot]) {
           slots[slot] = '';
           tombstoned += 1;
         }
@@ -1588,18 +1589,18 @@ export class TransactionService {
         );
       }
 
-      // Remove the stored receipt objects to avoid orphaned files. The slot
-      // sweep tolerates gaps (tombstoned removals) and never rejects, so the
-      // document delete wins either way.
+      // Remove the stored receipt objects to avoid orphaned files. The sweep
+      // asks only for the slots that still hold an image (a tombstoned
+      // removal's object is already gone) and never rejects, so the document
+      // delete wins either way.
       const imageCount = receiptImageCount(transaction);
       if (transaction && imageCount > 0) {
         const userId = this.authService.userId();
         if (userId) {
-          const slotSpan = transaction.receiptUrls?.length ?? 1;
           await this.storageService.deleteReceiptSlots(
             userId,
             id,
-            Array.from({ length: slotSpan }, (_, slot) => slot)
+            receiptImageSlots(transaction).map(image => image.slot)
           );
         }
         // The document is gone either way, so the images no longer count
@@ -1697,14 +1698,14 @@ export class TransactionService {
         deleted++;
         lastId = transaction.id;
 
-        // Remove any stored receipts to avoid orphaned files. Best-effort:
-        // the slot sweep never rejects.
+        // Remove any stored receipts to avoid orphaned files, asking only for
+        // the slots that still hold an image. Best-effort: the slot sweep
+        // never rejects.
         if (userId && receiptImageCount(transaction) > 0) {
-          const slotSpan = transaction.receiptUrls?.length ?? 1;
           await this.storageService.deleteReceiptSlots(
             userId,
             transaction.id,
-            Array.from({ length: slotSpan }, (_, slot) => slot)
+            receiptImageSlots(transaction).map(image => image.slot)
           );
         }
       }

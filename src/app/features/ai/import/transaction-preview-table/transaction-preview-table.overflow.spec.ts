@@ -10,11 +10,18 @@ import { CurrencyService } from '../../../../core/services/currency.service';
 import { CurrencyChoiceSessionService } from '../../../../core/services/currency-choice-session.service';
 import { FitTextRegistry } from '../../../../shared/directives/fit-text.registry';
 import { FitTextDirective } from '../../../../shared/directives/fit-text.directive';
-import { echoKey, provideNoMotion } from '../../../../core/services/testing';
+import { echoKey, provideNoMotion, textLines } from '../../../../core/services/testing';
 
 /**
- * The review card at the narrowest width the app supports, carrying
- * everything a receipt import can put on it.
+ * The review card in a 288px box, carrying everything a receipt import can
+ * put on it.
+ *
+ * 288px is a 320px phone less the layout's 16px gutter a side, and it is not
+ * what such a phone gives the card: the wizard keeps a 16px gutter of its own
+ * inside the layout's, so a 320px page leaves the table 256px, or 248px beside
+ * the main container's 8px scrollbar. So every containment reading here
+ * gives the card 32px more than a 320px phone does. ADR 0192 records the card
+ * at that width under its Known gaps.
  *
  * Every other spec on this component overrides the template away, so this is
  * the only place its own stylesheet is measured — and the card just grew a
@@ -37,7 +44,7 @@ import { echoKey, provideNoMotion } from '../../../../core/services/testing';
   standalone: true,
   imports: [TransactionPreviewTableComponent],
   template: `
-    <!-- 320px, the narrowest phone still in use, less the page's own padding. -->
+    <!-- A 320px phone less the layout's gutters, not the wizard's: see above. -->
     <div class="narrow">
       <app-transaction-preview-table [transactions]="rows" [categories]="categories()" [dateAttentionIds]="attention" />
     </div>
@@ -462,8 +469,8 @@ describe('overflow guard: the import review card', () => {
     // The repo has been here before: .type-toggle carries a comment recording
     // that it shipped at 26px, below the accessible minimum. The two menu
     // triggers reach the minimum with their own height. The remove button
-    // cannot — the chip has to stay chip-sized — so it lays a 40x32 hit area
-    // over its 20px glyph instead, and that is the thing worth pinning.
+    // cannot — the chip has to stay chip-sized — so it lays a 40x40 hit area
+    // over its 20px-tall box instead, and that is the thing worth pinning.
     expect(el('.currency-chip').getBoundingClientRect().height)
       .withContext('currency chip tap target')
       .toBeGreaterThanOrEqual(40);
@@ -475,21 +482,38 @@ describe('overflow guard: the import review card', () => {
       .withContext('keep all dates button tap target')
       .toBeGreaterThanOrEqual(40);
 
-    // The first `.extra-remove` in the strip is the date question's change
-    // button now; it carries both classes, so it wears exactly this box.
-    const remove = el('.extra-remove');
-    const box = remove.getBoundingClientRect();
-    const hit = getComputedStyle(remove, '::after');
-    expect(box.height - parseFloat(hit.top) - parseFloat(hit.bottom))
-      .withContext('remove button hit area, glyph plus overhang')
-      .toBeGreaterThanOrEqual(40);
-    // 32 wide, not 40, and that is a decision rather than a lowered bar: the
-    // button sits 4px inside the chip's own right edge, so the 6px of overhang
-    // reaches only 2px into `.card-extras`'s 6px column gap and stops short of
-    // the neighbouring chip. Widening it further would not.
-    expect(box.width - parseFloat(hit.left) - parseFloat(hit.right))
-      .withContext('remove button hit area is wider than the glyph')
-      .toBeGreaterThanOrEqual(32);
+    // Every `.extra-remove` on the strip: the tags', the location's and the
+    // currency offer's removals, and the date question's change button,
+    // which carries both classes and so wears exactly this box. Each takes
+    // 40 both ways. The height is the overhang's; the width is the box's own
+    // 28px with the same 6px overhang a side, because the overhang cannot
+    // grow sideways: it would reach into the control before it on the chip,
+    // and past `.card-extras`'s 6px column gap into the next chip. The 32px
+    // this was is what the audit found under the 40px floor.
+    const removes = Array.from(host.querySelectorAll<HTMLElement>('.extra-remove'));
+    expect(removes.length)
+      .withContext('two date questions, two currency offers, the location and the receipt country, and three tags')
+      .toBe(9);
+    for (const [i, remove] of removes.entries()) {
+      const box = remove.getBoundingClientRect();
+      const hit = getComputedStyle(remove, '::after');
+      const where = `${remove.getAttribute('aria-label')} (${i + 1})`;
+      // The insets read back from the rule whether or not it draws a box: a
+      // pseudo-element with no content is never generated, and a static one
+      // ignores its insets, yet both still compute -10px and -6px. So the
+      // overhang is first held to be drawn, and laid out against the button.
+      expect(hit.content).withContext(`${where}: the hit area is generated`).not.toBe('none');
+      expect(hit.position).withContext(`${where}: the hit area is placed by its insets`).toBe('absolute');
+      expect(getComputedStyle(remove).position)
+        .withContext(`${where}: the hit area is placed against the button`)
+        .not.toBe('static');
+      expect(box.height - parseFloat(hit.top) - parseFloat(hit.bottom))
+        .withContext(`${where}: hit area height, glyph plus overhang`)
+        .toBeGreaterThanOrEqual(40);
+      expect(box.width - parseFloat(hit.left) - parseFloat(hit.right))
+        .withContext(`${where}: hit area width, box plus overhang`)
+        .toBeGreaterThanOrEqual(40);
+    }
 
     // And the tag chip is still one line of --text-xs: the hit area grew
     // outside the box precisely so this number would not move. By class, not
@@ -512,6 +536,29 @@ describe('overflow guard: the import review card', () => {
     expect(acceptText.getBoundingClientRect().height)
       .withContext('the label really did take a second line rather than spilling past the chip')
       .toBeGreaterThan(20);
+  });
+
+  it('gives Notes a 40px target, with room for its focus outline inside the card', () => {
+    // The empty notes slot is drawn dashed, as the strip's add triggers and
+    // Add row are, and takes the 40px they take in its own box; it stood
+    // 36px. Nothing around it gave way for the 4px: the outline the app
+    // draws round it, 2px off the box and 3px wide under high contrast,
+    // still lands inside the card, inside the list that clips.
+    const notes = Array.from(host.querySelectorAll<HTMLElement>('.add-notes-btn'));
+    expect(notes.length).withContext('one per row, neither row has notes').toBe(2);
+    for (const [i, button] of notes.entries()) {
+      const box = button.getBoundingClientRect();
+      expect(box.height).withContext(`row ${i + 1}: Notes tap target height`).toBeGreaterThanOrEqual(40);
+      expect(box.width).withContext(`row ${i + 1}: Notes tap target width`).toBeGreaterThanOrEqual(40);
+      expect(textLines(button.querySelector('span') as HTMLElement)).withContext(`row ${i + 1}: Notes on one line`).toBe(1);
+
+      const reach = 2 + 3;
+      const owner = button.closest('.transaction-card') as HTMLElement;
+      const card = owner.getBoundingClientRect();
+      expect(box.left - reach).withContext(`row ${i + 1}: the outline's start inside the card`).toBeGreaterThanOrEqual(card.left);
+      expect(box.right + reach).withContext(`row ${i + 1}: the outline's end inside the card`).toBeLessThanOrEqual(card.right);
+      expect(box.bottom + reach).withContext(`row ${i + 1}: the outline's foot inside the card`).toBeLessThanOrEqual(card.bottom);
+    }
   });
 
   it('keeps both of the location chip\'s controls reachable, and its editor inside the card', () => {

@@ -12,7 +12,7 @@ import { AnalyticsService } from '../../../core/services/analytics.service';
 import { Category, Goal, RAG_TIER_CONFIGS, Transaction, User } from '../../../models';
 import {
   channels, createCategory, createTimestamp, createTransaction, createUser, createTranslationStub,
-  hoverValue, paintedBackground, paintedColor, ratio, settleAnimations, withTheme,
+  headingOutline, hoverValue, paintedBackground, paintedColor, ratio, tokenValue, withTheme,
   provideNoMotion,
 } from '../../../core/services/testing';
 
@@ -596,6 +596,23 @@ describe('AiSummaryComponent, through its own template', () => {
     expect(refresh.getAttribute('title')).toBe('ai.refresh');
   });
 
+  // The dashboard's h1 heads the page, so the card's title is an h2, as every
+  // other card's is, and the empty state under it an h3. Headings inside the
+  // summary's own text arrive with the provider's answer, and are not held here.
+  it('titles the card one level under the page, and its empty state one under the title', () => {
+    const outline = () => headingOutline(el());
+    render(rows(2));
+    expect(outline()).toEqual(['h2 ai.insights', 'h3 ai.noInsights']);
+
+    render();
+    component.isLoading.set(false);
+    component.hasError.set(false);
+    component.summary.set('Groceries are **up** 18%.');
+    component.advice.set('Try a weekly cap.');
+    fixture.detectChanges();
+    expect(outline()).toEqual(['h2 ai.insights']);
+  });
+
   it('says there is nothing to summarise below three rows, and locks refresh', () => {
     render(rows(2));
 
@@ -679,19 +696,6 @@ describe('AiSummaryComponent, through its own template', () => {
 
   describe('colours', () => {
     const THEMES = ['light', 'dark'] as const;
-
-    /** What `color: var(token)` computes to under the palette on <html> now. */
-    function tokenColour(token: string): string {
-      const probe = document.createElement('span');
-      probe.style.color = `var(${token})`;
-      document.body.appendChild(probe);
-      try {
-        settleAnimations(document);
-        return getComputedStyle(probe).color;
-      } finally {
-        probe.remove();
-      }
-    }
 
     function showContent(): void {
       render();
@@ -782,7 +786,7 @@ describe('AiSummaryComponent, through its own template', () => {
             expectOnItsBackground(part, floor, `${theme} advice ${label} on its tint`);
             expect(getComputedStyle(part).color)
               .withContext(`${theme} advice ${label}`)
-              .toBe(tokenColour('--color-warning-text'));
+              .toBe(tokenValue('--color-warning-text'));
           }
         });
       }
@@ -808,7 +812,7 @@ describe('AiSummaryComponent, through its own template', () => {
             expectOnItsBackground(part, floor, `${theme} error ${label} on its tint`);
             expect(getComputedStyle(part).color)
               .withContext(`${theme} error ${label}`)
-              .toBe(tokenColour('--color-error-text'));
+              .toBe(tokenValue('--color-error-text'));
           }
         });
       }
@@ -824,8 +828,8 @@ describe('AiSummaryComponent, through its own template', () => {
             expectOnItsBackground(title, 4.5, `${theme} title on ${stop}`);
             expectOnItsBackground(icon, 3, `${theme} AI icon on ${stop}`);
           });
-          expect(getComputedStyle(title).color).withContext(`${theme} title`).toBe(tokenColour('--color-primary-text'));
-          expect(getComputedStyle(icon).color).withContext(`${theme} AI icon`).toBe(tokenColour('--color-primary-text'));
+          expect(getComputedStyle(title).color).withContext(`${theme} title`).toBe(tokenValue('--color-primary-text'));
+          expect(getComputedStyle(icon).color).withContext(`${theme} AI icon`).toBe(tokenValue('--color-primary-text'));
         });
       }
     });
@@ -879,8 +883,8 @@ describe('AiSummaryComponent, through its own template', () => {
 
       for (const theme of THEMES) {
         withTheme(theme, () => {
-          const primary = tokenColour('--text-primary');
-          const secondary = tokenColour('--text-secondary');
+          const primary = tokenValue('--text-primary');
+          const secondary = tokenValue('--text-secondary');
           const bodySize = parseFloat(getComputedStyle(paragraph).fontSize);
 
           for (const heading of headings) {
@@ -940,12 +944,12 @@ describe('AiSummaryComponent, through its own template', () => {
         withTheme(theme, () => {
           try {
             const rest = getComputedStyle(icon).color;
-            expect(rest).withContext(`${theme} refresh at rest`).toBe(tokenColour('--text-muted'));
+            expect(rest).withContext(`${theme} refresh at rest`).toBe(tokenValue('--text-muted'));
             overEveryStop(theme, stop => expectOnItsBackground(icon, 3, `${theme} refresh at rest on ${stop}`));
 
             button.style.color = hoverValue(button, '.refresh-btn', 'color');
             const hovered = getComputedStyle(icon).color;
-            expect(hovered).withContext(`${theme} refresh hovered`).toBe(tokenColour('--text-primary'));
+            expect(hovered).withContext(`${theme} refresh hovered`).toBe(tokenValue('--text-primary'));
             expect(hovered).withContext(`${theme} refresh hover differs from rest`).not.toBe(rest);
             overEveryStop(theme, stop => expectOnItsBackground(icon, 3, `${theme} refresh hovered on ${stop}`));
           } finally {

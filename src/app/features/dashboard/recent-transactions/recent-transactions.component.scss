@@ -36,10 +36,13 @@
   white-space: nowrap;
 }
 
+// A 40px target, the floor every target in the app keeps: its words are a
+// 21px line, and the link was no taller.
 .view-all-link {
   display: flex;
   align-items: center;
   gap: 2px;
+  min-height: 40px;
   font-size: var(--text-sm);
   font-weight: 500;
   color: var(--color-accent);

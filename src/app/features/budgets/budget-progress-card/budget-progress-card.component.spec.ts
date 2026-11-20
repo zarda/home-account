@@ -8,14 +8,16 @@ import { Budget, Category } from '../../../models';
 import { FitTextRegistry } from '../../../shared/directives/fit-text.registry';
 import {
   channels,
+  expectPainted,
+  headingOutline,
   iconBox,
   iconSquare,
   paintedBackground,
-  paintedColor,
   provideNoMotion,
   ratio,
   settleAnimations,
   styleRules,
+  tokenValue,
   withTheme,
 } from '../../../core/services/testing';
 
@@ -248,32 +250,10 @@ describe('BudgetProgressCardComponent', () => {
     const el = () => fixture.nativeElement as HTMLElement;
     const part = (selector: string) => el().querySelector(selector) as HTMLElement;
 
-    /** What `<property>: var(token)` computes to under the theme on <html> now. */
-    function tokenValue(token: string, property = 'color'): string {
-      const probe = document.createElement('span');
-      probe.style.setProperty(property, `var(${token})`);
-      document.body.appendChild(probe);
-      try {
-        settleAnimations(document);
-        return getComputedStyle(probe).getPropertyValue(property);
-      } finally {
-        probe.remove();
-      }
-    }
-
     function render(overrides: Partial<Budget> = {}): void {
       fixture.componentRef.setInput('budget', createMockBudget(overrides));
       fixture.componentRef.setInput('category', mockCategory);
       fixture.detectChanges();
-    }
-
-    /** `node` is `token`, and reads at `floor` or better on what is painted behind it. */
-    function expectPainted(node: HTMLElement, token: string, label: string, floor = 4.5): void {
-      expect(node).withContext(label).toBeTruthy();
-      expect(getComputedStyle(node).color).withContext(label).toBe(tokenValue(token));
-      expect(ratio(paintedColor(node), paintedBackground(node)))
-        .withContext(`${label} on the card`)
-        .toBeGreaterThanOrEqual(floor);
     }
 
     // The menu renders in the CDK overlay, outside the fixture.
@@ -607,16 +587,17 @@ describe('BudgetProgressCardComponent', () => {
     });
   });
 
-  // The Budgets page lists the cards under the page's own heading.
+  // The Budgets page lists the cards under the page's own h1, with no heading
+  // between, so each card's name is an h2 and the card holds no other.
   describe('its heading', () => {
     beforeEach(() => fixture.componentRef.setInput('budget', createMockBudget()));
 
-    it('names the budget in an h3', () => {
+    it('names the budget in an h2, one level under the page', () => {
       fixture.detectChanges();
 
-      const name = fixture.nativeElement.querySelector('.budget-name') as HTMLElement;
-      expect(name.tagName).toBe('H3');
-      expect(name.textContent?.trim()).toBe('Food Budget');
+      const outline = headingOutline(fixture.nativeElement);
+      expect(outline).toEqual(['h2 Food Budget']);
+      expect(fixture.nativeElement.querySelector('.budget-name')?.tagName).toBe('H2');
     });
   });
 

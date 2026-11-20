@@ -474,4 +474,56 @@ describe('PeriodTotalsService', () => {
     expect(service.totals()!.expense).toBe(50);
     expect(mockFirestore.getPageSpy.calls.length).toBe(pageCalls);
   });
+
+  describe('exclude', () => {
+    it('starts empty, leaving every swept row in the fold', async () => {
+      seedTransactions([{ amount: 10 }, { amount: 20 }]);
+      await service.reset({});
+
+      expect(service.exclude().size).toBe(0);
+      expect(service.totals()).toEqual({ income: 0, expense: 30, balance: -30, count: 2 });
+    });
+
+    it('leaves an excluded row out of the fold, read-free, and brings it back once the set clears', async () => {
+      const seeded = seedTransactions([
+        { amount: 10 }, { amount: 20 }, { type: 'income', amount: 500 }
+      ]);
+      await service.reset({});
+      const before = service.totals();
+      const countCalls = mockFirestore.countDocumentsSpy.calls.length;
+      const pageCalls = mockFirestore.getPageSpy.calls.length;
+
+      service.exclude.set(new Set([seeded[1].id]));
+
+      expect(service.totals()).toEqual({ income: 500, expense: 10, balance: 490, count: 2 });
+      expect(service.status().kind).withContext('the figure is still exact for what is shown').toBe('ready');
+
+      service.exclude.set(new Set());
+
+      expect(service.totals()).toEqual(before);
+      expect(mockFirestore.countDocumentsSpy.calls.length).toBe(countCalls);
+      expect(mockFirestore.getPageSpy.calls.length).toBe(pageCalls);
+    });
+
+    it('keeps a row out across a re-read that still holds it', async () => {
+      const seeded = seedTransactions([{ amount: 10 }, { amount: 20 }]);
+      await service.reset({});
+      service.exclude.set(new Set([seeded[0].id]));
+
+      await service.refresh();
+
+      expect(service.totals()!.expense).toBe(20);
+      expect(service.totals()!.count).toBe(1);
+    });
+
+    it('passes over an excluded id no swept row carries', async () => {
+      seedTransactions([{ amount: 10 }, { amount: 20 }]);
+      await service.reset({});
+
+      service.exclude.set(new Set(['txn-gone']));
+
+      expect(service.totals()!.expense).toBe(30);
+      expect(service.totals()!.count).toBe(2);
+    });
+  });
 });

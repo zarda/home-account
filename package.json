@@ -1,6 +1,6 @@
 {
   "name": "home-account",
-  "version": "26.11.185",
+  "version": "26.11.186",
   "scripts": {
     "ng": "ng",
     "start": "ng serve",
@@ -25,6 +25,7 @@
     "indexes:check": "node scripts/check-firestore-indexes.mjs",
     "ledger:check": "node scripts/check-ledger-contract.mjs --self-test && node scripts/check-ledger-contract.mjs",
     "firebase-tools:check": "node scripts/check-firebase-tools-major.mjs --self-test && node scripts/check-firebase-tools-major.mjs",
+    "test-main:check": "node scripts/check-test-main.mjs --self-test && node scripts/check-test-main.mjs",
     "prod-env:check": "node scripts/check-prod-env.mjs --self-test && node scripts/check-prod-env.mjs",
     "truncation:check": "node scripts/check-truncation.mjs --self-test && node scripts/check-truncation.mjs",
     "material:check": "node scripts/check-material-imports.mjs --self-test && node scripts/check-material-imports.mjs",
