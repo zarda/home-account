@@ -590,7 +590,8 @@ manager's name taken off, the gate fails at that template.
   `[Dashboard]` warning, or nothing for a shutdown or a refusal; the *Error*
   snackbar no longer shows for it. The dashboard shutdown has no emulator
   surface: a shutdown in the smoke would break the app every later case
-  shares, so the unit cases hold it, and the browser run's last step read it.
+  shares, so the unit cases hold it, and both browser runs read it, the
+  first as its last step and the second with a reload after it (Run 2).
 - A delete, a wipe or a clear asks storage for no slot whose image was removed
   before, so the not-found line for such a slot is gone. A row that holds a
   receipt count but no URL, which is inconsistent data, used to be swept at
@@ -772,6 +773,130 @@ Known gaps, says what their targets are); and after Continue, Material moves
 focus to the import's Review step header, whose focus state layer reads as a
 grey block in dark.
 
+### Run 2, on 21 November 2026
+
+The second run drove version 26.11.186, every fix since run 1 in, in the
+same venue: emulators only (Auth, Firestore and Storage), started from the
+data run 1 left, as Alex, still signed in from 19 November; served from
+this branch's checkout on port 4300, the bundle naming `demo-home-account`
+alone. The pane emulated 1024×768, in the account's light theme, then
+375×812 in dark through Settings' Theme control, and 320px; every read
+followed a flush and finished animations. It read en, ja and tc. Journeys
+121 and 123 hold this record's parts.
+
+- **Siblings and the AI page, read again.** With both offers set on the
+  form's state, its three closes read *Close*, *Dismiss the currency
+  suggestion* and *Dismiss the location suggestion*; ja *閉じる* /
+  *通貨の提案を閉じる* / *場所の提案を閉じる*; tc *關閉* / *關閉貨幣建議* /
+  *關閉地點建議*. *Close* was 40 × 40 and the two dismissals' boxes 32 × 32
+  still (Known gaps). On `/ai`, with three made-up keys set in the page's
+  state alone, the fields read *Gemini API key*, *OpenAI API key* and
+  *Claude API key*, and each card's remove, link and test button named its
+  provider: *Remove the Gemini API key*, *Get API Key for Gemini* and *Test
+  Key for Gemini* on the first; ja *GeminiのAPIキーを削除* /
+  *GeminiのAPIキーを取得* / *Geminiのキーをテスト*; tc *移除 Gemini API 金鑰* /
+  *前往 Gemini 取得 API 金鑰* / *測試金鑰：Gemini*. Every name held its shown
+  words. The two memory clears read *Forget all remembered categories* and
+  *Forget all remembered tags*, 40px tall.
+- **The AI page at 320px.** Read after a reload at that width, the three
+  field labels were whole, 109, 111 and 108px, each its `clientWidth`;
+  loaded in ja, 113, 115 and 112px, whole in a 214px field; loaded in tc,
+  whole at 118, 120 and 117px. Each provider's avatar stood 16px from its
+  header's top, as `fix: each AI provider's avatar stands at the top of its
+  header again` set it, the *Recommended* chip stood under the title and
+  clear of it, and nothing scrolled sideways. A read straight after a live
+  resize to 320px found the labels cut, the main area overflowing by 189px
+  and the headers 171 to 262px tall, and one after a live language switch
+  there found the labels cut. Both were stale measures, since the label's
+  notch is measured by an observer, so the labels are read after a reload in
+  each language.
+- **Split, Merge… and Remove.** On a two-row CSV's review card, each card's
+  six names held their shown words and named their own row in en, ja and
+  tc, every control 40px tall. tc's Split now read
+  *將「r2 coffee beans」分割成兩列*, in the order of its Merge,
+  *將「…」合併到其他列*, since `fix: a review row's split is named in the
+  Chinese sentence order its merge uses`.
+- **The filter boxes, read again, identical.** The search box was named
+  *Search transactions* with and without its placeholder (ja *取引を検索*, tc
+  *搜尋交易*). After a real click and real typing in it and a real click on
+  Save search, the save box held *Parking* and was named by its label, *Name
+  for this search* (ja *この検索の名前*, tc *此搜尋的名稱*), 12px, reading
+  6.87 plain, 9.37 high contrast, 5.84 dark and 11.12 dark high contrast;
+  Save and Cancel 40 × 40; at a 280px host the caption whole at 152px and the
+  pill 256 × 60. New since run 1, the pill's padding read 12px at the start
+  and 4px at the end, written as `padding-inline`, and under `dir=rtl` 4px on
+  the left and 12px on the right (`fix: the save-search pill's padding
+  follows the reading direction`).
+- **The calendar buttons and the targets.** The filters' *Open calendar:
+  From* and *Open calendar: To*, 40 × 40, now read the slotted
+  `datepicker.openCalendarFor` (`refactor: the filters' calendar buttons
+  take the one slotted name`), their words unchanged. *Clear all* read
+  94 × 40, and the dashboard's two *View All* links 68 × 40. The recurring
+  rule's and the household budget's calendar pairs, the period chip's clear
+  and the single-choice groups were not read again: no commit since they
+  were last read, on 19 November, touched their templates.
+- **The focus indicator, five of the eleven, identical.** Each was focused
+  from the console and then reached by a real Shift+Tab and Tab,
+  `:focus-visible` true, and read in the four palettes, plain / high
+  contrast / dark / dark high contrast: the desktop row menu 8.87 / 8.87 /
+  14.36 / 14.36; the FAB 5.97 / 5.97 / 5.52 / 5.52, on its 16px corner; the
+  text button Select 5.02 / 5.02 / 8.71 / 8.71; the flat Add Goal 4.95 /
+  4.95 / 6.29 / 6.29; the stroked Contribute 4.94 / 4.94 / 7.77 / 7.77. Each
+  was display block, 2px (3px in both high-contrast palettes), inside, in the
+  button's text colour, the app's outline none. Save search, the period
+  chip's clear, the month picker, the receipt viewer's two closes and the
+  pressed history pin were not read again: no commit since run 1 changed the
+  indicator's rules.
+- **Focus after a delete, from three doors.** From the desktop menu by keys,
+  *r2 two images* left at once, 14 rows to 13, and focus was on the menu
+  button of the row now at index 1, *More actions for r2 one image*. From
+  the phone's menu at 375px, dark, *Parking garage* left at once, 12 to 11,
+  *Total Expenses* went from $2,537.23 to $2,525.23, and focus was on the
+  menu button of the row now at index 1, *More actions for Bookshop*. The
+  swipe door, the pane's drag started on the row's description line, opened
+  the drawer (*Edit r2 two images* and *Delete r2 two images*, 72 × 83); real
+  clicks on Delete and on the confirm's Delete left 11 rows and put focus on
+  the `.row-menu-btn` of the row now at index 0, *Parking garage*, not
+  `:focus-visible` after a pointer. A row brought back while rows were being
+  chosen on a phone took focus on its checkbox, *r2 two images, -$10.00,
+  Today*, `:focus-visible`, as `fix: undo while choosing rows on a phone
+  gives focus to the row's checkbox` made it. Undo from each door is
+  [0197](0197-a-deleted-transaction-can-be-brought-back-for-ten-seconds-because-the-delete-waits.md)'s.
+- **The receipt sweep.** *r2 three images* had its second image removed
+  through the receipt manager by real clicks (`receiptUrls`
+  `[slot0, '', slot2]`, its first and third addresses with `''` between
+  them, and `receiptCount` 2) and was deleted by keys. Its document
+  read 200 from 0 to 9.2 s after the notice and 404 at 10.1 s. Once the
+  delete was real, Storage received two requests, `DELETE …/receipts/<id>`
+  and `DELETE …/receipts/<id>_2`, none for slot 1, and its listing held
+  nothing of the row. *r2 one image*, deleted and left for `/dashboard`
+  inside the window, sent one, `DELETE …/receipts/<id>`.
+- **The dashboard shutdown.** With `/dashboard` open as Alex, the origin's
+  IndexedDB databases were deleted: `firebase-heartbeat-database`,
+  `firebaseLocalStorageDb`, `firestore/[DEFAULT]/demo-home-account/main`,
+  `homeaccount-offline-queue` and `homeaccount-share-intake`. Firestore
+  terminated with the SDK's own warnings, *Terminating Firestore due to
+  IndexedDb database deletion* among them; the app logged `[OfflineQueue]
+  Closing so a newer version can open` and `RowSharing`'s line that the
+  account's households were not read, its code `aborted`. No
+  `[GlobalErrorHandler]` line, no `console.error`, no window error or
+  unhandled rejection (`e2eErrors` `[]`) and no notice followed; the four
+  cards' words were unchanged, and the session stayed. It was not the run's
+  last step this time: the page was reloaded, and journey 124 followed.
+
+**The driver's mistakes, not the app's.** At the desktop door's first
+attempt, a Tab sent with the menu keys reached the list before the confirm
+took focus, and the driver's reads between the confirm and Undo ran past the
+ten seconds, so *e2e two images* was deleted for real, its receipts with it;
+the door was driven again on *r2 two images* after a reload. At the swipe
+door, the driver's first three drags started on the row's middle line, its
+category strip (`.row-category`), where a press by design never starts a
+swipe. The pane delivered `pointerdown`, two `pointermove`s (−79 and −80px),
+`pointerup` and `click`, all trusted, and each drag was taken as a tap that
+opened *Edit Transaction*, closed by Cancel with nothing changed.
+
+**Found:** nothing in this record's parts; the run met no app defect.
+
 ## Departures from the issues
 
 - **"Contains", not "opens with".** #546 proposed names for Split and Merge
@@ -951,8 +1076,8 @@ grey block in dark.
 - **What a card showed is checked on its signals.** For budgets, goals and
   categories the cases read the service-owned signals the cards bind, not the
   rendered cards.
-- **No emulator case.** The shutdown is held by the unit cases and the browser
-  run's last step (Consequences).
+- **No emulator case.** The shutdown is held by the unit cases and the two
+  browser runs' reads (Consequences).
 
 ### The receipt sweep
 

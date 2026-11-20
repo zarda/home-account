@@ -358,6 +358,95 @@ before Undo and has no finding about it.
 were elsewhere and are recorded in 0196 and
 [0194](0194-one-painted-contrast-helper-and-one-focus-hand-off-a-card-is-scored-part-by-part-and-no-page-skips-a-heading-level.md).
 
+### Run 2, on 21 November 2026
+
+The second run drove version 26.11.186, every fix since run 1 in, in the
+same venue: emulators only (Auth, Firestore and Storage), started from the
+data run 1 exported, as Alex, still signed in from 19 November; served from
+this branch's checkout, the bundle named `demo-home-account` alone. The pane
+emulated 1024 × 768, in the light theme, and then 375 × 812 in dark
+through Settings' Theme control, and every read followed a flush and
+finished animations. Journey 123's delete and Undo steps were driven again.
+
+- **The desktop menu, by keyboard**, on *r2 two images* after a reload, the
+  first attempt having gone wrong (below). The row left at once (14 to 13),
+  and focus, `:focus-visible`, was on the menu button of the row now at its
+  index, *r2 one image*. The notice, *Deleted r2 two images* beside **Undo**,
+  344 × 48 at y 712 of 768 with its own live region off, was announced once
+  as *Deleted r2 two images. Undo is available for a few seconds.*; the
+  document was still stored (200). A real Enter on Undo brought the row back
+  (14) and focus to its menu button, and *Restored r2 two images* was
+  announced; the document read 200.
+- **The phone menu, at 375 px in dark, read again: identical to run 1 but
+  for the count and the totals.** *Parking garage* left at once (12 to 11),
+  *Total Expenses* went from $2,537.23 to $2,525.23, its $12, and focus was
+  on the menu button of the row now at its index, *Bookshop*. The notice,
+  359 × 48 at y 692–740, stood above the bottom nav, whose top was at 748,
+  with `body.bottom-nav-shown` set: the lift is keyed on the shell's mark
+  since `fix: a notice stands above the phone's bottom nav on iOS 15's first
+  WebViews too`. It was read in the pane's Chrome, not in an iOS 15
+  WebView. Its text read 10.15:1 and its Undo 5.01:1 at 64 × 40; it was
+  announced once, and the document read 200. A real Enter on Undo brought
+  the row, the totals and focus back, and *Restored Parking garage* was
+  announced.
+- **The swipe door, at 375 px.** Started on the row's description line, the
+  pane's drag opened the drawer, *Edit r2 two images* and *Delete r2 two
+  images*, 72 × 83. Real clicks on Delete and on the confirm's Delete took
+  the row away (11 rows) with focus on the `.row-menu-btn` of the row now at
+  index 0, not `:focus-visible` after a pointer; the notice stood as at the
+  phone menu, and the document read 200. Undo brought the row back at index
+  0 with its drawer closed (`translateX(144px)`), focus on its menu button,
+  the totals back, and *Restored r2 two images* was announced.
+- **Undo while rows are being chosen, at 375 px.** *r2 two images* was
+  deleted by its phone menu, **Select** pressed inside the window, then
+  Undo: focus went to the restored row's checkbox, named *r2 two images,
+  -$10.00, Today*, `:focus-visible`; 12 rows, *Restored r2 two images*
+  announced, the document 200. This is the hand-off that `fix: undo while
+  choosing rows on a phone gives focus to the row's checkbox` made; run 1
+  did not drive it.
+- **Waited out.** The three-image row, *r2 three images*, had its middle
+  image removed first through the receipt manager, by real clicks on
+  *Remove image 2 of r2 three images* and on the confirm's **Remove**
+  (`receiptUrls` `[slot0, '', slot2]`, its first and third addresses with
+  `''` between them, and `receiptCount` 2). Deleted by keys and left
+  alone, the pointer off the notice, its document read 200 from 0 to 9.2 s
+  after the notice and 404 at 10.1 s. Storage was asked to delete
+  `…/receipts/<id>` and `…/receipts/<id>_2` only, nothing for slot 1, and no
+  object of the row was left.
+- **Left inside the window.** *r2 one image* was deleted and `/dashboard`
+  opened through the header's router inside the window: the document read
+  200, 200 and then 404 at 0.4 s; one more Storage delete,
+  `…/receipts/<id>`; the notice gone, no error notice.
+- Before the sign-out, after a reload at 1024 in light, the three rows
+  deleted for real by then (*r2 one image*, *r2 three images* and *e2e two
+  images*) were gone, and the two brought back (*r2 two images* and
+  *Parking garage*) were there, 12 rows.
+- **Signed out inside the window**, through the header's user menu, on
+  *Hardware store*: the confirm by real keys, the menu's two clicks made
+  from the console in one step. The document read 200 as the sign-out
+  started, the app was on `/login` 0.16 s later, and the document read 404
+  by then. No console error.
+
+**The driver's mistakes, not the app's.** Two rows were deleted for real by
+their timers because the driver let the window run out, and a click and
+three drags landed where they were not meant to. At the desktop door's
+first attempt, a Tab sent with the menu keys reached the list before the
+confirm took focus, and the driver's reads between the confirm and Undo ran
+past the ten seconds: *e2e two images* read 404, its receipts gone with it,
+and the Enter meant for Undo opened *Parking garage*'s menu, which Escape
+closed with nothing chosen. The announcement logger had been armed twice in
+that load and logged every line twice; the redo armed it once. At the first
+sign-out try, the driver's two real clicks (the user menu, then Sign Out)
+took past the ten seconds in the pane, so *Farmers market* read 404 by its
+timer, and the Sign Out click landed on the sidebar, since the menu's panel
+had not been laid out when its place was read (0,0). And at the swipe door,
+the driver's first three drags started on the row's category strip
+(`.row-category`), where a press by design never starts a swipe; each was
+taken as a tap and opened *Edit Transaction*, closed by Cancel with nothing
+changed.
+
+**Found:** nothing in the delete and Undo steps; the run met no app defect.
+
 ## Departures from the issue
 
 - **Sign-out waits five seconds at most.** The issue asks for the delete to be

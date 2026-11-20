@@ -2114,6 +2114,73 @@ records the first four defects and
 the fifth, and each of ADRs 0192 to 0197 records what the run read of its
 own screens.
 
+A second run of journeys 121 to 124, on 2026-11-21, drove the branch at
+26.11.186, at *docs: the records and references follow the last fixes*, in
+this venue, served from that branch's own checkout, with the functions
+emulator left out and the bundle naming `demo-home-account` only. The
+Auth, Firestore and Storage emulators started from the data the first
+run's re-check had exported, and Alex was still signed in from the
+re-check's session record, by the swap
+[Signing in a seeded account](#signing-in-a-seeded-account) describes;
+journey 124's account with no data was the first run's fourth demo account,
+signed in the same way from its own record, both on the emulators only. It
+made its own three rows with receipts, *r2 one image*, *r2 two images* and
+*r2 three images*, and read the first run's two goals and import record.
+The pane was 1024×768, every read followed a flush and finished animations,
+375px and 320px were reached by emulation, and the account's own theme was
+light; dark was switched through Settings' theme control, as the first run
+switched it. It drove all four journeys and read journeys 111 and 112 again,
+whose pass lines had been rewritten from the code, and it read, where each
+shows, the six user-facing fixes made after the first run's re-check that a
+browser can show: *fix: a review row's split is named in the Chinese
+sentence order its merge uses*, *fix: each AI provider's avatar stands at
+the top of its header again*, *fix: the save-search pill's padding follows
+the reading direction*, *fix: a notice stands above the phone's bottom nav
+on iOS 15's first WebViews too*, *fix: undo while choosing rows on a phone
+gives focus to the row's checkbox* and *fix: the Goals tab's Add Goal keeps
+its label on one line on a phone*. Every step it drove passed, journeys 111
+and 112 held, and so did each fix; it met no defect in the app. It did not
+read again what no commit since the first run or its re-check had touched:
+the two dialogs of journey 121's step 10, its steps 11 and 12, and six of
+journey 123's eleven indicators, the five it read giving the first run's
+ratios.
+
+Two rows were lost to the driver, not to the app. In journey 123's steps 2
+and 3, on the first run's *e2e two images*, a **Tab** sent with the menu
+keys reached the list before the confirm had taken focus, and the reads
+between the confirm and **Undo** ran past the ten seconds, so the row was
+deleted for real by its timer, its receipts with it; the **Enter** meant for
+Undo opened *Parking garage*'s menu, closed with Escape with nothing chosen,
+and the announcer's log, armed twice in that load, logged every line twice.
+After a reload the two steps were made again on *r2 two images*, the log
+armed once, and passed. In step 9 the account menu's two real clicks took
+longer than the ten seconds in the pane, so *Farmers market* was deleted for
+real by its timer before the sign-out, and the **Sign Out** click, aimed
+from a rect read before the menu was laid out, landed on the sidebar. The
+step was made again on *Hardware store*, the confirm by real keys and the
+menu's two clicks from the console in one evaluation, and passed: `/login`
+0.16 s after the sign-out started, the document 404 by then.
+
+The rest was not the app's either. Journey 122's step 1 read `lifts` `[]`
+and journey 124's step 3 counted 0 rules, since the flatten both steps gave
+dropped every plain rule in the pane's Chrome; with the flatten corrected,
+the first read its one rule and the second 889 rules, and both steps now
+give the corrected flatten. Journey 121's step 8 read the AI page's labels
+cut at 320px after a live resize and after a live language switch, and
+whole on a page loaded at that width in each language, which the step now
+asks for. In journey 123's step 7 the driver's first three drags started on
+a row's category strip, where a press starts no swipe, and each became a
+tap that opened the edit form, closed by **Cancel** with nothing changed;
+from the description line the drawer opened, and the step now says where to
+press. Journey 124's step 4 met no welcome, the first run having skipped it
+on that account, and the step now says when the welcome shows. In journey
+121's step 5 the driver's script did not find the second **Continue**, so
+its two rows were not imported. Journey 122's held slot read 6.30 in the two
+light palettes and 11.6 in the two dark ones against the list's first
+opaque fill, where the first run's 6.58 and 6.72 were read against another
+fill; each is over 3:1, and step 2 now gives both.
+[In a hidden pane](#in-a-hidden-pane) now holds the pane's lessons.
+
 ### Pre-flight
 
 Journeys 79 to 124 call no function, and neither do 72 and 73. A run of only
@@ -2472,6 +2539,30 @@ for #500 saw on journey 93's step 7. A page load drops the log and the
 wrappers with the page; a navigation inside the app keeps both. The log is evidence of the
 call, the sentence and its duration, not of the paint, which a pane in view
 shows.
+
+**The pane's pace, and where a press lands.** The second run of journeys 121
+to 124 met four more traps, none of them the app's:
+
+- **A delete's ten seconds must hold the keys, the confirm and the reads.**
+  A deleted row's Undo window does not wait for the pane: a **Tab** sent
+  with the menu keys can land before the confirm has taken focus, and reads
+  made between the confirm and **Undo** can outlast the window, which then
+  deletes the row for real. Send the menu keys, focus the confirm's
+  **Cancel** from the console and press **Tab** and **Enter**, real keys;
+  then read once, and focus **Undo** at the end of that same evaluation,
+  which holds the window (journey 123's step 2).
+- **Arm the announcer's log once per load.** It wraps `announce` as the
+  notice log above wraps a notice, and a second arming on the same page
+  wraps the wrapper and logs every line twice.
+- **A 320px read of a Material floating label follows a reload, in each
+  language.** The field measures its label's notch from an observer, so
+  after a live resize or a live language switch the first read finds the
+  label cut; load the page at 320px in each language, then read (journey
+  121's step 8).
+- **A swipe starts on a row's description line.** The row's category
+  strip, `.row-category`, scrolls sideways on its own, and a press on it
+  starts no swipe by design: a drag from there is a tap, and opens the edit
+  form (journey 123's step 7).
 
 ### Reading past the rules
 
@@ -14253,9 +14344,13 @@ const read = (selector, root = document) => [...root.querySelectorAll(selector)]
    both named *Forget all*, the same in English and in Traditional Chinese
    and apart in Japanese only by the catalog's chance, before *fix: the AI
    page's two Forget all buttons say what they forget*; it read them apart
-   after the fix. At 320px, a read only:
+   after the fix. At 320px, a read only, made on a page reloaded at that
+   width after each language switch:
    `[...document.querySelectorAll('app-ai-settings-page .api-key-field .mdc-floating-label')].every(l => l.scrollWidth <= l.clientWidth)`
-   is `true` in each language: every label whole. Shot: `121-ai-names.png`.
+   is `true` in each language: every label whole. After a live resize or a
+   live language switch the first read finds the labels cut, since the
+   field measures its label's notch from an observer
+   ([In a hidden pane](#in-a-hidden-pane)). Shot: `121-ai-names.png`.
    Reload: the made-up values go with the page.
 9. **The filter panel's two boxes.** On `/transactions`, open the filters
    with a real click on their toggle, then:
@@ -14465,7 +14560,7 @@ put the noted classes back after.
    const arrows = [...list.querySelectorAll('.reorder-btn')];
    const handle = list.querySelector('.drag-handle');
    const lifts = [...document.styleSheets].flatMap(s => { try { return [...s.cssRules]; } catch { return []; } })
-     .flatMap(function flat(r) { return r.cssRules ? [...r.cssRules].flatMap(flat) : [r]; })
+     .flatMap(function flat(r) { return [r, ...(r.cssRules ? [...r.cssRules].flatMap(flat) : [])]; })
      .filter(r => r.selectorText?.includes('.file-item') && r.selectorText.includes(':hover') && r.style.boxShadow)
      .map(r => r.selectorText.replace(/\[_ng(content|host)-[^\]]*\]/g, ''));
    ({
@@ -14477,6 +14572,11 @@ put the noted classes back after.
      lifts,
    });
    ```
+
+   The flatten keeps each rule and its children: in current Chrome, 156 on
+   the second run, every style rule carries a `cssRules` list for nesting,
+   empty where nothing nests, so a flatten that kept only the rules without
+   one dropped every plain rule and read `lifts` `[]`.
 
    **Pass:** `drag` `[[true, true], [false, false], [true, true]]`, the
    CSV's row no drag item and no handle; `handle` `[40, 40, 'grab']`; `zone`
@@ -14541,9 +14641,13 @@ put the noted classes back after.
    [ratio(slot, colour), getComputedStyle(document.querySelector('.cdk-drag-preview')).borderTopColor === colour];
    ```
 
-   **Pass:** 6.58 plain, 6.58 with high contrast, 6.72 dark and 6.72 dark
-   with high contrast, each over the 3:1 a graphic needs, and the preview's
-   border the slot's colour in each. Put the classes back, then release, in
+   **Pass:** each over the 3:1 a graphic needs, and the preview's border the
+   slot's colour in each. The first run read 6.58 plain, 6.58 with high
+   contrast, 6.72 dark and 6.72 dark with high contrast, the figures
+   [ADR 0193](ADR/0193-a-row-that-is-no-photo-is-no-drag-item-the-receipt-or-statement-chips-are-measured-and-the-upload-area-shows-where-a-photo-will-land.md)
+   gives for the hovered zone; the second read 6.30, 6.30, 11.6 and 11.6
+   against the list's first opaque fill, `#f5f5f5` and `#121212`, the
+   figures it gives at rest. Put the classes back, then release, in
    one evaluation with `mouse` pasted again:
    `mouse(document, 'mouseup', window.e2eDrag.x, window.e2eDrag.held)`. Once
    no `.cdk-drag-preview` is left, journey 111's list read. **Pass:** `rows`
@@ -14725,12 +14829,21 @@ A row's document is read past the rules
 2. **Delete from the desktop menu, by keyboard.** On `/transactions`, arm
    the announcer, focus *e2e two images*'s menu button from the console,
    `document.querySelector('[aria-label="More actions for e2e two images"]').focus()`,
-   and press **Enter**, **End**, **Enter**, **Tab** and **Enter**, real keys:
-   the menu, its last item Delete, the confirm, its Delete. Before the last
+   and press **Enter**, **End** and **Enter**, real keys: the menu, its last
+   item Delete, the confirm. In a hidden pane a **Tab** sent with them can
+   land before the confirm takes focus, so focus the confirm's **Cancel**
+   from the console,
+   `document.querySelector('app-confirm-dialog mat-dialog-actions button').focus()`,
+   and press **Tab** and **Enter**, real keys: its Delete. Before the last
    Enter, the confirm reads *Are you sure you want to delete "e2e two
-   images"?*. Then the rows read. **Pass:** `rows` one fewer, 15 to 14 on
-   the first run; `focus` `[1, 'More actions for e2e one image', true]`, the
-   menu button of the row now in the deleted row's place; `notice`
+   images"?*. Then the rows read, once; where step 3's Undo follows, focus
+   the notice's **Undo** at the end of that same evaluation,
+   `document.querySelector('mat-snack-bar-container button').focus()`,
+   since the window is ten seconds and a hidden pane's evaluations can
+   outlast it ([In a hidden pane](#in-a-hidden-pane)). **Pass:** `rows` one
+   fewer, 15 to 14 on the first run; `focus`
+   `[1, 'More actions for e2e one image', true]`, the menu button of the
+   row now in the deleted row's place; `notice`
    *Deleted e2e two images* with its **Undo** action, 344 by 48 at 712 of a
    768px window, its own live region `'off'`; and `said` holding
    *Deleted e2e two images. Undo is available for a few seconds.* once:
@@ -14797,22 +14910,32 @@ A row's document is read past the rules
    its menu button, and *Restored Parking garage*. Shot:
    `123-phone-notice.png`.
 7. **The swipe door.** Still at 375px, drag the first row from right to left
-   with the pane's own pointer, from x 234 to x 84 on the first run.
-   **Pass:** the drawer open, its **Edit** and **Delete** 72 by 83 and
-   named for the row, *Edit …* and *Delete …*. A real click on **Delete**,
-   and the confirm's **Delete**. **Pass:** the row gone, and focus on the
-   `.row-menu-btn` of the row now at index 0, since the drawer's own button
-   is hidden once it closes. Undo as step 3 does. **Pass:** the row back at
-   index 0 with focus on its menu button, the drawer closed. Shot:
-   `123-swipe-drawer.png`. Clear the width and switch back to light.
+   with the pane's own pointer, from x 234 to x 84 on the first run,
+   pressing on its description line, `.row-description`: the category strip
+   under it, `.row-category`, scrolls sideways on its own and by design
+   starts no swipe, so a drag begun there is a tap that opens the edit form,
+   to be closed by **Cancel**. **Pass:** the drawer open, its **Edit** and
+   **Delete** 72 by 83 and named for the row, *Edit …* and *Delete …*. A
+   real click on **Delete**, and the confirm's **Delete**. **Pass:** the row
+   gone, and focus on the `.row-menu-btn` of the row now at index 0, since
+   the drawer's own button is hidden once it closes. Undo as step 3 does.
+   **Pass:** the row back at index 0 with focus on its menu button, the
+   drawer closed. Shot: `123-swipe-drawer.png`. Clear the width and switch
+   back to light.
 8. **After a reload.** **Pass:** the two rows deleted for real, *e2e one
    image* and *e2e three images*, are not listed, and the rows Undo brought
    back, *e2e two images* and *Parking garage*, are.
 9. **A sign-out inside the window.** Delete *Farmers market* as step 2
    does. **Pass:** the document 200 while the notice is up. Then the
-   header's account menu, **Sign Out**, real clicks. **Pass:** `/login`
-   0.4 s later on the first run, the document 404 by then, and no console
-   error: a sign-out makes the waiting delete real first. Sign Alex back in
+   header's account menu, **Sign Out**, real clicks. In a slow pane the two
+   clicks may not fit the window, and the row is then deleted by its timer
+   before the sign-out; so they may be made from the console instead, in one
+   evaluation straight after the confirm, `click()` on
+   `app-header .user-menu-button` and then on the menu's **Sign Out**, since
+   what the step proves is the flush before the sign-out. **Pass:** `/login`
+   0.4 s later on the first run and 0.16 s on the second, the document 404
+   by then, and no console error: a sign-out makes the waiting delete real
+   first. Sign Alex back in
    ([Signing in a seeded account](#signing-in-a-seeded-account)).
 10. **Last: a Firestore shutdown under the dashboard.** On `/dashboard`,
     note the cards' words, log the page's own failures,
@@ -14941,7 +15064,7 @@ read gives the dialog's own outline then.
 
    ```js
    const rules = [...document.styleSheets].flatMap(s => { try { return [...s.cssRules]; } catch { return []; } })
-     .flatMap(function flat(r) { return r.cssRules ? [...r.cssRules].flatMap(flat) : [r]; })
+     .flatMap(function flat(r) { return [r, ...(r.cssRules ? [...r.cssRules].flatMap(flat) : [])]; })
      .filter(r => r.selectorText);
    const probe = style => Object.assign(document.body.appendChild(document.createElement('span')), style);
    const [alias, token] = [probe({ className: 'text-fg-secondary' }), probe({})];
@@ -14955,18 +15078,25 @@ read gives the dialog's own outline then.
    **Pass:** `0` rules name the bare `.ring`; `.text-fg-secondary` is in
    the sheet, though no template on the page may wear it; and the two
    probes paint one colour, `rgb(55, 65, 81)` in light on the first run,
-   the colour `--text-secondary` resolves to. The first run counted 792
-   rules, on a development serve: the count is the page's and the venue's,
-   and the absence is the reading.
+   the colour `--text-secondary` resolves to. The flatten is journey 122's
+   step 1's, which keeps each rule and its children. The first run counted
+   792 rules, on a development serve, and the second 889: the count is the
+   page's and the venue's, and the absence is the reading, so long as the
+   count is not 0, which is a flatten that dropped the rules, as the old
+   flatten did on the second run.
 4. **An account with no data.** Swap the empty account in, its record
-   written into local storage and the page reloaded. **Pass:** its welcome
-   dialog reads `['H2 …', 'H3 …']` in order, `true`. **Skip** it. Then the
-   outline of `/dashboard`, `/transactions`, `/budgets` in its three tabs,
-   `/reports` in its five, `/data`, `/import/history`, `/search-history`
-   and `/household`. **Pass:** `true` everywhere: on the dashboard the
-   cards' titles `H2` and their empty states `H3`, and on every other page
-   the first empty state `H2` under the page's `H1`. Nothing on them is
-   unnamed, with journey 121's helpers pasted:
+   written into local storage and the page reloaded. The welcome shows only
+   to an account that has never closed it, its
+   `preferences.onboardingCompleted` unset: on a new empty account,
+   **Pass:** its welcome dialog reads `['H2 …', 'H3 …']` in order, `true`;
+   **Skip** it. An empty account reused from an earlier run that closed its
+   welcome shows none, as on the second run, and there is nothing to read.
+   Then the outline of `/dashboard`, `/transactions`, `/budgets` in its
+   three tabs, `/reports` in its five, `/data`, `/import/history`,
+   `/search-history` and `/household`. **Pass:** `true` everywhere: on the
+   dashboard the cards' titles `H2` and their empty states `H3`, and on
+   every other page the first empty state `H2` under the page's `H1`.
+   Nothing on them is unnamed, with journey 121's helpers pasted:
 
    ```js
    [...document.querySelectorAll('.content-wrapper :is(button, a[href], input, [role=combobox], [role=switch])')]
@@ -15000,8 +15130,8 @@ read gives the dialog's own outline then.
    `app-login p.text-fg-secondary`, paints the colour of step 3's token
    probe in each of the four palettes, switched by the root's classes as
    journey 122 switches them; and step 3's rule read finds no `.ring` among
-   the page's 493 rules on the first run. Shot: `124-login.png`. Sign Alex
-   back in.
+   the page's 493 rules on the first run and 447 on the second. Shot:
+   `124-login.png`. Sign Alex back in.
 6. **At a phone's width, dark.** Set the pane to 375 by 812, load
    `/dashboard` at that width and switch to the dark theme as
    [Switching the theme](#switching-the-theme) says, moving on through the

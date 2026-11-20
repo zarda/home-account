@@ -521,6 +521,63 @@ The four other defects the run met are names, recorded in
 the run's reading of the stylesheet is in
 [0195](0195-a-gate-holds-the-test-main-to-the-builders-init-specs-stay-out-of-the-stylesheet-a-lone-date-run-is-silent-and-the-opacity-gate-reads-a-url-in-a-comment-as-a-comment.md).
 
+### Run 2, on 21 November 2026
+
+On the emulators only, on the data run 1 left, served from this branch's
+checkout at 26.11.186 with the bundle naming `demo-home-account` alone, as
+Alex and as run 1's empty account, each signed in from a saved emulator
+record. Every reading followed a flush and finished animations, and the keys
+were real ones. Journey 124 was read at 1024px in light and at 375px in
+dark, in English.
+
+- **The outline, read again, identical.** Every page and tab opened with its
+  `h1` and read in order (`true`). The dashboard read its `h1`, then Recent
+  Transactions, Upcoming Bills, Spending by Category and Budget Progress at
+  `h2`, with Upcoming Bills' day headers, *December 1, 2026* and *December
+  2, 2026*, at `h3`; the Data page its `h1` and five `h2`s; the Budgets tab
+  its five budgets and the Goals tab *Japan trip* and *New laptop* at `h2`;
+  `/household` its `h1` down to an `h4`, one level at a time; `/settings`
+  *No sign-ins recorded yet* at `h2`. `/reports` in its five tabs, `/about`,
+  `/import/file`, `/import/history`, `/search-history` and `/ai` read in
+  order too. At 375px in dark, `/dashboard`, `/data`, `/ai`, `/reports`,
+  `/settings`, `/search-history`, `/import/history`, `/household` and
+  `/about` each read in order, with no sideways scroll (`scrollWidth` equal
+  to the window's width) and a main overflow of 0.
+- **The empty account.** Its welcome dialog did not show: run 1 had skipped
+  it on this account, and it shows only to an account that never has, so
+  its outline was not read again. The dashboard read its `h1`, then Recent
+  Transactions, Upcoming Bills and Spending by Category at `h2`, each over
+  its empty state at `h3` (*No transactions found*, *Nothing scheduled*,
+  *No expenses yet*). Under the page's `h1`, `/transactions` read *No
+  transactions found* at `h2`, `/budgets` *No budgets set*, *No Recurring
+  Transactions* and *No goals yet*, each of `/reports`' five tabs its empty
+  state, `/import/history` *No import history yet*, `/search-history` *No
+  saved answers yet*, and `/household` *Invites for you* and *Start a
+  household*, all at `h2`; `/data` read in order as well. Every outline
+  read `true`, no control was unnamed (`[]`) and nothing stood under the
+  contrast bar.
+- **The hand-offs, read again, identical.** On the dashboard layout
+  settings, a real Enter on *Move Recent Transactions down* kept focus on
+  it, `:focus-visible`, and *Recent Transactions moved to position 2 of 5*
+  was said; one on *Move Recent Transactions up* put the row back on top,
+  its Move up disabled, with focus on *Move Recent Transactions down* and
+  its move to position 1 of 5 said. Reset was pressed after. In the receipt
+  viewer, opened on *r2 two images* by a real click on *View receipt for r2
+  two images*, a real Enter on Next image reached *Receipt image 2 of 2*,
+  disabled Next and put focus on Previous image, `:focus-visible`. The split
+  parts and the note lens were again not driven.
+- **The sign-in page, read again in light.** Signed out of the empty
+  account through the user menu, `/login` read `['H1 Home Account']`, in
+  order. The `h1` is the card's own title (`.mat-mdc-card-title`) and drew
+  22px / 400 / 28px with a margin of `0px`, the figures run 1 read in dark,
+  with no sideways scroll. The lead line, *Please sign in to continue*,
+  painted the colour of the `--text-secondary` probe in each palette:
+  `rgb(55,65,81)` plain, `rgb(31,41,55)` in high contrast,
+  `rgb(229,231,235)` in dark and `rgb(243,244,246)` in dark high contrast.
+  Alex was signed back in.
+
+The run met no defect on the screens this record owns.
+
 ## Departures from the issues
 
 - **#544's heading run is a page pass, not part of the in-view audits** it

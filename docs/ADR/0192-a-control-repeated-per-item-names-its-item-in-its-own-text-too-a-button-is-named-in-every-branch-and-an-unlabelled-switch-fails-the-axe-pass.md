@@ -471,6 +471,69 @@ manager's unnamed toggle group, recorded in
 and the sign-in page with no heading, recorded in
 [0194](0194-one-painted-contrast-helper-and-one-focus-hand-off-a-card-is-scored-part-by-part-and-no-page-skips-a-heading-level.md).
 
+### Run 2, on 21 November 2026
+
+Emulators only (Auth, Firestore and Storage), started from the data run 1
+left once its fixes were read again, as the seeded Alex, still signed in
+from that day's session record, served from this branch's checkout with the
+bundle naming `demo-home-account` alone. It drove the branch with the fixes
+that followed run 1 in, at 1024px in the account's light theme, and every
+read followed a flush and finished animations. Journey 121
+([../e2e.md](../e2e.md)) read this record's names again in English, Japanese
+and Traditional Chinese, on three rows made for it through the page's own
+service, *r2 one image*, *r2 two images* and *r2 three images*, with one,
+two and three receipt images.
+
+- **Goal cards.** Read again, identical. On run 1's two goals, *Japan trip*,
+  with a linked row, and *New laptop*, each named by an H2, *Edit* and
+  *Delete* stood at x 528 and 576, 40 by 40px, *View Transactions* 162 by
+  40px on *Japan trip* alone and *Contribute* 132 by 40px. Every name held
+  its goal and its shown words in en, ja and tc, among them ja
+  *「Japan trip」を編集* and tc *檢視交易：「Japan trip」*.
+- **The Goals tab's header.** At 1024px it was 672 by 40px, *Add Goal* 121
+  by 40px. At 375px, dark, *Add Goal* kept one line, 40px tall, 121px wide in
+  en, 136 in ja (*目標を追加*) and 122 in tc (*新增目標*); the hint took a line
+  of its own above it in en, the header 73px tall, and in ja, 94px, and in tc
+  the two fit one line, 40px. Nothing scrolled sideways.
+- **The review card.** On a two-row CSV, *r2 coffee beans* and *r2 bus
+  pass*, each card's six names, *Split*, *Merge…*, *Remove*, *Add location*,
+  *Add tag* and *Notes*, named its own row and held their shown words in all
+  three languages, every one 40px tall (62, 79, 78, 103, 78 and 74px wide).
+  tc's Split read *將「r2 coffee beans」分割成兩列*, in the order of its
+  Merge, since *fix: a review row's split is named in the Chinese sentence
+  order its merge uses*. The driver's script did not reach the second
+  Continue, so the two rows were not imported.
+- **Import history.** Run 1's record read again with the same names: *View
+  transactions (2) from rows.csv (11/19/2026 5:33 PM)*, 180 by 40px, and
+  *Delete rows.csv (11/19/2026 5:33 PM) from import history*, 94 by 40px; ja
+  and tc held their shown words.
+- **Insight cards.** On the Patterns tab, *View transactions: Falling
+  (Groceries)*, *…: Falling (Restaurants)* and *Show transactions: Payday
+  effect*, each 40px tall; ja *「減少傾向」（食料品）の取引を表示*, tc
+  *查看交易：「下降中」（雜貨）* and *顯示交易：「發薪日效應」*. Every name held its
+  shown words, and no heading skipped a level.
+- **The dashboard.** Read again, identical: *View All Recent Transactions*
+  and *View All Upcoming Bills*, each 68 by 40px and holding *View All*; ja
+  *最近の取引をすべて表示* and *今後の予定をすべて表示*, tc *查看全部最近交易*
+  and *查看全部近期排程*, each holding its shown words.
+- **A row's swipe drawer.** At 375px the driver's first three drags started
+  on the row's category strip, where by design no press starts a swipe; each
+  was taken as a tap and opened *Edit Transaction*, closed by Cancel with
+  nothing changed. A drag from the description line opened the drawer, its
+  two buttons 72 by 83px and named *Edit r2 two images* and *Delete r2 two
+  images*.
+- **Receipt thumbnails.** *Manage receipt images* on `/data` showed eight
+  thumbnails, each with *Receipt image N of M for* its row as its alt and
+  its name; ja *r2 three imagesのレシート画像 3 枚中 1 枚目*, tc
+  *「r2 three images」的第 1 張收據圖片（共 3 張）*.
+- **The AI page's switch** read *Auto-sync when online* again.
+
+A saved answer's *Refresh* and *View matching transactions* were again not
+read one by one.
+
+**Found:** nothing in this record's controls. The run met no defect of the
+app.
+
 ## Departures from the issues
 
 - **The issue's third bullet was already read.** A key a held-apart case

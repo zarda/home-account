@@ -438,6 +438,81 @@ and
 [0196](0196-sibling-controls-say-what-they-act-on-a-name-holds-its-shown-words-a-focused-button-shows-an-indicator-inside-it-focus-stays-in-the-list-after-a-delete-and-a-failed-dashboard-read-is-quiet.md)
 record them.
 
+### Run 2, on 21 November 2026
+
+Emulators only, as Alex, on run 1's data loaded back into them, served from
+this branch's checkout at
+`docs: the records and references follow the last fixes`, the bundle naming
+`demo-home-account` alone. The pane emulated 1024 by 768, and every read
+followed a flush and finished animations. Journey 122 was read at 1024px in
+light and at 375 by 812 in dark, the theme switched through Settings' Theme
+control; journeys 111 and 112, whose pass lines were rewritten from the code
+after run 1, were read in the browser.
+
+**The drag, at 1024px, read again, identical.** With
+`[a.png, rows.csv, b.png]` picked, the CSV's row was no `cdk-drag` and had no
+handle, the handle read 40 by 40 under `grab`, the zone `default`, and the
+four arrows 28 by 28 with neither touch target over the other arrow. Held by
+page events, `[csv Δtop, csv transform, a transform]` read
+`[0, '', 'translate3d(0px, 172px, 0px)']`. The lifted row lay in `.file-list`,
+its `transition-property` `border-color, box-shadow`, its shadow
+`rgba(0, 0, 0, 0.15) 0px 4px 12px 0px` at opacity 1, and the cursor
+`grabbing` on the handle and the list; the slot was dashed, 1px, in
+`rgb(63, 81, 181)`, its name hidden. The drop gave `[b, csv, a]`, and the
+pane's own drag took it back to `[a, csv, b]`, the previews' strip
+following, `[a.png, b.png]`.
+
+**The hover lift.** The journey's read of the stylesheet returned no lift
+rule at all, a fault of the read and not of the app. In Chrome 156 every
+style rule carries a `cssRules` list, empty, for nesting, and the read kept a
+rule only where it had no such list, so every plain rule was dropped. Read
+with each rule kept beside the rules nested in it, the lift had one rule,
+`.file-list:not(.cdk-drop-list-dragging) .file-item.reorderable:hover`, its
+`box-shadow` `var(--shadow-sm)`, the rule run 1 recorded.
+
+**In four palettes.** The slot's outline was read against the first opaque
+fill behind the list, `#f5f5f5` in light and `#121212` in dark, which are
+`--surface-background`: 6.30:1 in plain and high contrast and 11.6:1 in dark
+and dark high contrast, the figures this record gives at rest, with the
+lifted row's edge the slot's colour in each. Run 1's 6.58:1 and 6.72:1, the
+figures this record gives for the hovered zone, were read against another
+fill; both readings clear the 3:1 a graphic needs. The chips read again,
+identical in all four palettes: the picked label and its checkmark 7.22:1,
+the other label 8.56:1 in light and 14.52:1 in dark. A real click on
+Statement swapped the states and the figures with them, and a second real
+click on the picked Statement, then on Receipts once picked again, kept each
+picked: `aria-selected` stayed `true`, and `imageKind` read `statement`,
+then `receipt`.
+
+**At 375 by 812, in dark, read again, identical.** The zone's top stood at
+403, a photo's row was a grid of `40px 129px 40px`, 111px tall, its handle
+40 by 40, and nothing scrolled sideways. Mid-drag the lifted row followed the
+pointer 60px for 60px, inside `.file-list`, laid out as a grid of the row's
+columns, 259 by 111; the CSV's Δtop was 0 with no transform, and photo a
+stood at `translate3d(0px, 194px, 0px)`. The drop gave `[b, csv, a]`.
+
+**Journeys 111 and 112.** Journey 111's first step, a real Tab from the
+stepper's header, put keyboard focus on Browse. The zone had no role, tab
+stop or name, and its ring read `solid`, 2px at a 2px offset; Browse's own
+outline and the focus indicator each Material button draws inside itself
+since
+[0196](0196-sibling-controls-say-what-they-act-on-a-name-holds-its-shown-words-a-focused-button-shows-an-indicator-inside-it-focus-stays-in-the-list-after-a-delete-and-a-failed-dashboard-read-is-quiet.md)
+both read `none`, so one ring showed; Browse read *Browse Files*, its glyph
+hidden, described by *Supports CSV, PDF, images, and JSON backups*. Journey
+112, a CSV picked and then two photos, read the badges `[null, '1', '2']`,
+the arrows `[[], [true, false], [false, true]]` and `drag`
+`[[false, false], [true, true], [true, true]]`, as written. The pane's own
+drag of photo 2's handle onto photo 1's row logged one drop, `[1, 0]`,
+places among the photos, and left
+`['e2e-112.csv', 'e2e-112-b.png', 'e2e-112-a.png']`, the names renumbered
+from *Move photo 1 (e2e-112-b.png) up* to *Remove photo 2 (e2e-112-a.png)*,
+and nothing of the drag behind: no preview or slot, and every row's
+transform `none`.
+
+**Found:** nothing on the upload area or on the chips, and journeys 111 and
+112 held as written. The one wrong reading here was journey 122's own
+stylesheet read, which in Chrome 156 drops every plain rule.
+
 ## Departures from the issues
 
 - **No sort strategy.** #543 proposes a sort that skips rows that are no

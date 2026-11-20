@@ -436,6 +436,46 @@ production build's selector lists, and the nineteen safelisted aliases are
 held by `theme-aliases.spec.ts` in Karma, from the same Tailwind config the
 development server used.
 
+### Run 2, on 21 November 2026
+
+The same venue at 26.11.186: the emulators only, on the data run 1 left,
+served by `ng serve` from this branch's checkout with the bundle naming
+`demo-home-account` alone, as Alex, signed in from a saved emulator record.
+The account's own theme was light. Every read followed a flush and finished
+animations, at 1024px. Journey 124's stylesheet step was read with its
+flatten corrected, for the reason below.
+
+- Signed in, in light, read again as in run 1: none of the page's 889 style
+  rules was `.ring`, `.text-fg-secondary` was among them, and a probe
+  wearing it and a probe painted with `--text-secondary` both painted
+  `rgb(55, 65, 81)`.
+- `.!hidden` was gone from the same sheet, as *fix: a tombstone set no
+  longer names a utility the stylesheet then ships* meant. The important
+  rules templates name, `.!h-12` among them, still shipped, and so did six
+  `.!container` rules no template asks for: `!container` stands in
+  `notification-tap.service.ts` and `swipe-reveal.directive.ts`, code this
+  branch did not change (*Known gaps*).
+- Signed out of run 1's empty account through the user menu, on `/login`,
+  read again as in run 1: the lead line, *Please sign in to continue*,
+  painted what the `--text-secondary` probe painted in each of the four
+  palettes, `rgb(55,65,81)` plain, `rgb(31,41,55)` in high contrast,
+  `rgb(229,231,235)` in dark and `rgb(243,244,246)` in dark high contrast,
+  and none of the page's 447 rules was `.ring`.
+- The step's own snippet, as [../e2e.md](../e2e.md) gave it then, counted
+  **0** rules on the signed-in page. In Chrome 156 every style rule carries
+  a `cssRules` list for nesting, empty, and that snippet's flatten kept a
+  rule only when it had no such list, so it dropped every plain style rule;
+  its `0` for `.ring` was read from no rules at all. A flatten that keeps
+  each rule and then its children, the one the step gives now, read the
+  figures above.
+
+**Found:** nothing in this record's scope, and the run met no defect of the
+app. The snippet's flatten is a defect of the journey's text, the same one
+journey 122's first step met; an absence it reads proves nothing, for the
+reason the `.ring` case in `theme-aliases.spec.ts` first finds a safelisted
+alias. Of the seven rules the change removed, the run again read `.ring`
+alone.
+
 ## Departures from the issues
 
 - **"No WARN or ERROR line" is read as the browser's console lines.** The
@@ -543,9 +583,13 @@ development server used.
   two, the smoke for `.ring` alone. A comment in a non-spec file that names
   any other utility ships it, and so does a negation in code of a variable
   named after one, and nothing fails; that no non-spec file names *sr-only*,
-  comments included, is still kept by hand. The selector diff that proves this
-  change was taken once; a step that compared the built sheet's class
-  selectors with a recorded list would hold every utility.
+  comments included, is still kept by hand. Run 2 read six such rules in the
+  sheet, `.!container`, from `!container` in `notification-tap.service.ts`
+  and `swipe-reveal.directive.ts`, code this branch did not change; *ships no
+  important rule that only a negation in code names* reads `.!hidden` alone,
+  so it passes beside them. The selector diff that proves this change was
+  taken once; a step that compared the built sheet's class selectors with a
+  recorded list would hold every utility.
 
 ### The date run's console
 
